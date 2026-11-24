@@ -86,6 +86,34 @@ export async function writeConfigStamps(
 }
 
 /**
+ * Stamp `rels` (workspace-relative) again beside the stamps kept for lock
+ * `lock`, as they are now: a run found them to evaluate as the lock holds.
+ * The others and `at` stay as they were.
+ */
+export async function restampConfigs(
+  root: string,
+  cacheDir: string,
+  lock: string,
+  rels: readonly string[],
+): Promise<void> {
+  try {
+    const stamps = await readStamps(cacheDir)
+    if (stamps === null || stamps.root !== root || stamps.lock !== lock) return
+    const taken = await takeConfigStamps(
+      root,
+      rels.map((rel) => path.join(root, rel)),
+    )
+    const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
+    const temp = `${file}.${process.pid}.tmp`
+    const kept: Stamps = { ...stamps, configs: { ...stamps.configs, ...taken.configs } }
+    await writeFile(temp, JSON.stringify(kept))
+    await rename(temp, file)
+  } catch {
+    // No memo: the next run evaluates again.
+  }
+}
+
+/**
  * One parse per version of the file: a run's rounds and loads ask again,
  * and a `vx watch` outlives a `vx lock` another shell runs.
  */

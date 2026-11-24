@@ -139,6 +139,33 @@ describe('a config edited since vx lock', () => {
     expect(code).toBe(0)
   })
 
+  // The stamp held the last `vx lock`'s bytes: a comment relocked (the lock
+  // unchanged), then the config and lock restored together (`git checkout`),
+  // and run and show refused what `vx lock --check` passed.
+  it('runs a config restored to bytes that evaluate as the lock holds', async () => {
+    const original = await readFile(file, 'utf8')
+    await writeFile(file, `// a comment\n${original}`)
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    await writeFile(file, original)
+    expect((await vx(root, ['lock', '--check'])).code).toBe(0)
+    await writeFile(file, `// another\n${original}`)
+    for (const args of [
+      ['run', 'say', '--all'],
+      ['show', 'core'],
+    ]) {
+      const { code, out } = await vx(root, args)
+      expect(out).not.toContain('changed since the last `vx lock`')
+      expect(code).toBe(0)
+    }
+  })
+
+  it('still refuses an edit that evaluates otherwise when the stamp mismatches', async () => {
+    await writeFile(file, `// a comment\n${config('after')}`)
+    const { code, out } = await vx(root, ['show', 'core'])
+    expect(code).toBe(1)
+    expect(out).toContain('changed since the last `vx lock`')
+  })
+
   // A config edit committed with no `vx lock` after it ran the locked
   // config, green: its bytes were HEAD's, so it read as a pull's. Only a
   // new lock beside it (a teammate's relocked commit) stops the asking.

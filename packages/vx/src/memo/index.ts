@@ -6,6 +6,7 @@ export {
   type ConfigStamps,
   type ConfigStat,
   type LockStamps,
+  restampConfigs,
   stampsBesideLock,
   takeConfigStamps,
   writeConfigStamps,

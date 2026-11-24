@@ -3245,13 +3245,14 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 **What a run never does**
 
 - It never walks for configs. An `--all` run asks git for the names alone, to refuse one the lock lacks.
-- It never evaluates a config, never checks the graph rules (`run.rules`) and never writes the lock. Only `vx lock` does.
+- It never checks the graph rules (`run.rules`) and never writes the lock. Only `vx lock` does. It evaluates a config only when the reminder below finds its bytes moved.
 
 **The local reminder**
 
 - A config file edited since this machine's last `vx lock` (or a passing `vx lock --check`) refuses the run, `VX_E_LOCK`.
 - The message: `` <file> changed since the last `vx lock` — run `vx lock` ``.
 - It compares the file's size, mtime and bytes with those `vx lock` read, kept in the cache folder's `config-stamps.json`.
+- A file whose bytes moved is then evaluated, as `vx lock --check` does: one that evaluates as the lock holds (a comment, a config restored with its lock) runs, and is stamped again.
 - It checks only while the lock is the one written then. So a pull that brings a new lock, or a fresh clone, is never refused.
 - A config edit committed without relocking is refused like an uncommitted one.
 - A file a config imports is not checked.

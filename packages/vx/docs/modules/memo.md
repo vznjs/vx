@@ -309,7 +309,11 @@ edit committed with no `vx lock` is refused, and so is a pulled one whose
 commit kept the lock. Read once per version of the file. The stat match only ever skips the read, and
 it holds ctime and the inode as the file-hash memo does: size and mtime alone
 skipped a same-length edit whose mtime was set back, and the run used the locked
-config. A stamp without them reads the bytes. A refusal is decided by the file's
+config. A stamp without them reads the bytes. A config `edited` names is
+evaluated before the refusal (`orchestrator/projects.ts`): one that evaluates as
+the lock holds runs, and `restampConfigs` stamps it again. The stamp held the
+last `vx lock`'s bytes, so a config restored with its lock (`git checkout`) was
+refused while `vx lock --check` passed. A refusal is decided by the file's
 bytes now, never by a memo (rule 9).
 
 ### Public surface
@@ -338,6 +342,13 @@ export function stampsBesideLock(
   cacheDir: string,
   lock: string,
 ): Promise<LockStamps | undefined>
+// Stamp `rels` again beside the stamps of lock `lock`: a run found them to evaluate as the lock holds
+export function restampConfigs(
+  root: string,
+  cacheDir: string,
+  lock: string,
+  rels: readonly string[],
+): Promise<void>
 ```
 
 ## `src/memo/lockfile-memo.ts` — a lockfile claimant's parse

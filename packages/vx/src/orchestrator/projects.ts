@@ -19,6 +19,7 @@ import {
   pathName,
   PROJECT_CONFIG_FILENAMES,
   lockKey,
+  loadProjectConfigs,
   readLockfile,
   validateProjectConfig,
   type Lockfile,
@@ -46,7 +47,7 @@ import {
   resolveCacheDir,
   validateWorkspace,
 } from '../workspace/index.js'
-import { stampsBesideLock, type ConfigStat } from '../memo/index.js'
+import { restampConfigs, stampsBesideLock, type ConfigStat } from '../memo/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
@@ -627,6 +628,17 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
               ...mappedFrom.present,
             ])),
           ]
+    // A stamp holds the bytes `vx lock` last read, not every text that
+    // evaluates as the lock holds: a config restored with its lock (`git
+    // checkout`) was refused while `vx lock --check` passed. Evaluated, as
+    // the check does, before refusing; one that matches is stamped again.
+    if (edited.length > 0 && digest !== undefined) {
+      const same = await evaluatesAsLocked(workspaceRoot, edited, withFile, await lock())
+      if (same.length > 0) {
+        edited.splice(0, edited.length, ...edited.filter((rel) => !same.includes(rel)))
+        await restampConfigs(workspaceRoot, args.cacheDir, digest, same)
+      }
+    }
     if (edited.length > 0)
       throw new UserError(
         `${listed(edited, 5)} changed since the last \`vx lock\` — run \`vx lock\``,
@@ -807,4 +819,36 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
         release()
       }
     }))
+}
+
+/**
+ * The configs of `edited` (workspace-relative) that evaluate to what the lock
+ * holds for their project, as `vx lock --check` compares them. A config that
+ * does not evaluate reads as edited.
+ */
+async function evaluatesAsLocked(
+  root: string,
+  edited: readonly string[],
+  metas: readonly (ProjectMeta & { configPath: string })[],
+  lock: Lockfile,
+): Promise<string[]> {
+  const asked = metas.filter((m) => edited.includes(path.relative(root, m.configPath)))
+  if (asked.length === 0) return []
+  let fresh: ProjectConfig[]
+  try {
+    fresh = await loadProjectConfigs(
+      asked.map((m) => m.configPath),
+      root,
+    )
+  } catch {
+    return []
+  }
+  return asked.flatMap((m, i) => {
+    const dir = lockKey(root, m.dir)
+    const locked = Object.hasOwn(lock.projects, dir) ? lock.projects[dir] : undefined
+    const same =
+      locked?.file === path.basename(m.configPath) &&
+      Bun.deepEquals(JSON.parse(JSON.stringify(fresh[i])), locked.config, true)
+    return same ? [path.relative(root, m.configPath)] : []
+  })
 }
