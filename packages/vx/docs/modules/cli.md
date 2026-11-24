@@ -432,12 +432,13 @@ export function armWatcher(
   onEvent: (filename: string) => void,
   timeoutMs?: number,
   skipDir?: (rel: string) => boolean, // on Linux, asked of a directory under node_modules only
+  onLimit?: (code: string) => void, // Linux recursive: the watch limit refused a directory made after the arm
 ): ArmedWatcher
 export function modifiedBefore(abs: string, t: number): boolean
 export const CLOSED: WatchHandle // watches nothing: a dropped slot, an arm not made
 export class WatcherPool {
   constructor(skip: (dir: string, rel: string) => boolean) // what the poller leaves unsampled
-  arm(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle // OS watcher, poller on no proof, an OS watch limit or VX_WATCH_POLL
+  arm(dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle // OS watcher, poller on no proof, an OS watch limit (at arm or later) or VX_WATCH_POLL
   proved(): Promise<void> // every arm so far proved delivery or fell back
   closeAll(): void // and every arm or fallback after it is CLOSED
 }
