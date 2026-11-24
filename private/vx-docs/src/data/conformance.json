@@ -1018,14 +1018,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2141,
-        "can": 2141,
-        "of": 2211
+        "pass": 2142,
+        "can": 2142,
+        "of": 2212
       },
       "correctness": {
-        "pass": 1727,
-        "can": 1727,
-        "of": 1788
+        "pass": 1728,
+        "can": 1728,
+        "of": 1789
       },
       "efficiency": {
         "pass": 325,
@@ -1038,9 +1038,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 313,
-        "can": 313,
-        "of": 320
+        "pass": 314,
+        "can": 314,
+        "of": 321
       },
       "config": {
         "pass": 88,
@@ -1095,14 +1095,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 1395,
-        "can": 1811,
-        "of": 2211
+        "pass": 1396,
+        "can": 1812,
+        "of": 2212
       },
       "correctness": {
-        "pass": 1121,
-        "can": 1464,
-        "of": 1788
+        "pass": 1122,
+        "can": 1465,
+        "of": 1789
       },
       "efficiency": {
         "pass": 244,
@@ -1115,9 +1115,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 197,
-        "can": 269,
-        "of": 320
+        "pass": 198,
+        "can": 270,
+        "of": 321
       },
       "config": {
         "pass": 56,
@@ -1172,14 +1172,14 @@
     },
     "nx": {
       "all": {
-        "pass": 1393,
-        "can": 1846,
-        "of": 2211
+        "pass": 1394,
+        "can": 1847,
+        "of": 2212
       },
       "correctness": {
-        "pass": 1080,
-        "can": 1489,
-        "of": 1788
+        "pass": 1081,
+        "can": 1490,
+        "of": 1789
       },
       "efficiency": {
         "pass": 283,
@@ -1192,9 +1192,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 231,
-        "can": 270,
-        "of": 320
+        "pass": 232,
+        "can": 271,
+        "of": 321
       },
       "config": {
         "pass": 39,
@@ -1251,12 +1251,12 @@
       "all": {
         "pass": 1028,
         "can": 1395,
-        "of": 2211
+        "of": 2212
       },
       "correctness": {
         "pass": 863,
         "can": 1174,
-        "of": 1788
+        "of": 1789
       },
       "efficiency": {
         "pass": 156,
@@ -1271,7 +1271,7 @@
       "graph": {
         "pass": 179,
         "can": 226,
-        "of": 320
+        "of": 321
       },
       "config": {
         "pass": 50,
@@ -1326,14 +1326,14 @@
     },
     "nix": {
       "all": {
-        "pass": 1102,
-        "can": 1390,
-        "of": 2211
+        "pass": 1103,
+        "can": 1391,
+        "of": 2212
       },
       "correctness": {
-        "pass": 945,
-        "can": 1194,
-        "of": 1788
+        "pass": 946,
+        "can": 1195,
+        "of": 1789
       },
       "efficiency": {
         "pass": 147,
@@ -1346,9 +1346,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 104,
-        "can": 110,
-        "of": 320
+        "pass": 105,
+        "can": 111,
+        "of": 321
       },
       "config": {
         "pass": 39,
@@ -1403,14 +1403,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1280,
-        "can": 1742,
-        "of": 2211
+        "pass": 1281,
+        "can": 1743,
+        "of": 2212
       },
       "correctness": {
-        "pass": 1009,
-        "can": 1423,
-        "of": 1788
+        "pass": 1010,
+        "can": 1424,
+        "of": 1789
       },
       "efficiency": {
         "pass": 236,
@@ -1423,9 +1423,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 186,
-        "can": 242,
-        "of": 320
+        "pass": 187,
+        "can": 243,
+        "of": 321
       },
       "config": {
         "pass": 59,
@@ -4841,6 +4841,38 @@
           "status": "fail",
           "step": 1,
           "detail": "succeeded, expected a failure"
+        }
+      }
+    },
+    {
+      "id": "graph/forwarded-args-reach-a-task-named-twice",
+      "ref": "omhs4q",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Args forwarded to a run naming one task twice reach that one task",
+      "why": "A task name typed twice, from a script that joins two lists or a repeated shell word, is still one task: the run starts it once. Arguments after `--` then have one command to go to, so they reach it. Refusing them as if two tasks were named sends the user hunting for a second task that does not exist.",
+      "from": [
+        "forward-args-one-task"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` runs one task name per run."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },
