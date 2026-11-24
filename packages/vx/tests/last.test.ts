@@ -808,6 +808,16 @@ describe('vx last --list rows', () => {
     expect(row).toContain(ui.paint('error', ' · 2 failed', c))
   })
 
+  // `vx run t -- $'a\nb'` recorded a command holding a newline, and its row
+  // broke the table in two.
+  it('keeps a forwarded arg holding a newline on its row', () => {
+    const lines = L(
+      formatRunList([{ inv: inv({ command: "vx run a#t -- 'line1\nline2'" }), id: 'r' }]),
+    )
+    expect(lines).toHaveLength(2)
+    expect(lines[1]).toContain("vx run a#t -- 'line1\\x0aline2'")
+  })
+
   it('aligns the counts, duration and command across runs whose counts differ', () => {
     expect(
       L(

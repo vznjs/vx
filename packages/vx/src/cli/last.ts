@@ -47,6 +47,7 @@ import {
   formatElapsed,
   nearMatches,
   parseDecimalInt,
+  printable,
   refusal,
   splitTaskId,
   UserError,
@@ -957,7 +958,8 @@ export function formatRunList(
         ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
       ],
       fmtMs(inv.totalDurationMs),
-      ui.cmd(inv.command),
+      // One row per run: a forwarded `$'a\nb'` broke the table in two.
+      ui.cmd(printable(inv.command)),
     ]),
   )
 }

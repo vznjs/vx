@@ -6018,6 +6018,8 @@ vx last --list=5
 - On a narrow terminal the start goes first, then the counts.
 - A command that does not fit beside its run goes on its own line under
   it.
+- A control character in a command, such as a newline forwarded after
+  `--`, shows as `\x0a`, so each run keeps one line.
 
 </div>
 </details>
