@@ -79,7 +79,10 @@ export function conformance(name: string, target: Target): void {
     })
 
     it('refuses 4406 naming its range when none is shared, or none offered', async () => {
-      for (const offered of [['switchboard.v9'], []]) {
+      // Number() reads each of these as 1: answered switchboard.v1, a name it
+      // never offered, its client failed the handshake and read no refusal.
+      const near = ['switchboard.v01', 'switchboard.v1.0', 'switchboard.v0x1', 'switchboard.v1e0']
+      for (const offered of [['switchboard.v9'], [], ...near.map((t) => [t])]) {
         const h = await session().host(undefined, offered)
         // The frame is the refusal: workerd never ends TCP after its close.
         expect(h.first).toEqual({ close: 4406, error: 'supported: switchboard.v1-v1' })

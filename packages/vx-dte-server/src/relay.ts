@@ -58,7 +58,9 @@ export function negotiate(req: Request): { protocol?: string; version?: number }
     .filter((t) => t !== '')
   let version: number | undefined
   for (const t of offered) {
-    const v = t.startsWith(PROTOCOL) ? Number(t.slice(PROTOCOL.length)) : NaN
+    // The exact name: Number() read `switchboard.v01` or `.v0x1` as 1, answered
+    // with a name never offered, which fails its client's handshake unread.
+    const v = /^switchboard\.v([1-9]\d{0,8})$/.test(t) ? Number(t.slice(PROTOCOL.length)) : NaN
     if (VERSIONS.includes(v) && (version === undefined || v > version)) version = v
   }
   if (version !== undefined) return { protocol: `${PROTOCOL}${version}`, version }
