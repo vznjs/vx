@@ -279,6 +279,15 @@ export function conformance(name: string, target: Target): void {
       ]).toEqual(Object.values(limits))
       expect(await (await call('/v1/capabilities')).json()).toEqual(limits)
       expect((await call('/v1/capabilities', { token: null })).status).toBe(401)
+      // HEAD is GET without the body, as HTTP has it: a 405 refused it.
+      const head = await call('/v1/capabilities', { method: 'HEAD' })
+      expect([
+        head.status,
+        head.headers.get('content-type')?.split(';')[0],
+        await head.text(),
+      ]).toEqual([200, 'application/json', ''])
+      const post = await call('/v1/capabilities', { method: 'POST' })
+      expect([post.status, post.headers.get('allow')]).toEqual([405, 'GET, HEAD'])
     })
 
     // A check refused for its size, or an upload for its, named no limits:

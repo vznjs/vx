@@ -279,9 +279,11 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
         throw new Refusal(400, 'teamId and slug are not taken: the token names the repository')
       }
       if (path === '/v1/capabilities') {
-        if (req.method !== 'GET') return notAllowed('GET')
+        if (req.method !== 'GET' && req.method !== 'HEAD') return notAllowed('GET, HEAD')
         await authorize(req)
-        return Response.json(limits)
+        const res = Response.json(limits)
+        // HEAD is GET without the body, as HTTP has it.
+        return req.method === 'HEAD' ? new Response(null, { headers: res.headers }) : res
       }
       if (path === '/v1/artifacts') {
         return req.method === 'POST' ? await check(req) : notAllowed('POST')
