@@ -154,7 +154,7 @@ interface Session {
 }
 
 /** A random (v4) UUID: no one can guess a session id to open it first or join it. */
-const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+export const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
 let room: Uint8Array | undefined
 /** Over MAX_BODY in UTF-8: a UTF-16 unit is 1 to 3 bytes, so 1 MiB of `€` is 3. */
@@ -198,12 +198,7 @@ export function createRelay(opts: RelayOptions): Relay {
    * relay's own notices (`notice`: joined, lost, closed) have no sender to
    * resend them, so they wait for the next socket.
    */
-  const deliver = (
-    p: Participant,
-    m: Message,
-    notice = false,
-    text?: string,
-  ): void => {
+  const deliver = (p: Participant, m: Message, notice = false, text?: string): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
       try {
         p.socket.send(text ?? JSON.stringify({ messages: [m] }))
@@ -427,8 +422,7 @@ export function createRelay(opts: RelayOptions): Relay {
     if (p.role === 'host') {
       session.host = p
       session.cert = body.key as string
-      for (const a of session.byId.values())
-        if (a.role === 'peer') deliver(p, joined(a), true)
+      for (const a of session.byId.values()) if (a.role === 'peer') deliver(p, joined(a), true)
     } else if (session.host !== undefined) deliver(session.host, joined(p), true)
     return p
   }

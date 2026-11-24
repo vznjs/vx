@@ -8,6 +8,7 @@
 import { cachedFetchJson, parseAllow, Refusal } from '@vzn/vx-devtools'
 import {
   closeSocket,
+  SESSION_ID,
   createRelay,
   createVerifier,
   GONE,
@@ -56,7 +57,7 @@ export interface Env {
   readonly AUDIENCE?: string
 }
 
-const SESSION = /^\/v1\/sessions\/([^/]+)\//
+const SESSION = /^\/v1\/sessions\/([^/]+)\/socket$/
 
 /**
  * An issuer's keys, read through the data center's cache: each run is its
@@ -138,6 +139,14 @@ export default {
       const error = `no route ${req.method} ${new URL(req.url).pathname.slice(0, 200)}: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`
       return Response.json({ error }, { status: 404 })
     }
+    // As the relay answers them, before a token: a good token woke a billed
+    // object only to hear 400 or 405.
+    if (!SESSION_ID.test(session)) return refuse(req, 400, 'session id is not a random UUID')
+    if (req.method !== 'GET')
+      return Response.json(
+        { error: 'this route takes GET' },
+        { status: 405, headers: { allow: 'GET' } },
+      )
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
     // wrangler.jsonc may write a var as JSON: "env.AUDIENCE.trim is not a

@@ -105,6 +105,42 @@ it('refuses a request without a good token at the door, waking no object', async
   expect(ns.made).toEqual([])
 })
 
+// The relay answers these before a token (PROTOCOL.md § Sessions); at the
+// door a token came first, and a good one woke a billed object to say 405.
+it('answers another path 404, a bad id 400 and another method 405 at the door, waking no object', async () => {
+  issuer()
+  let env: Env
+  const ns = namespace(() => env)
+  env = { RELAY: ns, ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-server' }
+  const token = await job(1)
+  const ask = async (path: string, method = 'GET', auth = true) => {
+    const res = await worker.fetch(
+      new Request(`https://relay.example.com${path}`, {
+        method,
+        headers: auth ? { authorization: `Bearer ${token}` } : {},
+      }),
+      env,
+    )
+    return [res.status, res.headers.get('allow'), ((await res.json()) as { error: string }).error]
+  }
+  expect([
+    await ask(`/v1/sessions/${A}/other`),
+    await ask('/v1/sessions/900-42/socket', 'GET', false),
+    await ask(`/v1/sessions/${A}/socket`, 'POST'),
+    await ask(`/v1/sessions/${A}/socket`, 'HEAD', false),
+  ]).toEqual([
+    [
+      404,
+      null,
+      `no route GET /v1/sessions/${A}/other: the relay serves GET /v1/sessions/<id>/socket (PROTOCOL.md)`,
+    ],
+    [400, null, 'session id is not a random UUID'],
+    [405, 'GET', 'this route takes GET'],
+    [405, 'GET', 'this route takes GET'],
+  ])
+  expect(ns.made).toEqual([])
+})
+
 it('gives the same run id of two repositories two objects', async () => {
   issuer()
   let env: Env
