@@ -431,6 +431,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lockfile-claim',
     'metrics',
     'migration',
+    'mixed-outcomes',
     'near-miss',
     'output-never-dotvx',
     'output-prune-rooted',
