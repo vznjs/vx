@@ -667,7 +667,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   A `remote` executor checks the declared outputs where they were written
   (`missingOutputs`, core's rule) and returns the globs that matched
   nothing as `outputsMissing`: core fails the task naming them, as it
-  does for one run here. `outputsMissingFacts` (`outputsMissingFacts()`,
+  does for one run here. `outputsMissingFacts` (`OutputsMissingFacts
+{ wroteNone?; folderAsFile?; bracket? }`, from `outputsMissingFacts()`
   read there) says why, as a run here does: this machine's disk lacks
   what the command wrote.
   A `servers` executor names in `deadServers` each server of the request
