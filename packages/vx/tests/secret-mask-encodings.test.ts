@@ -67,6 +67,21 @@ describe('a secret in its encoded spellings', () => {
       expect(tools.mask(`?t=${spelled}&a=1`)).toBe(`?t=${MASKED}&a=1`)
   })
 
+  // `printf %s "$TOKEN" | base64`, a Basic auth header (`user:token`, the
+  // token at any offset in the base64) and base64url (a JWT's segments)
+  // printed the token whole, readable by anyone who decodes it.
+  it('masks the value base64-encoded, at any offset, and base64url', () => {
+    const value = 's3cr3tVALUE/x+y?~'
+    const b64 = secretMask([{ API_TOKEN: value }])!
+    const leftover = /^: [A-Za-z0-9+/_-]{0,8}\*\*\*[A-Za-z0-9+/_=-]{0,3}$/
+    for (const prefix of ['', 'u:', 'ab:', 'abcd:'])
+      for (const enc of ['base64', 'base64url'] as const) {
+        const line = `: ${Buffer.from(prefix + value).toString(enc)}`
+        expect(b64.mask(line)).toMatch(leftover)
+      }
+    expect(b64.mask(`: ${Buffer.from(`u:${value}\n`).toString('base64')}`)).toMatch(leftover)
+  })
+
   it('CONTROL: a value with nothing to encode is masked once, as before', () => {
     const plain = secretMask([{ API_TOKEN: 'plainsekretvalue1' }])!
     expect(plain.mask('x plainsekretvalue1 y')).toBe(`x ${MASKED} y`)

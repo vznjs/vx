@@ -1141,6 +1141,9 @@ interface ExecEnv {
 - URL-encoded as JavaScript, curl, Python's `quote()` and `quote_plus()`
   and `URLSearchParams` each spell it (`ab/cd%2B` from `quote()`, `+` for
   a space).
+- Base64 and base64url too, at any offset (a Basic auth header's
+  `user:token`). The one or two edge characters that also hold a
+  neighbour's bits stay, as in GitHub Actions.
 - `${A}xyz789`, where `B` is `A`'s tail plus `xyz789`, prints as one
   `***`: values that overlap or touch are masked as one.
 - A value split across two output chunks is still caught: the output

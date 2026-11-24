@@ -116,6 +116,7 @@ export function secretMask(
     // As a tool encodes it: a token's `/+=` in a query string, a quote,
     // backslash or newline inside a JSON string. Either printed it whole.
     for (const url of urlSpellings(value)) if (url !== value) values.add(url)
+    for (const b64 of base64Spellings(value)) if (b64.length >= min) values.add(b64)
     const json = JSON.stringify(value).slice(1, -1)
     if (json !== value) values.add(json)
     // A multi-line value (a PEM key) is also masked line by line, as GitHub
@@ -193,6 +194,27 @@ function urlSpellings(value: string): string[] {
     plus,
     plus.replaceAll('%2A', '*').replaceAll('~', '%7E'),
   ]
+}
+
+/**
+ * The value's run in any base64 (`printf %s "$T" | base64`, a Basic auth
+ * header's `user:token`) and base64url (a JWT): the characters that hold
+ * only its bits, at each of the three offsets a prefix can put it, as
+ * GitHub Actions masks it. The edge characters that also hold a
+ * neighbour's bits are left out.
+ */
+function base64Spellings(value: string): string[] {
+  const bytes = Buffer.from(value)
+  const out: string[] = []
+  for (const shift of [0, 1, 2]) {
+    const enc = Buffer.concat([Buffer.alloc(shift), bytes])
+      .toString('base64')
+      .replace(/=+$/, '')
+    const end = (shift + bytes.length) % 3 === 0 ? enc.length : enc.length - 1
+    const run = enc.slice([0, 2, 3][shift], end)
+    out.push(run, run.replaceAll('+', '-').replaceAll('/', '_'))
+  }
+  return out
 }
 
 /**
