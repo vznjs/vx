@@ -923,6 +923,8 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-otel/header-unset',
     'vx-otel/option-kinds',
     'vx-otel/otel',
+    'vx-otel/otlp-spec',
+    'vx-otel/payload-too-large',
     'vx-otel/redirect-headers',
     'vx-otel/run-unaffected',
     'vx-otel/timeout-env-warning',
