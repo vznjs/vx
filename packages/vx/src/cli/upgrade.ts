@@ -1013,13 +1013,19 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
   }
   // A mistyped tag is the mistake to name, before any guard about this install.
   versionSpec(tag)
+  const handedOffFrom = process.env['VX_HANDED_OFF'] || undefined
   if (!isCompiledBinary()) {
+    // A global vx in a source checkout handed over: it is the one the user
+    // ran, and the refusal alone left it unmoved with no word on how.
+    const global =
+      handedOffFrom === undefined
+        ? ''
+        : `; \`vx upgrade -g\` moves the global vx that handed over (${handedOffFrom})`
     throw new UserError(
-      'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull',
+      `vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull${global}`,
     )
   }
   const dest = process.execPath
-  const handedOffFrom = process.env['VX_HANDED_OFF'] || undefined
   const latest = tag === undefined
   if (global) {
     // A launcher from before -g handed the call over: the global is the one that did.

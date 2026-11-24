@@ -4021,6 +4021,8 @@ Default: the latest release.
 
 - A second tag, or one that is no version, is refused first, not dropped.
 - From source it refuses: use `git pull`.
+- A global vx in a source checkout hands it to source, which refuses too.
+  The refusal names `vx upgrade -g`, which moves that global.
 - It is named `upgrade` per CLI convention, as `bun upgrade` and
   `deno upgrade` are.
 - `latest` below the running vx is refused before anything runs, however

@@ -1532,6 +1532,27 @@ describe('vx upgrade (CLI)', () => {
     )
   })
 
+  // A global vx in the vx source checkout handed `vx upgrade` to source, whose
+  // refusal named only git pull: the global the user ran never moved, and
+  // nothing said how to move it (2026-11-24).
+  it('from source a global handed over, names the way to move that global', async () => {
+    const runtime = path.join(dir, 'bun-copy-global')
+    await copyFile(process.execPath, runtime)
+    await chmod(runtime, 0o755)
+    const proc = Bun.spawn({
+      cmd: [runtime, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'upgrade'],
+      env: { ...process.env, VX_HANDED_OFF: '/opt/vx/bin/vx' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(await proc.exited).toBe(1)
+    expect(await new Response(proc.stderr).text()).toBe(
+      noticed(
+        'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull; `vx upgrade -g` moves the global vx that handed over (/opt/vx/bin/vx)\n',
+      ),
+    )
+  })
+
   it('refuses a second tag instead of installing the first', async () => {
     // Refused before the compiled-binary guard, so it is visible from
     // source; the copy of the runtime holds for the same reason as above.
