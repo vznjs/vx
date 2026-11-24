@@ -162,3 +162,22 @@ it('a second statement is refused, not dropped', () => {
   const ok = vx('last', '--sql', "SELECT 'a;b' AS a; -- the end\n", '--format', 'json')
   expect([ok.code, ok.err, ok.out]).toEqual([0, '', '{"rows":[{"a":"a;b"}]}\n'])
 })
+
+// A query whose rows never end (a recursive CTE with no stop) held every row
+// in memory, 160 MB in 3 s, until the machine ran out: no word, no end.
+it('a query past the row cap is refused, not read to the end', () => {
+  const endless = 'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT x FROM c'
+  for (const format of ['pretty', 'json']) {
+    const r = vx('last', '--sql', endless, '--format', format)
+    expect(r.code).toBe(1)
+    expect(r.err).toContain(
+      '--sql: the query returns more than 100000 rows — add a LIMIT, or aggregate',
+    )
+    // JSON answers with its error document, and no rows.
+    expect(r.out).toEqual(format === 'json' ? expect.stringContaining('"ok":false') : '')
+  }
+  // At the cap exactly, every row prints (control).
+  const capped = vx('last', '--sql', `${endless} LIMIT 100000`, '--format', 'json')
+  expect(capped.code).toBe(0)
+  expect((JSON.parse(capped.out) as { rows: unknown[] }).rows.length).toBe(100000)
+}, 30_000)

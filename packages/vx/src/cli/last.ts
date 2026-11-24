@@ -50,6 +50,7 @@ import {
   printable,
   refusal,
   splitTaskId,
+  isUserError,
   UserError,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -473,6 +474,9 @@ export function formatStats(stats: readonly TaskStats[]): ui.Block {
  * the statement hides (`WITH … DELETE`); it does not stop ATTACH, which
  * creates a file, hence only SELECT or WITH may lead.
  */
+/** The most rows `--sql` prints; past it the query is refused, not read on. */
+const MAX_SQL_ROWS = 100_000
+
 function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): number {
   if (!/^\s*(select|with)\b/i.test(sql)) {
     throw new UserError(
@@ -510,8 +514,20 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
   const columns = stmt.columnNames
   let values: unknown[][]
   try {
+    // Counted first, by stepping: rows that never end (a recursive CTE with
+    // no stop) were all held in memory until the machine ran out.
+    let rows = 0
+    for (const _ of stmt.iterate()) {
+      if (++rows > MAX_SQL_ROWS) {
+        throw new UserError(
+          `vx last: --sql: the query returns more than ${MAX_SQL_ROWS} rows — add a LIMIT, or aggregate`,
+          'VX_E_USAGE',
+        )
+      }
+    }
     values = stmt.values() as unknown[][]
   } catch (err) {
+    if (isUserError(err)) throw err
     return refused(err)
   }
   if (format === 'json') {
