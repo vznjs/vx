@@ -1696,8 +1696,9 @@ vx's own steps:
 - Before the tasks: `vx:load` (configs and graph from the lock;
   `vx:run-lock` inside it, before the cache opens), `<plugin>:setup`.
 - Then `vx:keys` (keys and local probes) and `<plugin>:schedule`.
-- After the graph: `vx:uploads`, `vx:history`, `<plugin>:telemetry`,
-  `<plugin>:teardown`, `vx:snapshots`, `vx:retention`, `vx:close` and `vx:sandbox`.
+- After the graph: `vx:profile` (with `--profile`), `vx:history`,
+  `vx:uploads`, `<plugin>:telemetry`, `<plugin>:teardown`, `vx:snapshots`,
+  `vx:close` and `vx:sandbox`.
 - A step shows once it has run 150 ms, ticking like a task (`running`,
   `internal` in the cache column).
 - No worker slot or `--concurrency` holds a step back.
