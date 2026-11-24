@@ -39,9 +39,14 @@ function vx(...args: string[]): { code: number | null; stdout: string; stderr: s
   return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
 }
 
-/** The fenced block after the one whose line is `command`. */
-function printed(page: string, command: string): string {
-  const at = page.indexOf(`\n${command}\n`)
+/**
+ * The fenced block after the one whose line is `command`, the first such
+ * past `past` when a page runs that command more than once.
+ */
+function printed(page: string, command: string, past = ''): string {
+  const from = page.indexOf(past)
+  expect(from).toBeGreaterThan(-1)
+  const at = page.indexOf(`\n${command}\n`, from)
   expect(at).toBeGreaterThan(-1)
   const after = page.indexOf('```', page.indexOf('```', at) + 3)
   return /```[^\n]*\n([\s\S]*?)\n```/.exec(page.slice(after))![1]!
@@ -380,7 +385,7 @@ export default {
     expect(run('lock').code).toBe(0)
     expect(r.code).toBe(1)
     // The page runs vite; the fixture copies a file. vx's own lines are held.
-    const own = printed(page, 'vx run @demo/ui#build')
+    const own = printed(page, 'vx run @demo/ui#build', 'but vite writes `dist/index.js`')
       .split('\n')
       .filter((l) => /^(?:\[vx\]|└─)/.test(plain(l)))
     expect(own.length).toBe(2)
