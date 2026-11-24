@@ -42,15 +42,6 @@ export function secretNamed(name: string): boolean {
 }
 
 /**
- * A URL's password (`postgres://app:<pw>@db/app`): a credential whatever
- * the variable is named, so `DATABASE_URL` and `REDIS_URL` printed it.
- * Split as WHATWG splits it: the userinfo ends at the LAST `@` before the
- * path, query or fragment, and the user name at its first `:`, so either
- * may hold an `@` (`app:p@ss@db` printed `p@ss` whole).
- */
-const URL_PASSWORD = /[a-z][a-z0-9+.-]*:\/\/[^\s:/?#]*:([^\s/?#]+)@/gi
-
-/**
  * Values shorter than this are not masked: `KEY=1` would mask every `1`
  * in every line, and a value that short is no secret worth the noise.
  */
@@ -182,13 +173,12 @@ function urlPasswords(value: string): string[] {
   let found = urlPasswordsOf.get(value)
   if (found === undefined) {
     found = []
-    for (const m of value.matchAll(URL_PASSWORD)) {
-      if (m[1] === undefined) continue
-      found.push(m[1])
+    for (const pw of urlPasswordsIn(value)) {
+      found.push(pw)
       // A driver's error or config dump prints it decoded (`p@ss` for `p%40ss`).
       try {
-        const plain = decodeURIComponent(m[1])
-        if (plain !== m[1]) found.push(plain)
+        const plain = decodeURIComponent(pw)
+        if (plain !== pw) found.push(plain)
       } catch {
         // not a valid escape: printed as written
       }
@@ -197,6 +187,45 @@ function urlPasswords(value: string): string[] {
   }
   return found
 }
+
+/**
+ * A URL's password (`postgres://app:<pw>@db/app`): a credential whatever
+ * the variable is named, so `DATABASE_URL` and `REDIS_URL` printed it.
+ * Split as WHATWG splits it: the userinfo ends at the LAST `@` before the
+ * path, query or fragment, and the user name at its first `:`, so either
+ * may hold an `@` (`app:p@ss@db` printed `p@ss` whole). What
+ * `/[a-z][a-z0-9+.-]*:\/\/[^\s:/?#]*:([^\s/?#]+)@/gi` captures, in linear
+ * time: that regex tried every letter of a scheme-like run as a start and
+ * rescanned the rest from each (120 ms for a 20 KB value, seconds past it).
+ */
+export function urlPasswordsIn(value: string): string[] {
+  const found: string[] = []
+  let from = 0
+  for (let at = value.indexOf('://'); at !== -1; at = value.indexOf('://', at + 1)) {
+    // The scheme: a letter, then scheme characters up to `://`, no earlier
+    // than the last match's end.
+    let start = at
+    while (start > from && SCHEME_CHAR.test(value[start - 1]!)) start--
+    while (start < at && !LETTER.test(value[start]!)) start++
+    if (start === at) continue
+    let user = at + 3
+    while (user < value.length && USER_CHAR.test(value[user]!)) user++
+    if (value[user] !== ':') continue
+    let end = user + 1
+    while (end < value.length && PASSWORD_CHAR.test(value[end]!)) end++
+    const sign = value.lastIndexOf('@', end - 1)
+    if (sign <= user + 1) continue
+    found.push(value.slice(user + 1, sign))
+    from = sign + 1
+    at = sign
+  }
+  return found
+}
+
+const SCHEME_CHAR = /[a-z0-9+.-]/i
+const LETTER = /[a-z]/i
+const USER_CHAR = /[^\s:/?#]/
+const PASSWORD_CHAR = /[^\s/?#]/
 
 const UNRESERVED = /^[\w.-]*$/
 
