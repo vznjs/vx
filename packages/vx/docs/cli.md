@@ -6398,6 +6398,8 @@ milliseconds.
 - `--sql=<query>`: a query that starts with `-` (an SQL comment) needs
   the `=` form. The space form reads it as a missing query.
 - `--sql reads only` (exit 1): a write is refused.
+- A query that selects no row prints `the query selected no rows` on
+  stderr and exits 0.
 - A query past 100,000 rows is refused (exit 1) before any row prints:
   add a `LIMIT`, or aggregate.
 - The query runs with SQLite's `query_only` on, so a `WITH` that hides a

@@ -542,7 +542,11 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
     ui.data('out', `${JSON.stringify({ rows })}\n`)
     return 0
   }
-  if (values.length === 0) return 0
+  if (values.length === 0) {
+    // Printed nothing before: an empty table read as a query never run.
+    sayNotice('info', 'vx last', 'the query selected no rows')
+    return 0
+  }
   // A column's value as SQLite returns it: TEXT, a number, NULL or a BLOB.
   const cell = (v: string | number | bigint | Uint8Array | null): string =>
     v === null || v === undefined

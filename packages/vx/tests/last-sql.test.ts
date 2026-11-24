@@ -181,3 +181,14 @@ it('a query past the row cap is refused, not read to the end', () => {
   expect(capped.code).toBe(0)
   expect((JSON.parse(capped.out) as { rows: unknown[] }).rows.length).toBe(100000)
 }, 30_000)
+
+// A query that matched nothing printed nothing and exited 0: no table, no
+// word, the same as a vx that did not run the query at all.
+it('a query that selects no row says so', () => {
+  const r = vx('last', '--sql', "SELECT run_id FROM runs WHERE task = 'nope'")
+  expect([r.code, r.out]).toEqual([0, ''])
+  expect(r.err).toContain('vx last  the query selected no rows')
+  // JSON's empty `rows` says it already (control).
+  const j = vx('last', '--sql', "SELECT run_id FROM runs WHERE task = 'nope'", '--format', 'json')
+  expect([j.code, j.out, j.err]).toEqual([0, '{"rows":[]}\n', ''])
+})
