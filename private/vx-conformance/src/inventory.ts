@@ -1321,6 +1321,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vanished-artifact',
     'version-fast-path',
     'vx-lockfile/link-outside-root',
+    'vx-migrate/bunfig-ignored',
     'vx-migrate/nx-upstream-fold-note',
     'vx-migrate/turbo-no-lockfile-note',
     'wal-checkpointer',
