@@ -207,6 +207,19 @@ it('git merges two branches that edit tasks of different projects', async () => 
   expect([d('packages/ui'), d('apps/web')]).toEqual(['ui3', 'web2'])
 })
 
+// Markers inside a project's task lines failed its entry first, and the
+// refusal called the entry malformed, not the merge that broke it.
+it("names a merge conflict inside a project's task lines as the merge conflict", async () => {
+  const text = write(base())
+  const lines = text.split('\n')
+  // Right under a project line: the project reads as one with no tasks.
+  const at = lines.indexOf('@acme/ui\t{"path":"packages/ui"}') + 1
+  lines.splice(at, 0, '<<<<<<< ours', '\tzz', '#aaaaaaa', '=======')
+  lines.splice(lines.indexOf('\ttest') + 3, 0, '>>>>>>> theirs')
+  writeFileSync(path.join(root, '.vx/projects.lock'), lines.join('\n'))
+  expect(readLockfile(root)).rejects.toThrow('holds a git merge conflict')
+})
+
 it('reads a lock a merge left conflicted as one to re-lock', async () => {
   const text = write(base())
   const lines = text.split('\n')

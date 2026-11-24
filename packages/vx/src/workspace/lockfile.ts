@@ -187,8 +187,9 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
     text = await file.text()
     read = decoded(text)
   } catch (err) {
-    if (err instanceof UserError) throw err
+    // First: a merge's markers can break an entry before any line reads as one.
     if (text !== undefined && mergeConflicted(text)) throw lineBroken(text)
+    if (err instanceof UserError) throw err
     throw new UserError(
       `${LOCKFILE_NAME} is not valid JSON — re-run \`vx lock\` or delete it`,
       'VX_E_LOCK',
