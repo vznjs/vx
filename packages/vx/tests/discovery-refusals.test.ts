@@ -96,7 +96,7 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
 
   it('a directory outside the workspace', async () => {
     expect(await refusal({ dir: '../out', name: 'out' })).toBe(
-      `plugin 'p' named project "out" at ${path.dirname(root)}/out: outside the workspace root`,
+      `plugin 'p' named project "out" at ${path.dirname(root)}/out: outside the workspace root — move it under the root, or leave it out of what plugin 'p' discovers (a workspaces glob)`,
     )
   })
 

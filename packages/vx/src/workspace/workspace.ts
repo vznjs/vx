@@ -843,7 +843,9 @@ export async function discoveredProject(
   }
   const named = name === undefined ? '' : ` "${name}"`
   if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
-    throw new UserError(`${where}${named} at ${dir}: outside the workspace root`)
+    throw new UserError(
+      `${where}${named} at ${dir}: outside the workspace root — move it under the root, or leave it out of what plugin '${by}' discovers (a workspaces glob)`,
+    )
   }
   const shown = rel === '' ? '.' : rel
   // Refused once the stage ended too, but naming no plugin and saying to set a `name`.

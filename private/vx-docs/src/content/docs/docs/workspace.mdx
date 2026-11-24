@@ -605,6 +605,7 @@ Look at the second line: the old command, then the new one. Run `vx lock` to tak
 - **`… belongs to another user, so vx does not take its directory as your workspace`.** Outside git, vx ignores a `.vx/workspace.ts` another user owns. Run vx in a checkout you own.
 - **`two projects are named "…": …`.** Two folders have the same name: set another `name` in one's `vx.config.ts`, then run `vx lock`.
 - **`plugin '…' adds project …, but … makes … a workspace of its own`.** A package-manager glob reaches into a folder with its own `.vx/workspace.ts`. Leave that folder out of the glob, or delete its `.vx`, then run `vx lock`.
+- **`plugin '…' named project … at …: outside the workspace root`.** A package-manager glob such as `../shared/*` names a folder above the root. Move it under the root, or take it out of the glob.
 - **`… locks …, but its … is gone`.** A `vx.config.ts` was deleted or renamed: run `vx lock`.
 - **`… holds a line … never writes`.** A merge left a conflict in the lock: see [Fix a merge conflict in the lock](../ci/#fix-a-merge-conflict-in-the-lock).
 - **`… evaluates differently from the lock here`.** A config changed without `vx lock`: run `vx lock` and commit the lock.
