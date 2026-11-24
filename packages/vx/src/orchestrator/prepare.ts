@@ -747,6 +747,9 @@ async function openLayer(options: CoreRunOptions, log: Logger, ws: Workspace, st
   const refs = options.remoteCache
     ? []
     : cacheRefs(workspaceRoot, ws.baseBranch, ws.branchFacts.refs)
+  // A factory that hangs strands the run, or a signal ends it: the
+  // factories that ran are owed their teardown.
+  const unowe = owedIfStranded(() => teardownPlugins(plugins, warnOf(log)))
   try {
     cache = options.remoteCache
       ? new LayeredCache(localCache, remotes, options.uploadConcurrency)
@@ -769,6 +772,8 @@ async function openLayer(options: CoreRunOptions, log: Logger, ws: Workspace, st
     await teardownPlugins(plugins, warnOf(log))
     localCache.close()
     throw err
+  } finally {
+    unowe()
   }
   // Ask the layer, don't infer: identity against `localCache` is true for any
   // pass-through decorator with no remote, skipping the clamp below.

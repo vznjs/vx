@@ -420,6 +420,8 @@ describe('the lifecycle is reached on a run a signal stops', () => {
     ['a setup', 'async setup()', 'SIGTERM', 143],
     ['an executor factory', 'executor()', 'SIGINT', 130],
     ['a schedule hook', 'schedule()', 'SIGINT', 130],
+    ['a key hook', 'key()', 'SIGINT', 130],
+    ['a cache factory', 'cache()', 'SIGTERM', 143],
   ] as const) {
     it(`one ${signal} during ${hook} that hangs tears every plugin down and exits ${code}`, async () => {
       const file = (name: string): string => JSON.stringify(path.join(root, name))

@@ -2052,7 +2052,8 @@ export async function settleStranded(): Promise<void>
 - `owedIfStranded` registers work until the call it returns withdraws
   it: `prepareRun` from its factories to its return, `run()` until its
   teardown. `settleStranded` runs what is registered, once, and never
-  throws.
+  throws: on a stranded exit (`bin.ts`) and on a signal before plugin
+  setup (`holdSignals`).
 
 ### Tests
 

@@ -2598,6 +2598,9 @@ no flush and the lock's entry left behind (2026-11-07). Until plugin
 setup begins (`arm()`), a signal leaves at once through `process.exit`,
 whose hooks release the lock: nothing before it waits on a stop, and a
 held one waited out a git listing (`tests/git-listing-temp.test.ts`).
+What is owed by then (`settleStranded`: a cache factory or a `key` hook
+that ran, and hangs) is torn down first, each plugin bounded; a second
+signal exits without it.
 From setup on, the held listener notes the first signal. `forwardSignals` takes the listeners over
 and replays a signal already heard, so the stop is the one above; a run
 that leaves before it (a refusal, a setup that threw) exits of the
