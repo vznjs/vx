@@ -1309,7 +1309,14 @@ const node = (id: string, deps: string[] = [], platform?: string) =>
 // each: 2000 queued down one chain spent 4 million walks a pump (2026-10-25).
 it('pumps a long queue in time that does not grow with its upstreams', async () => {
   const ids = Array.from({ length: 2000 }, (_, i) => `t${i}`)
-  const h = await harness(new Map(ids.map((id, i) => node(id, i === 0 ? [] : [`t${i - 1}`]))))
+  // The worker shares this process's event loop, which 2000 hand-overs hold
+  // for seconds on a loaded machine: at the 2 s default, three lost beats
+  // read as "the orchestrator went silent" (2026-11-24).
+  const h = await harness(
+    new Map(ids.map((id, i) => node(id, i === 0 ? [] : [`t${i - 1}`]))),
+    undefined,
+    60_000,
+  )
   try {
     const a = await h.worker(1)
     await Bun.sleep(50)
