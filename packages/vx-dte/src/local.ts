@@ -131,12 +131,14 @@ export function local(options: LocalOptions = {}): DteAdapter {
         // Every end reported, a start that threw too: one lost left the run
         // waiting for good on a worker that never joined.
         void run([...vx(), 'dte', 'worker'], at, env, false)
+          // After close, the stop ended it: no reason is reported, so none is
+          // written (a stopped run left a `vx-dte-logs-*` dir in TMPDIR).
           .then(
-            (r) => why(`exited ${r.code}`, a.id, r.err),
+            (r) => (closed ? undefined : why(`exited ${r.code}`, a.id, r.err)),
             (err: Error) => `could not start: ${err.message}`,
           )
           .then((reason) => {
-            if (!closed) a.exited(reason)
+            if (!closed && reason !== undefined) a.exited(reason)
           })
       })()
       pending.add(work)
