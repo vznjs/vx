@@ -45,7 +45,8 @@ const testShard = (i: number) => ({
   },
   dependsOn: ['install'],
   inputs: {
-    files: ['src/**', 'tests/**', 'package.json'],
+    // migrate.test.ts holds the README to the code.
+    files: ['src/**', 'tests/**', 'package.json', 'README.md'],
     // The tests import core's test helpers; ^build keys only core's src/**.
     workspaceFiles: ['packages/vx/tests/helpers/**'],
     env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],

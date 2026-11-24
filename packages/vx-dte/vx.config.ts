@@ -49,7 +49,8 @@ const testTask = (files: string) => ({
     },
   },
   dependsOn: ['install'] as const,
-  inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+  // init.test.ts holds the README to the code.
+  inputs: { files: ['src/**', 'tests/**', 'package.json', 'README.md'] },
   outputs: { files: [] as string[] },
   cache: true,
 })

@@ -99,7 +99,8 @@ const shard = (i: number, files: readonly string[]) => ({
     },
   },
   inputs: {
-    files: ['src/**', 'tests/**', 'package.json', 'tsconfig.json'],
+    // The tests load protos/ at run time and hold the README to the code.
+    files: ['src/**', 'tests/**', 'protos/**', 'package.json', 'tsconfig.json', 'README.md'],
     // The tests import core's test helpers; ^build keys only core's src/**.
     workspaceFiles: ['packages/vx/tests/helpers/**'],
     env: [

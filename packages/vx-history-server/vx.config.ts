@@ -71,7 +71,8 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
-      inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+      // The tests hold the Dockerfile and README to the code.
+      inputs: { files: ['src/**', 'tests/**', 'package.json', 'Dockerfile', 'README.md'] },
       outputs: { files: [] },
       cache: true,
     },

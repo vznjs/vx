@@ -120,7 +120,9 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "Dockerfile",
+          "README.md"
         ]
       },
       "outputs": {

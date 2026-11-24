@@ -135,7 +135,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ],
         "workspaceFiles": [
           "packages/vx/tests/helpers/**"
@@ -196,7 +197,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ],
         "workspaceFiles": [
           "packages/vx/tests/helpers/**"
@@ -257,7 +259,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ],
         "workspaceFiles": [
           "packages/vx/tests/helpers/**"
@@ -318,7 +321,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ],
         "workspaceFiles": [
           "packages/vx/tests/helpers/**"

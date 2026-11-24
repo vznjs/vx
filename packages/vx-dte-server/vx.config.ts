@@ -71,7 +71,17 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
-      inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+      // The tests read the image and Workers template files too.
+      inputs: {
+        files: [
+          'src/**',
+          'tests/**',
+          'package.json',
+          'Dockerfile',
+          'wrangler.jsonc',
+          '.dev.vars.example',
+        ],
+      },
       outputs: { files: [] },
       cache: true,
     },

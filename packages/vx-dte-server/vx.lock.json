@@ -120,7 +120,10 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "Dockerfile",
+          "wrangler.jsonc",
+          ".dev.vars.example"
         ]
       },
       "outputs": {

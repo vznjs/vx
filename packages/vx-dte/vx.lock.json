@@ -125,7 +125,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -169,7 +170,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -213,7 +215,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -257,7 +260,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -301,7 +305,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -345,7 +350,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -389,7 +395,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -433,7 +440,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -477,7 +485,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -521,7 +530,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -565,7 +575,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -609,7 +620,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {
@@ -653,7 +665,8 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
         ]
       },
       "outputs": {

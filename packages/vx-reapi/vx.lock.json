@@ -48,8 +48,10 @@
         "files": [
           "src/**",
           "tests/**",
+          "protos/**",
           "package.json",
-          "tsconfig.json"
+          "tsconfig.json",
+          "README.md"
         ],
         "workspaceFiles": [
           "packages/vx/tests/helpers/**"
@@ -91,8 +93,10 @@
         "files": [
           "src/**",
           "tests/**",
+          "protos/**",
           "package.json",
-          "tsconfig.json"
+          "tsconfig.json",
+          "README.md"
         ],
         "workspaceFiles": [
           "packages/vx/tests/helpers/**"
@@ -134,8 +138,10 @@
         "files": [
           "src/**",
           "tests/**",
+          "protos/**",
           "package.json",
-          "tsconfig.json"
+          "tsconfig.json",
+          "README.md"
         ],
         "workspaceFiles": [
           "packages/vx/tests/helpers/**"
