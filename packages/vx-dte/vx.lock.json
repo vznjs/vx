@@ -126,6 +126,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -171,6 +172,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -216,6 +218,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -261,6 +264,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -306,6 +310,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -351,6 +356,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -396,6 +402,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -441,6 +448,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -486,6 +494,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -531,6 +540,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -576,6 +586,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -621,6 +632,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]
@@ -666,6 +678,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           "README.md"
         ]

@@ -49,8 +49,8 @@ const testTask = (files: string) => ({
     },
   },
   dependsOn: ['install'] as const,
-  // init.test.ts holds the README to the code.
-  inputs: { files: ['src/**', 'tests/**', 'package.json', 'README.md'] },
+  // init.test.ts holds the README to the code; the sim tests import scripts/.
+  inputs: { files: ['src/**', 'tests/**', 'scripts/**', 'package.json', 'README.md'] },
   outputs: { files: [] as string[] },
   cache: true,
 })
