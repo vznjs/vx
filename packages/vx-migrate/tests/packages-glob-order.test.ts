@@ -9,9 +9,11 @@ import { afterEach, expect, it } from 'bun:test'
 import { discoverPackages, findManifestRoot, loadPackageWorkspace } from '../src/packages.js'
 
 let root: string | undefined
+// A test may find members more than once: each root, not only the last.
+const roots: string[] = []
 
 afterEach(async () => {
-  if (root !== undefined) await rm(root, { recursive: true, force: true })
+  await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true })))
 })
 
 const DIRS = ['packages/a', 'packages/b', 'packages/a/c', 'packages/a/node_modules/x']
@@ -20,6 +22,7 @@ const FIXTURE = 'packages/a/test/fixtures/f'
 /** The member dirs `globs` finds over `dirs`, sorted. */
 const members = async (globs: string[], dirs = DIRS, yaml = false) => {
   root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-glob-order-')))
+  roots.push(root)
   const ws = yaml ? {} : { workspaces: globs }
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', ...ws }))
   if (yaml) {

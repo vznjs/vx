@@ -19,6 +19,7 @@ export interface RunResult {
   stdout: string // retained text, or '' when `capture.stdout` is false
   stderr: string // retained text, or '' when `capture.stderr` is false
   signal?: string | number // the signal that killed the child (Bun's signalCode: its name, or its number when it has none)
+  exitedBeforeStop?: true // the command exited before the run's stop landed: its exit is its own
   timedOut?: boolean // vx's own `timeoutMs` timer fired: a real `failed`, not an `aborted` shutdown
   killedAfterGrace?: true // the timeout's SIGKILL past the grace took the child or a process it left
   cpuMs?: number // user + system, from Bun.spawn().resourceUsage()
@@ -62,6 +63,7 @@ export interface PersistentSpawn {
   child: ReturnType<typeof Bun.spawn> | undefined // undefined when the spawn itself failed (`ready` rejects)
   ready: Promise<void> // resolves once "ready"; rejects if exit before ready, or on a readiness timeout once the group is gone (one SIGTERM, grace, SIGKILL)
   readyMs: () => number // ms from spawn to ready, to the readiness timeout giving up, or to now
+  liveMs: () => number // ms from spawn to the child's exit, or to now
   gaveUp: () => boolean // the readiness timeout gave up: no readiness wait to report
 }
 
@@ -98,6 +100,14 @@ export function resourceUsageToCpuRss(
 // `failed (exit 137, 128 + SIGKILL)`.
 export function exitSignal(code: number): string | undefined
 
+// A persistent task's exit code once what it wrote before it exited has
+// reached its callbacks; a child spawned elsewhere, at its exit.
+export function serverExited(child: ReturnType<typeof Bun.spawn>): Promise<number>
+
+// util/json-position.ts: where a refused package.json stops parsing, as
+// `line:column` (Bun's parsers name none).
+export function jsonErrorAt(text: string, jsonc?: boolean): string | undefined
+
 // The bare word a shell would have run, when the command is a plain
 // `word args…` — what shell-verdict.ts names in a 127 frame line. Read
 // as the shell reads it: quotes group and are removed (`"./my tool.sh"`).
@@ -131,7 +141,7 @@ export interface CapturedChunk {
 export class BoundedCapture {
   constructor(headChars?: number, tailChars?: number) // default CAPTURE_HEAD_CHARS / CAPTURE_TAIL_CHARS
   push(text: string, err?: boolean): void
-  rebound(headChars: number, tailChars: number, through?: (c: CapturedChunk[]) => CapturedChunk[]): BoundedCapture // tighter bounds; counts what this one already dropped; through maps the kept text first, each side apart only past a drop
+  rebound(headChars: number, tailChars: number, through?: (c: CapturedChunk[]) => CapturedChunk[]): BoundedCapture // tighter bounds, never wider than this cut past a drop; counts what this one already dropped; through maps the kept text first, each side apart only past a drop
   chunks(): CapturedChunk[] // the dropped middle named on stdout
   text(): string
 }
@@ -262,7 +272,9 @@ held to its start; at the exit, `end` lets everything go; and an
   one bash's `compgen -b` lists, bash-only `pushd` among them), and so
   does a bash reserved word that may open one line (`[[`, `time`):
   macOS's `sh` is bash, and `exec [[ -f x ]]` there was
-  `exec: [[: not found`, exit 127 (B-56).
+  `exec: [[: not found`, exit 127 (B-56). So does a POSIX one (`if`,
+  `while`, `for`, …): one on a line with no `;` is a syntax error, and
+  `exec if` made it "if: not found" with a hint to install `if`.
 - **stdio:** `stdin: 'ignore'` (no interactive prompts; a task reading
   stdin sees EOF, never a hang); stdout and stderr are pipes
   (`TaskPipes`). Bun's `'pipe'` is a socketpair, and Linux opens
@@ -1039,6 +1051,7 @@ export function isUserError(err: unknown): err is UserError // by name, across a
 export function errorCode(err: unknown): string // the stable code of anything bin.ts catches
 export function thrownMessage(err: unknown): string // what any thrown value says; never throws
 export function wantsJson(argv: readonly string[]): boolean // --format json, --format=json, --dry --format json, before `--`
+export const REAL_STDOUT_WRITE: unique symbol // the write a redirected process.stdout.write replaced
 export function errorDocument(code: string, message: string): string // `{"ok":false,"error":{code,message}}` + newline
 
 // The environment's refusals, reported like a UserError — one line naming the path, never a stack:
@@ -1469,7 +1482,7 @@ dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void // die of it, waiting (1 s 
   drain, the open-line wait, the ready and config notices, the self-signal
   window): `VX_TEST_<name>`, a duration, read per call; undocumented and
   in no settings table.
-- `teardownTimeoutMs` is 3 s (`run.pluginTimeout`, `VX_RUN_PLUGIN_TIMEOUT`).
+- `teardownTimeoutMs` is 3 s (`run.pluginTimeout`, `VX_RUN_PLUGIN_TIMEOUT`): it bounds a flush, a teardown, and a remote download's wait for its answer (`RemoteLane`) and between its bytes (`endsOnStop`); 0 bounds no download.
 - `settleWithin` returns true when `p` fulfilled before the deadline,
   false when the deadline won; the caller decides whether a lost result
   is worth a warning. A rejection before the deadline is not a timeout:
@@ -1701,10 +1714,16 @@ real run.
 ```ts
 // A flag-like variable (`CI`, `GITHUB_ACTIONS`) is on: set, and not '', '0' or 'false' in any case.
 export function envFlagOn(v: string | undefined): boolean
+// The provider the first CI variable on names (`CI_PROVIDERS`, most specific first), or null off CI.
+export function ciProvider(env?: Record<string, string | undefined>): string | null
 ```
 
-Every reader of `CI` asks this one, so a run cannot be CI to one part of
-vx and a laptop to another.
+Every reader of `CI` asks `envFlagOn`, and every reader of "is this CI"
+(the remote-write default, the output flow, colours, `detectCi`) asks
+`ciProvider`, which also reads `no` and `off` as off, so a run
+cannot be CI to one part of vx and a laptop to another. Azure Pipelines
+(`TF_BUILD`), Jenkins (`JENKINS_URL`) and TeamCity (`TEAMCITY_VERSION`) set no
+`CI`; read alone, their jobs never wrote the remote cache.
 
 ### util/out-pace
 
@@ -2027,13 +2046,16 @@ export async function settleStranded(): Promise<void>
 - `settleBeforeExit` runs the queue until it is empty, work that queues
   more included, and never throws (`Promise.allSettled`).
 - `hookStarted` marks a plugin's hook as awaited until the call it
-  returns: `plugin-host.ts`'s `safe` (every stage and factory) and
-  `setup`. `unsettledHooks` lists those still awaited, as
-  `plugin 'p' never settled its h hook`, for `bin.ts`'s line.
+  returns: `plugin-host.ts`'s `safe` (every stage and factory),
+  `setup`, a plugin executor's `execute`, a plugin remote's calls
+  (`RemoteLane`) and a plugin verb's `run`. `unsettledHooks` lists those still
+  awaited, as `plugin 'p' never settled its h hook` (`its command 'v'`
+  for a verb), for `bin.ts`'s line.
 - `owedIfStranded` registers work until the call it returns withdraws
   it: `prepareRun` from its factories to its return, `run()` until its
   teardown. `settleStranded` runs what is registered, once, and never
-  throws.
+  throws: on a stranded exit (`bin.ts`) and on a signal before plugin
+  setup (`holdSignals`).
 
 ### Tests
 
@@ -2367,11 +2389,16 @@ table above is the function's output row for row
 The process umask, read when a restore starts, and the permission bits a
 restore gives a stored mode: minus the umask, as tar gives a non-root
 user. A file on disk holds a stored mode as saved, or as a restore here
-leaves it.
+leaves it. Linux reads the umask from `/proc/self/status`: Bun's
+`process.umask()` sets 0 and puts it back, and a directory a parallel
+restore made in that window landed 0777. Other platforms have only that
+call.
 
 ### Public surface
 
 ```ts
+// The umask now, never set to read it on Linux.
+export function peekUmask(): number
 export function readUmask(): void
 export function restoredMode(mode: number): number
 export function modeMatches(disk: number, stored: number): boolean

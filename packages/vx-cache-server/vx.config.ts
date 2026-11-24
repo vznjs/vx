@@ -19,12 +19,12 @@ export default defineProject({
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
-        command: 'oxlint --type-aware --type-check',
+        command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
       inputs: {
-        files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
       outputs: { files: [] },
       cache: true,
@@ -71,7 +71,10 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
-      inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+      // The tests hold the Dockerfile, README and wrangler.jsonc to the code.
+      inputs: {
+        files: ['src/**', 'tests/**', 'package.json', 'Dockerfile', 'README.md', 'wrangler.jsonc'],
+      },
       outputs: { files: [] },
       cache: true,
     },

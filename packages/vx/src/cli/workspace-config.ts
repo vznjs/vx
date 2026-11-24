@@ -4,7 +4,7 @@
 // a directory the run never used — `vx last` found no runs, `vx cache
 // prune` pruned nothing, `vx watch` ignored the wrong path.
 
-import { existsSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import type { LazyGitEnumeration } from '../cache/index.js'
@@ -170,9 +170,17 @@ export function parseCacheDirFlag(
  */
 export function namedCacheDir(override: string): string {
   const dir = path.resolve(process.cwd(), override)
-  if (!existsSync(dir)) {
+  const st = statSync(dir, { throwIfNoEntry: false })
+  if (st === undefined) {
     throw new UserError(
       `--cache-dir ${override}: no such directory (${dir}) — check the path, or drop --cache-dir to read the workspace's own cache`,
+      'VX_E_USAGE',
+    )
+  }
+  // A file read as a cache with nothing in it: `no runs yet`.
+  if (!st.isDirectory()) {
+    throw new UserError(
+      `--cache-dir ${override}: ${dir} is a file, not a directory — check the path, or drop --cache-dir to read the workspace's own cache`,
       'VX_E_USAGE',
     )
   }

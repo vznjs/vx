@@ -50,7 +50,8 @@ it('each bin answers as tests/contract/cli.txt records', () => {
   for (const [name, run, refused] of BINS) {
     const help = spawn([...run, '--help'])
     lines.push(`${name} --help: exit ${help.code}`)
-    const usage = help.stdout.split('\n')[0]!
+    // The usage may wrap to fit 80 columns: every line up to the first blank.
+    const usage = help.stdout.split('\n\n')[0]!.replace(/\s+/g, ' ')
     expect(usage.startsWith(`usage: ${name} `)).toBe(true)
     const words = usage.slice(`usage: ${name} `.length).split(' ')
     const lead = words.slice(

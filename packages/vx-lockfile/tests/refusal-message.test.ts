@@ -40,10 +40,10 @@ describe('a lockfile the plugin cannot read', () => {
       refusal(npm(), 'package-lock.json', conflicted('{')),
       refusal(bun(), 'bun.lock', conflicted('{')),
     ]).toEqual([
-      'yarn.lock: holds git merge conflict markers — regenerate it with `yarn install` (as of the base ref)',
-      'pnpm-lock.yaml: holds git merge conflict markers — regenerate it with `pnpm install` (as of the base ref)',
-      'package-lock.json: holds git merge conflict markers — regenerate it with `npm install` (as of the base ref)',
-      'bun.lock: holds git merge conflict markers — regenerate it with `bun install` (as of the base ref)',
+      'yarn.lock: holds git merge conflict markers — regenerate it with `yarn install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
+      'pnpm-lock.yaml: holds git merge conflict markers — regenerate it with `pnpm install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
+      'package-lock.json: holds git merge conflict markers — regenerate it with `npm install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
+      'bun.lock: holds git merge conflict markers — regenerate it with `bun install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
     ])
   })
 
@@ -54,10 +54,10 @@ describe('a lockfile the plugin cannot read', () => {
       refusal(yarn(), 'yarn.lock', 'hello: world\n'),
       refusal(bun(), 'bun.lock', '{}'),
     ]).toEqual([
-      'pnpm-lock.yaml: not a YAML document — regenerate it with `pnpm install` (as of the base ref)',
-      'package-lock.json: not an npm lockfile (no lockfileVersion) — regenerate it with `npm install` (as of the base ref)',
-      'yarn.lock: neither a classic (`# yarn lockfile v1`) nor a berry (`__metadata`) lockfile — regenerate it with `yarn install` (as of the base ref)',
-      'bun.lock: not a Bun text lockfile (no lockfileVersion) — regenerate it with `bun install` (as of the base ref)',
+      'pnpm-lock.yaml: not a YAML document — regenerate it with `pnpm install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
+      'package-lock.json: not an npm lockfile (no lockfileVersion) — regenerate it with `npm install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
+      'yarn.lock: neither a classic (`# yarn lockfile v1`) nor a berry (`__metadata`) lockfile — regenerate it with `yarn install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
+      'bun.lock: not a Bun text lockfile (no lockfileVersion) — regenerate it with `bun install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
     ])
   })
   // npm's parser named package-lock.json in every message, so a broken
@@ -68,8 +68,8 @@ describe('a lockfile the plugin cannot read', () => {
       refusal(npm(), 'npm-shrinkwrap.json', '{"lockfileVersion":1}'),
       refusal(npm(), 'npm-shrinkwrap.json', '{'),
     ]).toEqual([
-      'npm-shrinkwrap.json: not an npm lockfile (no lockfileVersion) — regenerate it with `npm install` (as of the base ref)',
-      'npm-shrinkwrap.json: lockfileVersion 1 has no `packages` map — npm 7+ writes version 2 or 3 — regenerate it with `npm install` (as of the base ref)',
+      'npm-shrinkwrap.json: not an npm lockfile (no lockfileVersion) — regenerate it with `npm install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
+      'npm-shrinkwrap.json: lockfileVersion 1 has no `packages` map — npm 7+ writes version 2 or 3 — regenerate it with `npm install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
       expect.stringMatching(/^npm-shrinkwrap\.json: (?!package-lock)/),
     ])
   })
@@ -170,7 +170,9 @@ describe("a base ref's bun.lock under --affected", () => {
       )
       const { exitCode, stderr } = affectedRefusal(root, 'build')
       expect(stderr).toContain('bun.lock: ')
-      expect(stderr).toContain(' — regenerate it with `bun install` (as of the base ref)')
+      expect(stderr).toContain(
+        ' — regenerate it with `bun install` (as of the base ref, which no install changes: name another base, `--affected=<ref>`)',
+      )
       expect(exitCode).toBe(1)
     } finally {
       await rm(root, { recursive: true, force: true })

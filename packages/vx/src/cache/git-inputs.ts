@@ -41,6 +41,7 @@ import {
   isInstalledPath,
   notAWorkTree,
   parseCheckAttrOutput,
+  peekUmask,
   relPosix,
   sameDir,
   UserError,
@@ -2262,15 +2263,15 @@ export function attributeFilesOutsideTree(
   }
   const out: string[] = []
   const configured = vars.get('core.attributesfile')
-  const home = env.HOME ?? ''
+  const home = env['HOME'] ?? ''
   if (configured !== undefined && configured !== '') {
     out.push(configured.startsWith('~/') ? path.join(home, configured.slice(2)) : configured)
-  } else if ((env.XDG_CONFIG_HOME ?? '') !== '') {
-    out.push(path.join(env.XDG_CONFIG_HOME!, 'git', 'attributes'))
+  } else if ((env['XDG_CONFIG_HOME'] ?? '') !== '') {
+    out.push(path.join(env['XDG_CONFIG_HOME']!, 'git', 'attributes'))
   } else if (home !== '') {
     out.push(path.join(home, '.config', 'git', 'attributes'))
   }
-  const noSystem = (env.GIT_ATTR_NOSYSTEM ?? '').toLowerCase()
+  const noSystem = (env['GIT_ATTR_NOSYSTEM'] ?? '').toLowerCase()
   if (!['1', 'true', 'yes', 'on'].includes(noSystem)) {
     out.push('/etc/gitattributes')
     try {
@@ -3193,7 +3194,7 @@ export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
     // Beside it and renamed over: a read-only output is replaced, not opened,
     // and a hard link's other name keeps its bytes.
     // The mode a checkout gives it: the index's, under the umask.
-    const want = (held.startsWith('100755:') ? 0o777 : 0o666) & ~process.umask()
+    const want = (held.startsWith('100755:') ? 0o777 : 0o666) & ~peekUmask()
     const temp = `${abs}.vx-${process.pid}-${Date.now().toString(36)}`
     try {
       writeFileSync(temp, proc.stdout)

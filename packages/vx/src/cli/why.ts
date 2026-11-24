@@ -6,7 +6,7 @@
 // upstream is a group: it records no run, so the graph names what it gathers.
 
 import type { Database } from 'bun:sqlite'
-import { indexDb, indexError, Cache } from '../cache/index.js'
+import { indexDb, indexError, Cache, taskEntryHashes } from '../cache/index.js'
 import { ambiguousTask, anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
 import { buildTaskGraph, isDefaultBuild, isGroupTask } from '../graph/index.js'
 import {
@@ -14,6 +14,7 @@ import {
   diffsOlderRun,
   expandHits,
   explainCacheKey,
+  getInvocation,
   inputWriters,
   latestRunId,
   LocalHistoryProvider,
@@ -74,7 +75,7 @@ export const WHAT_TO_DO: Readonly<Record<string, string>> = {
   plugin: "a key plugin's material changed; that plugin decides what goes into the key",
   platform: 'it ran on another platform; each of its `exec.platforms` keeps its own entry',
   format:
-    'another vx version keys tasks differently; every cached task misses once, nothing to fix',
+    'another vx version keys tasks differently, and each keeps its own entries; nothing to fix',
 }
 
 export function parseWhyArgs(args: readonly string[]): WhyArgs {
@@ -158,6 +159,23 @@ function suggest(query: string, ids: readonly string[], invoked: boolean): strin
 }
 
 /**
+ * A task with no recorded run whose entry the store holds: it ran, and its
+ * runs were pruned or recorded by another worktree. "no runs yet" was false.
+ */
+function prunedRefusal(cache: Cache, id: string, target: string): UserError | undefined {
+  if (taskEntryHashes(cache, id).length === 0) return undefined
+  const why =
+    'its cache entry is stored: its runs were pruned (VX_HISTORY_RETENTION, 30 days by default) or ran in another worktree'
+  return refusal(
+    { tone: 'info', headline: `no runs of ${id} recorded`, why, fix: `vx run ${target}` },
+    {
+      code: 'VX_E_NO_HISTORY',
+      message: `vx why: no runs of ${id} recorded; ${why}; vx run ${target}`,
+    },
+  )
+}
+
+/**
  * Resolve a positional target to a full `project#task` id against the runs
  * table. A `pkg#task` form is used as-is; a bare task name matches every
  * project that ran it — unique → resolved, several → the project the cwd sits
@@ -181,6 +199,8 @@ async function resolveTarget(
       .get(project, task)
     if (hit !== null) return target
     if ((await declaresId(target)) === 'group') throw groupRefusal(target)
+    const gone = prunedRefusal(cache, target, target)
+    if (gone !== undefined) throw gone
   } else {
     // A bare name reads only its own task's rows: the DISTINCT over every
     // pair sorted the whole history (24 of 26 ms at 58k rows), and its list
@@ -203,9 +223,12 @@ async function resolveTarget(
       const kind = await declaresId(own)
       if (kind === 'group') throw groupRefusal(own)
       if (kind !== false) {
-        throw refusal(
-          { tone: 'info', headline: `no runs of ${own} yet`, fix: `vx run ${target}` },
-          { code: 'VX_E_NO_HISTORY', message: `vx why: no recorded runs for "${own}"` },
+        throw (
+          prunedRefusal(cache, own, target) ??
+          refusal(
+            { tone: 'info', headline: `no runs of ${own} yet`, fix: `vx run ${target}` },
+            { code: 'VX_E_NO_HISTORY', message: `vx why: no recorded runs for "${own}"` },
+          )
         )
       }
     }
@@ -315,8 +338,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 
     const why = whyDidThisRerun(db, runId, taskId)
     if (!why.found) {
+      // A run with no header was stopped: `vx last RUNID` refuses it.
       throw new UserError(
-        `vx why: run ${runId} has no row for ${taskId}; \`vx last --list\` shows the recorded runs, \`vx last RUNID\` what one ran`,
+        getInvocation(db, runId) === null
+          ? `vx why: run ${runId} was stopped before ${taskId} ended, so vx kept no row for it`
+          : `vx why: run ${runId} has no row for ${taskId}; \`vx last --list\` shows the recorded runs, \`vx last RUNID\` what one ran`,
         'VX_E_NO_HISTORY',
       )
     }
@@ -334,7 +360,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const writers = inputWriters(db, runId, root, taskId, diff.entries, roots)
 
     if (parsed.format === 'json') {
-      await ui.dataPieces('out', jsonPieces({ taskId, runId, why, diff }, roots, writers))
+      // The note is the verdict the text prints: "(inputs differ)" is for a
+      // diff with no parts to name, and read beside one that named them.
+      const moved = movedVerdict(why, diff)
+      const said = moved === undefined ? why : { ...why, note: moved }
+      await ui.dataPieces('out', jsonPieces({ taskId, runId, why: said, diff }, roots, writers))
       return 0
     }
 
@@ -343,7 +373,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       blocks.push(whatChangedSection(diff))
       if (roots.length > 0) blocks.push(rootCauseSection(roots))
       if (writers.length > 0) blocks.push(writersSection(writers))
-      const todo = whatToDoRows(taskId, diff, roots, writers, unrecorded)
+      const pluginMoved = [...diff.entries, ...roots.flatMap((r) => r.entries)].some(
+        (e) => e.kind === 'plugin',
+      )
+      const claims = pluginMoved ? await fingerprintFiles(at) : new Map<string, string[]>()
+      const todo = whatToDoRows(taskId, diff, roots, writers, unrecorded, claims)
       if (todo.length > 0) blocks.push(ui.section('What to do', ui.fields(todo)))
     }
     ui.print('out', ...blocks)
@@ -407,6 +441,13 @@ function firstThree(items: readonly string[]): string {
   return `${items.slice(0, 3).join(', ')}${items.length > 3 ? ` and ${items.length - 3} more` : ''}`
 }
 
+/** A moved key's verdict, naming what moved; undefined when the key held or the diff names nothing. */
+function movedVerdict(why: WhyDidThisRerun, diff: CacheKeyDiff): string | undefined {
+  if (why.previousRun == null || why.hashChanged !== true || diff.entries.length === 0)
+    return undefined
+  return `cache key changed: ${firstThree(diff.entries.map(componentName))}`
+}
+
 /** The "Why" section's rows: this run, the one it is compared with, the verdict. */
 function whyRows(runId: string, why: WhyDidThisRerun, diff: CacheKeyDiff): ui.FieldRow[] {
   const t = why.thisRun!
@@ -424,15 +465,10 @@ function whyRows(runId: string, why: WhyDidThisRerun, diff: CacheKeyDiff): ui.Fi
     // The key moved and the diff says by what: the verdict names it, so
     // an env-only change reads as one line, not "inputs differ" above a
     // table to scan.
-    const moved = diff.entries.map(componentName)
+    const moved = movedVerdict(why, diff)
     rows.push(
       ['previous', runFacts(why.previousRun)],
-      [
-        'verdict',
-        why.hashChanged === true && moved.length > 0
-          ? ui.tone('warn', `cache key changed: ${firstThree(moved)}`)
-          : why.note,
-      ],
+      ['verdict', moved === undefined ? why.note : ui.tone('warn', moved)],
     )
   }
   // The rows below may be against an older run than `previous`: the
@@ -527,6 +563,7 @@ function whatToDoRows(
   roots: readonly RootCause[],
   writers: readonly InputWriter[],
   unrecorded: readonly DiffEntry[],
+  claims: ReadonlyMap<string, readonly string[]> = new Map(),
 ): ui.FieldRow[] {
   const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
   // An upstream row names the task to ask next: the command, not a
@@ -554,6 +591,14 @@ function whatToDoRows(
       todo.push([k, ...upstream])
       continue
     }
+    if (k === 'env') {
+      todo.push([k, envTodo([...diff.entries, ...roots.flatMap((r) => r.entries)])])
+      continue
+    }
+    if (k === 'plugin') {
+      todo.push([k, pluginTodo([...diff.entries, ...roots.flatMap((r) => r.entries)], claims)])
+      continue
+    }
     todo.push([
       k,
       k === 'config'
@@ -571,6 +616,52 @@ function whatToDoRows(
   // the miss is right, and only moving the write ends it.
   if (writers.length > 0) todo.push(['written', WRITTEN_TODO])
   return todo
+}
+
+/**
+ * The plugin row. A part is named `<plugin>/<part>`; a plugin that claims
+ * fingerprint files (a lockfile plugin) is named with them: "a key plugin's
+ * material changed" left the user to find the lockfile whose edit moved it.
+ */
+function pluginTodo(
+  entries: readonly { kind: string; name: string }[],
+  claims: ReadonlyMap<string, readonly string[]>,
+): string {
+  const named = new Map<string, readonly string[]>()
+  for (const e of entries) {
+    if (e.kind !== 'plugin') continue
+    for (const [plugin, files] of claims)
+      if (e.name.startsWith(`${plugin}/`)) named.set(plugin, files)
+  }
+  if (named.size === 0) return WHAT_TO_DO['plugin']!
+  const files = [...named.values()].flat()
+  return `${[...named].map(([plugin, f]) => `${plugin} keys on ${f.join(', ')}`).join('; ')}: what this task reads of ${files.length === 1 ? 'it' : 'them'} moved; that plugin decides what goes into the key`
+}
+
+/** Each loaded plugin's claimed fingerprint files, by plugin name; none when the workspace does not load. */
+async function fingerprintFiles(at: VerbWorkspace): Promise<Map<string, string[]>> {
+  try {
+    const { plugins } = await at.workspace()
+    return new Map(
+      plugins.flatMap((p) =>
+        p.fingerprint === undefined || p.fingerprint.files.length === 0
+          ? []
+          : [[p.name, [...p.fingerprint.files]] as [string, string[]]],
+      ),
+    )
+  } catch {
+    return new Map()
+  }
+}
+
+/** The env row: a value that moved, or a name that joined or left `inputs.env`. */
+function envTodo(entries: readonly { kind: string; change: string }[]): string {
+  const changes = new Set(entries.filter((e) => e.kind === 'env').map((e) => e.change))
+  return [
+    ...(changes.has('changed') ? [WHAT_TO_DO['env']!] : []),
+    ...(changes.has('added') ? ['a name joined inputs.env, which re-keys the task by design'] : []),
+    ...(changes.has('removed') ? ['a name left inputs.env, which re-keys the task by design'] : []),
+  ].join('; ')
 }
 
 const ROOTS_SHOWN = 5

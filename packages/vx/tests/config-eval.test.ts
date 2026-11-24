@@ -629,10 +629,11 @@ describe('evaluateConfigFresh: errors cross the boundary', () => {
     // all and leaves the caller waiting out the full deadline. (A cyclic
     // config and a bigint, the two throws this row held before item 701,
     // and a getter, since D-67, are now refused by name on both paths —
-    // below. A proxy's trap still throws in the walk.)
+    // below. So is a proxy whose trap throws.)
     const body = `export default new Proxy({ tasks: {} }, { getOwnPropertyDescriptor() { throw new Error('trap says no') } })\n`
-    expect(await settleOrHang(evaluateConfigFresh(await write(body)), 5000)).toBe(
-      'REJECTED trap says no',
+    const file = await write(body)
+    expect(await settleOrHang(evaluateConfigFresh(file), 5000)).toBe(
+      `REJECTED ${file}: the default export is an object that threw when read (trap says no) — a config must be JSON data, because the cache key is built from its JSON`,
     )
   })
 
@@ -1123,6 +1124,13 @@ describe('a config is JSON data, on every path (item 701)', () => {
       `export default { tasks: { build: { get exec() { throw new Error('called') } } } }\n`,
       'tasks.build.exec',
       'a getter',
+    ],
+    // A trap that throws was vx's own stack and "bug in vx" on the first load.
+    [
+      'a proxy whose ownKeys trap throws',
+      `export default { tasks: { build: { exec: new Proxy({}, { ownKeys() { throw new Error('keys') } }) } } }\n`,
+      'tasks.build.exec',
+      'an object that threw when read (keys)',
     ],
     [
       'a setter with no getter',

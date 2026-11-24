@@ -3,7 +3,14 @@
 // a miss), its upload pool, and its failures said once per class. Order across
 // remotes and provenance are `LayeredCache`'s.
 
-import { machineParallelism, notify, thrownMessage } from '../util/index.js'
+import {
+  hookStarted,
+  machineParallelism,
+  maskedLine,
+  notify,
+  teardownTimeoutMs,
+  thrownMessage,
+} from '../util/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { ArtifactInfo, RemoteCacheLayer } from './layered-cache.js'
 
@@ -156,6 +163,45 @@ export class RemoteLane {
     this.endpoint = printableEndpoint(resolved.remote.endpoint)
   }
 
+  /**
+   * A call into the plugin's layer, marked as its hook until it settles: one
+   * that never does strands the run, and the exit names the plugin.
+   */
+  private async asked<T>(method: string, call: () => T | Promise<T>): Promise<T> {
+    if (this.resolved.plugin === undefined) return call()
+    const settled = hookStarted(this.resolved.plugin, `cache ${method}`)
+    try {
+      return await call()
+    } finally {
+      settled()
+    }
+  }
+
+  /**
+   * `answer`, or a throw once `run.pluginTimeout` passes with none: a remote
+   * never breaks a run, and a `get` that never settled held its task and the
+   * run forever. It bounds the wait for an answer; the body's bytes are
+   * bounded apart, by the time between them (`endsOnStop`). The throw is a
+   * miss, said as every failure is; `'0ms'` bounds nothing.
+   */
+  private bounded<T>(answer: Promise<T>): Promise<T> {
+    const ms = teardownTimeoutMs()
+    if (ms === 0) return answer
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `get() did not answer within ${ms} ms (run.pluginTimeout) — degraded to a miss`,
+            ),
+          ),
+        ms,
+      )
+    })
+    return Promise.race([answer, late]).finally(() => clearTimeout(timer))
+  }
+
   get read(): boolean {
     return this.resolved.read
   }
@@ -174,7 +220,7 @@ export class RemoteLane {
     if (this.absent.has(hash)) return null
     let found: unknown
     try {
-      found = await this.remote.has(hash)
+      found = await this.asked('has', () => this.remote.has(hash))
     } catch (err) {
       this.report('probe', hash, err)
       return null
@@ -197,10 +243,11 @@ export class RemoteLane {
    * absent; `null` when this remote cannot batch or the probe failed.
    */
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
-    if (this.remote.hasMany === undefined) return null
+    const remote = this.remote
+    if (remote.hasMany === undefined) return null
     let found: unknown
     try {
-      found = await this.remote.hasMany(hashes)
+      found = await this.asked('hasMany', () => remote.hasMany!(hashes))
     } catch (err) {
       this.report('probe', batchOf(hashes), err)
       return null
@@ -245,7 +292,9 @@ export class RemoteLane {
         const h = hashes[next++]!
         let found: unknown
         try {
-          found = this.held.get(h) ?? (this.absent.has(h) ? null : await this.remote.has(h))
+          found =
+            this.held.get(h) ??
+            (this.absent.has(h) ? null : await this.asked('has', () => this.remote.has(h)))
         } catch (err) {
           this.report('probe', h, err)
           failed = true
@@ -273,7 +322,7 @@ export class RemoteLane {
     if (!fresh && this.absent.has(hash)) return null
     let result: unknown
     try {
-      result = await this.remote.get(hash)
+      result = await this.bounded(this.asked('get', () => this.remote.get(hash)))
     } catch (err) {
       this.report('download', hash, err)
       return undefined
@@ -368,7 +417,7 @@ export class RemoteLane {
         release = got.release
         if (known) this.remote.missing?.(hash)
         const meta = distrusted ? { durationMs, replace: true as const } : { durationMs }
-        if ((await this.remote.put(hash, got.body, meta)) === false) return
+        if ((await this.asked('put', () => this.remote.put(hash, got.body, meta))) === false) return
         holds = true
         tally.count++
         tally.bytes += got.body.size
@@ -442,7 +491,9 @@ export class RemoteLane {
     // run's.
     if (hash !== undefined && this.remote.off !== true) {
       const failures = this.trafficOf(hash).failures
-      const said = `${op}: ${e.message}`
+      // A server's reply may echo the token it was sent: the row and the
+      // telemetry record keep it, as the warning does, masked.
+      const said = maskedLine(`${op}: ${e.message}`)
       if (!failures.includes(said)) failures.push(said)
     }
     const cls = failureClass(e, hash)

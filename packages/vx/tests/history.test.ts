@@ -400,6 +400,8 @@ describe('LocalHistoryProvider', () => {
       // p99 is sorted[floor(0.99 * 100)] of 1..100.
       expect(entry.p50DurationMs).toBe(6)
       expect(entry.p99DurationMs).toBe(100)
+      // `vx last --stats` prints its p99 from the timings its p50 reads.
+      expect(entry.forecastP99DurationMs).toBe(10)
     } finally {
       cache.close()
       rmSync(cacheDir, { recursive: true, force: true })

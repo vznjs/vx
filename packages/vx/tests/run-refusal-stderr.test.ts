@@ -69,13 +69,14 @@ it('a task the lock does not hold yet names `vx lock` as the fix', async () => {
       'vx run: packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`\n',
     ),
   )
-  // With no stamp (another clone's lock), the missing task still names it.
+  // With no stamp (another clone's lock), the run evaluates the config and
+  // names the edit too.
   await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'))
   const q = run()
   expect(q.exitCode).toBe(1)
   expect(q.stderr.toString()).toBe(
     noticed(
-      'vx run: no projects declare task(s): lint. Tasks: build. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+      'vx run: packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`\n',
     ),
   )
 }, 30_000)

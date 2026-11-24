@@ -8,6 +8,7 @@ import { defineProject } from '@vzn/vx'
 // suite-coverage fails on a file no shard names.
 const SHARDS: readonly (readonly string[])[] = [
   [
+    'bun-patch-installed',
     'dependency-names',
     'extra-in-project',
     'file-dir-dep',
@@ -22,11 +23,13 @@ const SHARDS: readonly (readonly string[])[] = [
     'yarn-catalog-precise',
     'yarn-classic-root-deps',
     'yarn-package-settings',
+    'yarn-patch-installed',
   ],
   [
     'bun-patch-precise',
     'closure-per-project',
     'deleted-project',
+    'dependencies-lock-merge',
     'dependency-section',
     'lazy-load',
     'lockfile-choice',
@@ -88,7 +91,11 @@ const shard = (i: number, files: readonly string[]) => ({
     },
   },
   dependsOn: ['install'],
-  inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+  inputs: {
+    files: ['src/**', 'tests/**', 'package.json'],
+    // The tests import core's test helpers; ^build keys only core's src/**.
+    workspaceFiles: ['packages/vx/tests/helpers/**'],
+  },
   outputs: { files: [] as string[] },
   cache: true,
 })
@@ -115,12 +122,14 @@ export default defineProject({
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
-        command: 'oxlint --type-aware --type-check',
+        command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
       inputs: {
-        files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,

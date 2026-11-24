@@ -13,7 +13,7 @@
 
 import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
 import { cachesNothing, FULL_CACHE_POLICY, networkConcurrency } from '../cache/index.js'
-import { ranNoCache } from '../report/index.js'
+import { ranNoCache, shownCommand } from '../report/index.js'
 import {
   idleServers,
   isGroupTask,
@@ -43,6 +43,10 @@ export interface PlannedTask {
   cacheStatus: CacheStatus
   /** Sorted task ids this task depends on (same as TaskNode.deps). */
   deps: readonly string[]
+  /** The command as the run would run it, a requested task's with the args after `--`; absent on a group. */
+  command?: string
+  /** Set when `command` carries args forwarded after `--`. */
+  forwarded?: true
   /**
    * The task's typical executed duration (wall-clock p50 over its recent
    * non-hit runs in the local cache.db), when history exists. Attached to
@@ -271,6 +275,12 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       hash: o.hash ?? '',
       cacheStatus: skips.has(id) ? 'skipped' : (cacheStatusById.get(id) ?? 'no-cache'),
       deps: node.deps,
+      ...(node.config.exec !== undefined
+        ? { command: shownCommand(node, args.forwardArgs ?? []) }
+        : {}),
+      ...(node.requested && node.config.exec !== undefined && (args.forwardArgs?.length ?? 0) > 0
+        ? { forwarded: true as const }
+        : {}),
       ...(executor !== undefined ? { executor } : {}),
       ...(args.downloadOf?.(id) === 'deferred' ? { download: 'deferred' as const } : {}),
       ...(remoteBytesById.has(id) ? { remoteBytes: remoteBytesById.get(id)! } : {}),

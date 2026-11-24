@@ -12,14 +12,15 @@
     },
     "tasks": {
       "type": "array",
+      "description": "every task the run would reach, requested and pulled in",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["id", "project", "task", "hash", "cacheStatus", "deps"],
         "properties": {
           "id": { "type": "string", "description": "project#task" },
-          "project": { "type": "string" },
-          "task": { "type": "string" },
+          "project": { "type": "string", "description": "the project name" },
+          "task": { "type": "string", "description": "the task name" },
           "hash": {
             "type": "string",
             "description": "the cache key; empty when the run derives none"
@@ -36,7 +37,15 @@
             ],
             "description": "skipped: exec.platforms leave this machine out, or a task it depends on is skipped; the run skips it too"
           },
-          "deps": { "type": "array", "items": { "type": "string" } },
+          "deps": {
+            "type": "array",
+            "description": "the project#task ids it depends on",
+            "items": { "type": "string" }
+          },
+          "command": {
+            "type": "string",
+            "description": "the command as the run would run it, a requested task's with the args after --; absent on a group"
+          },
           "p50Ms": {
             "type": "number",
             "description": "typical executed duration, when history has one"
@@ -49,15 +58,22 @@
             "const": "deferred",
             "description": "outputs would stay remote (--cache-download)"
           },
-          "description": { "type": "string" },
+          "description": {
+            "type": "string",
+            "description": "the task's description; absent when it has none"
+          },
           "otherPlatform": {
             "type": "object",
             "description": "a skipped task's own exec.platforms, and this machine's",
             "additionalProperties": false,
             "required": ["needs", "host"],
             "properties": {
-              "needs": { "type": "array", "items": { "type": "string" } },
-              "host": { "type": "string" }
+              "needs": {
+                "type": "array",
+                "description": "the platforms its exec.platforms lists, like darwin-arm64",
+                "items": { "type": "string" }
+              },
+              "host": { "type": "string", "description": "this machine's platform" }
             }
           },
           "blockedBy": {
@@ -88,11 +104,18 @@
     },
     "predicted": {
       "type": "object",
+      "description": "what history forecasts for the tasks that would run; absent when local history could not be read",
       "additionalProperties": false,
       "required": ["wallMs", "workMs", "unknownCount", "criticalPath"],
       "properties": {
-        "wallMs": { "type": "number" },
-        "workMs": { "type": "number" },
+        "wallMs": {
+          "type": "number",
+          "description": "forecast wall time of the run, in ms, at its concurrency"
+        },
+        "workMs": {
+          "type": "number",
+          "description": "forecast sum of the would-run tasks' durations, in ms"
+        },
         "unknownCount": {
           "type": "integer",
           "description": "would-run tasks with no history; the times are lower bounds when above 0"
@@ -111,7 +134,10 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["taskId", "reason"],
-        "properties": { "taskId": { "type": "string" }, "reason": { "type": "string" } }
+        "properties": {
+          "taskId": { "type": "string", "description": "project#task" },
+          "reason": { "type": "string", "description": "why its outputs must be downloaded" }
+        }
       }
     }
   }

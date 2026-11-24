@@ -28,7 +28,7 @@ import {
   undeclaredWriteReach,
   untouchedPlaceholderLine,
 } from '../sandbox/index.js'
-import { explainServerExit } from './persistent.js'
+import { explainServerExit, timeServer } from './persistent.js'
 import { shellVerdict } from './shell-verdict.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 import { computeTaskHash, keyOf } from './task-hash.js'
@@ -366,6 +366,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   // Ready, so it spawned: only a failed spawn has no child.
   const child = spawn.child!
   explainServerExit(child, (code) => exitNotes(code, child.signalCode ?? undefined))
+  timeServer(child, spawn.liveMs)
   args.run.persistentRegistry?.set(node.id, child)
   forgetUndeclaredWrites(
     args.node,

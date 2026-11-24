@@ -252,6 +252,7 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
         return [...entries, ...named.filter((n) => !covered.has(n.dir))]
       },
     },
+    ['project.json', 'package.json'],
   )
 }
 
@@ -351,12 +352,42 @@ async function mapAll(
   if (executors !== undefined)
     reads.push(JSON.stringify(Object.entries(executors).map(([k, fn]) => [k, String(fn)])))
   reads.push(`unclaimed lockfile: ${lockfile ?? ''}`)
+  const sources = await targetSources(root)
   return {
     name: 'nx',
     spareTracked: true,
     reads,
+    madeFrom: (dir) => {
+      const key = relPosix(root, dir) || '.'
+      return Object.hasOwn(sources, key) ? sources[key]!.map((f) => path.join(root, f)) : []
+    },
     map: (tracked) => index(root, metas, graph, notes, tracked, executors, lockfile),
   }
+}
+
+/**
+ * The files each project's targets were made from (an inferred target's
+ * `vite.config.ts`), by project root: Nx's own record beside its graph,
+ * `source-maps.json`. Absent or unreadable, none (an `nx graph --file`
+ * export passed as `graph:` may have none).
+ */
+async function targetSources(root: string): Promise<Record<string, string[]>> {
+  const dir = Bun.env['NX_WORKSPACE_DATA_DIRECTORY'] ?? Bun.env['NX_PROJECT_GRAPH_CACHE_DIRECTORY']
+  const file = path.resolve(root, dir ?? path.join('.nx', 'workspace-data'), 'source-maps.json')
+  const maps: unknown = await Bun.file(file)
+    .json()
+    .catch(() => null)
+  const out: Record<string, string[]> = {}
+  if (!isRecord(maps)) return out
+  for (const [project, keys] of Object.entries(maps)) {
+    if (!isRecord(keys)) continue
+    const files = new Set<string>()
+    for (const [key, at] of Object.entries(keys))
+      if (key.startsWith('targets') && Array.isArray(at) && typeof at[0] === 'string')
+        files.add(at[0])
+    out[project] = [...files]
+  }
+  return out
 }
 
 function relRoot(p: string): string {

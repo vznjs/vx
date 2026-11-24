@@ -40,8 +40,12 @@ export function conformance(name: string, target: Target): void {
       },
       token,
     )
-  const upload = (timings: unknown[], token = tokens.main) =>
-    post('/v1/timings/upload', { timings }, token)
+  // A report landing in the millisecond its row was last written is left
+  // (a retried write counts once), so uploads one after another wait a tick.
+  const upload = async (timings: unknown[], token = tokens.main) => {
+    await Bun.sleep(1)
+    return post('/v1/timings/upload', { timings }, token)
+  }
   const named = () => ({ issuer: target.issuer, repository: target.repository })
   const ask = (refs: string[], hashes: unknown, token: string | null = tokens.read) =>
     post('/v1/timings/query', { ...named(), refs, hashes }, token)
@@ -291,6 +295,15 @@ export function conformance(name: string, target: Target): void {
         maxQueryRefs: 8,
       })
       expect((await call('/v1/capabilities', {}, null)).status).toBe(401)
+      // HEAD is GET without the body, as HTTP has it: a 405 refused it.
+      const head = await call('/v1/capabilities', { method: 'HEAD' })
+      expect([
+        head.status,
+        head.headers.get('content-type')?.split(';')[0],
+        await head.text(),
+      ]).toEqual([200, 'application/json', ''])
+      const put = await call('/v1/capabilities', { method: 'PUT' })
+      expect([put.status, put.headers.get('allow')]).toEqual([405, 'GET, HEAD'])
       const get = await call('/v1/timings/query')
       expect([get.status, get.headers.get('allow'), await get.json()]).toEqual([
         405,

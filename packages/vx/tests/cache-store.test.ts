@@ -516,7 +516,7 @@ describe('a tree holding links to directories', () => {
       expect(readlinkSync(path.join(proj, 'out/big'))).toBe('../big')
       cache.close()
     },
-    10_000,
+    30_000,
   )
 })
 

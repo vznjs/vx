@@ -18,11 +18,11 @@ import {
   acquireRunLock,
   addedByPlugin,
   applyGraphStage,
-  captureGitContext,
   claimedDigests,
   lockDiscovery,
   fingerprintClaims,
   hasHook,
+  holdLockFiles,
   ignoredConfigRefusal,
   loadProjects,
   networkPatternRefusal,
@@ -183,7 +183,12 @@ export async function lockWorkspace(
   // A stop ends vx through its exit hooks, which remove the temps it was
   // writing and its run lock's entry.
   return await exitOnStop(async () => {
-    const release = await acquireRunLock(root, { log: warn, of: 'lock' })
+    const release = await acquireRunLock(root, {
+      log: warn,
+      // Taking turns is a status line, as a run says it, not a warning.
+      wait: (line) => ui.say('info', line),
+      of: 'lock',
+    })
     try {
       const check = await audit(root, warn)
       if (check.broken !== null) {
@@ -211,6 +216,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
   const out: GraphCheck = {
     broken: null,
     loaded: false,
+    staged: false,
     fresh: { version: LOCKFILE_VERSION, projects: {} },
     all: [],
     tasked,
@@ -223,6 +229,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
     out.reviewFiles = resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
+    out.staged = !hasHook(plugins, 'project')
     const {
       configs: found,
       strayReviews,
@@ -250,7 +257,6 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       taken: await takeConfigStamps(
         root,
         found.map((f) => f.configPath),
-        captureGitContext(root).commitSha,
       ),
     }
     // The one load that evaluates: every reader reads the lock this writes.
@@ -280,8 +286,22 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     for (const m of out.all) {
       const why = m.configPath === null ? ignoredConfigRefusal(root, m) : undefined
       if (why !== undefined) throw new UserError(why, 'VX_E_LOCK')
+      // Its configs are the nested workspace's: locked here, it held none, and
+      // every reader said to run the `vx lock` that had just run.
+      const by = addedByPlugin(m)
+      const wall =
+        by === undefined
+          ? undefined
+          : nestedWorkspaces.find((w) => m.dir === w || m.dir.startsWith(w + path.sep))
+      if (wall !== undefined) {
+        const [dir, inner] = [relPosix(root, m.dir), relPosix(root, wall)]
+        throw new UserError(
+          `plugin '${by}' adds project ${dir}, but ${inner}/.vx makes ${inner} a workspace of its own, which this one's lock cannot hold — leave ${dir} out of what the plugin discovers, or delete ${inner}/.vx`,
+          'VX_E_LOCK',
+        )
+      }
     }
-    const { projects, stage } = await loadProjects({
+    const { projects, stage, reads } = await loadProjects({
       workspaceRoot: root,
       cacheDir,
       plugins,
@@ -292,12 +312,26 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       warn,
       lock: true,
     })
+    // The files a `project` plugin made a config from, stamped as configs are
+    // (after the stage read them: one edited in between reads as unchanged).
+    if (reads !== undefined && reads.size > 0 && out.stamps !== undefined) {
+      const byDir: Record<string, string[]> = {}
+      for (const [dir, files] of reads)
+        byDir[lockKey(root, dir)] = [...files].map((f) => relPosix(root, f)).sort()
+      const read = await takeConfigStamps(root, [
+        ...new Set([...reads.values()].flatMap((f) => [...f])),
+      ])
+      const taken = out.stamps.taken
+      // A file absent has no stamp: a run refuses once it appears.
+      out.stamps.taken = { ...taken, configs: { ...taken.configs, ...read.configs }, reads: byDir }
+    }
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     // Each project as the stages left it, and nothing of the steps there: a
     // run reads its name, its config after the `project` stage and its
     // edges (in the dependencies lock) and runs no hook, so a mapping is made
     // here and nowhere else (2026-11-21).
     out.fresh.projects = finalProjects(root, out.all, out.fresh.projects, stage)
+    out.staged = true
     out.loaded = true
     out.dependencies = await dependenciesOf(root, out.all, plugins, cacheDir, warn)
     checkBracketLiterals(root, projects.values())
@@ -450,6 +484,12 @@ interface GraphCheck {
   brokenParts?: RefusalParts
   /** Every config loaded and resolved: `broken`, if set, is a graph rule's refusal. */
   loaded: boolean
+  /**
+   * `fresh.projects` holds each config as the `project` stage leaves it:
+   * the stage ran, or no plugin fills it. A refusal before the stage
+   * leaves the configs as written, which no lock entry is.
+   */
+  staged: boolean
   /** The other configs that do not load, past `broken`. */
   alsoBroken?: readonly UserError[]
   /** The lock the configs evaluate to here. */
@@ -711,10 +751,16 @@ async function writeLock(
     })
     return 1
   }
-  await writeAllOrNone(
-    [lockfileWrite(root, check.fresh), dependenciesLockWrite(root, check.dependencies!)],
-    root,
-  )
+  // Both renames under one exclusive hold: a run reads both under a shared one.
+  const held = await holdLockFiles(root, 'exclusive')
+  try {
+    await writeAllOrNone(
+      [lockfileWrite(root, check.fresh), dependenciesLockWrite(root, check.dependencies!)],
+      root,
+    )
+  } finally {
+    held()
+  }
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
   if (check.stamps) await keepConfigStamps(root, check.stamps)
   const n = metas.length
@@ -1148,7 +1194,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
         ? `${rel} is not in the lock — run 'vx lock'`
         : locked.file !== fresh.file
           ? `${rel} is not the ${locked.file} the lock holds for ${dir === '.' ? 'the workspace root project' : dir} — run 'vx lock'`
-          : !Bun.deepEquals(fresh.config, locked.config, true)
+          : check.staged && !Bun.deepEquals(fresh.config, locked.config, true)
             ? `${rel} evaluates differently from the lock here — its config, a file ` +
               `it imports, or the environment it reads changed; run 'vx lock'` +
               // What changed: a config that reads the environment shows no file diff.
@@ -1264,6 +1310,9 @@ async function checkLock(root: string, json: boolean): Promise<number> {
         ),
       )
   }
+  // The configs read as locked: a run that finds one edited since says so.
+  if (failures.length + refused.length === 0 && check.stamps)
+    await keepConfigStamps(root, check.stamps)
   if (json)
     // Root-relative, as every other problem: the loader names the absolute path.
     return answer([
@@ -1281,8 +1330,6 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   const n = metas.length
   const audited = `${n} project${n === 1 ? '' : 's'}`
   const mapped = bare.length === 0 ? '' : `; mapped by a plugin: ${bareNames(bare)}`
-  // The configs read as locked: a run that finds one edited since says so.
-  if (check.stamps) await keepConfigStamps(root, check.stamps)
   ui.print('out', ui.status('ok', 'vx lock --check', `up to date (${audited}${mapped})`))
   return 0
 }

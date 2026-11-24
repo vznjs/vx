@@ -4,8 +4,8 @@
 // 966), so a build can depend on the machine and nobody knows. A hermetic
 // task reads outside the workspace only what `allow.read` names, plus the
 // shell it runs in.
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { realpathSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { realpathSync, symlinkSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -94,6 +94,45 @@ describe.skipIf(!available)(
           'OWN',
           'HOSTTOOL',
           'NOUSR',
+        ])
+      },
+      TIMEOUT,
+    )
+
+    // A host tool is a link more often than not (`/usr/bin/python3 ->
+    // python3.12`, a version manager's `node`). The runtime binds a grant at
+    // the path it resolves to, so the link the task runs was not there: the
+    // shell said "not found" and vx blamed the file's missing #! line.
+    // `/bin/sh` is a link vx binds for itself already (to dash on Debian).
+    it.skipIf(process.platform !== 'linux')(
+      'with it, a grant spelled through links outside the workspace is there as granted',
+      async () => {
+        await writeFile(path.join(outside, 'real.txt'), 'LINKED\n')
+        await mkdir(path.join(outside, 'v1'))
+        await writeFile(path.join(outside, 'v1', 'f.txt'), 'DIRLINK\n')
+        symlinkSync('real.txt', path.join(outside, 'tool'))
+        symlinkSync('v1', path.join(outside, 'cur'))
+        await addProject(fixture.root, 'app', {
+          files: {},
+          config: `
+          export default {
+            tasks: {
+              peek: {
+                exec: {
+                  command: ${JSON.stringify(`read a < ${outside}/tool; echo "$a"; read b < ${outside}/cur/f.txt; echo "$b"`)},
+                  sandbox: { hermetic: true, allow: { read: ['${outside}/tool', '${outside}/cur/', '/bin/sh'] } },
+                },
+              },
+            },
+          }
+        `,
+        })
+        const r = await run({ cwd: fixture.root, tasks: ['peek'], log: collectingLogger(fixture) })
+        const said = fixture.log.join('\n')
+        expect([r.ok, said.includes('LINKED'), said.includes('DIRLINK')]).toEqual([
+          true,
+          true,
+          true,
         ])
       },
       TIMEOUT,

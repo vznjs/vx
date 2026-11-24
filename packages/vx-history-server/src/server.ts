@@ -160,9 +160,11 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
         return req.method === 'POST' ? await query(req) : notAllowed('POST')
       }
       if (path === '/v1/capabilities') {
-        if (req.method !== 'GET') return notAllowed('GET')
+        if (req.method !== 'GET' && req.method !== 'HEAD') return notAllowed('GET, HEAD')
         await authorize(req)
-        return Response.json(capabilities)
+        const res = Response.json(capabilities)
+        // HEAD is GET without the body, as HTTP has it.
+        return req.method === 'HEAD' ? new Response(null, { headers: res.headers }) : res
       }
       return errorJson(
         404,

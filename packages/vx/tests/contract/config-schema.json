@@ -5175,7 +5175,7 @@
         ]
       },
       "tasks.*.exec.persistent.readyWhen": {
-        "ok": ["<absent>", "\"\"", "\"x\"", "\"30d\"", "\"10G\"", "\"10\"", "\"ready\""],
+        "ok": ["<absent>", "\"x\"", "\"30d\"", "\"10G\"", "\"10\"", "\"ready\""],
         "$CONFIG: tasks.t.exec.persistent.readyWhen must be a string regex": [
           "null",
           "true",
@@ -5202,6 +5202,9 @@
           "[\"A*\"]",
           "{}",
           "{\"x\":\"y\"}"
+        ],
+        "$CONFIG: tasks.t.exec.persistent.readyWhen is blank, which matches any line: omit it to be ready on spawn": [
+          "\"\""
         ],
         "$CONFIG: tasks.t.exec.persistent.readyWhen is not a valid regex (Invalid regular expression: missing ))": [
           "\"(\""

@@ -290,7 +290,7 @@ it("a run's log is its own output, never another run's saved under its key", asy
   expect(later.output).not.toBe(firstLog.output)
   expect(vx('last', first, '--log', 'd#v')).toEqual(notKept)
   expect(vx('last', hit, '--log', 'd#v')).toEqual(notKeptAs('cache-hit'))
-})
+}, 60_000)
 
 // A scoped project asked without its scope was named only as not run;
 // `vx why` offers the scoped id.

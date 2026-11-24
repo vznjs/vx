@@ -210,6 +210,8 @@ describe('missOutcome: what a miss adds up to', () => {
       exitCode: over.exitCode ?? 0,
       attempts: 1,
       spentMs: 7,
+      queuedMs: 0,
+      firstQueuedMs: 0,
       failedAttempts: [],
       attemptOutputs: [],
       leftRunning: false,

@@ -118,6 +118,7 @@ run(
     'build',
     '--compile',
     '--no-compile-autoload-dotenv',
+    '--no-compile-autoload-bunfig',
     '--compile-autoload-package-json',
     '--minify',
     '--bytecode',
@@ -148,10 +149,8 @@ const ws = workspace('binary', {
   tasks: { build: { exec: { command: 'true' }, description: () => 'x' } },
 }
 `),
-  '.vx/projects.lock': JSON.stringify({
-    version: LOCKFILE_VERSION,
-    projects: { 'packages/a': { file: 'vx.config.mjs', config: { tasks: {} } } },
-  }),
+  // A header and no entry: the audit evaluates the config, which refuses.
+  '.vx/projects.lock': `${JSON.stringify({ version: LOCKFILE_VERSION })}\n`,
 })
 const check = spawn([out, 'lock', '--check'], ws)
 const refusal =

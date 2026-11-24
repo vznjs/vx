@@ -116,7 +116,7 @@ export function clampJobSummary(markdown: string, room = MAX_JOB_SUMMARY_BYTES):
   )
 }
 
-/** Cuts `text` to `maxBytes` of UTF-8, `suffix` included, never splitting a character. */
+/** Cuts `text` to `maxBytes` of UTF-8, `suffix` included, at a line's end, never splitting a character. */
 function truncateUtf8(text: string, maxBytes: number, suffix: string): string {
   // The cap is BYTES, and the page is not ASCII: every status label is an emoji
   // (4 bytes, 2 UTF-16 units) and every separator a `·` or a `—` (2 and 3
@@ -130,6 +130,10 @@ function truncateUtf8(text: string, maxBytes: number, suffix: string): string {
   if (end <= 0) return ''
   // Back up off a continuation byte, so the cut never splits a character.
   while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--
+  // On a whole line: a half row read as a task with no status, and a cut in
+  // the <sub> footer put the note inside it.
+  const line = bytes.lastIndexOf(0x0a, end - 1)
+  if (line > 0) end = line
   return new TextDecoder().decode(bytes.subarray(0, end)) + suffix
 }
 
@@ -222,7 +226,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
       const signal = exitSignal(t.exitCode)
       const blocked = blockedBy.get(t.taskId) ?? []
       lines.push(
-        `- **${escapeMarkdownCell(escapeInline(t.taskId))}** — ${t.cacheSource === 'none' ? 'cache restore failed' : t.notReady !== undefined ? `never ready (${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}), exit ${t.exitCode}` : t.timedOut === true ? `timed out, exit ${t.exitCode}` : t.exitCode === 0 ? 'cache save failed' : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${t.sandboxViolations !== undefined && t.sandboxViolations > 0 ? ` · ${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}` : ''}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
+        `- **${escapeMarkdownCell(escapeInline(t.taskId))}** — ${t.cacheSource === 'none' ? 'cache restore failed' : t.notReady !== undefined ? `never ready (${t.notReady === 'timeout' ? 'timed out' : t.notReady === 'exited' ? 'exited' : 'spawn failed'}), exit ${t.exitCode}` : t.timedOut === true ? `timed out, exit ${t.exitCode}` : t.outputsMissing !== undefined ? `exited 0, no file matched ${t.outputsMissing.map((g) => escapeMarkdownCell(escapeInline(g))).join(', ')}` : t.exitCode === 0 ? 'cache save failed' : `exit ${t.exitCode}${signal === undefined ? '' : ` (128 + ${signal})`}`}${t.sandboxViolations !== undefined && t.sandboxViolations > 0 ? ` · ${t.sandboxViolations} sandbox violation${t.sandboxViolations === 1 ? '' : 's'}` : ''}${blocked.length > 0 ? ` · blocked ${blocked.join(', ')}` : ''}`,
       )
     }
     lines.push('')
@@ -253,6 +257,10 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
     ]
     lines.push(`| ${cells.join(' | ')} |`)
   }
+  // The tasks the stop reached first, last: the stats line counts them, as the
+  // terminal's total does, and a count over fewer rows read as a lost task.
+  for (const id of summary.notRun ?? [])
+    lines.push(`| ${escapeMarkdownCell(escapeInline(id))} | ⏹️ not run |  |`)
   lines.push('')
 
   // A one-line footer so a page with several vx runs stays attributable.
@@ -268,8 +276,14 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
 }
 
 // "13 (1 failed)" read as 13 run in all, of 14.
-const tasksCell = (ok: number, failed: number): string =>
-  failed > 0 ? `${ok} ok, ${failed} failed` : `${ok}`
+const tasksCell = (ok: number, failed: number, aborted = 0): string =>
+  failed + aborted > 0
+    ? [
+        `${ok} ok`,
+        ...(failed > 0 ? [`${failed} failed`] : []),
+        ...(aborted > 0 ? [`${aborted} aborted`] : []),
+      ].join(', ')
+    : `${ok}`
 
 const pct = (x: number): string => `${Math.round(x * 100)}%`
 
@@ -296,7 +310,7 @@ function renderAdvice(advice: NonNullable<RunSummaryRecord['advice']>): string[]
       `| ${ADVICE[a.of]} | ${a.workers
         .map(
           (w) =>
-            `${w.count} × ${w.size === undefined ? '' : `${escapeMarkdownCell(escapeInline(w.size))} `}(${w.cores} cores, ${gb(w.memoryBytes)} GB${w.platform === undefined ? '' : `, ${escapeMarkdownCell(escapeInline(w.platform))}`})`,
+            `${w.count} × ${w.size === undefined ? '' : `${escapeMarkdownCell(escapeInline(w.size))} `}(${w.cores} core${w.cores === 1 ? '' : 's'}, ${gb(w.memoryBytes)} GB${w.platform === undefined ? '' : `, ${escapeMarkdownCell(escapeInline(w.platform))}`})`,
         )
         .join(' + ')} | ${fmtMs(a.endMs)} |`,
     )
@@ -316,7 +330,7 @@ function renderWorkers(
   const lines = [
     '### Workers',
     '',
-    '| Worker | Status | Started at | Total | Warm-up | Online after warm-up | Idle while online | Tasks | Booked cores, avg | Used cores, avg | Peak RAM | Used of all cores |',
+    '| Worker | Status | Started at | Total | Warm-up | Online after warm-up | Idle while online | Tasks | Booked cores, avg | Used cores, avg | Peak RAM | Machine busy, any process |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ]
   let coreMs = 0
@@ -341,7 +355,7 @@ function renderWorkers(
         m.warmUpMs === undefined ? '' : fmtMs(m.warmUpMs),
         fmtMs(m.onlineMs),
         fmtMs(Math.max(0, m.onlineMs - m.busyMs)),
-        tasksCell(m.done, m.failed),
+        tasksCell(m.done, m.failed, m.aborted),
         m.bookedAvg === undefined ? '' : `${m.bookedAvg.toFixed(1)} of ${m.cores}`,
         `${m.cpuAvg.toFixed(1)} of ${m.cores}`,
         peakOf(m.memoryPeakBytes, m.memoryBytes),

@@ -7,12 +7,12 @@
 // 2026-09-16). Root is subject to ENOSPC like any user. Without bwrap the
 // suite skips, except where VX_REQUIRE_SANDBOX (CI) makes that a failure:
 // a skip is a silent pass on the machine whose result gates a merge.
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { vx } from './helpers/vx.js'
+import { BIN, vx } from './helpers/vx.js'
 
 const SMALL = process.env['VX_SMALL_DISK']
 const BWRAP = Bun.which('bwrap')
@@ -30,11 +30,11 @@ const CONFIG = `
   }
 `
 
-/** Write 256 KiB blocks into `dir` until the disk refuses one. */
-async function fill(dir: string): Promise<void> {
+/** Write `block`-byte files into `dir` until the disk refuses one. */
+async function fill(dir: string, block = 256 * 1024): Promise<void> {
   for (let i = 0; ; i++) {
     try {
-      await writeFile(path.join(dir, `filler-${i}.bin`), Buffer.alloc(256 * 1024, 1))
+      await writeFile(path.join(dir, `filler-${block}-${i}.bin`), Buffer.alloc(block, 1))
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOSPC') return
       throw err
@@ -87,7 +87,7 @@ describe.skipIf(
           proc.exited,
         ])
         expect(`${code}\n${out}${err}`).toStartWith('0\n')
-        expect(err).toMatch(/\b3 pass\b/)
+        expect(err).toMatch(/\b7 pass\b/)
         // The one skip is this wrapper, inside.
         expect(err).toMatch(/\b1 skip\b/)
       } finally {
@@ -151,6 +151,36 @@ describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
   )
 
   it(
+    'a save the disk fills mid-write leaves no entry a later run hits',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-full-save-' })
+      made.push(root)
+      const cacheDir = path.join(small, 'cache')
+      await project(root)
+      const run = () => vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      const first = await run()
+      expect(`${first.code}\n${first.err}`).toStartWith('0\n')
+      await writeFile(
+        path.join(root, 'packages', 'app', 'src', 'index.js'),
+        'export const changed = 1\n',
+      )
+      await fill(small)
+      // 256 KiB of room: the 700 KB artifact starts, and the disk ends it.
+      await rm(path.join(small, `filler-${256 * 1024}-0.bin`))
+      const full = await run()
+      expect(full.out + full.err).toMatch(/cache save failed: app#build: .*(ENOSPC|full)/)
+      expect(full.code).toBe(0)
+      for (const f of await readdir(small))
+        if (f.startsWith('filler-')) await rm(path.join(small, f))
+      await rm(path.join(root, 'packages', 'app', 'dist'), { recursive: true, force: true })
+      const after = await run()
+      expect(`${after.code}\n${after.out}`).toMatch(/^0\n[\s\S]*1 success/)
+      expect(after.out).not.toContain('restored')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a finished run whose history cannot be recorded keeps its verdict',
     async () => {
       const root = await makeWorkspace({ prefix: 'vx-full-hist-' })
@@ -180,6 +210,79 @@ describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
       )
       expect(second.out + second.err).not.toContain('\n    at ')
       expect(second.code).toBe(0)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cache directory made on a full disk names the file it could not write',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-full-dir-' })
+      made.push(root)
+      await project(root)
+      const cacheDir = path.join(small, 'cache')
+      await fill(small)
+      // Down to the last page: the ignore file's two bytes are refused too.
+      await fill(small, 512)
+      const run = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      expect(run.code).toBe(1)
+      expect(run.out + run.err).toContain(
+        `ENOSPC: no space left on device, write '${path.join(cacheDir, '.gitignore')}'`,
+      )
+      expect(run.out + run.err).toContain('the disk that path is on is full')
+      // An empty ignore file left behind would stand as written to every later run.
+      expect(await readdir(cacheDir)).not.toContain('.gitignore')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cache index made on a full disk is refused naming the index and the disk',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-full-db-' })
+      made.push(root)
+      await project(root)
+      const cacheDir = path.join(small, 'cache')
+      await mkdir(cacheDir, { mode: 0o700 })
+      await writeFile(path.join(cacheDir, '.gitignore'), '*\n')
+      await fill(small)
+      await fill(small, 512)
+      const run = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      expect(run.code).toBe(1)
+      expect(run.out + run.err).toContain(
+        `the cache index ${path.join(cacheDir, 'cache.db')} could not be opened (database or disk is full) — the disk that path is on is full`,
+      )
+      expect(run.out + run.err).not.toContain('\n    at ')
+      expect(run.out + run.err).not.toContain('bug in vx')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a run whose own output the full disk refuses says so and fails',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-full-out-' })
+      const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'vx-full-cache-'))
+      made.push(root, cacheDir)
+      await project(root)
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      const out = path.join(small, 'out.txt')
+      await fill(small)
+      await fill(small, 512)
+      // A green run's output lost to the disk exited 0 with nothing said.
+      const proc = Bun.spawn(
+        [process.execPath, BIN, 'run', 'build', '--all', '--cache-dir', cacheDir],
+        {
+          cwd: root,
+          env: { ...process.env, NO_COLOR: '1', CI: '', GITHUB_ACTIONS: '' },
+          stdout: Bun.file(out),
+          stderr: 'pipe',
+        },
+      )
+      const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+      expect(err).toContain('vx: write error on stdout: ENOSPC')
+      expect(err).toContain('the disk it goes to is full')
+      expect(code).toBe(1)
     },
     TIMEOUT,
   )

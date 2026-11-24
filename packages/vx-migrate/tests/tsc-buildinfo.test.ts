@@ -223,7 +223,10 @@ describe('tscBuildInfo', () => {
       watch: await at({ 'pkg/tsconfig.json': opts({ composite: true }) }, 'tsc -b -w'),
     }).toEqual({
       extended: ['lib/tsconfig.build.tsbuildinfo'],
-      references: ['tsconfig.tsbuildinfo', 'tsconfig.lib.tsbuildinfo'],
+      // A solution (`files: []`, references only) compiles nothing and writes
+      // no buildinfo (tsc 5.5, 5.9 and 7 alike): declared, every build of
+      // Vite's react-ts starter failed on the output it never wrote.
+      references: ['tsconfig.lib.tsbuildinfo'],
       watch: [],
     })
   })

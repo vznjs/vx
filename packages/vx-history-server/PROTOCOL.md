@@ -54,7 +54,9 @@ limits count on. Each folds into its row of the token's repository and ref:
 
 A report that would not move the row (`durationMs` and `cores` within
 5%, no new `rssBytes` peak) is not written, unless the row is a day old:
-each write costs, and the fold would move it under 1.5%.
+each write costs, and the fold would move it under 1.5%. Nor is one
+that lands in the millisecond its row was last written: a write retried
+after it landed counts once.
 
 The first report sets the row; one without `cores` or `rssBytes` keeps
 the row's. A row not reported for `TIMING_DAYS` (30) is deleted.
@@ -107,5 +109,7 @@ to 6 010 000. Past that, `413`.
 
 Every refusal is `{ code, message }`, the message saying what to fix. A
 JSON body without `Content-Type: application/json` is `400`, an unknown
-route `404`, a route's wrong method `405` with `Allow`, a failure the
-server did not expect `500`, its `message` what failed.
+route `404`, a route's wrong method `405` with `Allow`, a query
+parameter `400`, a failure the server did not expect `500`, its
+`message` what failed. `HEAD /v1/capabilities` answers as `GET`, with
+no body.

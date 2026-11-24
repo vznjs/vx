@@ -316,7 +316,7 @@ describe('vx init source detection', () => {
       const root = await makeRoot('vx-init-root-')
       await withLockfile(root)
       const note =
-        'fixture-root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): build'
+        'fixture-root (the workspace root): its scripts that check the whole workspace are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): build'
       try {
         await addPackage(root, 'a', { build: 'tsc' })
         // CONTROL: a root with no scripts says nothing.
@@ -732,7 +732,8 @@ describe('migrateScripts', () => {
         ?.tasks.find((t) => t.name === 'build')
         ?.todos.find((d) => d.startsWith('cache: add'))
       expect(todo).toContain(
-        "outputs: { files: ['dist/**', 'packages/tsconfig.tsbuildinfo'], workspaceFiles: ['packages/lib/tsconfig.build.tsbuildinfo'] }",
+        // packages/tsconfig.json is a solution (`files: []`): it writes no buildinfo.
+        "outputs: { files: ['dist/**'], workspaceFiles: ['packages/lib/tsconfig.build.tsbuildinfo'] }",
       )
     } finally {
       rmSync(root, { recursive: true, force: true })
@@ -1322,7 +1323,7 @@ describe('migrateScripts', () => {
       ['root', ['lint', 'check', 'typos']],
     ])
     expect(plan.notes).toEqual([
-      "root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): test, dev, play, e2e, ci, build:common, build:b, prisma and 4 more; left out as a member's task name, so `--all` never runs one twice: build — one that does other work maps by hand under a name of its own",
+      "root (the workspace root): its scripts that check the whole workspace are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): test, dev, play, e2e, ci, build:common, build:b, prisma and 4 more; left out as a member's task name, so `--all` never runs one twice: build — one that does other work maps by hand under a name of its own",
     ])
     // CONTROL: a hand-written root config stays as written.
     const configured = { ...rootMeta, configPath: '/w/vx.config.ts' }
@@ -1408,7 +1409,7 @@ describe('migrateScripts', () => {
       },
     ])
     expect(plan.notes).toEqual([
-      'root (the workspace root): its scripts that check the whole repo are its tasks',
+      'root (the workspace root): its scripts that check the whole workspace are its tasks',
     ])
   })
 
@@ -1495,9 +1496,10 @@ describe('migrateScripts', () => {
     ])
   })
 
-  it("npm's lifecycle scripts are never tasks, but a hook of one is a task of its own", () => {
-    // `postprepare` is npm's hook of `prepare`, and `prepare` is npm's own —
-    // so it wraps nothing here and has to stand alone or it disappears.
+  it("npm's and pnpm's lifecycle scripts are never tasks", () => {
+    // An install runs `dependencies`, `preprepare`, `prepare` and
+    // `postprepare` (npm 10.9; pnpm 10.28 the last three and its own
+    // `pnpm:devPreinstall`), so none is a task (probed).
     expect(
       Object.keys(
         mapped({
@@ -1514,10 +1516,13 @@ describe('migrateScripts', () => {
           prepare: 'husky install',
           prepublishOnly: 'i',
           pack: 'echo pack',
+          preprepare: 'echo before prepare',
           postprepare: 'echo after prepare',
+          dependencies: 'echo deps',
+          'pnpm:devPreinstall': 'echo dev',
         }),
       ).sort(),
-    ).toEqual(['build', 'pack', 'postprepare'])
+    ).toEqual(['build', 'pack'])
   })
 
   // `npm run version` runs `preversion` and `postversion` around it, as pnpm,
@@ -2378,7 +2383,7 @@ describe('vx init on a workspace with no scripts', () => {
         )
       await manifest(['apps/*'])
       expect(await note()).toEqual([
-        "pnpm-workspace.yaml's `packages` lists the members, as pnpm reads them; package.json's `workspaces` (\"apps/*\") is not read: if bun, npm or yarn installs this repo, copy those globs into pnpm-workspace.yaml's `packages`, or delete that key so package.json decides",
+        "pnpm-workspace.yaml's `packages` lists the members, as pnpm reads them; package.json's `workspaces` (\"apps/*\") is not read: if bun, npm or yarn installs this workspace, copy those globs into pnpm-workspace.yaml's `packages`, or delete that key so package.json decides",
       ])
       // The object form is read too.
       await manifest({ packages: ['apps/*'] })

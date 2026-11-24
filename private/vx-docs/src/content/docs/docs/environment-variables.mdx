@@ -15,19 +15,68 @@ API_URL=https://api.demo.dev vx run test
 
 <Levels />
 
+Give `@demo/web` a test that reads `API_URL`, and a `test` task that runs it:
+
+```ts title="packages/web/src/index.test.ts"
+import { expect, test } from 'vitest'
+
+test('API_URL is https', () => {
+  expect(process.env.API_URL, 'API_URL').toMatch(/^https:/)
+})
+```
+
+```ts title="packages/web/vx.config.ts"
+test: {
+  exec: { command: 'vitest run' },
+  inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'] },
+  outputs: { files: [] },
+  cache: true,
+},
+```
+
+Install vitest, lock, and run the rest of this page from `packages/web`:
+
+```sh
+cd packages/web
+bun add -d vitest
+vx lock
+```
+
 <Walkthrough title="One variable, four runs">
 <Frame title="1. The shell has API_URL. The test never sees it">
-
-`@demo/web` has a `vitest run` task. Its test reads `process.env.API_URL`.
 
 ```ansi title="no exec.env yet"
 [2m$[0m API_URL=https://api.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 6[2mms[22m[39m
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/tmp/demo/packages/web[39m
+
+ [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 9[2mms[22m[39m
+[31m   [31m×[31m API_URL is https[39m[32m 7[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/index.test.ts[2m > [22mAPI_URL is https
 [31m[1mTypeError[22m: .toMatch() expects to receive a string, but got undefined[39m
+[36m [2m❯[22m src/index.test.ts:[2m4:42[22m[39m
+    [90m  2|[39m
+    [90m  3|[39m [34mtest[39m([32m'API_URL is https'[39m[33m,[39m () [33m=>[39m {
+    [90m  4|[39m   [34mexpect[39m(process[33m.[39menv[33m.[39m[33mAPI_URL[39m[33m,[39m [32m'API_URL'[39m)[33m.[39m[34mtoMatch[39m([36m/^https:/[39m)
+    [90m   |[39m                                          [31m^[39m
+    [90m  5|[39m })
+    [90m  6|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 22:15:16
+[2m   Duration [22m 284ms[2m (transform 66%, import 17%, tests 11%, worker 5%)[22m
+
 [1m[38;2;234;179;8m[vx][0m[2m API_URL is set in your environment, but this task does not get it: a task sees only the variables exec.env.passThrough and define name — add it to passThrough, and to inputs.env if the output depends on it[0m
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(563ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(689ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 Read the `[vx]` line: vx names the variable it held back, and the fix.
@@ -37,7 +86,7 @@ Read the `[vx]` line: vx names the variable it held back, and the fix.
 
 ```ts title="packages/web/vx.config.ts" ins={1}
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
-inputs: { files: ['src/**'] },
+inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'] },
 outputs: { files: [] },
 cache: true,
 ```
@@ -46,8 +95,17 @@ cache: true,
 [2m$[0m API_URL=https://api.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(428ms)[0m [2msuccess[0m
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/tmp/demo/packages/web[39m
+
+ [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 22:15:18
+[2m   Duration [22m 204ms[2m (import 47%, transform 19%, tests 18%, worker 16%, environment 1%)[22m
+
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(670ms)[0m [2msuccess[0m
 ```
 
 </Frame>
@@ -57,7 +115,16 @@ cache: true,
 [2m$[0m API_URL=http://staging.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 3[2mms[22m[39m
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/tmp/demo/packages/web[39m
+
+ [32m✓[39m src/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 22:15:18
+[2m   Duration [22m 204ms[2m (import 47%, transform 19%, tests 18%, worker 16%, environment 1%)[22m
+
 [0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(2ms)[0m [2mup-to-date[0m
 ```
 
@@ -68,7 +135,7 @@ cache: true,
 
 ```ts title="packages/web/vx.config.ts" ins={2}
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
-inputs: { files: ['src/**'], env: ['API_URL'] },
+inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'], env: ['API_URL'] },
 outputs: { files: [] },
 cache: true,
 ```
@@ -77,9 +144,40 @@ cache: true,
 [2m$[0m API_URL=http://staging.demo.dev vx run test
 
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run
- [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 6[2mms[22m[39m
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/tmp/demo/packages/web[39m
+
+ [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 7[2mms[22m[39m
+[31m   [31m×[31m API_URL is https[39m[32m 5[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/index.test.ts[2m > [22mAPI_URL is https
 [31m[1mAssertionError[22m: API_URL: expected 'http://staging.demo.dev' to match /^https:/[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(451ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[32m- Expected:[39m
+/^https:/
+
+[31m+ Received:[39m
+"http://staging.demo.dev"
+
+[36m [2m❯[22m src/index.test.ts:[2m4:42[22m[39m
+    [90m  2|[39m
+    [90m  3|[39m [34mtest[39m([32m'API_URL is https'[39m[33m,[39m () [33m=>[39m {
+    [90m  4|[39m   [34mexpect[39m(process[33m.[39menv[33m.[39m[33mAPI_URL[39m[33m,[39m [32m'API_URL'[39m)[33m.[39m[34mtoMatch[39m([36m/^https:/[39m)
+    [90m   |[39m                                          [31m^[39m
+    [90m  5|[39m })
+    [90m  6|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 22:15:19
+[2m   Duration [22m 173ms[2m (import 40%, tests 25%, transform 17%, worker 17%, environment 1%)[22m
+
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(469ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 The test ran, and caught the bad URL.
@@ -109,7 +207,7 @@ export default defineProject({
         command: 'vitest run',
         env: { passThrough: ['API_URL'] },
       },
-      inputs: { files: ['src/**'] },
+      inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'] },
       outputs: { files: [] },
       cache: true,
     },
@@ -135,7 +233,7 @@ export default defineProject({
 
 ```ts
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
-inputs: { files: ['src/**'] },
+inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'] },
 ```
 
 New `API_URL` → **up-to-date**, old result.
@@ -145,7 +243,7 @@ New `API_URL` → **up-to-date**, old result.
 
 ```ts
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
-inputs: { files: ['src/**'], env: ['API_URL'] },
+inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'], env: ['API_URL'] },
 ```
 
 New `API_URL` → the test **runs**.
@@ -172,7 +270,7 @@ build: {
     command: 'vite build',
     env: { define: { NODE_ENV: 'production' } },
   },
-  inputs: { files: ['src/**', 'index.html'] },
+  inputs: { files: ['src/**', 'index.html', 'vite.config.*'] },
   outputs: { files: ['dist/**'] },
   cache: true,
 },
@@ -240,7 +338,7 @@ Vite writes `VITE_*` values into the bundle. Pass it **and** key on it, or a new
 
 ```ts mark={1,2}
 exec: { command: 'vite build', env: { passThrough: ['VITE_API_URL'] } },
-inputs: { files: ['src/**', 'index.html'], env: ['VITE_API_URL'] },
+inputs: { files: ['src/**', 'index.html', 'vite.config.*'], env: ['VITE_API_URL'] },
 outputs: { files: ['dist/**'] },
 cache: true,
 ```
@@ -269,7 +367,7 @@ import { defineProject } from '@vzn/vx/config'
 
 const keyed = (...names: string[]) => ({
   exec: { command: 'vite build', env: { passThrough: names } },
-  inputs: { files: ['src/**', 'index.html'], env: names },
+  inputs: { files: ['src/**', 'index.html', 'vite.config.*'], env: names },
 })
 
 export default defineProject({
@@ -485,7 +583,8 @@ Flags, forms and every rule: [the CLI reference](../../cli/environment-variables
 
 | Variable                                               | What vx does with it                                         |
 | ------------------------------------------------------ | ------------------------------------------------------------ |
-| `NO_COLOR`, `FORCE_COLOR`                              | turn vx's colours off or on                                  |
+| `NO_COLOR`, `FORCE_COLOR`, `CLICOLOR_FORCE`            | turn vx's colours off or on                                  |
+| `TERM`                                                 | `dumb`: no colour and no live region                         |
 | `CI`                                                   | a truthy value picks the CI output                           |
 | `GITHUB_ACTIONS`                                       | wraps each task's output in a collapsible group              |
 | `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI` | names the CI provider in the run's history                   |

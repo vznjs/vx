@@ -25,7 +25,7 @@
     "lint.oxlint": {
       "description": "oxlint with tsgolint-backed type-aware checks",
       "exec": {
-        "command": "oxlint --type-aware --type-check",
+        "command": "oxlint --type-aware --type-check --ignore-pattern node_modules",
         "sandbox": {
           "allow": {
             "read": [
@@ -42,11 +42,15 @@
       ],
       "inputs": {
         "files": [
+          "*.ts",
           "src/**",
           "tests/**",
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {
@@ -91,7 +95,7 @@
     "test.bun.shard-1": {
       "description": "bun test, shard 1 of 3",
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 tests/dependency-names.test.ts tests/extra-in-project.test.ts tests/file-dir-dep.test.ts tests/installed-layout.test.ts tests/link-to-workspace.test.ts tests/lockfile-shapes.test.ts tests/npm.test.ts tests/pnpm-v13.test.ts tests/pnpm-workspace-precise.test.ts tests/rehoist-identity.test.ts tests/transitive-workspace.test.ts tests/yarn-catalog-precise.test.ts tests/yarn-classic-root-deps.test.ts tests/yarn-package-settings.test.ts",
+        "command": "bun test --only-failures --timeout=30000 tests/bun-patch-installed.test.ts tests/dependency-names.test.ts tests/extra-in-project.test.ts tests/file-dir-dep.test.ts tests/installed-layout.test.ts tests/link-to-workspace.test.ts tests/lockfile-shapes.test.ts tests/npm.test.ts tests/pnpm-v13.test.ts tests/pnpm-workspace-precise.test.ts tests/rehoist-identity.test.ts tests/transitive-workspace.test.ts tests/yarn-catalog-precise.test.ts tests/yarn-classic-root-deps.test.ts tests/yarn-package-settings.test.ts tests/yarn-patch-installed.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -121,6 +125,9 @@
           "src/**",
           "tests/**",
           "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {
@@ -131,7 +138,7 @@
     "test.bun.shard-2": {
       "description": "bun test, shard 2 of 3",
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 tests/bun-patch-precise.test.ts tests/closure-per-project.test.ts tests/deleted-project.test.ts tests/dependency-section.test.ts tests/lazy-load.test.ts tests/lockfile-choice.test.ts tests/outside-dir-dep.test.ts tests/overrides-precise.test.ts tests/pnpm-exclude-links.test.ts tests/pnpm-ignored-optional.test.ts tests/pnpm-injected-workspace.test.ts tests/refusal-message.test.ts tests/unknown-options.test.ts tests/yarn-classic-link-workspace.test.ts tests/yarn-package-extensions.test.ts tests/yarn-transparent-workspaces.test.ts tests/yarn.test.ts",
+        "command": "bun test --only-failures --timeout=30000 tests/bun-patch-precise.test.ts tests/closure-per-project.test.ts tests/deleted-project.test.ts tests/dependencies-lock-merge.test.ts tests/dependency-section.test.ts tests/lazy-load.test.ts tests/lockfile-choice.test.ts tests/outside-dir-dep.test.ts tests/overrides-precise.test.ts tests/pnpm-exclude-links.test.ts tests/pnpm-ignored-optional.test.ts tests/pnpm-injected-workspace.test.ts tests/refusal-message.test.ts tests/unknown-options.test.ts tests/yarn-classic-link-workspace.test.ts tests/yarn-package-extensions.test.ts tests/yarn-transparent-workspaces.test.ts tests/yarn.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -161,6 +168,9 @@
           "src/**",
           "tests/**",
           "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {
@@ -201,6 +211,9 @@
           "src/**",
           "tests/**",
           "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {

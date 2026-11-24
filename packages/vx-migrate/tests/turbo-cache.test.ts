@@ -503,17 +503,23 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await (await c.get('cc33'))!.body.bytes()).toEqual(body)
     // Tampered on the server: the tag no longer covers the bytes.
     srv.store.get('cc33')!.body = new TextEncoder().encode('tampered')
-    await expect(c.get('cc33')).rejects.toThrow(/signature did not verify/)
-    // Unsigned on the server (written without a key): also a miss when we verify.
+    await expect((await c.get('cc33'))!.body.bytes()).rejects.toThrow(/signature did not verify/)
+    // Unsigned on the server (written without a key, or a server that keeps no
+    // tag: turborepo-remote-cache drops it unless it has a key): also a miss,
+    // naming the missing tag, not a mismatch.
     await cache().put('dd44', new Blob([body]), { durationMs: 1 })
-    await expect(c.get('dd44')).rejects.toThrow(/signature did not verify/)
+    await expect(c.get('dd44')).rejects.toThrow(
+      'the server sent no x-artifact-tag, so the signature cannot verify — treated as a miss; turborepo-remote-cache stores the tag only with its own TURBO_REMOTE_CACHE_SIGNATURE_KEY set',
+    )
     // Without a key configured nothing is verified (control).
     expect(await cache().get('dd44')).not.toBeNull()
   })
 
-  // A signed download is verified from a temp before core sees a byte; the
-  // temp is the layer's to remove on every path out: a refused tag, a body
-  // read to its end, a body cancelled part-way.
+  // A signed download streams to core as it arrives, kept in a temp the tag
+  // is checked from at the end; a bad tag errors the body's last read, which
+  // core takes as a miss and keeps nothing of. The temp is the layer's to
+  // remove on every path out: a refused tag, a body read to its end, a body
+  // cancelled part-way.
   describe('the signed download’s temp', () => {
     let tempDir: string
     beforeAll(async () => {
@@ -526,11 +532,46 @@ describe('TurboRemoteCache against the spec server', () => {
       const c = cache({ signatureKey: KEY }, tempDir)
       await c.put('ab12', new Blob([body]), { durationMs: 1 })
       srv.store.get('ab12')!.body = body.slice().reverse()
-      await expect(c.get('ab12')).rejects.toThrow(/signature did not verify/)
+      await expect((await c.get('ab12'))!.body.bytes()).rejects.toThrow(/signature did not verify/)
       expect(await readdir(tempDir)).toEqual([])
     })
 
-    it('a verified body is served from the temp, which goes once it is read to the end', async () => {
+    // Core bounds the wait for an answer, then the wait between bytes
+    // (run.pluginTimeout): a signed download held whole inside get() read
+    // as no answer, and a big one that kept streaming was cut to a miss.
+    it('answers at the headers, and hands each chunk on as it arrives', async () => {
+      const tag = await artifactTag(Buffer.from(KEY), 'ab99', 'team_1', new Blob([body]))
+      let release = (): void => {}
+      const held = new Promise<void>((r) => (release = r))
+      const half = body.length / 2
+      const fetchImpl = (async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(c) {
+              c.enqueue(body.slice(0, half))
+              await held
+              c.enqueue(body.slice(half))
+              c.close()
+            },
+          }),
+          { headers: { 'x-artifact-tag': tag } },
+        )) as unknown as typeof fetch
+      const config = resolveTurboCacheConfig(
+        { url: 'http://turbo.invalid', token: TOKEN, teamId: 'team_1', signatureKey: KEY },
+        {},
+      )!
+      const got = await new TurboRemoteCache(config, fetchImpl, tempDir).get('ab99')
+      const reader = got!.body.body!.getReader()
+      const first = await reader.read()
+      expect(first.value?.byteLength).toBe(half)
+      release()
+      const rest: Uint8Array[] = []
+      for (let r = await reader.read(); !r.done; r = await reader.read()) rest.push(r.value)
+      expect(Buffer.concat([first.value!, ...rest])).toEqual(Buffer.from(body))
+      expect(await readdir(tempDir)).toEqual([])
+    })
+
+    it('a verified body is served as it streams, and the temp goes once it is read to the end', async () => {
       const c = cache({ signatureKey: KEY }, tempDir)
       await c.put('ab34', new Blob([body]), { durationMs: 1 })
       const got = await c.get('ab34')
@@ -601,7 +642,7 @@ describe('TurboRemoteCache against the spec server', () => {
         {},
       )!
       const c = new TurboRemoteCache(config, untagged, tempDir)
-      await expect(c.get('ab78')).rejects.toThrow(/signature did not verify/)
+      await expect(c.get('ab78')).rejects.toThrow(/sent no x-artifact-tag/)
       expect(cancelled).toBe(true)
       expect(await readdir(tempDir)).toEqual([])
     })
@@ -661,6 +702,96 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await c.hasMany(['aa11'])).toBeNull()
     expect(srv.seen.length).toBe(n) // no further requests
   })
+})
+
+// A signed download streams to core and its tag is checked at the end
+// (6ae1db72e): safe only if a body that fails its check leaves nothing
+// anywhere. Each case is a miss that runs its task: no output restored
+// (the command refuses to run over one), no entry kept (the run saves
+// none of its own, and a run with the remote off still misses), and the
+// outputs are the command's own.
+describe('vx run with a signed turboCache(): a body that fails its tag leaves nothing', () => {
+  let srv: ReturnType<typeof turboServer>
+  let root: string
+  const policy = (localWrite: boolean, remoteRead: boolean, remoteWrite = false) => ({
+    cwd: root,
+    tasks: ['build'],
+    handleSignals: false,
+    cache: { localRead: true, localWrite, remoteRead, remoteWrite },
+  })
+  beforeAll(async () => {
+    srv = turboServer()
+    root = await mkdtemp(path.join(tmpdir(), 'vx-turbo-signed-'))
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture' }))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'pkg'\n")
+    await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
+    await writeFile(path.join(root, 'pkg', 'src', 'app.js'), 'console.log("app")\n')
+    await writeFile(
+      path.join(root, 'pkg', 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'test ! -e dist/app.js && mkdir -p dist && cp src/app.js dist/app.js' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true } } }\n",
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(
+        [
+          `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, teamId: 'team_1', signatureKey: ${JSON.stringify(KEY)} })`,
+        ],
+        `import { turboCache } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
+      ),
+    )
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  })
+  afterAll(async () => {
+    await srv.stop()
+    await rm(root, { recursive: true, force: true })
+  })
+  const wipe = async () => {
+    await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
+    await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+  }
+
+  it('an honest signed body restores (control)', async () => {
+    await wipe()
+    expect((await run(policy(true, true, true))).ok).toBe(true)
+    expect(srv.store.size).toBe(1)
+    await wipe()
+    const r = await run(policy(true, true))
+    expect(r.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
+  })
+
+  for (const tamper of ['tampered body', 'tampered tag', 'truncated body'] as const) {
+    it(`a download with a ${tamper} is a miss that leaves no byte behind`, async () => {
+      const [hash, stored] = [...srv.store][0]!
+      // The body altered inside a tar and zstd that stay valid: only the tag can tell.
+      const tar = new Uint8Array(Bun.zstdDecompressSync(stored.body))
+      const at = Buffer.from(tar).indexOf(Buffer.from('console.log("app")'))
+      tar[at + 10] = 'f'.charCodeAt(0)
+      srv.store.set(hash, {
+        ...stored,
+        ...(tamper === 'tampered body' ? { body: Bun.zstdCompressSync(tar) } : {}),
+        ...(tamper === 'tampered tag'
+          ? { tag: await artifactTag(Buffer.from(KEY), hash, 'team_1', new Blob(['other'])) }
+          : {}),
+        ...(tamper === 'truncated body' ? { body: stored.body.slice(0, -16) } : {}),
+      })
+      try {
+        await wipe()
+        // The run saves nothing of its own, so any entry after it is the download's.
+        const r = await run(policy(false, true))
+        const out = await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text()
+        await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+        const again = await run(policy(false, false))
+        expect({
+          status: r.outcomes.map((o) => o.status),
+          out,
+          again: again.outcomes.map((o) => o.status),
+        }).toEqual({ status: ['success'], out: 'console.log("app")\n', again: ['success'] })
+      } finally {
+        srv.store.set(hash, stored)
+      }
+    })
+  }
 })
 
 describe('vx run with turboCache() layered over the local cache', () => {

@@ -403,6 +403,55 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
 }
 
 /**
+ * The configs git lists (tracked or not, its ignore rules applied) in no
+ * directory of `locked` and under no nested workspace, root-relative POSIX:
+ * what `vx lock` would add. One spawn; outside git, or when git fails,
+ * none (a warning light: `vx lock --check` is the audit).
+ */
+export async function configsOutsideLock(
+  root: string,
+  locked: ReadonlySet<string>,
+): Promise<string[]> {
+  let rels: string[]
+  try {
+    rels = await gitZ(root, [
+      'ls-files',
+      '-z',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+      '--',
+      ':(glob)**/vx.config.*',
+      ':(glob)**/.vx/workspace.*',
+      NOT_INSTALLS,
+      ...NOT_VX_STATE,
+    ])
+  } catch {
+    return []
+  }
+  const nested = rels.flatMap((rel) => {
+    const at = rel.lastIndexOf('/.vx/')
+    return at > 0 && WORKSPACE_RANK.has(rel.slice(at + 1)) ? [rel.slice(0, at)] : []
+  })
+  const unknown = rels.filter((rel) => {
+    const slash = rel.lastIndexOf('/')
+    const dir = slash === -1 ? '' : rel.slice(0, slash)
+    return (
+      CONFIG_RANK.has(rel.slice(slash + 1)) &&
+      !locked.has(dir) &&
+      !nested.some((n) => dir === n || dir.startsWith(`${n}/`))
+    )
+  })
+  if (unknown.length === 0) return []
+  // Asked only of these: a nested workspace whose `.vx/` git ignores, and a
+  // tracked config deleted from the worktree, which git still lists.
+  const hidden = await unlistedNested(root, unknown, nested)
+  const outside = unknown.filter((rel) => !hidden.some((n) => rel.startsWith(`${n}/`)))
+  const there = await Promise.all(outside.map((rel) => isFile(path.join(root, rel))))
+  return outside.filter((_, i) => there[i])
+}
+
+/**
  * Nested workspace roots git did not list (an ignored `.vx/`) among `rels`'
  * directories and ancestors: a run from under one takes it as root, so the
  * outer lock must not claim it.
@@ -430,7 +479,7 @@ async function unlistedNested(
           if (isOutOfFds(err)) throw err
           return false
         },
-      )) && (await workspaceFileIn(root, d))
+      )) && (await workspaceFilesIn(root, d)).length > 0
         ? d
         : null,
     ),
@@ -655,9 +704,15 @@ async function scanConfigs(root: string): Promise<string[]> {
       if (isOutOfFds(err)) throw err
       return
     }
-    // A nested workspace's projects are its own.
-    if (rel !== '' && entries.some((e) => e.name === '.vx') && (await workspaceFileIn(root, rel)))
-      return
+    // A nested workspace's projects are its own. Its marker is listed, as
+    // git lists it, so it walls the outer workspace's discovered projects too.
+    if (rel !== '' && entries.some((e) => e.name === '.vx')) {
+      const marks = await workspaceFilesIn(root, rel)
+      if (marks.length > 0) {
+        out.push(...marks.map((n) => `${rel}/.vx/${n}`))
+        return
+      }
+    }
     const below: string[] = []
     let lossy = false
     for (const e of entries) {
@@ -712,9 +767,9 @@ async function holdsConfig(dir: Buffer): Promise<boolean> {
 // `.vx` holds vx's state (the cache), which a checkout ignores.
 const SCAN_SKIPS = new Set(['node_modules', '.git', '.vx'])
 
-async function workspaceFileIn(root: string, rel: string): Promise<boolean> {
+async function workspaceFilesIn(root: string, rel: string): Promise<string[]> {
   const names = await readdir(path.join(root, rel, '.vx')).catch(() => [] as string[])
-  return names.some((n) => WORKSPACE_RANK.has(`.vx/${n}`))
+  return names.filter((n) => WORKSPACE_RANK.has(`.vx/${n}`))
 }
 
 /** How each project got its name, when not by its path: `config`, or the plugin's name. */
@@ -777,20 +832,35 @@ export async function discoveredProject(
     !dirList(entry.deps) ||
     !dirList(entry.reach)
   ) {
+    let shown: string
+    try {
+      shown = JSON.stringify(entry)
+    } catch {
+      // A BigInt or a cycle, which JSON cannot say; an unset field is
+      // left out, as JSON leaves it.
+      const set = Object.entries(entry).filter(([, v]) => v !== undefined)
+      shown = Bun.inspect(Object.fromEntries(set), { compact: true })
+    }
     throw new UserError(
-      `${where} ${JSON.stringify(entry)}: expected { dir: string, name?: string, deps?: string[], reach?: string[] }`,
+      `${where} ${shown}: expected { dir: string, name?: string, deps?: string[], reach?: string[] }`,
     )
   }
   const name = entry.name
-  if (name !== undefined) {
-    const bad = nameFault(name)
-    if (bad !== null) throw new UserError(`${where} ${JSON.stringify(name)}: ${bad}`)
-  }
   let dir = path.resolve(root, entry.dir)
   const rel = relPosix(root, dir)
+  if (name !== undefined) {
+    const bad = nameFault(name)
+    // Said with its directory: the name is the manifest's there (a package.json).
+    if (bad !== null)
+      throw new UserError(
+        `${where} ${JSON.stringify(name)} at ${rel || '.'}: ${bad} — rename it in the manifest plugin '${by}' reads there`,
+      )
+  }
   const named = name === undefined ? '' : ` "${name}"`
   if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
-    throw new UserError(`${where}${named} at ${dir}: outside the workspace root`)
+    throw new UserError(
+      `${where}${named} at ${dir}: outside the workspace root — move it under the root, or leave it out of what plugin '${by}' discovers (a workspaces glob)`,
+    )
   }
   const shown = rel === '' ? '.' : rel
   // Refused once the stage ended too, but naming no plugin and saying to set a `name`.
@@ -849,6 +919,7 @@ export function projectNameProblem(name: string): string | null {
   if (name.includes('*')) return "holds '*', which makes it a pattern"
   if (name.startsWith('^')) return "starts with '^', which names dependencies' tasks"
   if (name.startsWith('!')) return "starts with '!', which a filter reads as an exclusion"
+  if (name.startsWith('-')) return "starts with '-', which the CLI reads as a flag"
   // The root's own name, which the filter reads as the root's directory.
   if (name === ROOT_NAME) return null
   const walk = "starts or ends with '...', which a filter reads as a dependency walk"

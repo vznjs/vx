@@ -194,9 +194,21 @@ async function unzstdBounded(data: Uint8Array, digest: Digest): Promise<Uint8Arr
   return parts.length === 1 ? parts[0]! : new Uint8Array(Buffer.concat(parts))
 }
 
+/**
+ * Bytes refused for not being the digest they were asked under: an
+ * executor tells this from a server that is down, and gives the task back.
+ */
+class BlobIntegrityError extends Error {
+  override name = 'BlobIntegrityError'
+}
+
+export function isBlobIntegrityError(err: unknown): boolean {
+  return err instanceof BlobIntegrityError
+}
+
 /** More bytes than the digest declares, refused before the rest arrive. */
 const overServed = (digest: Digest): Error =>
-  new Error(
+  new BlobIntegrityError(
     `blob integrity failure for ${digest.hash.slice(0, 16)}…: ` +
       `served past its declared ${digest.size_bytes} bytes`,
   )
@@ -211,7 +223,7 @@ const wireBound = (size: number): number => size + (size >> 8) + 1024
 /** The check itself, over a size and a hash however they were computed (whole or streamed). */
 function assertServed(size: number, hash: (() => string) | undefined, digest: Digest): void {
   if (size !== Number(digest.size_bytes)) {
-    throw new Error(
+    throw new BlobIntegrityError(
       `blob integrity failure for ${digest.hash.slice(0, 16)}…: ` +
         `size ${size} != declared ${digest.size_bytes}`,
     )
@@ -219,7 +231,7 @@ function assertServed(size: number, hash: (() => string) | undefined, digest: Di
   if (hash === undefined) return
   const got = hash()
   if (got !== digest.hash) {
-    throw new Error(
+    throw new BlobIntegrityError(
       `blob integrity failure: bytes hash to ${got.slice(0, 16)}… ` +
         `but were served for digest ${digest.hash.slice(0, 16)}…`,
     )
@@ -522,7 +534,6 @@ export class ReapiClient {
   private digestFunction: DigestFunctionName = 'SHA256'
   private compression = false
   private batchCompression = false
-  private negotiated: ServerCapabilities | undefined
   private readonly toolName: string
   private readonly toolVersion: string
   private readonly correlatedInvocationsId: string
@@ -794,7 +805,6 @@ export class ReapiClient {
       caps.supportedCompressors.includes('ZSTD') &&
       typeof Bun.zstdCompressSync === 'function'
     this.batchCompression = this.compression && caps.supportedBatchCompressors.includes('ZSTD')
-    this.negotiated = caps
   }
 
   /** The negotiated digest function; SHA256 until `negotiate()` says otherwise. */

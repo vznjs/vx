@@ -90,8 +90,9 @@ function countingDb(real: Database): { db: Database; queries: string[] } {
   const queries: string[] = []
   const db = {
     query(sql: string) {
-      // Not the one probe for hits kept packed (`expandHits`), asked of any connection once.
-      if (!sql.includes('run_hits')) queries.push(sql)
+      // Not the one probe for hits kept packed (`expandHits`), asked of any
+      // connection once, nor the entries that stand for them (`recordEntryPasses`).
+      if (!sql.includes('run_hits') && !sql.includes('FROM entries')) queries.push(sql)
       return real.query(sql)
     },
   } as unknown as Database

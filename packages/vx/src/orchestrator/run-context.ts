@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
-  envFlagOn,
+  ciProvider,
   executablePath,
   gitEnv,
   ignoreDir,
@@ -295,27 +295,16 @@ export function captureDefaultBranch(
   return name.length > 0 ? name : null
 }
 
-// Recognized CI env vars in match-priority order. The first whose value
-// is truthy (present and not '0'/'false') decides the provider; a bare
-// `CI` is the generic fallback.
-const CI_PROVIDERS: ReadonlyArray<[envVar: string, provider: string]> = [
-  ['GITHUB_ACTIONS', 'github'],
-  ['GITLAB_CI', 'gitlab'],
-  ['BUILDKITE', 'buildkite'],
-  ['CIRCLECI', 'circleci'],
-  ['CI', 'generic'],
-]
-
 /**
- * Detect a CI environment + which provider. `ci=true` if any recognized
- * var is truthy; `provider` names the most-specific match (a specific
- * provider beats the generic `CI`).
+ * Detect a CI environment + which provider (`ciProvider`'s list). `ci=true`
+ * if any recognized var is truthy; `provider` names the most-specific match
+ * (a specific provider beats the generic `CI`).
  */
 export function detectCi(env: NodeJS.ProcessEnv | Record<string, string | undefined>): CiContext {
-  for (const [varName, provider] of CI_PROVIDERS) {
-    if (envFlagOn(env[varName])) return { ci: true, provider, ...ciLinks(provider, env) }
-  }
-  return { ci: false, provider: null }
+  const provider = ciProvider(env)
+  return provider === null
+    ? { ci: false, provider: null }
+    : { ci: true, provider, ...ciLinks(provider, env) }
 }
 
 type CiLinks = Pick<CiContext, 'runUrl' | 'change' | 'pipeline' | 'job' | 'attempt'>

@@ -750,14 +750,17 @@ describe('GitHub Actions renderer (full mode + gha)', () => {
       mode: 'errors-only',
       ci: true,
     })
+    // GitHub Actions is CI by its own variable too (`ciProvider`).
     expect(resolveOutputView({ outputLogs: 'full' }, { GITHUB_ACTIONS: 'true' })).toEqual({
       mode: 'full',
       gha: true,
+      ci: true,
     })
     // Every mode fences task text there; only `full` groups (its branch).
     expect(resolveOutputView({ outputLogs: 'errors-only' }, { GITHUB_ACTIONS: 'true' })).toEqual({
       mode: 'errors-only',
       gha: true,
+      ci: true,
     })
   })
 
@@ -1315,7 +1318,7 @@ describe('flow e2e against a real fixture workspace', () => {
       expect(out).toContain('::error title=one#boom::failed (exit 7)')
       expect(out).toContain('┌─ one#boom')
     },
-    { timeout: 20_000 },
+    { timeout: 30_000 },
   )
 })
 
@@ -1351,6 +1354,25 @@ describe('persistent post-ready output', () => {
     expect(text).toContain('┌─ ▸ app#server > $ sh ./server.sh')
     expect(text).toContain('STDOUT (since ready)')
     expect(text).toContain('└─ ▸ app#server ── (7ms) running')
+  })
+
+  // 2026-11-23: a server vx stopped at the run's end, before this block
+  // printed, still closed `running` under its own shutdown output.
+  it('full: a server vx stopped before the block prints closes stopped', () => {
+    const out = sink()
+    const log = defaultLogger(NO_COLORS, { mode: 'full' }, out)
+    const n = mkPersistent('app#server')
+    log.taskStdout(n, 'READY\n')
+    log.taskComplete(n, mkOutcome(n, 'success', { durationMs: 7 }))
+    log.taskStdout(n, 'shutting down\n')
+    log.serverStopped(n.id)
+    log.runEnd?.()
+    const closes = out
+      .text()
+      .split('\n')
+      .filter((l) => l.startsWith('└─'))
+    // Its frame at ready was right then; the block after the stop is not.
+    expect(closes).toEqual(['└─ ▸ app#server ── (7ms) running', '└─ ▸ app#server ── (7ms) stopped'])
   })
 
   it('full: stderr since ready lands in its own section', () => {

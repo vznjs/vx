@@ -54,3 +54,19 @@ it('takes VX_DTE_RELAY set after dte() was made, at the run', () => {
     'VX_DTE_RELAY must be an http(s) URL, got "relay.example.com"',
   )
 })
+
+// `export VX_DTE_RUN=$(uuidgen)` on a machine without uuidgen set it empty,
+// and the run stayed on this machine without a word.
+it('refuses VX_DTE_RUN set but empty or blank, naming how to set it', () => {
+  for (const blank of ['', '  ']) {
+    process.env['VX_DTE_RUN'] = blank
+    expect(() => subscribed({ adapter: keyless })).toThrow(
+      "VX_DTE_RUN is set but empty: set it to a random UUID, export VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())'), or unset it to run on this machine",
+    )
+  }
+  // CONTROL: unset, the run stays here, as documented.
+  delete process.env['VX_DTE_RUN']
+  delete process.env['VX_DTE_RELAY']
+  delete process.env['ACTIONS_ID_TOKEN_REQUEST_URL']
+  expect(subscribed({ adapter: keyless })).toEqual([])
+})

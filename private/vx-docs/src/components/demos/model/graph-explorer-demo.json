@@ -4,78 +4,78 @@
       "id": "@demo/admin#build",
       "project": "@demo/admin",
       "task": "build",
-      "hash": "a74bb55efa941655",
+      "hash": "3dcf6e4ad7e5b1cc",
       "cacheStatus": "miss",
       "deps": ["@demo/ui#build"],
-      "p50Ms": 163
+      "p50Ms": 697
     },
     {
       "id": "@demo/ui#build",
       "project": "@demo/ui",
       "task": "build",
-      "hash": "d2144525ed862be5",
+      "hash": "6bb04ad1941afa46",
       "cacheStatus": "miss",
       "deps": [],
-      "p50Ms": 185
+      "p50Ms": 777
     },
     {
       "id": "@demo/api#build",
       "project": "@demo/api",
       "task": "build",
-      "hash": "69530a592bd4ec2c",
+      "hash": "6da7897572f9e3a4",
       "cacheStatus": "hit-local",
       "deps": [],
-      "p50Ms": 1693
+      "p50Ms": 821
     },
     {
       "id": "@demo/web#build",
       "project": "@demo/web",
       "task": "build",
-      "hash": "60d8cc316eafa713",
+      "hash": "02883f4dd9cd4d66",
       "cacheStatus": "miss",
       "deps": ["@demo/ui#build"],
-      "p50Ms": 164
+      "p50Ms": 829
     },
     {
       "id": "@demo/admin#test",
       "project": "@demo/admin",
       "task": "test",
-      "hash": "1f9045818b392128",
+      "hash": "48da419accaefb20",
       "cacheStatus": "miss",
       "deps": ["@demo/ui#build"],
-      "p50Ms": 344
+      "p50Ms": 1242
     },
     {
       "id": "@demo/api#test",
       "project": "@demo/api",
       "task": "test",
-      "hash": "99c2a2b9df2d6f19",
+      "hash": "18d42499cf5e6b36",
       "cacheStatus": "hit-local",
       "deps": [],
-      "p50Ms": 1882
+      "p50Ms": 1639
     },
     {
       "id": "@demo/ui#test",
       "project": "@demo/ui",
       "task": "test",
-      "hash": "b5b8c639b438037f",
+      "hash": "69c5a7f8bfc3dcd1",
       "cacheStatus": "miss",
       "deps": [],
-      "p50Ms": 468
+      "p50Ms": 1359
     },
     {
       "id": "@demo/web#test",
       "project": "@demo/web",
       "task": "test",
-      "hash": "7c59d38b90ff423e",
+      "hash": "24d75f774a79ded7",
       "cacheStatus": "miss",
       "deps": ["@demo/ui#build"],
-      "p50Ms": 353
+      "p50Ms": 1352
     }
   ],
   "predicted": {
-    "wallMs": 538,
-    "workMs": 1677,
+    "wallMs": 2129,
+    "workMs": 6256,
     "unknownCount": 0,
     "criticalPath": ["@demo/ui#build", "@demo/web#test"]
   }

@@ -54,3 +54,60 @@ it('the command line telemetry receives is masked', async () => {
   ])
   expect(JSON.stringify(records).includes(SECRET)).toBe(false)
 })
+
+// Each task's command is masked against the env as it is at that task, and
+// its own `define`: a mask built once a run (aa357a07a) missed a secret a
+// plugin put in the env after the run's first task.
+it('each task start masks its own secrets and the env as it is then', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-tel-cmd-mask-per-task-'))
+  const OWN = 'owndefinedsecret456'
+  const LATE = 'latearrivingsecret789'
+  try {
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+    )
+    await Bun.write(path.join(dir, '.vx/workspace.mjs'), localWorkspaceSource())
+    const pkg = path.join(dir, 'packages', 'a')
+    await mkdir(pkg, { recursive: true })
+    await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'a' }))
+    await writeFile(
+      path.join(pkg, 'vx.config.mjs'),
+      `export default { tasks: {
+        zero: { exec: { command: 'true' } },
+        one: { dependsOn: ['zero'], exec: { command: 'echo ${OWN}', env: { define: { ONE_TOKEN: '${OWN}' } } } },
+        two: { dependsOn: ['one'], exec: { command: 'echo ${LATE} ${OWN}' } },
+      } }\n`,
+    )
+    expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: dir }).exitCode).toBe(0)
+    const records: TelemetryRecord[] = []
+    try {
+      await run({
+        cwd: dir,
+        tasks: ['a#two'],
+        log: defaultLogger({ enabled: false }, { mode: 'focused' }, { write: () => true }),
+        handleSignals: false,
+        telemetrySinks: [
+          {
+            onRecord: (rec) => {
+              records.push(rec)
+              if (rec.kind === 'task.end' && rec.taskId === 'a#one') process.env.LATE_TOKEN = LATE
+            },
+          },
+        ],
+      })
+    } finally {
+      delete process.env.LATE_TOKEN
+    }
+    const commands = Object.fromEntries(
+      records.flatMap((r) => (r.kind === 'task.start' ? [[r.taskId, r.command]] : [])),
+    )
+    expect(commands).toEqual({
+      'a#zero': 'true',
+      'a#one': 'echo ***',
+      'a#two': `echo *** ${OWN}`,
+    })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})

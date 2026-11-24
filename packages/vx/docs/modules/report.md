@@ -57,6 +57,7 @@ export interface DefaultLogger extends Logger {
   forecast(graph: () => Forecast, load: () => Promise<Forecast | undefined>): void // `graph` (no history) at the first free row; `load` only if the live region is still up 1 s in
   holdStatus(): () => void // no live region until the release: a secret prompt waits on the terminal
   serverKept(id): void // `vx watch` kept this server up: its frame closes `still running`
+  serverStopped(id): void // vx stopped this ready server: its since-ready block closes `stopped`
 }
 
 export function defaultLogger(
@@ -159,7 +160,9 @@ print in any mode. A ready persistent task the run keeps (`vx run dev`)
 is held to a bounded tail until `runEnd`, which flushes it before the
 summary; from there its output streams below the summary a line at a
 time under its id (`app#dev │ …`), fenced on Actions, and not at all
-under `errors-only`, `hash-only` or `none` (#2054). A line that redraws
+under `errors-only`, `hash-only` or `none` (#2054). Under `errors-only`
+it stays in the tail, which prints as a since-ready frame once the
+server fails, above the line naming its exit. A line that redraws
 itself (`\r`, `CSI 2K`, `CSI 1G`) prints as its last redraw, so the id
 prefix stays on screen.
 
@@ -418,6 +421,10 @@ export function formatTaskBlock(
   links?: boolean, // the terminal opens OSC 8: a failed task's file paths link to the file
 ): string
 
+// The `$` line's command: a requested task's gets the args after `--`, as
+// the run appends them, secrets masked (the frame and the `--dry` plan)
+export function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string
+
 // `success local … <id>` — quiet cache hit
 export function formatTaskHitLine(node, outcome, colors?, onPath?, blocks?): string
 
@@ -475,7 +482,7 @@ export function unknownUsual(colors?): { text; painted }
 
 // Focused mode's live frame around a streamed task
 export function formatFrameOpen(node, colors?, forwardArgs?): string // `┌─ <id> > $ <cmd>`
-export function formatFrameClose(node, outcome, colors?, kept?): string // kept: `still running`
+export function formatFrameClose(node, outcome, colors?, kept?, stopped?): string // kept: `still running`; stopped: `stopped`
 // A held persistent task's output since ready; '' for an empty body
 export function formatPersistentTailBlock(
   node,
@@ -484,6 +491,7 @@ export function formatPersistentTailBlock(
   dropped?,
   colors?,
   forwardArgs?,
+  stopped?, // vx stopped it before the block printed: closes `stopped`
 ): string
 export function formatPersistentList(nodes, colors?): string[] // `▸ <id> running` rows
 ```

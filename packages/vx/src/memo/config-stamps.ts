@@ -1,14 +1,17 @@
-// Each config file as `vx lock` (or a passing `--check`) last read it, kept
-// beside cache.db in `config-stamps.json`: a run reads configs only from
-// `.vx/projects.lock`, so an edit with no `vx lock` after it ran the old
-// config, green. Machine-local, never committed: a run asks it only while
-// the lock's bytes are the ones it was taken beside, so a pull that brings
-// a new lock, or a clone with no memo, asks nothing. A failure of any kind
-// reads as no memo: it is a warning light, never a requirement.
+// Each config file as `vx lock` (or a passing `--check`, or a run that
+// evaluated it) last read it, kept beside cache.db in `config-stamps.json`:
+// a run reads configs only from `.vx/projects.lock`, so an edit with no
+// `vx lock` after it ran the old config, green. Machine-local, never
+// committed. Kept per workspace and lock digest, the last `KEPT` used: a
+// branch checked out again finds its lock's stamps. A lock with none (a
+// pull, a clone, a branch another `vx lock` left) has its configs evaluated
+// once by the run, as `vx lock --check` does (orchestrator/projects.ts),
+// and stamped then. A config edit committed with no `vx lock` keeps the
+// stamped lock, so it is asked. A memo that fails to read reads as none.
 
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { executablePath, gitEnv, xxh3hex } from '../util/index.js'
+import { xxh3hex } from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './fs-clock.js'
 
 /** The file in a cache directory the stamps live in; a clear deletes it (and a temp of it). */
@@ -18,18 +21,36 @@ export const CONFIG_STAMPS_FILE = 'config-stamps.json'
 export interface ConfigStamps {
   /** Epoch ms before the first stat: the racy window runs from here. */
   at: number
-  /** Each config, workspace-relative → [size, mtimeMs, xxh3 of its bytes]. */
-  configs: Record<string, [number, number, string]>
-  /** The commit HEAD named when taken; null outside git. */
-  head: string | null
+  /**
+   * Each config, workspace-relative → [size, mtimeMs, xxh3 of its bytes,
+   * ctimeMs, inode]. Size and mtime alone missed a same-length edit whose
+   * mtime was set back; ctime and the inode move with any write, as in
+   * the file-hash memo. A stamp from before them has neither: its bytes
+   * are read.
+   */
+  configs: Record<string, [number, number, string, number?, number?]>
+  /**
+   * The files a `project` plugin made each project's config from
+   * (`ProjectHookContext.read`), by project directory, workspace-relative;
+   * each one's stamp is in `configs`, or none when it was absent.
+   */
+  reads?: Record<string, string[]>
 }
 
 interface Stamps extends ConfigStamps {
-  /** The workspace they are of: a cache dir two checkouts share holds one. */
+  /** The workspace they are of: a cache dir two checkouts share holds both. */
   root: string
   /** xxh3 of `.vx/projects.lock`'s bytes when taken. */
   lock: string
 }
+
+/** The file: each workspace's and lock's stamps, the last used first. */
+interface StampsFile {
+  entries: Stamps[]
+}
+
+/** How many locks' stamps the file keeps: a few branches checked out in turn. */
+const KEPT = 8
 
 /**
  * Each config's stamp, taken before its evaluation: an edit during it reads
@@ -39,7 +60,6 @@ interface Stamps extends ConfigStamps {
 export async function takeConfigStamps(
   root: string,
   files: readonly string[],
-  head: string | null,
 ): Promise<ConfigStamps> {
   const at = Date.now()
   const configs: ConfigStamps['configs'] = {}
@@ -48,10 +68,10 @@ export async function takeConfigStamps(
       const s = await stat(file).catch(() => null)
       const bytes = s === null ? null : await readFile(file).catch(() => null)
       if (s === null || bytes === null) return
-      configs[path.relative(root, file)] = [s.size, s.mtimeMs, xxh3hex(bytes)]
+      configs[path.relative(root, file)] = [s.size, s.mtimeMs, xxh3hex(bytes), s.ctimeMs, s.ino]
     }),
   )
-  return { at, configs, head }
+  return { at, configs }
 }
 
 /** Keep `stamps` beside the lock now on disk. */
@@ -62,25 +82,70 @@ export async function writeConfigStamps(
 ): Promise<void> {
   try {
     const lock = xxh3hex(await readFile(path.join(root, '.vx', 'projects.lock')))
-    await mkdir(cacheDir, { recursive: true })
-    const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
-    const temp = `${file}.${process.pid}.tmp`
-    const kept: Stamps = { root, lock, ...stamps }
-    // Renamed in: a run reading beside this write sees the old file or the new.
-    await writeFile(temp, JSON.stringify(kept))
-    await rename(temp, file)
+    await keep(cacheDir, { root, lock, ...stamps }, true)
   } catch {
-    // No memo: a run asks nothing.
+    // No memo: the next run evaluates the configs.
   }
+}
+
+/**
+ * Keep `taken` beside lock `lock`: a run found those configs and mapped-from
+ * files to evaluate as the lock holds. Taken by the caller before it
+ * evaluated: an edit between the two reads as one after. The lock's other
+ * stamps and `at` stay; a lock with none gets these. Only into a cache dir
+ * a run or `vx lock` made: a plan makes none (`clockDir`), so until one
+ * exists each run evaluates again.
+ */
+export async function restampConfigs(
+  root: string,
+  cacheDir: string,
+  lock: string,
+  taken: ConfigStamps,
+): Promise<void> {
+  try {
+    const was = (await readStamps(cacheDir))?.entries.find(
+      (e) => e.root === root && e.lock === lock,
+    )
+    await keep(
+      cacheDir,
+      was === undefined
+        ? { root, lock, ...taken }
+        : {
+            ...was,
+            configs: { ...was.configs, ...taken.configs },
+            reads: { ...was.reads, ...taken.reads },
+          },
+      false,
+    )
+  } catch {
+    // No memo: the next run evaluates again.
+  }
+}
+
+/**
+ * `entry` first, replacing its workspace's and lock's, the rest after it up
+ * to `KEPT`. Without `make`, no cache dir fails the write.
+ */
+async function keep(cacheDir: string, entry: Stamps, make: boolean): Promise<void> {
+  const others = ((await readStamps(cacheDir))?.entries ?? []).filter(
+    (e) => e.root !== entry.root || e.lock !== entry.lock,
+  )
+  if (make) await mkdir(cacheDir, { recursive: true })
+  const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
+  const temp = `${file}.${process.pid}.tmp`
+  const out: StampsFile = { entries: [entry, ...others].slice(0, KEPT) }
+  // Renamed in: a run reading beside this write sees the old file or the new.
+  await writeFile(temp, JSON.stringify(out))
+  await rename(temp, file)
 }
 
 /**
  * One parse per version of the file: a run's rounds and loads ask again,
  * and a `vx watch` outlives a `vx lock` another shell runs.
  */
-const read = new Map<string, { version: string; stamps: Promise<Stamps | null> }>()
+const read = new Map<string, { version: string; stamps: Promise<StampsFile | null> }>()
 
-async function readStamps(cacheDir: string): Promise<Stamps | null> {
+async function readStamps(cacheDir: string): Promise<StampsFile | null> {
   const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
   const s = await stat(file).catch(() => null)
   if (s === null) return null
@@ -90,7 +155,10 @@ async function readStamps(cacheDir: string): Promise<Stamps | null> {
     got = {
       version,
       stamps: readFile(file, 'utf8').then(
-        (text) => JSON.parse(text) as Stamps,
+        (text) => {
+          const parsed = JSON.parse(text) as Partial<StampsFile> | null
+          return Array.isArray(parsed?.entries) ? { entries: parsed.entries } : null
+        },
         () => null,
       ),
     }
@@ -99,95 +167,72 @@ async function readStamps(cacheDir: string): Promise<Stamps | null> {
   return got.stamps.catch(() => null)
 }
 
+/** A config as the caller stat'ed it, for `LockStamps.edited`. */
+export interface ConfigStat {
+  readonly file: string
+  readonly size: number
+  readonly mtimeMs: number
+  readonly ctimeMs: number
+  readonly ino: number
+}
+
+/** The stamps `vx lock` took beside one lock, read once (one stat) per load. */
+export interface LockStamps {
+  /** The files a `project` plugin made each project's config from, by project directory. */
+  reads: Record<string, string[]>
+  /** Whether `rel` was there (stamped) when `vx lock` ran. */
+  present: (rel: string) => boolean
+  /**
+   * The configs of `files` whose bytes differ from their stamp, or that
+   * have none: size,
+   * mtime, ctime and inode (the caller's stat) first, the bytes only when
+   * those moved or the
+   * stamp was taken inside the file's racy window (a same-size edit then
+   * keeps both). A commit since changes nothing: a config it moved under
+   * the same lock was not relocked.
+   */
+  edited: (files: readonly ConfigStat[]) => Promise<string[]>
+}
+
 /**
- * The configs of `files` whose bytes differ from the stamp taken beside
- * the lock whose digest is `lock`: size and mtime (the caller's stat)
- * first, the bytes only when those moved or the stamp was taken inside
- * the file's racy window (a same-size edit then keeps both). Empty when
- * no stamp was taken beside this lock in this workspace. Once HEAD moved
- * since the stamp (a pull, a checkout), a config whose bytes are HEAD's
- * came with the commit, not an edit here: a comment-only change keeps
- * the lock's bytes, and CI's `vx lock --check` judges a commit. `head` is
- * asked only when a config moved.
+ * The stamps taken beside the lock whose digest is `lock` in this
+ * workspace; undefined when none were (a pull, a clone, a branch another
+ * `vx lock` left): the run then evaluates every config it reads.
  */
-export async function configsEditedSinceLock(
+export async function stampsBesideLock(
   root: string,
   cacheDir: string,
-  lock: string | undefined,
-  files: readonly { file: string; size: number; mtimeMs: number }[],
-  head: () => string | null,
-): Promise<string[]> {
-  if (lock === undefined || files.length === 0) return []
-  const stamps = await readStamps(cacheDir)
-  if (
-    stamps === null ||
-    stamps.root !== root ||
-    stamps.lock !== lock ||
-    typeof stamps.configs !== 'object'
+  lock: string,
+): Promise<LockStamps | undefined> {
+  const stamps = (await readStamps(cacheDir))?.entries.find(
+    (e) => e?.root === root && e.lock === lock,
   )
-    return []
-  const edited = await Promise.all(
-    files.map(async ({ file, size, mtimeMs }) => {
-      const rel = path.relative(root, file)
-      const was = stamps.configs[rel]
-      if (!Array.isArray(was)) return null
-      if (
-        size === was[0] &&
-        mtimeMs === was[1] &&
-        stamps.at - mtimeMs > racyWindowMs(mtimeMs, FILE_HASH_RACY_MS)
+  if (stamps === undefined) return undefined
+  const { reads, configs, at } = stamps
+  if (typeof configs !== 'object' || configs === null) return undefined
+  return {
+    reads: typeof reads === 'object' && reads !== null ? reads : {},
+    present: (rel) => Object.hasOwn(configs, rel),
+    edited: async (files) => {
+      const edited = await Promise.all(
+        files.map(async ({ file, size, mtimeMs, ctimeMs, ino }) => {
+          const rel = path.relative(root, file)
+          // None: a run stamped only the configs it evaluated beside this lock.
+          const was = Object.hasOwn(configs, rel) ? configs[rel] : undefined
+          if (!Array.isArray(was)) return rel
+          if (
+            size === was[0] &&
+            mtimeMs === was[1] &&
+            ctimeMs === was[3] &&
+            ino === was[4] &&
+            at - mtimeMs > racyWindowMs(mtimeMs, FILE_HASH_RACY_MS)
+          )
+            return null
+          const bytes = await readFile(file).catch(() => null)
+          return bytes !== null && xxh3hex(bytes) !== was[2] ? rel : null
+        }),
       )
-        return null
-      const bytes = await readFile(file).catch(() => null)
-      return bytes !== null && xxh3hex(bytes) !== was[2] ? { rel, bytes } : null
-    }),
-  )
-  const moved = edited.filter((f) => f !== null)
-  if (moved.length === 0) return []
-  const now = typeof stamps.head === 'string' ? head() : null
-  const committed = now === null || now === stamps.head ? new Map() : headBlobs(root, moved)
-  return moved
-    .filter(({ rel, bytes }) => {
-      const oid = committed.get(rel.split(path.sep).join('/'))
-      return oid === undefined || blobOid(bytes, oid.length) !== oid
-    })
-    .map(({ rel }) => rel)
-}
-
-/** Each of `files`' blob OID at HEAD, by workspace-relative POSIX path; empty on any git failure. */
-function headBlobs(root: string, files: readonly { rel: string }[]): Map<string, string> {
-  const out = new Map<string, string>()
-  try {
-    const proc = Bun.spawnSync({
-      cmd: [
-        executablePath('git'),
-        'ls-tree',
-        '-z',
-        'HEAD',
-        '--',
-        ...files.map((f) => f.rel.split(path.sep).join('/')),
-      ],
-      cwd: root,
-      env: gitEnv(),
-      stdout: 'pipe',
-      stderr: 'ignore',
-    })
-    if (proc.exitCode !== 0) return out
-    // `<mode> blob <oid>\t<path>`, paths relative to `root` as asked.
-    for (const entry of new TextDecoder().decode(proc.stdout).split('\0')) {
-      const tab = entry.indexOf('\t')
-      const meta = entry.slice(0, tab).split(' ')
-      if (tab > 0 && meta[1] === 'blob') out.set(entry.slice(tab + 1), meta[2]!)
-    }
-  } catch {
-    // No git: every moved config stays edited.
+      return edited.filter((f) => f !== null)
+    },
   }
-  return out
-}
-
-/** Git's blob OID of `bytes`, SHA-1 or (a 64-hex repo) SHA-256. */
-function blobOid(bytes: Uint8Array, hexLength: number): string {
-  const hasher = new Bun.CryptoHasher(hexLength === 64 ? 'sha256' : 'sha1')
-  hasher.update(`blob ${bytes.byteLength}\0`)
-  hasher.update(bytes)
-  return hasher.digest('hex')
 }

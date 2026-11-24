@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import fs from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'bun:test'
-import { armWatcher } from '../src/cli/watch-fs.js'
+import { armWatcher, WatcherPool } from '../src/cli/watch-fs.js'
 
 async function until(ok: () => boolean, what: string): Promise<void> {
   const start = Date.now()
@@ -175,6 +175,33 @@ describe.skipIf(process.platform !== 'linux')('the recursive arm on Linux', () =
         }
         expect({ code, closed }).toEqual({ code: 'ENOSPC', closed: 1 })
       } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    })
+
+    // Past the arm, a directory made at the limit went unwatched with a
+    // warning, and every edit in it after was missed until a restart.
+    it('a directory made at the limit after the arm swaps the tree for the poller', async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-tree-limit-'))
+      const real = fs.watch.bind(fs)
+      let refuse = false
+      vi.spyOn(fs, 'watch').mockImplementation(((...args: Parameters<typeof fs.watch>) => {
+        if (refuse) throw Object.assign(new Error('ENOSPC: no space left'), { code: 'ENOSPC' })
+        return real(...args)
+      }) as typeof fs.watch)
+      const seen: string[] = []
+      const pool = new WatcherPool(() => false)
+      try {
+        pool.arm(dir, true, (f) => seen.push(f))
+        await pool.proved()
+        refuse = true
+        await mkdir(path.join(dir, 'late'))
+        await until(() => seen.includes('late'), 'the new directory')
+        await Bun.sleep(400)
+        await writeFile(path.join(dir, 'late', 'f.txt'), 'x')
+        await until(() => seen.includes('late/f.txt'), 'a file in the unwatched directory')
+      } finally {
+        pool.closeAll()
         await rm(dir, { recursive: true, force: true })
       }
     })

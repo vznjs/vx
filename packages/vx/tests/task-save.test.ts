@@ -96,6 +96,8 @@ function fake(f: Fake = {}): { m: MissRun; ran: Attempts; warned: string[] } {
     exitCode: f.exitCode ?? 0,
     attempts: 1,
     spentMs: 1,
+    queuedMs: 0,
+    firstQueuedMs: 0,
     failedAttempts: [],
     attemptOutputs: [],
     leftRunning: f.leftRunning === true,

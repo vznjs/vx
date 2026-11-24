@@ -2,7 +2,7 @@
 // composition proof: a real `vx run` with `github({ summaryFile })` writes
 // the job summary. No GitHub API involved in wave one — the summary is a
 // file the Actions runner renders.
-import { describe, expect, it } from 'bun:test'
+import { afterAll, describe, expect, it } from 'bun:test'
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -26,9 +26,14 @@ function restoreEnv(saved: Readonly<Record<string, string | undefined>>): void {
   }
 }
 
+const made: string[] = []
+afterAll(() => Promise.all(made.map((d) => rm(d, { recursive: true, force: true }))))
+
 /** A path in a fresh directory, nothing written there yet. */
 async function fresh(name = 'sumfile.md'): Promise<string> {
-  return path.join(await mkdtemp(path.join(tmpdir(), 'vx-gh-sum-')), name)
+  const dir = await mkdtemp(path.join(tmpdir(), 'vx-gh-sum-'))
+  made.push(dir)
+  return path.join(dir, name)
 }
 const written = (file: string): Promise<string | undefined> =>
   readFile(file, 'utf8').catch(() => undefined)
@@ -267,6 +272,25 @@ describe('renderJobSummary', () => {
     )
     expect(one).toContain('| small#1 | left |  | 1ms |  | 1ms | 0ms | 13 ok, 1 failed |')
     expect(one).not.toContain('this machine')
+    // A Ctrl-C's worker read `0`: the task the stop killed was in no count.
+    const stopped = renderJobSummary(
+      summary([task({ where: 'small#1', status: 'aborted' })], {
+        machines: [
+          {
+            ...m,
+            name: 'small#1',
+            done: 0,
+            failed: 0,
+            aborted: 1,
+            onlineMs: 1,
+            busyMs: 1,
+            cpuAvg: 0,
+            utilization: 0,
+          },
+        ],
+      }),
+    )
+    expect(stopped).toContain('| small#1 | left |  | 1ms |  | 1ms | 0ms | 0 ok, 1 aborted |')
     // The workers line named a task that ran on the run's own machine raw.
     const here = renderJobSummary(
       summary([task({ taskId: 'a#*x*' }), task({ taskId: 'b#y', where: 'w' })], {
@@ -281,6 +305,34 @@ describe('renderJobSummary', () => {
       }),
     )
     expect(broken).toContain('1 on this machine: a#x # y.')
+  })
+
+  it('a worker machine busy with other work is not read as its tasks using every core', () => {
+    // Seen on a local() run: `0.0 of 4` used beside `100%` "used of all
+    // cores". The last column is the machine's busy time, any process's.
+    const md = renderJobSummary(
+      summary([task({ where: 'w' })], {
+        machines: [
+          {
+            name: 'w',
+            status: 'ok',
+            cores: 4,
+            memoryBytes: 16e9,
+            done: 1,
+            failed: 0,
+            onlineMs: 1000,
+            busyMs: 1000,
+            cpuPeak: 0,
+            cpuAvg: 0,
+            memoryPeakBytes: 1e6,
+            memoryAvgBytes: 1e6,
+            utilization: 1,
+          },
+        ],
+      }),
+    )
+    expect(md).toContain('| Used cores, avg | Peak RAM | Machine busy, any process |')
+    expect(md).toContain('| 0.0 of 4 | 1 MB of 16.0 GB | 100% |')
   })
 
   it('a worker with no booked cores is not read as 0% booked', () => {
@@ -413,6 +465,15 @@ describe('renderJobSummary', () => {
       summary([task({ taskId: 'b#build', status: 'failed', exitCode: 0, cacheSource: 'miss' })]),
     )
     expect(md).toContain('- **b#build** — cache save failed\n')
+  })
+
+  it('a pass that wrote none of its outputs names the glob, not exit 1', () => {
+    const md = renderJobSummary(
+      summary([
+        task({ taskId: 'b#build', status: 'failed', exitCode: 1, outputsMissing: ['dist/*_x_*'] }),
+      ]),
+    )
+    expect(md).toContain('- **b#build** — exited 0, no file matched dist/\\*\\_x\\_\\*\n')
   })
 
   it('escapes pipes in task ids — a hostile name cannot break the table', () => {
@@ -606,6 +667,48 @@ describe('vx run with github() — the composition proof', () => {
   })
 })
 
+describe('vx run with github() — a pass that wrote none of its outputs', () => {
+  it('its failure line names the glob, as the frame does, not exit 1', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'vx-run-github-missing-'))
+    try {
+      const summaryFile = path.join(root, 'step-summary.md')
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture' }))
+      await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'pkg'\n")
+      await mkdir(path.join(root, 'pkg'), { recursive: true })
+      await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
+      await writeFile(
+        path.join(root, 'pkg', 'vx.config.mjs'),
+        `export default { tasks: {
+           build: {
+             exec: { command: 'echo hi' },
+             inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['dist/index.js'] }, cache: true,
+           },
+         } }`,
+      )
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        localWorkspaceSource(
+          [`github({ summaryFile: ${JSON.stringify(summaryFile)} })`],
+          `import { github } from ${JSON.stringify(GITHUB_INDEX)}\n`,
+        ),
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+      const r = await run({
+        cwd: root,
+        projects: ['pkg'],
+        tasks: ['build'],
+        log: { status: () => undefined, error: () => undefined } as never,
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(false)
+      const md = await readFile(summaryFile, 'utf8')
+      expect(md).toContain('- **pkg#build** — exited 0, no file matched dist/index\\.js\n')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 // Item 806's sweep: each row fails with one line of src/ undone.
 describe('every output the vx-ci sweep found unheld', () => {
   const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
@@ -628,6 +731,20 @@ describe('every output the vx-ci sweep found unheld', () => {
     expect(Buffer.byteLength(written, 'utf8')).toBeLessThanOrEqual(MAX_JOB_SUMMARY_BYTES)
     expect(written).toContain('truncated by @vzn/vx-ci')
     expect(written).not.toContain('�')
+  })
+
+  it('a cut ends on a whole line: no row is left half drawn', async () => {
+    // A 2,000-task page after 1 MB of another step's writes ended
+    // `| packages/p5#t36 | ` and the note: a row with no status read as a task
+    // with none, and a cut inside the <sub> footer put the note in it.
+    const { clampJobSummary } = await import('../src/summary.js')
+    const rows = Array.from({ length: 30 }, (_, i) => `| a#t${i} | ✅ ran | 1ms |`)
+    const page = `| Task | Status | Duration |\n| --- | --- | --- |\n${rows.join('\n')}\n`
+    const room = Buffer.byteLength(page) - 40
+    const written = clampJobSummary(page, room)
+    const kept = written.slice(0, written.indexOf('\n\n…truncated'))
+    expect(kept.split('\n').every((l) => page.split('\n').includes(l))).toBe(true)
+    expect(Buffer.byteLength(written)).toBeLessThanOrEqual(room)
   })
 
   it('a cut that lands inside a character backs off to its start, whichever parity', async () => {
@@ -722,6 +839,17 @@ describe('every output the vx-ci sweep found unheld', () => {
       ].join('\n'),
     )
     expect(renderJobSummary(summary([task({})]))).not.toContain('Workers to declare')
+  })
+
+  it('one core is singular in the workers to declare', () => {
+    const md = renderJobSummary(
+      summary([task({})], {
+        advice: [
+          { of: 'declared', endMs: 4_400, workers: [{ count: 1, cores: 1, memoryBytes: 4e9 }] },
+        ],
+      }),
+    )
+    expect(md).toContain('| 1 × (1 core, 4.0 GB) | 4.4s |')
   })
 
   it('a persistent task that failed to spawn reads so', () => {
@@ -892,6 +1020,20 @@ describe('the summary, as its second sweep found it unheld', () => {
     // Stopped before anything started: still a stop, not a failure.
     const early = renderJobSummary(summary([], { notRunCount: 2, exitOk: false }))
     expect(early.split('\n')[0]).toBe('## ⏹️ vx run')
+  })
+
+  // A stopped local run said `4 tasks · 1 not run` over three rows, as its
+  // terminal's `4 total` over three: the task the stop reached first is a row.
+  it('tables each task the stop reached before it started', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'c#q', durationMs: 57 })], {
+        notRunCount: 1,
+        notRun: ['c#after|x'],
+        exitOk: false,
+      }),
+    ).split('\n')
+    const rows = md.filter((l) => l.startsWith('| c#'))
+    expect(rows).toEqual(['| c#q | ✅ ran | 57ms |', '| c#after\\|x | ⏹️ not run |  |'])
   })
 
   it('violations: none says nothing, one is singular, two plural', () => {

@@ -61,6 +61,16 @@ describe('readTimings / writeTimings', () => {
     expect((await readdir(root)).sort()).toEqual(['is-a-dir', 'new'])
   })
 
+  // A file it cannot read (a directory, another user's 0600 file) may be a
+  // timings file it cannot see: read as empty, the run's end replaced it.
+  it('a file it cannot read warns and is undefined, so it is never written over', async () => {
+    const warnings: string[] = []
+    const dir = path.join(root, 'unreadable')
+    await mkdir(dir)
+    expect(readTimings(dir, (m) => warnings.push(m))).toBeUndefined()
+    expect(warnings).toHaveLength(1)
+  })
+
   // Undefined, not empty: the run's end wrote timings over what it ignored.
   it('an absent file is empty; one that is not a timings file warns and is undefined', async () => {
     const warnings: string[] = []
@@ -74,6 +84,13 @@ describe('readTimings / writeTimings', () => {
     expect(warnings).toHaveLength(3)
     await writeFile(file, '{"version":1,"tasks":{"a":1,"b":"2","c":-1,"d":null}}')
     expect(readTimings(file, (m) => warnings.push(m))).toEqual({ a: 1 })
+    // Dropped by name, as `assume` drops one: it went unsaid.
+    expect(warnings.slice(3)).toEqual([
+      `[vx] vx-history: timings file ${file} ignores "b", "c", "d" — each must be a number of ms from 0 to 2^53−1`,
+    ])
+    // The bound the warning names, both sides of it: it said `2^53`, which is dropped.
+    await writeFile(file, `{"version":1,"tasks":{"max":${2 ** 53 - 1},"over":${2 ** 53}}}`)
+    expect(readTimings(file, () => {})).toEqual({ max: 2 ** 53 - 1 })
   })
 
   // Filtered in place, read once: a copy of an 8,002-task file, filtered
@@ -354,7 +371,7 @@ it(
 // surfaced as core's bare `failed in teardown: EEXIST: mkdir …`, naming
 // neither the timings file nor that only the file was lost.
 it(
-  'a timings file it cannot write is named, and the run is not failed',
+  'a timings file it cannot read is named once, never written over, and the run is not failed',
   async () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
@@ -381,8 +398,10 @@ it(
     expect(
       said.filter((m) => m.includes('vx-history')).map((m) => m.split(/: E[A-Z]+:/)[0]),
     ).toEqual([
+      // One problem, one warning: a file it could not read may hold another
+      // writer's timings (unreadable to this user, not absent), so it is
+      // never written over, and its write failing too was said twice.
       `[vx] vx-history: timings file ${file} not read`,
-      `[vx] vx-history: timings file ${file} not written`,
     ])
   },
   TIMEOUT,
@@ -498,7 +517,10 @@ it(
     })
     expect([summary.ok, warnings.filter((w) => w.includes('vx-history'))]).toEqual([
       true,
-      ['[vx] vx-history: assume ignores "a#lint" — each must be a number of ms from 0 to 2^53'],
+      [
+        `[vx] vx-history: timings file ${path.join(root, 't.json')} ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53−1`,
+        '[vx] vx-history: assume ignores "a#lint" — each must be a number of ms from 0 to 2^53−1',
+      ],
     ])
     // The rewrite keeps no such duration either.
     const kept = readTimings(path.join(root, 't.json'), () => {}) ?? {}

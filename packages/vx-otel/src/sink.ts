@@ -125,6 +125,9 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 const MAX_RETRY_AFTER_MS = 2000
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
 
+/** A 413: the collector's limit is under this body, so it goes again in halves. */
+class OtlpTooLarge extends Error {}
+
 /** A failure worth another attempt; `afterMs` is the collector's Retry-After, or 0. */
 class OtlpRetryable extends Error {
   constructor(
@@ -210,7 +213,7 @@ async function postOnce(
     // nothing and said nothing, for every run (walked the adopter's path). The
     // body is the collector's own explanation, so a line of it rides the
     // message. quiet: the status alone still names the refusal
-    const text = await upTo(res, REPLY_BYTES).catch(() => '')
+    const text = hideHeaders(await upTo(res, REPLY_BYTES).catch(() => ''), headers)
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location')
       const to = location === null ? null : URL.parse(location, url)
@@ -219,7 +222,10 @@ async function postOnce(
       )
     }
     if (!res.ok) {
-      const refused = new Error(`HTTP ${res.status}${detail(text)}`)
+      const refused =
+        res.status === 413
+          ? new OtlpTooLarge(`HTTP 413${detail(text)}`)
+          : new Error(`HTTP ${res.status}${detail(text)}`)
       if (!RETRYABLE_STATUS.has(res.status)) throw refused
       throw new OtlpRetryable(refused, retryAfterMs(res.headers.get('retry-after')))
     }
@@ -232,6 +238,29 @@ async function postOnce(
     clearTimeout(timer)
     deadline?.removeEventListener('abort', onDeadline)
   }
+}
+
+/** Shorter values are not hidden, as core masks none under 6 characters: each would blank common words. */
+const MIN_HIDDEN_CHARS = 6
+
+/**
+ * `text` with each header value the user gave written `***`, and the
+ * credential of a `<scheme> <credential>` one: a header is often the
+ * vendor's key, and a collector that echoed what it refused printed it in
+ * the warning. vx-otel's own `content-type` and `content-encoding` are no secret.
+ */
+function hideHeaders(text: string, headers: Record<string, string>): string {
+  const values = new Set<string>()
+  for (const [k, v] of Object.entries(headers)) {
+    if (k === 'content-type' || k === 'content-encoding') continue
+    values.add(v)
+    const credential = /^\S+\s+(\S+)$/.exec(v)?.[1]
+    if (credential !== undefined) values.add(credential)
+  }
+  let out = text
+  for (const v of [...values].sort((a, b) => b.length - a.length))
+    if (v.length >= MIN_HIDDEN_CHARS) out = out.replaceAll(v, '***')
+  return out
 }
 
 /**
@@ -484,8 +513,20 @@ export class OtelSink implements TelemetrySink {
           return depSpan === undefined ? [] : [dependencyLink(this.traceId, depSpan, dep)]
         })
         const events = taskSpanEvents(record, nanos(record.ts))
-        const startNano =
+        let startNano =
           this.taskStartNano.get(record.taskId) ?? nanos(record.ts - record.durationMs)
+        // An executor that held it waiting for a machine (a worker's warm-up)
+        // started its window after that wait: queue time, not the span's.
+        if (
+          record.queuedMs !== undefined &&
+          record.wallclockStartNs !== undefined &&
+          record.wallclockEndNs !== undefined
+        ) {
+          const window =
+            Number(BigInt(record.wallclockEndNs) - BigInt(record.wallclockStartNs)) / 1e6
+          const after = nanos(record.ts - window)
+          if (BigInt(after) > BigInt(startNano)) startNano = after
+        }
         const t: TaskTelemetry = record
         this.spans.push({
           traceId: this.traceId,
@@ -717,7 +758,7 @@ export class OtelSink implements TelemetrySink {
     // The run's own metrics ride with the first batch of per-task points.
     const bodies =
       first === undefined
-        ? [this.runMetricsBody(summary, [])]
+        ? [{ json: this.runMetricsBody(summary, []) }]
         : requestBodies(this.taskPoints, (points) =>
             points[0] === first
               ? this.runMetricsBody(summary, points)
@@ -748,7 +789,7 @@ export class OtelSink implements TelemetrySink {
     await this.send('logs', this.cfg.logsUrl, this.logBodies(bundle.tasks))
   }
 
-  private logBodies(tasks: readonly TaskLogEntry[]): string[] {
+  private logBodies(tasks: readonly TaskLogEntry[]): RequestBody[] {
     const now = nanos(this.summary?.endedAt ?? Date.now())
     return requestBodies(tasks, (entries) =>
       JSON.stringify(
@@ -778,7 +819,11 @@ export class OtelSink implements TelemetrySink {
   }
 
   /** POSTs every body at once; one warning per signal for the run, however many fail. */
-  private async send(signal: OtelSignal, url: string, bodies: readonly string[]): Promise<void> {
+  private async send(
+    signal: OtelSignal,
+    url: string,
+    bodies: readonly RequestBody[],
+  ): Promise<void> {
     const gzip = this.cfg.gzip.includes(signal)
     const headers: Record<string, string> = {
       'content-type': 'application/json',
@@ -786,17 +831,23 @@ export class OtelSink implements TelemetrySink {
       ...this.cfg.signalHeaders[signal],
       ...(gzip ? { 'content-encoding': 'gzip' } : {}),
     }
-    const answers = await Promise.all(
-      bodies.map((body) =>
-        // Through a promise, so a transport that throws before it awaits is caught too.
-        Promise.resolve()
-          .then(() => this.postFor(signal)(url, body, headers, this.deadline, this.cfg.tls[signal]))
-          .then(
-            () => undefined,
-            (err: unknown) => err,
-          ),
-      ),
-    )
+    // A 413 sends the body again in halves, each half its own answer.
+    const post = async (body: RequestBody): Promise<unknown[]> => {
+      // Through a promise, so a transport that throws before it awaits is caught too.
+      const err = await Promise.resolve()
+        .then(() =>
+          this.postFor(signal)(url, body.json, headers, this.deadline, this.cfg.tls[signal]),
+        )
+        .then(
+          () => undefined,
+          (e: unknown) => e,
+        )
+      const halves = err instanceof OtlpTooLarge ? body.halves?.() : undefined
+      if (halves === undefined || this.deadline?.aborted === true) return [err]
+      return (await Promise.all(halves.map(post))).flat()
+    }
+    const perBody = await Promise.all(bodies.map(post))
+    const answers = perBody.flat()
     const failed = answers
       .filter((e) => e !== undefined && !(e instanceof OtlpWarning))
       .map((e) => (e instanceof Error ? e.message : String(e)))
@@ -818,7 +869,10 @@ export class OtelSink implements TelemetrySink {
     const hint = this.cfg.grpc.includes(signal)
       ? ` — the env asks for OTLP over gRPC, and vx sends OTLP/HTTP JSON only: point it at the collector's HTTP endpoint (port 4318)`
       : ''
-    const share = bodies.length > 1 ? ` (${failed.length} of ${bodies.length} requests)` : ''
+    const lost = perBody.filter((a) =>
+      a.some((e) => e !== undefined && !(e instanceof OtlpWarning)),
+    ).length
+    const share = bodies.length > 1 ? ` (${lost} of ${bodies.length} requests)` : ''
     this.cfg.warn?.(`[vx] vx-otel: export failed for ${shownUrl(url)}: ${failed[0]}${share}${hint}`)
   }
 }
@@ -838,16 +892,27 @@ const ITEMS_PER_REQUEST = 1000
  */
 const BYTES_PER_REQUEST = 4 * 1024 * 1024
 
+/** One request's JSON, and how to split it should the collector refuse its size (413). */
+interface RequestBody {
+  json: string
+  halves?: () => RequestBody[]
+}
+
 /** `items` as request bodies, each at most ITEMS_PER_REQUEST items and BYTES_PER_REQUEST bytes. */
-function requestBodies<T>(items: readonly T[], encode: (group: T[]) => string): string[] {
-  const out: string[] = []
+function requestBodies<T>(items: readonly T[], encode: (group: T[]) => string): RequestBody[] {
+  const out: RequestBody[] = []
+  const bodyOf = (group: T[], json = encode(group)): RequestBody => {
+    if (group.length < 2) return { json }
+    const half = Math.ceil(group.length / 2)
+    return { json, halves: () => [bodyOf(group.slice(0, half)), bodyOf(group.slice(half))] }
+  }
   const add = (group: T[]): void => {
-    const body = encode(group)
-    if (group.length > 1 && Buffer.byteLength(body) > BYTES_PER_REQUEST) {
+    const json = encode(group)
+    if (group.length > 1 && Buffer.byteLength(json) > BYTES_PER_REQUEST) {
       const half = Math.ceil(group.length / 2)
       add(group.slice(0, half))
       add(group.slice(half))
-    } else out.push(body)
+    } else out.push(bodyOf(group, json))
   }
   for (let i = 0; i < items.length; i += ITEMS_PER_REQUEST) {
     add(items.slice(i, i + ITEMS_PER_REQUEST))

@@ -63,6 +63,24 @@ async function refusal(p: Promise<unknown>): Promise<[number, string]> {
 }
 
 describe('a CI OIDC token', () => {
+  // vx-dte asks for a token for the relay's URL with no trailing slash, as
+  // it dials it: an AUDIENCE set with one refused every token.
+  it('is accepted by an AUDIENCE with a trailing slash', async () => {
+    const verify = createVerifier({
+      allow: [{ issuer: ISS, repository: 'group/app' }],
+      audience: `${AUD}/`,
+      now: () => now,
+      fetchJson: async (url) =>
+        url.endsWith('/jwks') ? { keys: [{ ...jwk, kid: 'k1' }] } : { jwks_uri: `${ISS}/jwks` },
+    })
+    expect(await verify(await sign(good))).toEqual({ iss: ISS, run: ['7'] })
+    // A GitLab id_token's aud is written by hand, the slash too.
+    expect(await verify(await sign({ ...good, aud: `${AUD}/` }))).toEqual({ iss: ISS, run: ['7'] })
+    expect((await refusal(verify(await sign({ ...good, aud: 'https://other.example' }))))[0]).toBe(
+      401,
+    )
+  })
+
   it('is accepted with its run claims, reading the keys once', async () => {
     const fetched: string[] = []
     const verify = verifier(fetched)

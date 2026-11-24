@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
+import { verbHelpText } from '../src/cli/help.js'
 import { initInstalls, notServed } from '../src/cli/init.js'
 import * as ui from '../src/ui/index.js'
 import { VERSION } from '../src/version.js'
@@ -145,6 +146,66 @@ describe('vx init with no package.json', () => {
     ]).toEqual([0, false, PROJECT])
   })
 
+  // A re-run over a config that already declares tasks still said
+  // `declare a task in vx.config.mjs`: the next step is to run one.
+  it('a re-run over a config with tasks names one to run, not one to declare', async () => {
+    const root = await tmp('vx-init-bare-rerun-')
+    expect((await vx(root, ['init', '--mjs'])).out).toContain(
+      '  next      declare a task in vx.config.mjs, then vx lock && vx run <task>\n',
+    )
+    await writeFile(
+      path.join(root, 'vx.config.mjs'),
+      'export default { tasks: { hi: { exec: { command: "echo hi" } } } }\n',
+    )
+    const again = await vx(root, ['init', '--mjs'])
+    expect([again.code, again.err]).toEqual([0, ''])
+    expect(again.out).toContain('  kept      .vx/workspace.mjs\n            vx.config.mjs\n')
+    expect(again.out).toContain('  next      vx run hi\n')
+  })
+
+  // A root package.json that does not parse read as none: init wrote the
+  // starter, locked, and said nothing of the file every manager refuses.
+  it('a package.json that does not parse is refused, by file and position', async () => {
+    const root = await tmp('vx-init-bare-bad-manifest-')
+    await writeFile(path.join(root, 'package.json'), '{\n  "name": "x",\n  "scripts": oops\n}\n')
+    await mkdir(path.join(root, 'sub'))
+    for (const cwd of [root, path.join(root, 'sub')]) {
+      const r = await vx(cwd, ['init'])
+      // `bun bin.ts` prints Bun's own dump of the file first; a compiled vx does not.
+      const said = r.err.slice(r.err.indexOf('✗ vx init'))
+      expect([r.code, said.replace(/ \(JSONC? Parse error[^)]*\)/, ' (…)')]).toEqual([
+        1,
+        `✗ vx init  ${path.relative(cwd, path.join(root, 'package.json'))}:3:14: not JSON (…); fix it, then run vx init again\n`,
+      ])
+    }
+    expect(existsSync(path.join(root, '.vx'))).toBe(false)
+    // CONTROL: bun takes comments and a trailing comma, so init does too.
+    await writeFile(path.join(root, 'package.json'), '{\n  // x\n  "name": "x",\n}\n')
+    expect((await vx(root, ['init'])).code).toBe(0)
+  })
+
+  // `vx init --help` said --force overwrites vx.config.* files; it replaces
+  // the workspace file too, and a user lost the plugins it declared.
+  it('--force replaces the workspace file, as its help says', async () => {
+    const root = await tmp('vx-init-bare-force-ws-')
+    await mkdir(path.join(root, '.vx'))
+    await writeFile(
+      path.join(root, '.vx', 'workspace.ts'),
+      'export default { plugins: [] } // mine\n',
+    )
+    const r = await vx(root, ['init', '--force'])
+    expect([r.code, await readFile(path.join(root, '.vx', 'workspace.ts'), 'utf8')]).toEqual([
+      0,
+      WORKSPACE,
+    ])
+    // Listed under `files` alone, an overwrite read as a first write.
+    expect(r.out).toContain('  replaced  .vx/workspace.ts\n')
+    const line = verbHelpText('init')
+      .split('\n')
+      .find((l) => l.trimStart().startsWith('--force'))
+    expect(line).toContain('.vx/workspace.*')
+  })
+
   // 2026-11-07: with vx.config.mjs and vx.config.ts both here, --force
   // replaced only the first found, and the other stayed beside it.
   it('--force replaces every config name already here', async () => {
@@ -157,7 +218,9 @@ describe('vx init with no package.json', () => {
       ['vx.config.mjs', 'vx.config.js'].filter((n) => existsSync(path.join(root, n))),
       await readFile(path.join(root, 'vx.config.ts'), 'utf8'),
     ]).toEqual([0, [], PROJECT])
-    expect(r.out).toContain('  replaced  vx.config.js\n            vx.config.mjs\n')
+    expect(r.out).toContain(
+      '  replaced  vx.config.ts\n            vx.config.js\n            vx.config.mjs\n',
+    )
   })
 
   it('a lock that is not written fails init, as vx-migrate fails', async () => {

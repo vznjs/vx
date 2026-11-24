@@ -46,9 +46,11 @@ async function makeWorkspace(): Promise<Fixture> {
 // probes the caller's own process group — alive forever. Under an
 // eight-shard gate that window was hit once. Wait for the number, not the
 // file.
-async function waitForPid(file: string, timeoutMs: number): Promise<number> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
+//
+// No deadline of its own: 10 s ran out before a loaded host's vx reached
+// the task (load 40, 2026-11-24). The row's timeout guards a hang.
+async function waitForPid(file: string): Promise<number> {
+  for (;;) {
     const f = Bun.file(file)
     if (await f.exists()) {
       const pid = Number((await f.text()).trim())
@@ -56,18 +58,15 @@ async function waitForPid(file: string, timeoutMs: number): Promise<number> {
     }
     await Bun.sleep(20)
   }
-  throw new Error(`timed out waiting for a pid in ${file}`)
 }
 
 /** Wait for a marker's CONTENT, never its existence (CLAUDE.md, item 876). */
-async function waitForContent(file: string, want: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
+async function waitForContent(file: string, want: string): Promise<void> {
+  for (;;) {
     const f = Bun.file(file)
     if ((await f.exists()) && (await f.text()) === want) return
     await Bun.sleep(20)
   }
-  throw new Error(`timed out waiting for ${JSON.stringify(want)} in ${file}`)
 }
 
 const silentLogger: Logger = {
@@ -111,7 +110,7 @@ describe('signal handling during vx run (e2e)', () => {
         stderr: 'pipe',
       })
       const pidFile = path.join(dir, 'pid.txt')
-      const pid = await waitForPid(pidFile, 10_000)
+      const pid = await waitForPid(pidFile)
       expect(isAlive(pid)).toBe(true)
 
       proc.kill('SIGTERM')
@@ -145,7 +144,7 @@ describe('signal handling during vx run (e2e)', () => {
           stdout: 'ignore',
           stderr: 'ignore',
         })
-        await waitForContent(up, 'up\n', 10_000)
+        await waitForContent(up, 'up\n')
         proc.kill(signal)
         deaths.push({ code: await proc.exited, by: proc.signalCode })
       }
@@ -165,7 +164,7 @@ describe('signal handling during vx run (e2e)', () => {
         stdout: 'ignore',
         stderr: 'ignore',
       })
-      await waitForContent(up, 'up\n', 10_000)
+      await waitForContent(up, 'up\n')
       late.kill('SIGINT')
       expect({ code: await late.exited, by: late.signalCode }).toEqual({ code: 130, by: 'SIGINT' })
 
@@ -179,7 +178,7 @@ describe('signal handling during vx run (e2e)', () => {
         ],
         { cwd: fixture.root, env, stdout: 'pipe', stderr: 'ignore', detached: true },
       )
-      await waitForContent(up, 'up\n', 10_000)
+      await waitForContent(up, 'up\n')
       process.kill(-script.pid, 'SIGINT')
       const out = await new Response(script.stdout).text()
       expect({ code: await script.exited, next: out.includes('NEXT') }).toEqual({
@@ -220,15 +219,15 @@ describe('signal handling during vx run (e2e)', () => {
         },
       })
       const up = path.join(fixture.root, 'packages', 'app', 'up.txt')
-      const deadline = Date.now() + 10_000
-      while (!existsSync(up) && Date.now() < deadline) await Bun.sleep(20)
+      while (!existsSync(up)) await Bun.sleep(20)
       // The positive first: the running vx holds an entry here.
       // Each user's locks sit in a directory of their own (L-47).
       const uid = process.getuid?.()
       const lockRoot = uid === undefined ? tmp : path.join(tmp, `vx-runs-${uid}`)
       // `<lock>.sock` beside it is the run's `vx last --live` socket.
+      // `<lock>-files` is holdLockFiles' SQLite file: it stays, as a lock file must.
       const locks = readdirSync(lockRoot).filter(
-        (n) => n.startsWith('vx-run-') && !n.endsWith('.sock'),
+        (n) => n.startsWith('vx-run-') && !n.endsWith('.sock') && !/-files(-journal)?$/.test(n),
       )
       expect(locks.length).toBe(1)
       expect(readdirSync(path.join(lockRoot, locks[0]!))).toEqual([
@@ -237,8 +236,7 @@ describe('signal handling during vx run (e2e)', () => {
       proc.kill('SIGINT')
       if (signals === 2) {
         const heard = path.join(fixture.root, 'packages', 'app', 'int.txt')
-        const until = Date.now() + 10_000
-        while (!existsSync(heard) && Date.now() < until) await Bun.sleep(20)
+        while (!existsSync(heard)) await Bun.sleep(20)
         expect(existsSync(heard)).toBe(true)
         proc.kill('SIGINT')
       }
@@ -246,7 +244,9 @@ describe('signal handling during vx run (e2e)', () => {
       // With what each leftover holds: its entry (the hook never ran) or
       // nothing (the directory's removal was skipped). macOS CI left one
       // once (item 867).
-      const left = readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-'))
+      const left = readdirSync(lockRoot).filter(
+        (n) => n.startsWith('vx-run-') && !/-files(-journal)?$/.test(n),
+      )
       expect(
         left.map((n) => [n, n.endsWith('.sock') ? 'socket' : readdirSync(path.join(lockRoot, n))]),
       ).toEqual([])
@@ -290,7 +290,7 @@ describe('signal handling during vx run (e2e)', () => {
         stderr: 'pipe',
       })
       const pidFile = path.join(dir, 'pid.txt')
-      const pid = await waitForPid(pidFile, 10_000)
+      const pid = await waitForPid(pidFile)
       expect(isAlive(pid)).toBe(true)
 
       proc.kill('SIGTERM')
@@ -330,7 +330,7 @@ describe('signal handling during vx run (e2e)', () => {
           stderr: 'pipe',
         },
       )
-      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      const pid = await waitForPid(path.join(dir, 'pid.txt'))
       expect(isAlive(pid)).toBe(true)
 
       proc.kill('SIGTERM')
@@ -377,13 +377,13 @@ describe('signal handling during vx run (e2e)', () => {
         stderr: 'pipe',
         env: { ...process.env, VX_RUN_KILL_GRACE: '600000ms' },
       })
-      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      const pid = await waitForPid(path.join(dir, 'pid.txt'))
       expect(isAlive(pid)).toBe(true)
 
       proc.kill('SIGINT')
       // The second only once vx has heard the first: two back to back can
       // land as one, and then the row drives the first-signal path.
-      await waitForContent(path.join(dir, 'heard.txt'), 'heard\n', 10_000)
+      await waitForContent(path.join(dir, 'heard.txt'), 'heard\n')
       proc.kill('SIGINT')
       const code = await proc.exited
       expect(code).toBe(130)
@@ -421,11 +421,11 @@ describe('signal handling during vx run (e2e)', () => {
         stderr: 'pipe',
         env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms' },
       })
-      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      const pid = await waitForPid(path.join(dir, 'pid.txt'))
       expect(isAlive(pid)).toBe(true)
 
       proc.kill('SIGINT')
-      await waitForContent(path.join(dir, 'heard.txt'), 'heard\n', 10_000)
+      await waitForContent(path.join(dir, 'heard.txt'), 'heard\n')
       proc.kill('SIGTERM')
       const code = await proc.exited
       // 130, not 143: SIGINT ended this run.
@@ -458,7 +458,7 @@ describe('signal handling during vx run (e2e)', () => {
         stderr: 'pipe',
       })
       const pidFile = path.join(dir, 'pid.txt')
-      const pid = await waitForPid(pidFile, 10_000)
+      const pid = await waitForPid(pidFile)
 
       proc.kill('SIGINT')
       const code = await proc.exited
@@ -505,7 +505,7 @@ describe('signal handling during vx run (e2e)', () => {
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+    const pid = await waitForPid(path.join(dir, 'pid.txt'))
     proc.kill(signal)
     expect(await proc.exited).toBe(code)
     expect((await Bun.file(path.join(dir, 'got.txt')).text()).trim()).toBe(signal)
@@ -534,7 +534,7 @@ describe('signal handling during vx run (e2e)', () => {
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      await waitForPid(path.join(dir, 'pid.txt'))
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
       await rm(path.join(dir, 'out'), { recursive: true, force: true })
@@ -567,7 +567,7 @@ describe('signal handling during vx run (e2e)', () => {
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      await waitForPid(path.join(dir, 'pid.txt'))
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
       await Bun.sleep(300)
@@ -605,7 +605,7 @@ describe('signal handling during vx run (e2e)', () => {
           new Response(proc.stderr).text(),
         ])
         if (signal) {
-          await waitForPid(path.join(fixture.root, 'packages', 'app', 'pid.txt'), 10_000)
+          await waitForPid(path.join(fixture.root, 'packages', 'app', 'pid.txt'))
           proc.kill('SIGINT')
         }
         await proc.exited
@@ -642,7 +642,7 @@ describe('signal handling during vx run (e2e)', () => {
         stderr: 'pipe',
       })
       const text = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
-      await waitForPid(path.join(fixture.root, 'packages', 'app', 'pid.txt'), 10_000)
+      await waitForPid(path.join(fixture.root, 'packages', 'app', 'pid.txt'))
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
       // Rows in the task list, each with its own status; the time a killed
@@ -684,7 +684,7 @@ describe('signal handling during vx run (e2e)', () => {
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      await waitForPid(path.join(dir, 'pid.txt'))
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
       const out = await new Response(proc.stdout).text()
@@ -719,7 +719,7 @@ describe('signal handling during vx run (e2e)', () => {
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      await waitForPid(path.join(dir, 'pid.txt'))
       first.kill('SIGINT')
       expect(await first.exited).toBe(130)
       const again = Bun.spawn([process.execPath, BIN, 'run', 'app#done', '--output-logs=full'], {
@@ -773,11 +773,18 @@ describe('signal handling during vx run (e2e)', () => {
       expect(await list()).toEqual(['ok'])
       // Two slots: a one-core runner's one slot held `done` behind `slow`.
       const proc = vx('run', 'slow', 'done', '--all', '--concurrency', '2')
-      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
-      await waitForContent(path.join(dir, 'done.txt'), 'done\n', 10_000)
-      await Bun.sleep(300)
+      let out = ''
+      const read = (async () => {
+        for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+      })()
+      await waitForPid(path.join(dir, 'pid.txt'))
+      // Stopped once vx has ended `done`, its row out, not once its command
+      // wrote its file: a loaded host was between the two 300 ms later, and
+      // `done` went unmeasured (load 40, 2026-11-24).
+      while (!/success .*app#done/.test(out)) await Bun.sleep(20)
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
+      await read
       expect(await list()).toEqual(['ok'])
       // What finished before the stop is still measured, so the next run
       // knows it (2026-10-21); the task the stop ended is not.
@@ -839,13 +846,10 @@ describe('signal handling during vx run (e2e)', () => {
       expect(await vx('run', 'quick', '--all').exited).toBe(0)
       const proc = vx('run', 'dev', '--all')
       const out = new Response(proc.stdout).text()
-      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      await waitForPid(path.join(dir, 'pid.txt'))
       // The summary is out: the run sits in the keep-alive wait.
-      const deadline = Date.now() + 10_000
-      while (!(await Bun.file(path.join(fixture.root, '.vx', 'cache', 'cache.db')).exists())) {
-        if (Date.now() > deadline) throw new Error('no cache db')
+      while (!(await Bun.file(path.join(fixture.root, '.vx', 'cache', 'cache.db')).exists()))
         await Bun.sleep(20)
-      }
       await Bun.sleep(500)
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
@@ -871,7 +875,7 @@ describe('signal handling during vx run (e2e)', () => {
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      await waitForPid(path.join(dir, 'pid.txt'))
       proc.kill('SIGINT')
       const out = await new Response(proc.stdout).text()
       expect(await proc.exited).toBe(130)
@@ -981,7 +985,7 @@ describe('signal handling during vx run (e2e)', () => {
           new Response(proc.stderr).text(),
         ])
         const pids = await Promise.all(
-          ['dev.pid', 'slow.pid', 'child.pid'].map((f) => waitForPid(path.join(dir, f), 10_000)),
+          ['dev.pid', 'slow.pid', 'child.pid'].map((f) => waitForPid(path.join(dir, f))),
         )
         proc.kill(signal)
         const code = await proc.exited
@@ -1045,7 +1049,7 @@ describe('signal handling during vx run (e2e)', () => {
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      await waitForPid(path.join(dir, 'pid.txt'))
       // The failure's row is out before the stop.
       const reader = proc.stdout.getReader()
       let out = ''
@@ -1103,7 +1107,7 @@ describe('signal handling during vx run (e2e)', () => {
           stdout: 'pipe',
           stderr: 'pipe',
         })
-        const server = await waitForPid(path.join(dir, 'server.pid'), 10_000)
+        const server = await waitForPid(path.join(dir, 'server.pid'))
         expect(isAlive(server)).toBe(true)
         proc.kill(signal)
         expect({ signal, code: await proc.exited }).toEqual({ signal, code: expected })
@@ -1184,9 +1188,7 @@ describe('terminateChildren — what the sweep leaves behind', () => {
   }
   const marker = async (name: string): Promise<void> => {
     const file = path.join(dir, name)
-    const until = Date.now() + 10_000
-    while (!(existsSync(file) && readFileSync(file, 'utf8') === 'up\n') && Date.now() < until)
-      await Bun.sleep(20)
+    while (!(existsSync(file) && readFileSync(file, 'utf8') === 'up\n')) await Bun.sleep(20)
     expect(readFileSync(file, 'utf8')).toBe('up\n')
   }
   const killGroup = (pid: number): void => {
@@ -1224,7 +1226,7 @@ describe('terminateChildren — what the sweep leaves behind', () => {
       // second read no longer names it; its group's member that ignores
       // SIGTERM is reached only through what the grace left.
       const shell = spawnIn(`sh -c 'trap "" TERM; echo $$ > gc.pid; exec sleep 30' & wait`)
-      const gc = await waitForPid(path.join(dir, 'gc.pid'), 10_000)
+      const gc = await waitForPid(path.join(dir, 'gc.pid'))
       let sweep = 0
       try {
         expect(isAlive(gc)).toBe(true)
@@ -1371,11 +1373,7 @@ describe('forwardSignals in a process of its own', () => {
         stderr: 'pipe',
       })
       const pidsFile = path.join(dir, 'pids.txt')
-      const until = Date.now() + 10_000
-      while (
-        !(existsSync(pidsFile) && readFileSync(pidsFile, 'utf8').endsWith('\n')) &&
-        Date.now() < until
-      )
+      while (!(existsSync(pidsFile) && readFileSync(pidsFile, 'utf8').endsWith('\n')))
         await Bun.sleep(20)
       const pids = readFileSync(pidsFile, 'utf8').trim().split(' ').map(Number)
       try {

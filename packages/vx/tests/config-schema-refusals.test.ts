@@ -255,6 +255,18 @@ describe('setting refusals the sweep found unheld (item 653)', () => {
     expect(refusal({ cache: { store: { embeddings: Symbol('s') } } })).toBe(
       `${WS}: \`cache.store.embeddings\` must be false, or a size like '32KiB' (got Symbol(s))`,
     )
+    // A proxy whose trap throws: quoting it was vx's own stack and "bug in vx".
+    const trap = new Proxy(
+      {},
+      {
+        ownKeys: () => {
+          throw new Error('k')
+        },
+      },
+    )
+    expect(refusal({ run: { concurrency: [trap] } })).toMatch(
+      /`run\.concurrency` .*\(got a value that threw when read \(k\)\)$/,
+    )
     const p = testPlugin('fz-fp-bigint', {
       fingerprint: { files: [1n], affected: () => new Set<string>() } as never,
     })
@@ -1193,6 +1205,8 @@ describe('project name', () => {
   it.each([
     ['^ui', "starts with '^', which names dependencies' tasks"],
     ['!ui', "starts with '!', which a filter reads as an exclusion"],
+    // `vx run -ui#build` and `vx show -ui` were refused as an unknown flag.
+    ['-ui', "starts with '-', which the CLI reads as a flag"],
     ['ui*', "holds '*', which makes it a pattern"],
     ['tag:ui', "starts with 'tag:', which a filter reads as a tag selector"],
     ['ui...', "starts or ends with '...', which a filter reads as a dependency walk"],
@@ -1621,5 +1635,32 @@ describe('a brace product past the limit', () => {
     expect(cacheRefusal({ files: ['src/{1..32}{1..33}'] })).toBe(
       past('inputs.files', 'src/{1..32}{1..33}'),
     )
+  })
+})
+
+// A name twice in a list where each name counts once loaded clean and keyed
+// the task apart from the same list without it: a needless miss, and a sign
+// of a slip (a paste, a merge) the author never sees.
+describe('a name listed twice', () => {
+  it('is refused, naming the list and the name', () => {
+    const exec = { command: 'x' }
+    expect([
+      taskRefusal({ exec, inputs: { files: [], env: ['A', 'B', 'A'] } }),
+      taskRefusal({ exec: { ...exec, env: { passThrough: ['A', 'A'] } } }),
+      taskRefusal({ exec: { ...exec, env: { secret: ['S', 'S'] } } }),
+    ]).toEqual([
+      `${CFG}: tasks.t.inputs.env lists "A" twice`,
+      `${CFG}: tasks.t.exec.env.passThrough lists "A" twice`,
+      `${CFG}: tasks.t.exec.env.secret lists "S" twice`,
+    ])
+    let tags: string | null = null
+    try {
+      validateProjectConfig({ tags: ['ui', 'ui'], tasks: {} } as never, CFG)
+    } catch (err) {
+      tags = (err as Error).message
+    }
+    expect(tags).toBe(`${CFG}: \`tags\` lists "ui" twice`)
+    // CONTROL: each once.
+    expect(taskRefusal({ exec: { ...exec, env: { passThrough: ['A', 'B'] } } })).toBeNull()
   })
 })

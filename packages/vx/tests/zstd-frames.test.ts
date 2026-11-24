@@ -143,3 +143,20 @@ describe('one frame (control)', () => {
     }
   })
 })
+
+// A skippable frame declares no content size, so the frame after it is never
+// read for one: the body decodes under the running count.
+describe('a body led by a skippable frame', () => {
+  const skippable = new Uint8Array(12)
+  new DataView(skippable.buffer).setUint32(0, 0x184d2a50, true)
+  new DataView(skippable.buffer).setUint32(4, 4, true)
+
+  it('is held to the running count', async () => {
+    const bomb = concat(skippable, Bun.zstdCompressSync(new Uint8Array(50_000)))
+    let refused: unknown
+    await decode(bomb, 1000).catch((err: unknown) => (refused = err))
+    expect(refused).toBeInstanceOf(CorruptArtifactError)
+    expect((refused as Error).message).toContain('decompresses past 1000 bytes')
+    expect(oneCall.calls()).toBe(0)
+  })
+})

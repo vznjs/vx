@@ -147,6 +147,9 @@ export function createOutputWriter(
   // PHYSICAL rows the shown region occupies, not logical lines — see
   // `regionRows`.
   let shownRows = 0
+  let shownLines: readonly string[] = []
+  /** Each shown line's rows when drawn: see `eraseSeq`. */
+  let shownLineRows: readonly number[] = []
   let dead = false
   let holds = 0
   let lastDraw = -Infinity
@@ -201,7 +204,10 @@ export function createOutputWriter(
     }
     let rows = rowsOf.get(line)
     if (rows === undefined) {
-      rows = Math.max(1, Math.ceil(Bun.stringWidth(line) / cols))
+      // A task row whose name went under it (a narrow terminal) is two lines.
+      rows = 0
+      for (const part of line.split('\n'))
+        rows += Math.max(1, Math.ceil(Bun.stringWidth(part) / cols))
       rowsOf.set(line, rows)
     }
     return rows
@@ -235,7 +241,18 @@ export function createOutputWriter(
   // Erase sequence for whatever is currently shown. A single row keeps
   // the exact legacy bytes (ESC[2K\r); anything taller moves to its
   // top row and clears to end of screen.
-  const eraseSeq = (): string => (shownRows > 1 ? `\r\x1b[${shownRows - 1}A\x1b[J` : CLEAR)
+  // After a resize, each line counts at the fewer of its rows then and now:
+  // a terminal that rewraps (VTE, kitty) moves to the new count, one that
+  // does not (xterm, screen) keeps the old, and xterm.js (VS Code) rewraps
+  // all but the cursor's row. An erase one row short leaves a stale row
+  // once; one row long destroys the log above, on every terminal alike.
+  const eraseSeq = (): string => {
+    let rows = 0
+    if (shownRows > 0)
+      for (let i = 0; i < shownLines.length; i++)
+        rows += Math.min(shownLineRows[i]!, lineRows(shownLines[i]!))
+    return rows > 1 ? `\r\x1b[${rows - 1}A\x1b[J` : CLEAR
+  }
 
   // Content written since the last frame, drawn with it: one write per
   // frame, the region erased and redrawn once around all of it. Each row
@@ -287,6 +304,8 @@ export function createOutputWriter(
       text += (shown ? eraseSeq() : CLEAR) + region
       shown = true
       shownRows = regionRows(lines)
+      shownLines = lines
+      shownLineRows = lines.map(lineRows)
       shownText = region
     }
     if (text !== '') stream.write(rawBytes(text))

@@ -3,7 +3,7 @@
 // only when these hold. `it.failing` marks what does not hold yet (2026-10-23):
 // it fails the suite once fixed, so the mark comes off with the fix.
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, setDefaultTimeout } from 'bun:test'
 import type { Size } from '../src/plan/model.js'
 import a09 from './fixtures/main-run-a09b987.json'
 import f2163 from './fixtures/main-run-2026-10-23.json'
@@ -17,6 +17,12 @@ import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
 import { rng } from './families.js'
 import { Planner, type PlannerSize } from '../src/plan/planner.js'
 import type { TaskNode } from '@vzn/vx'
+
+// Each test replays the planner on a simulated clock and asserts only on
+// that clock, so no load changes an answer; the planner's CPU does change
+// the wall time, and a replay took 38 s on 4 cores at load 45, past the
+// task's 30 s. The timeout guards a hang, nothing else.
+setDefaultTimeout(300_000)
 
 const small: Size = { name: 'small', max: 12, cpu: 4, memory: 16e9 }
 type Ran = { ms: number; cores: number; memory: number }

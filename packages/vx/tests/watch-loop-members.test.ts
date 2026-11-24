@@ -284,7 +284,12 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
     relock()
     await until(() => arms(w, 2) === 1, 'lib joins the set')
-    await Bun.sleep(SETTLE_MS)
+    // The re-lock's own cycle builds lib, then app: read past it, not past a
+    // sleep (a loaded host was between the two, load 40, 2026-11-24).
+    await until(async () => {
+      const l = await lines()
+      return l.includes('lib') && l.at(-1) === 'run'
+    }, "the re-lock's cycle")
     const afterDep = await lines()
 
     await writeFile(path.join(lib, 'src', 'l.txt'), 'l2\n')
@@ -415,7 +420,9 @@ describe('vx watch loop (e2e): the watched set', () => {
     const outside = path.dirname(f.log)
     const go = path.join(outside, 'go')
     const next = path.join(outside, 'next.lock.json')
+    const nextConfig = path.join(outside, 'next.config.mjs')
     const lock = path.join(f.root, '.vx/projects.lock')
+    const file = path.join(f.dir, 'vx.config.mjs')
     const RELOCK = pluginSource(
       'vx-test-relock-in-rearm',
       `{
@@ -423,6 +430,9 @@ describe('vx watch loop (e2e): the watched set', () => {
     const fs = require('node:fs')
     if (!fs.existsSync(${JSON.stringify(go)})) return
     fs.rmSync(${JSON.stringify(go)})
+    // The config the new lock was taken from lands with it, as a re-lock's:
+    // a lock its config does not evaluate to is refused, never run.
+    fs.copyFileSync(${JSON.stringify(nextConfig)}, ${JSON.stringify(file)})
     fs.copyFileSync(${JSON.stringify(next)}, ${JSON.stringify(lock + '.tmp')})
     fs.renameSync(${JSON.stringify(lock + '.tmp')}, ${JSON.stringify(lock)})
   },
@@ -443,10 +453,10 @@ describe('vx watch loop (e2e): the watched set', () => {
         },
       },
     }\n`
-    const file = path.join(f.dir, 'vx.config.mjs')
     await writeFile(file, config(", workspaceFiles: ['tsconfig.base.json']"))
     relock()
     await writeFile(next, await readFile(lock, 'utf8'))
+    await writeFile(nextConfig, await readFile(file, 'utf8'))
     await writeFile(file, config(''))
     relock()
     f.watch = startWatch(f.root, ['--all'], { ...ARMS, VX_WATCH_POLL: '1' })

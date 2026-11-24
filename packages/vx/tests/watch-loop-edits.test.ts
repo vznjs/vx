@@ -265,7 +265,7 @@ describe('vx watch loop (e2e)', () => {
     const writer = setInterval(() => void writeFile(path.join(f.dir, 'noise.log'), `${n++}\n`), 50)
     try {
       await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
-      await until(async () => (await executions(f.log)) === 2, 'the re-run under the writer', 5_000)
+      await until(async () => (await executions(f.log)) === 2, 'the re-run under the writer')
     } finally {
       clearInterval(writer)
     }

@@ -313,7 +313,11 @@ function registryVersion(id: string | undefined): string | undefined {
  * `node_modules`, a workspace's through the root's link to it, and
  * `./<name>/d` in that workspace's.
  */
-export function hoistedVersions(lock: Lockfile): Map<string, string> {
+export function hoistedVersions(
+  lock: Lockfile,
+  /** Also a non-registry package whose id this keeps (a patched `file:` tarball): its version is the id's spec. */
+  also?: (id: string) => boolean,
+): Map<string, string> {
   // A tarball's bundled packages are its own, nested ones too: npm 11.21
   // ships @sigstore/protobuf-specs 0.5.1 where bun.lock names 0.5.2.
   const bundlers = new Set<string>()
@@ -322,7 +326,9 @@ export function hoistedVersions(lock: Lockfile): Map<string, string> {
   }
   const out = new Map<string, string>()
   for (const [p, e] of lock.packages) {
-    const version = registryVersion(e.id)
+    const version =
+      registryVersion(e.id) ??
+      (also?.(e.id) === true ? e.id.slice(e.id.indexOf('@', 1) + 1) : undefined)
     if (version === undefined) continue
     const levels0 = packageLevels(p)
     if (levels0.some((_, i) => i > 0 && bundlers.has(levels0.slice(0, i).join('/')))) continue

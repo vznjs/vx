@@ -145,7 +145,7 @@ it(
     expect(r.outcomes.find((o) => o.node.id === 'app#e2e')?.cache?.saved).toBeUndefined()
     expect(lines.filter((l) => l.startsWith('[vx] app#e2e:'))).toEqual([
       '[vx] app#e2e: not saved — its key folds app#serve, which declares no `inputs`, so no ' +
-        'later run derives it; declare inputs on app#serve',
+        "later run derives it, nor any other task's that folds it; declare inputs on app#serve",
     ])
   },
   TIMEOUT,

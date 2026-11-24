@@ -68,6 +68,21 @@ describe('vx why names what moved the key', () => {
     TIMEOUT,
   )
 
+  // The JSON's note said "(inputs differ)", which the docs keep for a diff
+  // with no parts to name, beside a diff that named them.
+  it(
+    'the JSON note is the verdict the text prints',
+    async () => {
+      await vx(root, ['run', 'build', '--all'], { MODE: 'json-a' })
+      await vx(root, ['run', 'build', '--all'], { MODE: 'json-b' })
+      const r = await vx(root, ['why', 'app#build', '--format', 'json'])
+      const doc = JSON.parse(r.out) as { why: { note: string } }
+      expect(doc.why.note).toBe('cache key changed: env MODE')
+      expect(verdict((await vx(root, ['why', 'app#build'])).out)).toBe(`verdict   ${doc.why.note}`)
+    },
+    TIMEOUT,
+  )
+
   it(
     'an unchanged key keeps its own verdict (control)',
     async () => {

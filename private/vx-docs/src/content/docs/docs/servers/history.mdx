@@ -49,7 +49,7 @@ vx knows `@demo/ui#build` → `@demo/web#build` is the longest path, and starts 
 The numbers go in a D1 database.
 
 ```sh
-mkdir vx-history-server && cd vx-history-server
+mkdir ~/vx-history-server && cd ~/vx-history-server
 bun add @vzn/vx-history-server
 ```
 
@@ -68,7 +68,7 @@ bunx wrangler login
 bunx wrangler deploy
 ```
 
-The first deploy creates the D1 database `vx-history`. It fits Cloudflare's free plan.
+The first deploy creates the D1 database `vx-history`. Cloudflare's free plan takes a run of up to about 8,000 tasks: past that, an upload likely needs more than the plan's 10 ms of CPU ([README](https://github.com/vznjs/vx/tree/main/packages/vx-history-server#readme)).
 
 </TabItem>
 <TabItem label="Bun">
@@ -117,7 +117,7 @@ Those are its limits: the server is up. Put HTTPS in front of it.
 
 <Steps>
 
-1. Add the plugins:
+1. Back in your workspace, add the plugins at its root:
 
    ```sh
    bun add -d @vzn/vx-history @vzn/vx-ci
@@ -178,7 +178,8 @@ vx prints nothing about the history when it works. When the server refuses, vx s
 
 ## How a run uses it
 
-- **At the start**, it asks for its tasks' numbers: its own branch's first, then the branch it merges into, then the default branch's. It does not wait: it starts on what it knows and re-orders when they arrive.
+- **At the start**, it asks for its tasks' numbers: its own branch's first, then the branch it merges into, then the default branch's.
+- **It does not wait:** it starts on what it knows and re-orders when they arrive.
 - **At the end**, it sends the numbers of the tasks it ran, once.
 - **Off CI**, there is no token. A run reads from a server with `READ_ACCESS=public` and sends nothing.
 
@@ -225,7 +226,7 @@ TIMING_DAYS=90
 | `AUDIENCE` | Workers: the URL it is reached at. Bun and Docker: required | the `aud` a CI token must name, read as its origin | `https://history.example.com` |
 | `READ_ACCESS` | unset: every request needs a token | `public`: a request with no token reads a repository `ALLOW` names | `public` |
 | `TIMING_DAYS` | 30 | whole days a row is kept after its last report | `90` |
-| `DB` | | Workers: the D1 database binding | `vx-history` |
+| `DB` | Workers: required | Workers: the D1 database binding | `vx-history` |
 | `--db` | `vx-history.sqlite` | Bun: the SQLite file | `--db /var/lib/vx-history.sqlite` |
 | `--port` | 8080 | Bun: the port it listens on | `--port 9000` |
 | `--host` | `0.0.0.0` | Bun: the address it listens on | `--host 127.0.0.1` |

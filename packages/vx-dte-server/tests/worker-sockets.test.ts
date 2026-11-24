@@ -2,10 +2,18 @@
 // hold websockets on their run's Durable Object.
 
 import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { createProver, PROOF_HEADER } from '../src/index.js'
 import { conformance } from './conformance.js'
+
+// Miniflare removes its temp directory unawaited on dispose, so the process
+// often ended first and left a `miniflare-*` there: it gets one of ours.
+const tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'vx-miniflare-'))
+const savedTmp = process.env['TMPDIR']
+process.env['TMPDIR'] = tmpRoot
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -63,7 +71,19 @@ beforeAll(async () => {
   )
   base = await mf.ready
 }, 30_000)
-afterAll(() => mf?.dispose())
+afterAll(async () => {
+  await mf?.dispose()
+  if (savedTmp === undefined) delete process.env['TMPDIR']
+  else process.env['TMPDIR'] = savedTmp
+  // Its unawaited removal may still be writing under it: retry until gone.
+  for (let i = 0; i < 40 && existsSync(tmpRoot); i++) {
+    try {
+      rmSync(tmpRoot, { recursive: true, force: true })
+    } catch {
+      await Bun.sleep(50)
+    }
+  }
+})
 
 /** The orchestrator's key: it signs each request as the orchestrator. */
 const prover = await createProver()

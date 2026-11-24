@@ -196,13 +196,15 @@ dte({
 ```
 
 ```sh
-export VX_DTE_RUN=$(uuidgen)
+export VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())')
 export VX_DTE_SECRET=$(openssl rand -base64 32)
 vx run build --all   # on the machine that starts the run
 vx dte worker        # on each worker, with the same two variables
 ```
 
-`VX_DTE_RUN` must be a random UUID, so no one can guess the run. A worker started before its run says the relay has no live run.
+`VX_DTE_RUN` must be a random UUID, so no one can guess the run. Set but empty, the run is refused.
+
+A worker started before its run says the relay has no live run. A run with no worker yet says it is waiting for one to join, and shows no time left until one does.
 
 <Takeaway>run only what changed, on the OS and size each task needs, on any CI.</Takeaway>
 
@@ -231,7 +233,7 @@ An unknown key is refused. With an `adapter`, at least one machine needs `max` a
 | --- | --- | --- |
 | `cpu` | its cores, which vx plans by until the worker reports its own | required |
 | `memory` | bytes, or `'16GB'`, `'512MiB'` | required |
-| `max` | how many one run may start | no cap |
+| `max` | how many may be in the run at once; one lost or failed to start is replaced | no cap |
 | `platform` | `linux-x64`, `linux-arm64`, `darwin-x64` or `darwin-arm64`; a worker of another is refused | this machine's, not checked |
 | `runsOn` | the CI runner label `vx dte init` writes for it | a GitHub runner of its platform, such as `ubuntu-latest` |
 
@@ -252,7 +254,7 @@ Names use letters, digits, `_` and `-`.
 
 | Variable | Read by | Means |
 | --- | --- | --- |
-| `VX_DTE_RUN` | run, worker | the run's id, a random UUID (`uuidgen`). Set, it turns distribution on. GitHub and GitLab name the run themselves |
+| `VX_DTE_RUN` | run, worker | the run's id, a random UUID (`bun -e 'console.log(crypto.randomUUID())'`). Set, it turns distribution on. GitHub and GitLab name the run themselves |
 | `VX_DTE_RELAY` | run, worker | the relay URL; beats `relay` |
 | `VX_DTE_SECRET` | run, worker | the run's shared key. Needed with no adapter and no GitHub |
 | `VX_DTE_TOKEN` | run, worker | the relay's bearer token, when `token` is unset |
@@ -310,13 +312,16 @@ Names use letters, digits, `_` and `-`.
 | Line | Says |
 | --- | --- |
 | `stopped` / `left` | the worker ended with the run, or left early: nothing more for it |
+| `lost` | it crashed, was stopped (Ctrl-C) or went silent; the task it ran ran again on another worker |
+| `failed` | it never joined: the line says why and names its log |
+| `not joined` / `cancelled` | the run ended, or no longer needed it, before it joined |
 | `declared · actual` | the size you declared, and what the machine really has (red: they differ) |
 | `online · busy · idle` | how long it was in the run, and how much of that it worked |
 | `probe` | what the run knew at its start: tasks to run, misses already known |
 | `asked` | when vx asked for each worker, and the run's estimate then |
-| `ideal` | the best end the allowed workers could give |
+| `ideal` | the best end the allowed workers could give; with no `workers` declared, the ones that joined |
 | `perfect` | the end if no task waited: the longest path of tasks that wait on each other |
-| `best` / `any` | the fewest machines of your sizes, or of any size, that end as soon |
+| `best` / `any` | the fewest machines of your sizes, or of any size, that end as soon; when working that out takes over 2 s, the footer says `not worked out` and gives neither |
 
 </Deeper>
 

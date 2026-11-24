@@ -44,7 +44,7 @@ The first runner stores `@demo/ui#build`. The next one restores it, and its line
 Results go in R2.
 
 ```sh
-mkdir vx-cache-server && cd vx-cache-server
+mkdir ~/vx-cache-server && cd ~/vx-cache-server
 bun add @vzn/vx-cache-server
 ```
 
@@ -115,7 +115,7 @@ That refusal is good news: the server is up and has an `ALLOW`. Put HTTPS in fro
 
 <Steps>
 
-1. Add the plugins:
+1. Back in your workspace, add the plugins at its root:
 
    ```sh
    bun add -d @vzn/vx-cache @vzn/vx-ci
@@ -265,7 +265,7 @@ echo "$(h https://token.actions.githubusercontent.com)/$(h acme/app)/$(h refs/he
 | `MAX_CHECK_HASHES` | 500 (6 on Workers) | lookups one check may make, results × branches | `100` |
 | `MAX_UPLOAD_BYTES` | 100 MB | the largest result it takes | `500000000` |
 | `EXPIRY_DAYS` | unset | Workers: your bucket's expiry, so a repeat check skips R2 | `1` |
-| `BLOBS` | | Workers: the R2 bucket binding | `vx-cache` |
+| `BLOBS` | Workers: required | Workers: the R2 bucket binding | `vx-cache` |
 | `--port` | 8080 | Bun: the port it listens on | `--port 9000` |
 | `--host` | `0.0.0.0` | Bun: the address it listens on | `--host 127.0.0.1` |
 

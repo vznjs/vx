@@ -16,6 +16,7 @@ export interface TaskHistory {
   runs: number
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
+  forecastP99DurationMs?: number // p99 of the timings p50DurationMs reads (vx last --stats)
   successRate: number
   hitRate: number
   failureMode: FailureMode
@@ -150,7 +151,8 @@ source, id)`, exact however old the rows. A run learns its branch once
 `PreparedRun.branch`, the schedule hook's `ctx.branch`;
 `currentBranch` in `run-context.ts` for any other reader).
 `p99DurationMs`, the rates and the resource maxima stay over the
-window. `tests/history-forecast-branch.test.ts`.
+window; `forecastP99DurationMs` reads the forecast's timings, so `vx last
+--stats` prints p50 and p99 of one set. `tests/history-forecast-branch.test.ts`.
 
 A reader given the run's definitions (`taskDefinitions`, the fourth
 argument) reads only the rows of each task as it is now. Every row
@@ -255,6 +257,10 @@ The same rule, applied at the end of every run and by the doctor:
   this workspace's `runs`: every worktree of a repo judges a key on what
   all of them saw. It keeps every executed outcome that names its key and
   a key's first hit; a later hit replays a pass on record and adds none.
+  Until the kept hits are written out, a key's entry stands for them:
+  before a failure is judged, `recordEntryPasses` (index-db) writes it as
+  a pass, so no failure reads the kept hits. A key's rows count in
+  recorded_at order, not row order.
 - `knownFlaky(db, project, task, hash)` — asked by the retry loop
   (`execute-task.ts`) after a failure only, so a green run never reads it:
   this key passed before, or a key of the task failed after it passed, or
@@ -334,7 +340,7 @@ InputWriter         // { taskId, file, writers: the tasks running when the file 
 
 `run-failures.ts` beside it keeps a failed run's task output as rows of
 cache.db's `failures` (caching.md § Schema), through
-`cache/run-notes.ts`:
+`history/run-notes.ts`:
 
 ```ts
 writeRunFailures(cache, runId, outcomes, warn): void // at run end; only when an outcome carries failedOutput or inputMoved; newest 50 failed runs kept; a refused write warns
@@ -373,7 +379,7 @@ replays, masked as it was), and nothing for an uncached pass or a skip.
 `runFailures` lists the run's failed `runs` rows and fills each from its
 `failures` row; `vx last --format json` answers from it.
 
-`cache/run-notes.ts` holds the statements over `steps`, `warnings` and
+`history/run-notes.ts` holds the statements over `steps`, `warnings` and
 `failures`: what a run said that its `runs` rows do not hold. A run's
 steps it did not wait on (`vx:prefetch`), which its output never shows,
 and its warnings go in at run end, in one transaction; each table keeps
@@ -392,9 +398,6 @@ export interface RunStep {
   ok: boolean
 }
 ```
-
-The module index re-exports `explainCacheKey` as `explainCacheKeyQuery`
-and `whyDidThisRerun` as `whyDidThisRerunQuery`.
 
 `run-id.ts` beside it resolves the run id a caller types:
 `resolveRunId(db, raw, verb)` answers the whole id, or the one run it is
@@ -457,7 +460,7 @@ readers.
 - Open or close anything; no `Cache` lifecycle.
 - Evaluate configs or recompute a key — `explainCacheKey` says so in
   its note: it returns persisted entry metadata.
-- Write rows. `recordRunBundle` (`cache/run-history.ts`) is the writer.
+- Write rows. `recordRunBundle` (`history/run-history.ts`) is the writer.
 
 ### Tests
 
@@ -542,6 +545,8 @@ export interface HistoryWrites {
     hits?: RunHits
   }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
+  // The run's end once its uploads drained and telemetry flushed, after its rows went in.
+  recordRunEnd(runId: string, endedAt: number, totalDurationMs: number): void
 }
 export function runHistory(cache: Cache): HistoryWrites
 
@@ -566,6 +571,8 @@ export interface InvocationRecord {
   upToDateCount: number
   restoredLocalCount: number
   restoredRemoteCount: number
+  // v59: tasks a stop or --fail-fast killed, counted by the footer, with no runs row
+  abortedCount?: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null

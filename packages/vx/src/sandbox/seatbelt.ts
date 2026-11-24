@@ -176,9 +176,10 @@ export function macProfileRules(c: ResolvedSandboxConfig): string[] {
   for (const p of ports) {
     rules.push(`(allow network-outbound (remote ip "localhost:${p}"))`)
   }
-  // curl asks configd for the proxy settings before it dials; refused, the
-  // record failed a client that had its answer (exit 0, CI 2026-11-12).
-  if (ports.length > 0)
+  // curl asks configd for the proxy settings before it dials anything, a
+  // host the list names or not; refused, the record failed a client that
+  // had its answer (exit 0, CI 2026-11-12). A read of settings, no egress.
+  if (c.network === true || (c.network !== undefined && c.network.length > 0))
     rules.push('(allow mach-lookup (global-name "com.apple.SystemConfiguration.configd"))')
   if (c.weakerNetworkIsolation === true) {
     rules.push('(allow mach-lookup (global-name "com.apple.trustd.agent"))')

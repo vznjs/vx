@@ -1,43 +1,64 @@
-{"version":6,"files":["bun.lock"],"edges":true}
+{"version":7,"files":["bun.lock"],"edges":true}
+
 @vzn/vx-cache-server
-	@vzn/vx,@vzn/vx-devtools		xE0zDrWbvyI
+@vzn/vx,@vzn/vx-devtools		xE0zDrWbvyI
+
 @vzn/vx-cache-service
-	@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		Vdi8gkS-r_o
+@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		Vdi8gkS-r_o
+
 @vzn/vx-migrate
-	@vzn/vx		ESbsUv1GPKY
+@vzn/vx		ESbsUv1GPKY
+
 @vzn/vx-servers
-	@vzn/vx		ylqwGcHYM48
+@vzn/vx		ylqwGcHYM48
+
 @vzn/vx-otel
-	@vzn/vx		W0uWSEzW_-E
+@vzn/vx		W0uWSEzW_-E
+
 @vzn/vx-docs
-	@vzn/vx,@vzn/vx-cache,@vzn/vx-ci,@vzn/vx-dte,@vzn/vx-history,@vzn/vx-lockfile,@vzn/vx-migrate,@vzn/vx-otel,@vzn/vx-reapi		8E-IeLfpYyk
+@vzn/vx,@vzn/vx-cache,@vzn/vx-ci,@vzn/vx-dte,@vzn/vx-history,@vzn/vx-lockfile,@vzn/vx-migrate,@vzn/vx-otel,@vzn/vx-reapi		8E-IeLfpYyk
+
 @vzn/vx-reapi
-	@vzn/vx		SDpZSAzvQh4
+@vzn/vx		SDpZSAzvQh4
+
 @vzn/vx
-			JD_Wy1uzKro
+		JD_Wy1uzKro
+
 @vzn/vx-cache
-	@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		BFbyuzytL4s
+@vzn/vx,@vzn/vx-cache-server,@vzn/vx-devtools		BFbyuzytL4s
+
 @vzn/vx-bench
-	@vzn/vx,@vzn/vx-conformance,@vzn/vx-history,@vzn/vx-lockfile		YgWncwouLpA
+@vzn/vx,@vzn/vx-conformance,@vzn/vx-history,@vzn/vx-lockfile		YgWncwouLpA
+
 @vzn/vx-plugin-examples
-	@vzn/vx		v67SaSfMK_0
+@vzn/vx		v67SaSfMK_0
+
 @vzn/vx-dte-service
-	@vzn/vx,@vzn/vx-dte-server		8HhvZpAVFrQ
+@vzn/vx,@vzn/vx-dte-server		8HhvZpAVFrQ
+
 @vzn/vx-lockfile
-	@vzn/vx		hquxbj6H10o
+@vzn/vx		hquxbj6H10o
+
 @vzn/vx-dte-server
-	@vzn/vx,@vzn/vx-devtools		rQ6uYPfPMno
+@vzn/vx,@vzn/vx-devtools		rQ6uYPfPMno
+
 @vzn/vx-ci
-	@vzn/vx		-IyjqoGubgs
+@vzn/vx		-IyjqoGubgs
+
 @vzn/vx-history
-	@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		ziQ3c9X1vsQ
+@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		ziQ3c9X1vsQ
+
 @vzn/vx-conformance
-	@vzn/vx,@vzn/vx-lockfile		qVwa_b0cdMo
+@vzn/vx,@vzn/vx-lockfile		qVwa_b0cdMo
+
 @vzn/vx-history-server
-	@vzn/vx,@vzn/vx-devtools		bchQCF8HwB8
+@vzn/vx,@vzn/vx-devtools		bchQCF8HwB8
+
 @vzn/vx-dte
-	@vzn/vx,@vzn/vx-devtools,@vzn/vx-dte-server		x9WEj1WZGi0
+@vzn/vx,@vzn/vx-devtools,@vzn/vx-dte-server		x9WEj1WZGi0
+
 @vzn/vx-history-service
-	@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		bSki0SB_vGs
+@vzn/vx,@vzn/vx-devtools,@vzn/vx-history-server		bSki0SB_vGs
+
 @vzn/vx-devtools
-	@vzn/vx		tyNpsoa5dOI
+@vzn/vx		tyNpsoa5dOI

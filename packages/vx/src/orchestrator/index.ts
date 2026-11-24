@@ -15,6 +15,7 @@ export {
   namesRemote,
   openRemotes,
   prepareRun,
+  renamedSinceLock,
   unlockedDir,
   workspaceCachePolicy,
   type PreparedRun,
@@ -22,6 +23,7 @@ export {
 // `vx lock` judges every task's network entries, as a run's sandbox would.
 export { networkPatternRefusal } from '../sandbox/index.js'
 export { missingOutputs } from './attempt-outputs.js'
+export { outputsMissingFacts } from './attempt.js'
 export { affectedTaskProjects } from './affected-tasks.js'
 export { applyGraphStage } from './graph-stage.js'
 export { applyMigration } from './migration.js'
@@ -63,7 +65,7 @@ export {
 export { exitSignal, shellQuote } from '../exec/index.js'
 export { forwardedSignal } from './signals.js'
 // `vx cache clean` waits for a run on the workspace before it evicts.
-export { acquireRunLock } from './run-lock.js'
+export { acquireRunLock, holdLockFiles } from './run-lock.js'
 export { type LiveSnapshot, liveSocketPath } from './run-live.js'
 export type { RunPlan, PlannedTask, PlanPrediction, CacheStatus } from './plan.js'
 export {

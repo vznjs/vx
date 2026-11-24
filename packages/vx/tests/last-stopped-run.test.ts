@@ -38,6 +38,7 @@ beforeAll(async () => {
   bad: { exec: { command: 'echo boom; exit 3' } },
   build: { exec: { command: 'echo built' }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true },
   slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } },
+  wait: { exec: { command: 'test -f quick || { echo $$ > pid.txt; exec sleep 30; }' } },
 } }
 `,
   )
@@ -54,6 +55,8 @@ it('a failed task of a stopped run keeps its output for `vx last --log`', async 
     source: 'failure',
     output: 'boom\n',
   })
+  // Not a run `vx last` lists: the docs' "no runs yet" but `--log`.
+  expect(vx('last').err).toContain('no runs yet')
 }, 30_000)
 
 // The footer hid a stopped run's id, though every reader opens it: an
@@ -95,5 +98,20 @@ it('every verb takes the stopped run id `vx why` printed, whole or a prefix', as
       1,
       `✗ vx last  run ${runId} was stopped before it finished, so vx kept its tasks but no summary: \`vx last ${runId} --log <task>\` prints one's output`,
     ],
+  })
+}, 30_000)
+
+// A task the stop cut off keeps no row; `vx why` sent the user to
+// `vx last RUNID`, which refuses a stopped run.
+it('`vx why --run` of a task the stop cut off says the stop ended it', async () => {
+  await Bun.write(path.join(dir, 'quick'), '')
+  expect(vx('run', 'a#wait').code).toBe(0)
+  await rm(path.join(dir, 'quick'))
+  const out = await stopAfterSlowStarts('a#build', 'a#wait')
+  const id = / · run (\S+)\n/.exec(out)?.[1]
+  const why = vx('why', 'a#wait', '--run', id!)
+  expect({ code: why.code, err: why.err }).toEqual({
+    code: 1,
+    err: `✗ vx why  run ${id} was stopped before a#wait ended, so vx kept no row for it\n`,
   })
 }, 30_000)

@@ -32,7 +32,7 @@ export interface WorkerType {
 
 /** One kind of machine the adapter can start. */
 export interface WorkerSize {
-  /** How many of it one run may start; absent, as many as the work needs. */
+  /** How many of it may be in the run at once (a lost one is replaced); absent, as many as the work needs. */
   readonly max?: number
   /** Its cores: what starting one adds, until it reports what its machine has. */
   readonly cpu: number
@@ -204,11 +204,13 @@ const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
 const HELP = [
   USAGE,
   '',
-  "  vx dte init      Write the CI that spreads one vx run over this workspace's workers.",
+  "  vx dte init      Write the CI that spreads one vx run over this workspace's",
+  '                   workers.',
   '      --dry        Print the files instead of writing them.',
   '      --force      Overwrite files that exist.',
-  '  vx dte worker    Join the run VX_DTE_RUN names, over VX_DTE_RELAY or dte({ relay }),',
-  '                   and run the tasks it is handed. A CI job runs it after install.',
+  '  vx dte worker    Join the run VX_DTE_RUN names, over VX_DTE_RELAY or',
+  '                   dte({ relay }), and run the tasks it is handed. A CI job runs',
+  '                   it after install.',
 ].join('\n')
 
 /**
@@ -233,8 +235,16 @@ function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
   return out
 }
 
+const SIZES_EXAMPLE = "{ linux: { machines: { small: { cpu: 2, memory: '8GB' } } } }"
+
 export function dte(options: DteOptions = {}) {
   refuseUnknownOptions('dte()', options, KEYS)
+  // Walked as worker types, an adapter's methods were refused as
+  // `workers.relay`, naming neither the mistake nor the field.
+  if (typeof (options.workers as { spawn?: unknown } | undefined)?.spawn === 'function')
+    throw new UserError(
+      `dte() option "workers" got an adapter: pass it as adapter, as in dte({ adapter: local(), workers: ${SIZES_EXAMPLE} })`,
+    )
   const headers = proxyHeaders(options.headers)
   const declared = Object.entries(options.workers ?? {}).flatMap(([type, t]) => {
     if (!NAME.test(type)) refuse('workers', NAMED, type)
@@ -334,7 +344,7 @@ export function dte(options: DteOptions = {}) {
   // With none, no worker was ever asked for and the run waited until killed.
   if (adapter !== undefined && !sizes.some((s) => s.max > 0)) {
     throw new UserError(
-      "dte(): workers names no machine the adapter may start (one with max above 0), such as linux: { machines: { small: { cpu: 2, memory: '8GB' } } }",
+      `dte(): workers names no machine the adapter may start (one with max above 0), such as ${SIZES_EXAMPLE.slice(2, -2)}`,
     )
   }
   if (adapter === undefined && options.relay === undefined) {
@@ -551,7 +561,7 @@ export function dte(options: DteOptions = {}) {
             import('./seal.js'),
           ])
           const id = process.env['VX_DTE_WORKER'] || adapter?.workerId?.()
-          return runWorker({
+          const working = runWorker({
             relay,
             run,
             ...(id === undefined || id === '' ? {} : { id }),
@@ -561,6 +571,13 @@ export function dte(options: DteOptions = {}) {
             proof: secret === undefined ? seal.githubProof() : seal.secretProof(secret),
             artifacts: ctx.artifactsFor,
             ...(adapter?.over === undefined ? {} : { over: () => adapter.over!() }),
+          })
+          // A relay that refuses or cannot be reached is the user's setup, not
+          // the plugin's crash: "plugin '@vzn/vx-dte' failed in command 'dte'".
+          const { RelayError } = await import('./wire.js')
+          return await working.catch((err: unknown) => {
+            if (err instanceof RelayError) throw new UserError(`vx dte worker: ${err.message}`)
+            throw err
           })
         },
       },
@@ -798,6 +815,7 @@ export function dte(options: DteOptions = {}) {
         keyOf: (id) => keys.get(id),
         planner: () => plannerOf(),
         spawn: (size) => spawnSize(size),
+        adapter: adapter !== undefined,
         home,
         joinedPlace,
         // One the plan let go before it joined: stopped, unless its adapter cannot, and then taken when it joins.
@@ -812,6 +830,7 @@ export function dte(options: DteOptions = {}) {
         stalled: (waiting) =>
           ctx.warn(`[vx] dte(): no task began or ended for a minute; waiting on\n${waiting}`),
         warn: ctx.warn,
+        status: ctx.status,
       })
       orchestrator = o
       let index = 0
@@ -1046,7 +1065,7 @@ export function dte(options: DteOptions = {}) {
               () => o.driftOf(depsOf),
               () => o.leastHeldMs(depsOf, sizes),
             ),
-          machines: () => o.machines(),
+          machines: () => o.machines(true),
           idealMs: () => o.idealMs(depsOf, sizes),
           advice: () => o.advice(depsOf, sizes),
           profile: () => o.profile(),
@@ -1259,10 +1278,17 @@ const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 /** `VX_DTE_RUN`, which turns distribution on. */
 function givenRun(): string | undefined {
   const run = process.env['VX_DTE_RUN']
-  if (run === undefined || run === '') return undefined
+  if (run === undefined) return undefined
+  // `export VX_DTE_RUN=$(uuidgen)` with no uuidgen sets it empty: the run
+  // stayed here without a word.
+  if (run.trim() === '') {
+    throw new UserError(
+      "VX_DTE_RUN is set but empty: set it to a random UUID, export VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())'), or unset it to run on this machine",
+    )
+  }
   if (!RUN_ID.test(run)) {
     throw new UserError(
-      `VX_DTE_RUN is a random UUID, such as one \`uuidgen\` prints, so no one can guess the run: not ${JSON.stringify(run)}`,
+      `VX_DTE_RUN is a random UUID, such as one \`bun -e 'console.log(crypto.randomUUID())'\` prints, so no one can guess the run: not ${JSON.stringify(run)}`,
     )
   }
   return run

@@ -106,8 +106,9 @@ describe('a store vx run will not use', () => {
       expect(existsSync(path.join(fallback, 'store.db'))).toBe(true)
 
       const info = await vx(['info', '--format', 'json'])
-      const facts = JSON.parse(info.out) as { cacheStore: string; cacheEntries: number }
-      expect([info.code, facts.cacheStore, facts.cacheEntries]).toEqual([0, fallback, 1])
+      // No store shared by the checkouts: the cache dir holds the entries.
+      const facts = JSON.parse(info.out) as { cacheStore: string | null; cacheEntries: number }
+      expect([info.code, facts.cacheStore, facts.cacheEntries]).toEqual([0, null, 1])
 
       const dry = await vx(['cache', 'clean', '--max-size', '1B', '--dry', '--format', 'json'])
       const wet = await vx(['cache', 'clean', '--max-size', '1B', '--format', 'json'])
@@ -130,8 +131,8 @@ describe('a store vx run will not use', () => {
       await build('c\n')
       const info = await vx(['info', '--format', 'json'])
       expect([info.code, info.err]).toEqual([0, ''])
-      const facts = JSON.parse(info.out) as { cacheStore: string; cacheEntries: number }
-      expect([facts.cacheStore, facts.cacheEntries]).toEqual([path.join(root, '.vx', 'cache'), 1])
+      const facts = JSON.parse(info.out) as { cacheStore: string | null; cacheEntries: number }
+      expect([facts.cacheStore, facts.cacheEntries]).toEqual([null, 1])
     },
     TIMEOUT,
   )

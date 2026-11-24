@@ -88,9 +88,17 @@ function cfg(...tasks: string[]): string {
 /**
  * Locks the workspace, then edits the locked configs, by package name: a
  * lock `vx lock` would not write, read by `prepare({ locked: true })` as is.
+ * `configs` rewrites those packages' files to say what the edit says, so a
+ * run that evaluates them (no stamps beside this lock) finds them locked.
  */
-async function editLock(edit: (configs: Record<string, ProjectConfig>) => void): Promise<void> {
+async function editLock(
+  edit: (configs: Record<string, ProjectConfig>) => void,
+  configs: Record<string, string> = {},
+): Promise<void> {
   await lock(root)
+  for (const [name, config] of Object.entries(configs)) {
+    await writeFile(path.join(root, 'packages', name, 'vx.config.mjs'), config)
+  }
   const held = (await readLockfile(root))!
   edit(
     Object.fromEntries(
@@ -350,15 +358,21 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
    */
   const typoLocked = async (): Promise<void> => {
     await pkg('app', cfg(task('typo')), ['cart'])
-    await editLock((projects) => {
-      projects['app']!.tasks!['typo']!.dependsOn = ['^biuld']
-    })
+    await editLock(
+      (projects) => {
+        projects['app']!.tasks!['typo']!.dependsOn = ['^biuld']
+      },
+      { app: cfg(task('typo', ['^biuld'])) },
+    )
   }
   /** Web's locked entry without `pack`: a run that reads it finds no declarer. */
   const webWithoutPack = (): Promise<void> =>
-    editLock((projects) => {
-      delete projects['web']!.tasks!['pack']
-    })
+    editLock(
+      (projects) => {
+        delete projects['web']!.tasks!['pack']
+      },
+      { web: cfg() },
+    )
 
   it(
     'refuses it when the run loads only part of the workspace',

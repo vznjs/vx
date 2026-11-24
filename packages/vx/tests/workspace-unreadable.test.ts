@@ -35,6 +35,7 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
     })
     afterEach(async () => {
       await chmod(path.join(root, 'packages', 'b'), 0o755)
+      await chmod(path.join(root, '.vx', 'projects.lock'), 0o644)
       await rm(root, { recursive: true, force: true })
     })
 
@@ -85,6 +86,15 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
       expect(await run('packages/b')).toEqual({
         code: 1,
         err: '✗ vx run  .vx/projects.lock locks packages/b, but its vx.config.mjs is not readable by this user (EACCES) — give this user read access to it, then re-run',
+        planned: [],
+      })
+    })
+
+    it('names the projects lock it may not read as a read, not as bad JSON', async () => {
+      // Before: ".vx/projects.lock is not valid JSON — re-run `vx lock`".
+      expect(await run('.vx/projects.lock')).toEqual({
+        code: 1,
+        err: '✗ vx run  <root>/.vx/projects.lock: not readable by this user (EACCES) — give this user read access to it, then re-run',
         planned: [],
       })
     })

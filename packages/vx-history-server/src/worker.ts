@@ -38,22 +38,50 @@ export interface Env {
   readonly TIMING_DAYS?: string | number
 }
 
-function d1Db(d1: D1Database): Db {
+/**
+ * D1's errors Cloudflare says to retry (developers.cloudflare.com/d1/best-practices/retry-queries):
+ * each failed a query or an upload 500, which vxHistory does not send again.
+ * A write that lost its connection may have landed: the fold leaves a row
+ * already written at its time, so a retried one folds once.
+ */
+const AGAIN =
+  /Network connection lost|storage caused object to be reset|reset because its code was updated/
+const D1_TRIES = 3
+
+/** A statement, sent up to three times while D1 says to retry, 50 then 100 ms apart, as R2's reads are. */
+async function again<T>(ask: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await ask()
+    } catch (err) {
+      if (attempt === D1_TRIES || !AGAIN.test(String((err as Error)?.message))) throw err
+      await new Promise((r) => setTimeout(r, 50 * attempt))
+    }
+  }
+}
+
+export function d1Db(d1: D1Database): Db {
   return {
-    all: async <T>(sql: string, params: readonly unknown[]) =>
-      (
-        await d1
-          .prepare(sql)
-          .bind(...params)
-          .all<T>()
-      ).results,
-    run: async (sql, params) =>
-      (
-        await d1
-          .prepare(sql)
-          .bind(...params)
-          .run()
-      ).meta.changes,
+    all: <T>(sql: string, params: readonly unknown[]) =>
+      again(
+        async () =>
+          (
+            await d1
+              .prepare(sql)
+              .bind(...params)
+              .all<T>()
+          ).results,
+      ),
+    run: (sql, params) =>
+      again(
+        async () =>
+          (
+            await d1
+              .prepare(sql)
+              .bind(...params)
+              .run()
+          ).meta.changes,
+      ),
   }
 }
 

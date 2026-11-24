@@ -235,7 +235,7 @@ A worker gets no environment from your machine. Give it a value one of two ways:
 build: {
   exec: { command: 'vite build', env: { define: { NODE_ENV: 'production' }, passThrough: ['API_URL'] } },
   inputs: {
-    files: ['src/**'],
+    files: ['src/**', 'vite.config.*'],
     env: ['API_URL'],
   },
 },

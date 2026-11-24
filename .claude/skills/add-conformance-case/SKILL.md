@@ -85,7 +85,7 @@ is stable. Then:
 
 CI (`.github/workflows/conformance.yml`) runs one job per tool and share
 (`--shard i/n`, sized to about 90 s each: vx 6, turbo 4, nx 14, vite-task
-2, nix 5, moon 42), weekly on every rival's latest, then
+2, nix 5, moon 10), weekly on every rival's latest, then
 `conformance.cases.merge` joins them. A case that slows a tool's suite past its
 share's 5-minute limit means raising that tool's count in the plan step's
 `jq` line in the same PR. Locally: `--shard 1/3 --out a.json`, then

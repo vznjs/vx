@@ -1,17 +1,28 @@
 // `vx setup github` / `vx setup gitlab` (2026-10-23): a CI step
 // before vx runs, the plugin's verb, not core's. What it runs, by machine.
-import { expect, it } from 'bun:test'
+import { afterAll, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { debsKey, runSetup, setup, type SetupOptions } from '../src/setup.js'
+
+const made: string[] = []
+afterAll(() => {
+  for (const d of made) rmSync(d, { recursive: true, force: true })
+})
+/** A fresh directory under TMPDIR, removed after the file. */
+const tmp = (prefix: string): string => {
+  const d = mkdtempSync(path.join(os.tmpdir(), prefix))
+  made.push(d)
+  return d
+}
 
 function machine(
   o: Partial<SetupOptions> & { bins?: string[]; probe?: number; dpkg?: number } = {},
 ) {
   const ran: string[] = []
   const bins = new Set(o.bins ?? ['bwrap', 'socat', 'strace', 'rg'])
-  const debs = o.debs ?? mkdtempSync(path.join(os.tmpdir(), 'vx-setup-'))
+  const debs = o.debs ?? tmp('vx-setup-')
   const go = () =>
     setup({
       ci: 'github',
@@ -56,7 +67,7 @@ it('macOS has its sandbox built in: nothing runs', async () => {
 })
 
 it('installs from apt by sudo, keeps the packages and says it fetched them', async () => {
-  const output = path.join(mkdtempSync(path.join(os.tmpdir(), 'vx-setup-out-')), 'out')
+  const output = path.join(tmp('vx-setup-out-'), 'out')
   const m = machine({ bins: ['apt-get'], output })
   expect(await m.go()).toBe(0)
   expect(m.ran.filter((c) => c.includes('apt-get'))).toEqual([
@@ -158,7 +169,7 @@ it('lets bwrap make user namespaces where AppArmor restricts them', async () => 
 // machine could guess: a symlink planted there had the write follow it,
 // and root then copied whatever that file held into /etc/apparmor.d.
 it("writes the profile where no one else's file can stand, and removes it", async () => {
-  const victim = path.join(mkdtempSync(path.join(os.tmpdir(), 'vx-setup-victim-')), 'victim')
+  const victim = path.join(tmp('vx-setup-victim-'), 'victim')
   writeFileSync(victim, 'ORIGINAL\n')
   const planted = path.join(os.tmpdir(), `vx-bwrap-${process.pid}.apparmor`)
   rmSync(planted, { force: true })
@@ -167,7 +178,7 @@ it("writes the profile where no one else's file can stand, and removes it", asyn
   try {
     await setup({
       ci: 'github',
-      debs: mkdtempSync(path.join(os.tmpdir(), 'vx-setup-')),
+      debs: tmp('vx-setup-'),
       platform: 'linux',
       root: true,
       restricted: () => true,

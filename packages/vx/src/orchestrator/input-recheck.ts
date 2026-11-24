@@ -351,7 +351,7 @@ export function upstreamOutputsHeld(m: MissRun): boolean {
   }
   if (moved === undefined) return true
   warnOf(args.log)(
-    `[vx] ${args.node.id}: an output of ${moved.node.id} changed while it ran (a checkout, a stash, another process) — ` +
+    `[vx] ${args.node.id}: an output of ${moved.node.id} changed while it ran (the task itself, a checkout, a stash, another process) — ` +
       'the result stands, but is not saved under a key that names the bytes it was built from',
   )
   forgetUndeclaredWrites(args.node, args.run.gitFilesCache, 'workspace')

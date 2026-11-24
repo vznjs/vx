@@ -59,6 +59,13 @@ export function acquireRunLock(
   workspaceRoot: string,
   opts: { log: (line: string) => void; signal?: AbortSignal; dir?: string; of?: 'lock' },
 ): Promise<() => Promise<void>>
+// SQLite's lock on `<run lock>-files`: `vx lock` holds it exclusive while it
+// renames projects.lock and dependencies.lock, a run shared while it reads
+// both (`lockReader`), so no run pairs one new file with one old.
+export function holdLockFiles(
+  workspaceRoot: string,
+  mode: 'shared' | 'exclusive',
+): Promise<() => void>
 // What `vx run` and a plugin verb read of the workspace's cache policy.
 export function workspaceCachePolicy(config): CachePolicy | undefined
 export function namesRemote(spec: string | undefined): boolean // `cache.policy` names `remote:r` or `remote:w`
@@ -237,7 +244,9 @@ export interface RunSummary {
 16. **Keep-alive block.** If the user requested a persistent task,
     block on its exit AFTER everything above (`sessionEnd` picks the
     exit that ends the session) — Ctrl-C reaps the process group; the
-    run stays in the foreground on purpose.
+    run stays in the foreground on purpose. A server's exit counts once
+    its pipes are read, `POST_EXIT_DRAIN_MS` at most (`serverExited`):
+    its last words are its crash message.
 
 `planRun()` mirrors steps 1–3 via the same `prepareRun`, then
 delegates to `orchestrator/plan.ts:plan(...)` inside a try/finally
@@ -353,7 +362,8 @@ out of `run()` (item 759, `tests/run-lock.test.ts` › "contending
 processes never hold it at once…", with holders that die holding it). A
 second process polls every 50 ms, after a second says
 `[vx] waiting for another vx run (pid N) on this workspace to finish…`
-(`run()` passes it to `log.status` as `wait`: taking turns is no
+(the holder's entry names a watch cycle or a cache clean, read once for
+this line; `run()` passes it to `log.status` as `wait`: taking turns is no
 warning; `tests/run-lock-e2e.test.ts` › "the waiting notice is a status
 line…"), and reclaims a lock whose pid is gone. A signal exit is `process.exit`
 (`signals.ts`), which runs no `finally`, so the process's `exit` event
@@ -557,8 +567,13 @@ export function executeTask(args: ExecuteArgs): Promise<TaskOutcome>
 export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefined
 // watch-kept.ts: an outcome a later `vx watch` cycle may keep while its key holds
 export function keepsOutcome(o: TaskOutcome): boolean
-// attempt-outputs.ts: the declared globs a run matched no file for, where the files are (a remote executor's worker)
+// attempt-outputs.ts: the declared globs a run matched no file for, where the files are (a remote executor's worker);
+// a trailing-slash glob (`out/`) matches only a folder
 export function missingOutputs(sets: readonly OutputSet[]): string[]
+export function outputsMissingFacts(
+  missing: readonly string[],
+  sets: readonly { readonly base: string; readonly globs: readonly string[] }[],
+): OutputsMissingFacts // why they matched nothing, read on this disk
 ```
 
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,
@@ -889,10 +904,10 @@ end to end in `tests/tool-not-on-path.test.ts` and
 `tests/signal-death.test.ts`.
 
 A failed attempt also gets `unpassedEnv`'s line when the last 4 KiB of
-its output names a variable vx's environment holds and the task's does
-not (`DATABASE_URL` exported in the shell, absent from `passThrough`):
-the tool's own "variable not found" said nothing of vx's env isolation
-(`tests/unpassed-env.test.ts`).
+its output names, or its command expands (`$API_TOKEN`), a variable
+vx's environment holds and the task's does not (`DATABASE_URL` exported
+in the shell, absent from `passThrough`): the tool's own "variable not
+found" said nothing of vx's env isolation (`tests/unpassed-env.test.ts`).
 
 ### Hash derivation (`computeTaskHash`)
 
@@ -1701,6 +1716,7 @@ export interface InputFact {
   since: number
   ctimeMs?: number // the ctime of the describe's stat behind the digest (none for an index OID)
   behind?: string // a link's content as the key folds it (`behindLink`)
+  task?: string // a link's task, which bounds what `behindLink` follows
 }
 export async function movedInput(
   facts: readonly InputFact[],
@@ -2222,6 +2238,8 @@ export interface PlannedTask {
   hash: string
   cacheStatus: CacheStatus
   deps: readonly string[]
+  command?: string // the command as the run would run it, a requested task's with the args after `--`; absent on a group
+  forwarded?: true // set when `command` carries args forwarded after `--`
   p50Ms?: number // typical duration from history, on a task that would run
   executor?: string // the executor's name, when the workspace declared a choice
   download?: 'deferred' // outputs would stay remote (`--cache-download`)
@@ -2588,6 +2606,9 @@ no flush and the lock's entry left behind (2026-11-07). Until plugin
 setup begins (`arm()`), a signal leaves at once through `process.exit`,
 whose hooks release the lock: nothing before it waits on a stop, and a
 held one waited out a git listing (`tests/git-listing-temp.test.ts`).
+What is owed by then (`settleStranded`: a cache factory or a `key` hook
+that ran, and hangs) is torn down first, each plugin bounded; a second
+signal exits without it.
 From setup on, the held listener notes the first signal. `forwardSignals` takes the listeners over
 and replays a signal already heard, so the stop is the one above; a run
 that leaves before it (a refusal, a setup that threw) exits of the
@@ -3010,6 +3031,12 @@ export function unlockedDir(
   metas: ReadonlyArray<{ dir: string }>,
   workspaceRoot: string,
 ): Promise<string | undefined>
+// The locked project whose package.json took `name` since the lock, asked only on a refusal
+export function renamedSinceLock(
+  name: string,
+  metas: ReadonlyArray<{ name: string; dir: string }>,
+  workspaceRoot: string,
+): Promise<string | undefined>
 ```
 
 ### Steps
@@ -3136,7 +3163,12 @@ follows the record blindly, whatever plugins the workspace declares now:
 a project loads its recorded config, or `{ tasks: {} }` when the lock
 holds none (2026-11-11: "we
 never relock during runs ... it should always follow the lock blindly").
-`vx lock --check` names the drift.
+`vx lock --check` names the drift. Two exceptions: a file a hook named
+with `ctx.read` is stat'ed, and once it changed, appeared or went the run refuses, naming
+`vx lock`, as for an edited `vx.config`. And a run with no stamps beside
+its lock (a fresh clone, CI, a new `--cache-dir`) evaluates every config
+and runs the stage once, as `vx lock --check` does, to verify the lock
+and stamp what matches; it still runs what the lock records.
 
 `loadWorkspacePlugins` runs the `config` stage on a copy of the
 workspace file's export (its plugins kept as they are): the export is one
@@ -3231,6 +3263,7 @@ export interface LoadedProjects {
   projects: Map<string, ProjectEntry>
   configured: readonly ProjectMeta[] // every project that can carry tasks
   stage?: Map<string, ProjectConfig> // with `lock`: each config the hooks left, by dir, before the default build
+  reads?: Map<string, Set<string>> // with `stage`: the files each project's plugins made it from, by dir
 }
 export function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjects>
 
@@ -3326,24 +3359,24 @@ names until 0.0.397; it is the kinds record since.
 
 ### Capabilities
 
-| Capability             | Consulted by                         | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ---------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `config(ws, ctx)`      | every verb, first                    | edit the workspace config in place before anything is derived from it (`cache.dir` too); re-validated after EACH plugin; `ctx.setBranch` names the branch's cache scope and base (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `discover(ctx)`        | `vx lock`, after core's discovery    | return `DiscoveredProject[]` (`{ dir, name?, deps?, reach? }`): a `name`d directory that is not a project becomes one; an existing one keeps its name (another is refused). `deps` (order: `^task`; reach: `--filter`, `--affected`) and `reach` (reach only) are directories, unioned over plugins after the stage, the only project edges core has (with none returning `deps`, a `^task` is refused); a target that is no project is refused; `ctx.projects` is core's and earlier plugins', `ctx.cacheDir` the run's, `ctx.worktreeChanges()` the paths the run's own `git status` lists (null outside git), so a plugin keyed on the worktree walks it once with core. The lock records the result (names and the adding plugin in `.vx/projects.lock`, edges in `.vx/dependencies.lock`); every other verb reads that and calls no hook. Refusals name the plugin |
-| `project(cfg, ctx)`    | per loaded config                    | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name; `ctx.lock` is true in `vx lock`'s pass, the place to report what a mapping could not say (a run checks nothing)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `graph(nodes, ctx)`    | after graph build                    | edit `deps`/`requested`/`config` in place; the builder's checks run again (item 981), each task config is re-validated after EACH plugin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `key(task, ctx)`       | per task, at hash                    | a plain `{ name: value }` record folded into the key and named in `vx why`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `fingerprint`          | claim, static                        | `{ files, affected(change, ctx) }`: the workspace-fingerprint files this plugin keys per project; one claimant each; `affected` answers names from `ctx.projects`, else it is refused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `measures(nodes)`      | once, before `schedule`              | measure id (`<plugin>#<name>`) → definition hash: what the plugin times that is no task (a worker's warm-up). Every `schedule` gets the union as `ctx.measures`, so a history plugin fetches them with the tasks; `ctx.measure({ id, def, durationMs, cores? })` reports one in the run, heard as `onMeasure`; core keeps the run's last of each as a task's timing, read back by `localHistory(…).measuresFor(ids)`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `schedule(nodes, ctx)` | once, if a task will start           | task id → weight, merged over the structural baseline; later plugin wins per task. Awaited before the first task, so it answers from what is at hand; `ctx.refs` are the refs the run reads, as `CacheContext.refs`; `ctx.refine(weights)` replaces the plugin's weights later and re-ranks the tasks not yet started (fetched timings), never holding the run; `ctx.onRefine(listener)` calls back when another plugin refines, so a plugin that read history here reads it again; `ctx.refine(promise)` promises weights, and `ctx.refining()` settles once every promised refine has landed, so a plugin that sizes the run by fetched data (vx-dte's workers) waits for it; `ctx.flaky(taskIds)` names tasks a shared record knows as flaky, so a failing one gets the one retry a known flake gets                                                                 |
-| `admit(task, ctx)`     | every local dispatch                 | `false` holds a ready task beside `ctx.running` until something finishes (with nothing running, it is overridden, by name); a persistent task leaves `ctx.running` at ready, when it frees its worker; sync, cheap; a throw, a Promise or an answer not `true`/`false`/`undefined` admits from then on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `commands`             | unknown CLI verb                     | `{ verb: { description, run(argv, ctx) } }` (`ctx.cache` read-only, opened on first use; `ctx.artifacts` saves and restores task entries by key under a run's policy and scope; `ctx.artifactsFor(facts)` does it under another run's refs and lent access, the `CacheContext.lent` a plugin's remote reads); a core verb's name, an empty one or one opening with `-` is refused; `vx help`                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `executor(ctx)`        | `plugin-host.ts`                     | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs; `ctx.artifacts` (`TaskArtifacts`) saves and restores task entries by key in the run's cache, for a task another machine ran; `ctx.cacheFacts()` is what that machine reads the cache under (`CacheFacts`: the run's refs and each remote's `lend`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `cache(ctx)`           | run setup                            | return a `RemoteCacheLayer` or decline; core layers each over the local cache, in declared order, under the run policy (plugin-host.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `telemetry(ctx)`       | `telemetry-host.ts`                  | return sink(s) or decline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `output(ctx)`          | `output-host.ts`, before `run:start` | return a `Logger` that draws the run, or decline (`OutputContext`: `ctx.isTTY`, `ctx.ci` say where it would draw); first one wins; one that does not answer within the teardown bound is passed over with a warning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `setup(ctx)`           | `installPlugins`                     | validate config; throw `UserError`; `ctx.cache`, `ctx.ci`, `ctx.branch` (below), `ctx.secret` (util-secrets.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `teardown(run?)`       | end-of-run                           | flush/close; crash-isolated, 3s-bounded; `RunReport` when the run ran to its end                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Capability             | Consulted by                                               | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config(ws, ctx)`      | every verb, first                                          | edit the workspace config in place before anything is derived from it (`cache.dir` too); re-validated after EACH plugin; `ctx.setBranch` names the branch's cache scope and base (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `discover(ctx)`        | `vx lock`, after core's discovery                          | return `DiscoveredProject[]` (`{ dir, name?, deps?, reach? }`): a `name`d directory that is not a project becomes one; an existing one keeps its name (another is refused). `deps` (order: `^task`; reach: `--filter`, `--affected`) and `reach` (reach only) are directories, unioned over plugins after the stage, the only project edges core has (with none returning `deps`, a `^task` is refused); a target that is no project is refused; `ctx.projects` is core's and earlier plugins', `ctx.cacheDir` the run's, `ctx.worktreeChanges()` the paths the run's own `git status` lists (null outside git), so a plugin keyed on the worktree walks it once with core. The lock records the result (names and the adding plugin in `.vx/projects.lock`, edges in `.vx/dependencies.lock`); every other verb reads that and calls no hook. Refusals name the plugin |
+| `project(cfg, ctx)`    | per loaded config                                          | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name; `ctx.lock` is true in `vx lock`'s pass, the place to report what a mapping could not say (a run checks nothing); `ctx.read(file)` names a file the config was made from, so a run refuses once it changes, naming `vx lock`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `graph(nodes, ctx)`    | after graph build                                          | edit `deps`/`requested`/`config` in place; the builder's checks run again (item 981), each task config is re-validated after EACH plugin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `key(task, ctx)`       | per task, at hash                                          | a plain `{ name: value }` record folded into the key and named in `vx why`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `fingerprint`          | claim, static                                              | `{ files, affected(change, ctx) }`: the workspace-fingerprint files this plugin keys per project; one claimant each; `affected` answers names from `ctx.projects`, else it is refused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `measures(nodes)`      | once, before `schedule`; only when a plugin has `schedule` | measure id (`<plugin>#<name>`) → definition hash: what the plugin times that is no task (a worker's warm-up). Every `schedule` gets the union as `ctx.measures`, so a history plugin fetches them with the tasks; `ctx.measure({ id, def, durationMs, cores? })` reports one in the run, heard as `onMeasure`; core keeps the run's last of each as a task's timing, read back by `localHistory(…).measuresFor(ids)`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `schedule(nodes, ctx)` | once, if a task will start                                 | task id → weight, merged over the structural baseline; later plugin wins per task. Awaited before the first task, so it answers from what is at hand; `ctx.refs` are the refs the run reads, as `CacheContext.refs`; `ctx.refine(weights)` replaces the plugin's weights later and re-ranks the tasks not yet started (fetched timings), never holding the run; `ctx.onRefine(listener)` calls back when another plugin refines, so a plugin that read history here reads it again; `ctx.refine(promise)` promises weights, and `ctx.refining()` settles once every promised refine has landed, so a plugin that sizes the run by fetched data (vx-dte's workers) waits for it; `ctx.flaky(taskIds)` names tasks a shared record knows as flaky, so a failing one gets the one retry a known flake gets                                                                 |
+| `admit(task, ctx)`     | every local dispatch                                       | `false` holds a ready task beside `ctx.running` until something finishes (with nothing running, it is overridden, by name); a persistent task leaves `ctx.running` at ready, when it frees its worker; sync, cheap; a throw, a Promise or an answer not `true`/`false`/`undefined` admits from then on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `commands`             | unknown CLI verb                                           | `{ verb: { description, run(argv, ctx) } }` (`ctx.cache` read-only, opened on first use; `ctx.artifacts` saves and restores task entries by key under a run's policy and scope; `ctx.artifactsFor(facts)` does it under another run's refs and lent access, the `CacheContext.lent` a plugin's remote reads); a core verb's name, an empty one or one opening with `-` is refused; `vx help`                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `executor(ctx)`        | `plugin-host.ts`                                           | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs; `ctx.artifacts` (`TaskArtifacts`) saves and restores task entries by key in the run's cache, for a task another machine ran; `ctx.cacheFacts()` is what that machine reads the cache under (`CacheFacts`: the run's refs and each remote's `lend`); `ctx.status(line)` says a line the footer does not count as a warning (a wait)                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `cache(ctx)`           | run setup                                                  | return a `RemoteCacheLayer` or decline; core layers each over the local cache, in declared order, under the run policy (plugin-host.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `telemetry(ctx)`       | `telemetry-host.ts`                                        | return sink(s) or decline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `output(ctx)`          | `output-host.ts`, before `run:start`                       | return a `Logger` that draws the run, or decline (`OutputContext`: `ctx.isTTY`, `ctx.ci` say where it would draw); first one wins; one that does not answer within the teardown bound is passed over with a warning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `setup(ctx)`           | `installPlugins`                                           | validate config; throw `UserError`; `ctx.cache`, `ctx.ci`, `ctx.branch` (below), `ctx.secret` (util-secrets.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `teardown(run?)`       | end-of-run                                                 | flush/close; crash-isolated, 3s-bounded; `RunReport` when the run ran to its end                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ### The installer
 
@@ -3438,7 +3471,8 @@ a run explorer's record on this API and reads it back through a verb.
   are warned and switched off,
   and a throwing `admit` (or one that answers a Promise, or anything not
   `true`, `false` or `undefined`) admits from then
-  on. An async hook's rejection counts as its throw. `ctx.on` with a
+  on. An async hook's rejection counts as its throw, and so does a value
+  `setup` or `teardown` returns (a disposer core would never call). `ctx.on` with a
   hook name it does not know fails the load (H-16), as does a handler (or
   a `ctx.bus.subscribe` subscriber) that is not a function.
 - **What a plugin observes is read-only** (`read-only.ts`,
@@ -3603,6 +3637,11 @@ nothing runs and caches here.
   (C-63), the plugin's error as its `cause`: printed plainly, as every
   stage's throw is, never as vx's internal error, and the plugin's own
   error is never renamed (C-85). The floor's is untouched.
+- `watchedExecute(executor, running)` — a plugin executor's `execute`
+  marked as its plugin's hook until it settles (`hookStarted`), so one
+  that never settles strands the run naming the plugin
+  (`never settled its execute hook`), not "a plugin hook?". The floor's
+  is not marked.
 - `executorFailedOn(err)` — the executor's name on an error
   `nameExecutorFailure` made, else `undefined`: `run()` sets it as the
   task's `where`, whose row read `local` though the task was placed on
@@ -3778,6 +3817,7 @@ interface TaskTelemetry {
   blockedBy?: string // on a skipped task, the failure at the root of it
   otherPlatform?: { needs: readonly string[]; host: string } // on a skipped task, its `exec.platforms` leave the machine out
   timedOut?: true // on a failed task, vx's own timeout killed it
+  outputsMissing?: readonly string[] // on a failed task whose command exited 0: the outputs that matched no file
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn' // a persistent task never ready
   failedAttempts?: readonly FailedAttempt[] // a retried task's attempts that failed, in order
@@ -3787,7 +3827,7 @@ interface TaskTelemetry {
   storedCpuMs?: number // on a hit: the stored run's CPU and peak memory
   storedPeakRssBytes?: number
   admissionHeldMs?: number // how long an `admit` policy held it once ready
-  queuedMs?: number // how long it waited ready for a worker, any admission hold included
+  queuedMs?: number // how long it waited ready for a worker, any admission hold and an executor's wait for a machine included
   inputFiles?: number // on a cacheable task that ran: the files its key read
   inputChanges?: InputChanges // and what its key changed since the last saved entry, ten named
   artifactBytes?: number // the artifact's compressed size: a hit's entry, or a miss's save
@@ -3808,6 +3848,7 @@ interface RunSummaryRecord {
   failedCount: number
   abortedCount: number // started, then stopped by a signal or an abort; in `tasks` (v3)
   notRunCount?: number // the stop reached them first; not in `tasks`, absent when none
+  notRun?: readonly string[] // those tasks' ids, so a sink lists them as the terminal counts them; absent when none
   hitCount: number
   hitLocalCount: number // hits by the layer that answered, up-to-date ones included
   hitRemoteCount: number
@@ -3952,7 +3993,7 @@ export interface GitContext {
 }
 export interface CiContext {
   ci: boolean
-  provider: string | null // 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'generic' (bare `CI`), or null
+  provider: string | null // 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'azure' | 'jenkins' | 'teamcity' | 'generic' (bare `CI`), or null
   runUrl?: string // the provider's page for this run
   change?: string // the pull or merge request number
   pipeline?: string // the workflow or pipeline name
@@ -4047,7 +4088,9 @@ export function captureWorkspaceIdentity(
   then counts every run. Never throws.
 - `detectCi(env)` — the provider matrix, first truthy variable wins
   (present and not `0` / `false`): `github`, `gitlab`, `buildkite`,
-  `circleci`, and a bare `CI` as `generic`.
+  `circleci`, `azure`, `jenkins`, `teamcity`, and a bare `CI` as `generic`.
+  Azure's is `TF_BUILD`, Jenkins' `JENKINS_URL` and TeamCity's
+  `TEAMCITY_VERSION`; the list is util's `CI_PROVIDERS`.
 - `captureHostContext()` — hostname/os/arch.
 - `captureWorkspaceIdentity(root, originUrl?)` — the same id from any machine's
   checkout of the same repo: the `origin` remote URL normalized
@@ -4256,9 +4299,9 @@ export function codeIdentity(): string
 
 - `runKeysToken` — the row's name is the hash of the selected task ids;
   the token is everything `deriveStableKeys` reads: the code that
-  derives (a compiled binary's file stamp, told by `Bun.main`, or every source module's size,
+  derives (the vx version every key folds, then a compiled binary's file stamp, told by `Bun.main`, or every source module's size,
   mtime, ctime and inode: an npm tarball's fixed mtime left a same-size
-  upgrade unseen), the workspace root, forward args, claimed root files,
+  upgrade unseen, and a version moved in package.json alone read back the old keys), the workspace root, forward args, claimed root files,
   nested project dirs, the outputs git ignores, the workspace's
   `outputs.clean` and the `inputs.stability.strategy` of the workspace
   and of `VX_INPUTS_STABILITY_STRATEGY` (a config key folds them, and a

@@ -22,6 +22,7 @@ import {
   errorCode,
   formatBytes,
   isUserError,
+  UserError,
   nearest,
   parseDuration,
   parseSize,
@@ -39,6 +40,9 @@ import {
   parseCacheDirFlag,
   warnToStderr,
 } from './workspace-config.js'
+
+/** Taking turns is a status line, as a run says it, not a warning. */
+const waiting = (line: string): void => ui.say('info', line)
 
 /**
  * `vx cache stats` is a habit from the other runners, and vx's answer is a
@@ -85,7 +89,14 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args
   switch (sub) {
     case 'clean':
-      return await cleanCmd(rest)
+      // What it throws is the clean's: bin.ts labels an unnamed refusal by
+      // the first word typed, `vx cache`.
+      return await cleanCmd(rest).catch((err: unknown) => {
+        if (!isUserError(err) || err.message.startsWith('vx ')) throw err
+        const named = new UserError(`vx cache clean: ${err.message}`, errorCode(err))
+        if (err.parts !== undefined) named.parts = err.parts
+        throw named
+      })
     case undefined:
       // A bare `vx cache clean` refuses too: the hint names a whole command.
       return refuse(
@@ -216,7 +227,13 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   try {
     root = await findWorkspaceRoot(cwd)
   } catch (err) {
-    return refuse('cache clean', args, (err as Error).message, errorCode(err))
+    return refuse(
+      'cache clean',
+      args,
+      (err as Error).message,
+      errorCode(err),
+      isUserError(err) ? err.parts : undefined,
+    )
   }
   // Honor `--cache-dir`, `defineWorkspace({ cacheDir: '...' })` and a `config`
   // plugin's edit of it — `vx run` and `vx cache clean` must operate on the
@@ -254,18 +271,16 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   // takes the run's lock and waits its turn. A dry run deletes nothing.
   const releaseRunLock = parsed.dry
     ? async (): Promise<void> => {}
-    : await acquireRunLock(root, { log: warnToStderr })
+    : await acquireRunLock(root, { log: warnToStderr, wait: waiting, holder: 'cache clean' })
   try {
     // A run in another checkout of the repository holds no lock of this
     // one's, and shares the store: the prune waits for every process that
     // has the store open, then opens its own handle on it. A cache
     // directory with no store may be another workspace's: the prune holds
     // it until done, as its runs do.
-    if (!parsed.dry && storeRoot !== null) (await holdStore(storeRoot, warnToStderr))()
+    if (!parsed.dry && storeRoot !== null) (await holdStore(storeRoot, waiting))()
     const releaseDir =
-      !parsed.dry && storeRoot === null
-        ? await holdCacheDir(dir, 'exclusive', warnToStderr)
-        : () => {}
+      !parsed.dry && storeRoot === null ? await holdCacheDir(dir, 'exclusive', waiting) : () => {}
     const cache =
       parsed.dry === true
         ? new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
@@ -375,7 +390,9 @@ async function clear(
   // waits for the run's lock, as a trim does, and only then reads what to
   // delete: read first, what the run saved meanwhile went uncounted.
   const release =
-    parsed.dry === true ? async () => {} : await acquireRunLock(root, { log: warnToStderr })
+    parsed.dry === true
+      ? async () => {}
+      : await acquireRunLock(root, { log: warnToStderr, wait: waiting, holder: 'cache clean' })
   try {
     return await clearHeld(args, root, dir, storeRoot, parsed)
   } finally {
@@ -494,8 +511,8 @@ async function clearHeld(
     const asides: string[] = []
     try {
       for (const t of [...doomed].sort()) {
-        holds.push(await holdStore(t, warnToStderr))
-        if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', warnToStderr))
+        holds.push(await holdStore(t, waiting))
+        if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', waiting))
       }
       for (const t of doomed) {
         for (const e of entries(t)) {

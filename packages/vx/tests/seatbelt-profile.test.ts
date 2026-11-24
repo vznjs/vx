@@ -130,6 +130,18 @@ describe('macProfileRules, capability by capability', () => {
       ],
     ],
     [
+      // It reads them before a dial the proxy refuses, too.
+      'a network list with no loopback port',
+      { network: ['localhost', 'example.com'] },
+      ['(allow mach-lookup (global-name "com.apple.SystemConfiguration.configd"))'],
+    ],
+    [
+      'network: true',
+      { network: true },
+      ['(allow mach-lookup (global-name "com.apple.SystemConfiguration.configd"))'],
+    ],
+    ['an empty network list', { network: [] }, []],
+    [
       'unixSockets: true',
       { unixSockets: true },
       [

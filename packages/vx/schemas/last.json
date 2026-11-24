@@ -8,8 +8,12 @@
       "additionalProperties": false,
       "required": ["invocation", "tasks"],
       "properties": {
-        "invocation": { "$ref": "#/$defs/invocation" },
-        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+        "invocation": { "$ref": "#/$defs/invocation", "description": "the run as a whole" },
+        "tasks": {
+          "type": "array",
+          "description": "one row per task it ran, hit or skipped",
+          "items": { "$ref": "#/$defs/task" }
+        },
         "warnings": {
           "type": "array",
           "description": "what the run warned of, plain text; absent when it warned of nothing",
@@ -23,9 +27,9 @@
             "additionalProperties": false,
             "required": ["id", "durationMs", "ok"],
             "properties": {
-              "id": { "type": "string" },
-              "durationMs": { "type": "number" },
-              "ok": { "type": "boolean" }
+              "id": { "type": "string", "description": "the step's name, like vx:prefetch" },
+              "durationMs": { "type": "number", "description": "how long it took" },
+              "ok": { "type": "boolean", "description": "false when it failed" }
             }
           }
         }
@@ -46,14 +50,15 @@
       "properties": {
         "live": {
           "type": "object",
+          "description": "the run in progress",
           "additionalProperties": false,
           "required": ["runId", "command", "pid", "startedAt", "elapsedMs"],
           "properties": {
-            "runId": { "type": "string" },
-            "command": { "type": "string" },
-            "pid": { "type": "integer" },
+            "runId": { "type": "string", "description": "the run id" },
+            "command": { "type": "string", "description": "the command line that started it" },
+            "pid": { "type": "integer", "description": "the run's process id" },
             "startedAt": { "type": "integer", "description": "epoch ms" },
-            "elapsedMs": { "type": "integer" }
+            "elapsedMs": { "type": "integer", "description": "how long it has run" }
           }
         },
         "tasks": {
@@ -64,17 +69,24 @@
             "additionalProperties": false,
             "required": ["taskId", "status", "startedAt", "durationMs"],
             "properties": {
-              "taskId": { "type": "string" },
+              "taskId": { "type": "string", "description": "project#task" },
               "status": {
                 "type": "string",
                 "description": "running, waiting, or the status it ended with"
               },
-              "startedAt": { "type": ["integer", "null"] },
-              "durationMs": { "type": ["number", "null"] }
+              "startedAt": {
+                "type": ["integer", "null"],
+                "description": "epoch ms; null while waiting"
+              },
+              "durationMs": { "type": ["number", "null"], "description": "null until it ends" }
             }
           }
         },
-        "warnings": { "type": "array", "items": { "type": "string" } }
+        "warnings": {
+          "type": "array",
+          "description": "what the run warned of so far, plain text",
+          "items": { "type": "string" }
+        }
       }
     },
     "event": {
@@ -85,27 +97,20 @@
           "additionalProperties": false,
           "required": ["kind", "info"],
           "properties": {
-            "kind": {
-              "const": "run:start"
-            },
+            "kind": { "const": "run:start", "description": "the run started" },
             "info": {
               "type": "object",
+              "description": "what the run will do",
               "additionalProperties": false,
               "required": ["total"],
               "properties": {
-                "total": {
-                  "type": "integer"
-                },
-                "concurrency": {
-                  "type": "integer"
-                },
+                "total": { "type": "integer", "description": "how many tasks it will reach" },
+                "concurrency": { "type": "integer", "description": "its worker count" },
                 "requestedCount": {
-                  "type": "integer"
-                },
-                "startedAtMs": {
                   "type": "integer",
-                  "description": "epoch ms"
-                }
+                  "description": "the tasks asked for on the command line"
+                },
+                "startedAtMs": { "type": "integer", "description": "epoch ms" }
               }
             }
           }
@@ -115,11 +120,10 @@
           "additionalProperties": false,
           "required": ["kind", "task"],
           "properties": {
-            "kind": {
-              "const": "task:start"
-            },
+            "kind": { "const": "task:start", "description": "a task started" },
             "task": {
               "type": "object",
+              "description": "the task",
               "additionalProperties": false,
               "required": [
                 "id",
@@ -131,33 +135,23 @@
                 "persistent"
               ],
               "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "project": {
-                  "type": "string"
-                },
-                "task": {
-                  "type": "string"
-                },
-                "isGroup": {
-                  "const": false,
-                  "description": "groups are left out"
-                },
+                "id": { "type": "string", "description": "project#task" },
+                "project": { "type": "string", "description": "the project name" },
+                "task": { "type": "string", "description": "the task name" },
+                "isGroup": { "const": false, "description": "groups are left out" },
                 "requested": {
                   "type": "boolean",
                   "description": "asked for on the command line, not pulled in"
                 },
                 "surfaced": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "shown as if requested: a direct dependency of a requested group"
                 },
                 "persistent": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "a long-running task, like a dev server"
                 },
-                "command": {
-                  "type": "string",
-                  "description": "secrets masked"
-                }
+                "command": { "type": "string", "description": "secrets masked" }
               }
             }
           }
@@ -168,11 +162,10 @@
           "required": ["kind", "taskId", "chunk"],
           "properties": {
             "kind": {
-              "enum": ["task:stdout", "task:stderr"]
+              "enum": ["task:stdout", "task:stderr"],
+              "description": "a task wrote output"
             },
-            "taskId": {
-              "type": "string"
-            },
+            "taskId": { "type": "string", "description": "project#task" },
             "chunk": {
               "type": "string",
               "description": "output as the task wrote it, secrets masked"
@@ -184,17 +177,14 @@
           "additionalProperties": false,
           "required": ["kind", "outcome"],
           "properties": {
-            "kind": {
-              "const": "task:complete"
-            },
+            "kind": { "const": "task:complete", "description": "a task ended" },
             "outcome": {
               "type": "object",
+              "description": "how it ended",
               "additionalProperties": false,
               "required": ["taskId", "status", "exitCode", "durationMs"],
               "properties": {
-                "taskId": {
-                  "type": "string"
-                },
+                "taskId": { "type": "string", "description": "project#task" },
                 "status": {
                   "enum": [
                     "success",
@@ -203,14 +193,14 @@
                     "failed",
                     "skipped",
                     "aborted"
-                  ]
+                  ],
+                  "description": "how it ended; cache-hit-remote is a hit from the remote cache"
                 },
                 "exitCode": {
-                  "type": "integer"
+                  "type": "integer",
+                  "description": "the command's exit code; 0 on a hit"
                 },
-                "durationMs": {
-                  "type": "number"
-                },
+                "durationMs": { "type": "number", "description": "how long it took this run" },
                 "noCache": {
                   "const": true,
                   "description": "ran without cache: true: never consulted the cache, not a miss"
@@ -229,19 +219,18 @@
                   "description": "on a hit: the run time the entry was stored with, the work the hit skipped"
                 },
                 "storedCpuMs": {
-                  "type": "number"
+                  "type": "number",
+                  "description": "on a hit: the CPU time the entry was stored with"
                 },
                 "storedPeakRssBytes": {
-                  "type": "number"
+                  "type": "number",
+                  "description": "on a hit: the peak memory the entry was stored with"
                 },
-                "hash": {
-                  "type": "string"
-                },
-                "cpuMs": {
-                  "type": "number"
-                },
+                "hash": { "type": "string", "description": "its cache key" },
+                "cpuMs": { "type": "number", "description": "CPU time its command used" },
                 "peakRssBytes": {
-                  "type": "number"
+                  "type": "number",
+                  "description": "peak resident memory of its command"
                 },
                 "admissionHeldMs": {
                   "type": "number",
@@ -251,10 +240,7 @@
                   "type": "number",
                   "description": "how long it waited, ready, for a worker"
                 },
-                "inputFiles": {
-                  "type": "integer",
-                  "description": "how many files the key read"
-                },
+                "inputFiles": { "type": "integer", "description": "how many files the key read" },
                 "inputChanges": {
                   "type": "object",
                   "additionalProperties": false,
@@ -273,13 +259,16 @@
                         "required": ["kind", "name", "change"],
                         "properties": {
                           "kind": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "files, env, runtime, upstream, …"
                           },
                           "name": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "the part: a file, a variable, a command, a task"
                           },
                           "change": {
-                            "enum": ["changed", "added", "removed"]
+                            "enum": ["changed", "added", "removed"],
+                            "description": "changed, added or removed"
                           }
                         }
                       }
@@ -295,14 +284,8 @@
                   "type": "number",
                   "description": "a remote hit's download and ingest"
                 },
-                "saveMs": {
-                  "type": "number",
-                  "description": "a measured save's own time"
-                },
-                "timedOut": {
-                  "const": true,
-                  "description": "its exec.timeout killed it"
-                },
+                "saveMs": { "type": "number", "description": "a measured save's own time" },
+                "timedOut": { "const": true, "description": "its exec.timeout killed it" },
                 "notReady": {
                   "enum": ["timeout", "exited", "spawn"],
                   "description": "a persistent task that never became ready, and why"
@@ -322,13 +305,10 @@
                   "properties": {
                     "needs": {
                       "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
+                      "description": "the platforms its exec.platforms lists, like darwin-arm64",
+                      "items": { "type": "string" }
                     },
-                    "host": {
-                      "type": "string"
-                    }
+                    "host": { "type": "string", "description": "this machine's platform" }
                   },
                   "description": "a skipped task whose exec.platforms leave out this machine"
                 },
@@ -337,20 +317,21 @@
                   "description": "on a hit: true when outputs were restored, false when up to date"
                 },
                 "sandboxViolations": {
-                  "type": "integer"
+                  "type": "integer",
+                  "description": "how many accesses its sandbox denied"
                 },
                 "sandboxViolationLines": {
                   "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "description": "those denials, one line each",
+                  "items": { "type": "string" }
                 },
                 "wallclockStartNs": {
                   "type": "string",
                   "description": "decimal nanoseconds from the run's start"
                 },
                 "wallclockEndNs": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "decimal nanoseconds from the run's start"
                 }
               }
             }
@@ -361,27 +342,19 @@
           "additionalProperties": false,
           "required": ["kind", "measure"],
           "properties": {
-            "kind": {
-              "const": "task:measure"
-            },
+            "kind": { "const": "task:measure", "description": "a plugin timed something" },
             "measure": {
               "type": "object",
               "additionalProperties": false,
               "required": ["id", "def", "durationMs"],
               "properties": {
-                "id": {
-                  "type": "string",
-                  "description": "<plugin>#<name>"
-                },
+                "id": { "type": "string", "description": "<plugin>#<name>" },
                 "def": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "a hash of what it measures; a new one starts its history over"
                 },
-                "durationMs": {
-                  "type": "number"
-                },
-                "cores": {
-                  "type": "number"
-                }
+                "durationMs": { "type": "number", "description": "how long it took" },
+                "cores": { "type": "number", "description": "the cores it kept busy" }
               },
               "description": "what a plugin timed that is no task of the graph"
             }
@@ -392,16 +365,9 @@
           "additionalProperties": false,
           "required": ["kind", "line"],
           "properties": {
-            "kind": {
-              "const": "run:status"
-            },
-            "line": {
-              "type": "string"
-            },
-            "warn": {
-              "const": true,
-              "description": "a warning"
-            }
+            "kind": { "const": "run:status", "description": "the run's status line changed" },
+            "line": { "type": "string", "description": "the status line, plain text" },
+            "warn": { "const": true, "description": "a warning" }
           }
         },
         {
@@ -409,12 +375,8 @@
           "additionalProperties": false,
           "required": ["kind", "id"],
           "properties": {
-            "kind": {
-              "const": "step:start"
-            },
-            "id": {
-              "type": "string"
-            }
+            "kind": { "const": "step:start", "description": "one of vx's own steps started" },
+            "id": { "type": "string", "description": "the step's name, like vx:prefetch" }
           }
         },
         {
@@ -422,18 +384,10 @@
           "additionalProperties": false,
           "required": ["kind", "id", "durationMs", "ok"],
           "properties": {
-            "kind": {
-              "const": "step:end"
-            },
-            "id": {
-              "type": "string"
-            },
-            "durationMs": {
-              "type": "number"
-            },
-            "ok": {
-              "type": "boolean"
-            }
+            "kind": { "const": "step:end", "description": "one of vx's own steps ended" },
+            "id": { "type": "string", "description": "the step's name, like vx:prefetch" },
+            "durationMs": { "type": "number", "description": "how long it took" },
+            "ok": { "type": "boolean", "description": "false when it failed" }
           }
         },
         {
@@ -442,7 +396,8 @@
           "required": ["kind"],
           "properties": {
             "kind": {
-              "enum": ["run:end", "run:stop", "run:done"]
+              "enum": ["run:end", "run:stop", "run:done"],
+              "description": "run:stop: the run began to stop early; run:end: every task ended; run:done: the last event"
             }
           }
         }
@@ -473,7 +428,11 @@
           "type": ["string", "null"],
           "description": "the branch p50 forecasts from: --branch, VX_RUN_BRANCH, git's, then CI's"
         },
-        "stats": { "type": "array", "items": { "$ref": "#/$defs/taskStats" } }
+        "stats": {
+          "type": "array",
+          "description": "one row per task",
+          "items": { "$ref": "#/$defs/taskStats" }
+        }
       }
     },
     "taskStats": {
@@ -491,17 +450,26 @@
         "maxCpuParallelism"
       ],
       "properties": {
-        "taskId": { "type": "string" },
+        "taskId": { "type": "string", "description": "project#task" },
         "runs": { "type": "integer", "description": "executed runs in the window, skips aside" },
         "p50DurationMs": {
           "type": ["number", "null"],
           "description": "the forecast a run shows: median of the last 5 timings on branch, else on any branch; null when none"
         },
-        "p99DurationMs": { "type": ["number", "null"] },
+        "p99DurationMs": {
+          "type": ["number", "null"],
+          "description": "99th percentile of its executed durations; null when none"
+        },
         "successRate": { "type": "number", "description": "0 to 1" },
         "hitRate": { "type": "number", "description": "0 to 1" },
-        "failureMode": { "enum": ["stable", "flaky-recoverable", "flaky-fatal"] },
-        "maxPeakRssBytes": { "type": ["integer", "null"] },
+        "failureMode": {
+          "enum": ["stable", "flaky-recoverable", "flaky-fatal"],
+          "description": "stable; flaky-recoverable: a key that passed also failed, under 1 in 5 runs; flaky-fatal: as often or more"
+        },
+        "maxPeakRssBytes": {
+          "type": ["integer", "null"],
+          "description": "the most resident memory one run used; null when nothing sampled"
+        },
         "maxCpuParallelism": {
           "type": ["number", "null"],
           "description": "cpu time over wall time; 2.0 is two cores busy"
@@ -513,9 +481,12 @@
       "additionalProperties": false,
       "required": ["runId", "taskId", "status", "source", "output"],
       "properties": {
-        "runId": { "type": "string" },
-        "taskId": { "type": "string" },
-        "status": { "type": "string" },
+        "runId": { "type": "string", "description": "the run the output is from" },
+        "taskId": { "type": "string", "description": "project#task" },
+        "status": {
+          "type": "string",
+          "description": "success, cache-hit, cache-hit-remote, failed, skipped or aborted"
+        },
         "source": {
           "enum": ["failure", "cache", null],
           "description": "the kept failure output, the cache entry's log, or none kept"
@@ -544,6 +515,7 @@
         "upToDateCount",
         "restoredLocalCount",
         "restoredRemoteCount",
+        "abortedCount",
         "exitOk",
         "commitSha",
         "branch",
@@ -556,20 +528,30 @@
         "vxVersion"
       ],
       "properties": {
-        "runId": { "type": "string" },
-        "command": { "type": "string" },
-        "requestedTasks": { "type": "array", "items": { "type": "string" } },
-        "cachePolicy": { "type": "string" },
-        "concurrency": { "type": "integer" },
-        "flow": { "enum": ["focused", "broad", null] },
+        "runId": { "type": "string", "description": "the run id" },
+        "command": { "type": "string", "description": "the command line that started it" },
+        "requestedTasks": {
+          "type": "array",
+          "description": "the tasks asked for",
+          "items": { "type": "string" }
+        },
+        "cachePolicy": {
+          "type": "string",
+          "description": "the cache policy it ran under, like local:rw,remote:r"
+        },
+        "concurrency": { "type": "integer", "description": "its worker count" },
+        "flow": {
+          "enum": ["focused", "broad", null],
+          "description": "focused: the requested task in a frame; broad: one row per task; null on older history"
+        },
         "startedAt": { "type": "integer", "description": "epoch ms" },
         "endedAt": { "type": "integer", "description": "epoch ms" },
-        "totalDurationMs": { "type": "number" },
-        "taskCount": { "type": "integer" },
-        "failedCount": { "type": "integer" },
-        "hitCount": { "type": "integer" },
-        "hitLocalCount": { "type": "integer" },
-        "hitRemoteCount": { "type": "integer" },
+        "totalDurationMs": { "type": "number", "description": "wall time of the run" },
+        "taskCount": { "type": "integer", "description": "tasks it reached" },
+        "failedCount": { "type": "integer", "description": "tasks that failed" },
+        "hitCount": { "type": "integer", "description": "cache hits, local and remote" },
+        "hitLocalCount": { "type": "integer", "description": "hits from the local cache" },
+        "hitRemoteCount": { "type": "integer", "description": "hits from the remote cache" },
         "upToDateCount": {
           "type": "integer",
           "description": "hits that restored nothing: the disk already matched"
@@ -582,16 +564,41 @@
           "type": "integer",
           "description": "hits that restored outputs from the remote cache"
         },
-        "exitOk": { "type": "boolean" },
-        "commitSha": { "type": ["string", "null"] },
-        "branch": { "type": ["string", "null"] },
-        "dirty": { "type": ["boolean", "null"] },
-        "ci": { "type": "boolean" },
-        "ciProvider": { "type": ["string", "null"] },
-        "host": { "type": ["string", "null"] },
-        "os": { "type": ["string", "null"] },
-        "arch": { "type": ["string", "null"] },
-        "vxVersion": { "type": "string" }
+        "abortedCount": {
+          "type": "integer",
+          "description": "tasks a stop or --fail-fast killed once started: counted by the footer, with no row in tasks"
+        },
+        "exitOk": { "type": "boolean", "description": "the run exited 0" },
+        "commitSha": {
+          "type": ["string", "null"],
+          "description": "HEAD when it ran; null outside git"
+        },
+        "branch": {
+          "type": ["string", "null"],
+          "description": "the branch it ran on; null when none"
+        },
+        "dirty": {
+          "type": ["boolean", "null"],
+          "description": "the work tree had changes; null outside git"
+        },
+        "ci": { "type": "boolean", "description": "it ran on CI" },
+        "ciProvider": {
+          "type": ["string", "null"],
+          "description": "which CI, like github; null when none"
+        },
+        "host": {
+          "type": ["string", "null"],
+          "description": "the machine name; null when unknown"
+        },
+        "os": {
+          "type": ["string", "null"],
+          "description": "the OS, like linux; null when unknown"
+        },
+        "arch": {
+          "type": ["string", "null"],
+          "description": "the CPU architecture, like x64; null when unknown"
+        },
+        "vxVersion": { "type": "string", "description": "the vx that ran it" }
       }
     },
     "task": {
@@ -629,15 +636,21 @@
         "attempts"
       ],
       "properties": {
-        "runId": { "type": ["string", "null"] },
-        "project": { "type": "string" },
-        "task": { "type": "string" },
-        "status": { "type": "string" },
+        "runId": {
+          "type": ["string", "null"],
+          "description": "the run; null on history older than run ids"
+        },
+        "project": { "type": "string", "description": "the project name" },
+        "task": { "type": "string", "description": "the task name" },
+        "status": {
+          "type": "string",
+          "description": "success, cache-hit, cache-hit-remote, failed, skipped or aborted"
+        },
         "exitCode": {
           "type": "integer",
           "description": "a skipped task records 0 when an exec.platforms skip is its root, 1 behind a failure or fail-fast"
         },
-        "durationMs": { "type": "number" },
+        "durationMs": { "type": "number", "description": "how long it took this run" },
         "startedAt": { "type": "integer", "description": "epoch ms" },
         "endedAt": { "type": "integer", "description": "epoch ms" },
         "cacheHit": {
@@ -652,9 +665,15 @@
           "type": ["boolean", "null"],
           "description": "whether the task declares a cache (false prints no-cache); not whether this run hit it"
         },
-        "hash": { "type": "string" },
-        "cpuMs": { "type": ["number", "null"] },
-        "peakRssBytes": { "type": ["integer", "null"] },
+        "hash": { "type": "string", "description": "its cache key; empty when it had none" },
+        "cpuMs": {
+          "type": ["number", "null"],
+          "description": "CPU time its command used; null when not measured"
+        },
+        "peakRssBytes": {
+          "type": ["integer", "null"],
+          "description": "peak resident memory of its command; null when not measured"
+        },
         "peakCores": {
           "type": ["number", "null"],
           "description": "most cores one sampling interval burned; null when nothing sampled"
@@ -683,16 +702,31 @@
           "type": ["string", "null"],
           "description": "decimal nanoseconds from the run's start"
         },
-        "wallclockEndNs": { "type": ["string", "null"] },
-        "blockedBy": { "type": ["string", "null"] },
-        "timedOut": { "type": ["boolean", "null"] },
-        "sandboxViolations": { "type": ["integer", "null"] },
-        "notReady": { "enum": ["timeout", "exited", "spawn", null] },
+        "wallclockEndNs": {
+          "type": ["string", "null"],
+          "description": "decimal nanoseconds from the run's start"
+        },
+        "blockedBy": {
+          "type": ["string", "null"],
+          "description": "the project#task its skip traces to; null when none"
+        },
+        "timedOut": {
+          "type": ["boolean", "null"],
+          "description": "its exec.timeout killed it; null when not recorded"
+        },
+        "sandboxViolations": {
+          "type": ["integer", "null"],
+          "description": "how many accesses its sandbox denied; null when not recorded"
+        },
+        "notReady": {
+          "enum": ["timeout", "exited", "spawn", null],
+          "description": "a persistent task that never became ready: timeout, exited or spawn; null otherwise"
+        },
         "remoteError": {
           "type": ["string", "null"],
           "description": "each failed remote read or write of the key, `; `-joined"
         },
-        "forwarded": { "type": "boolean" },
+        "forwarded": { "type": "boolean", "description": "it ran with the args after --" },
         "inputMoved": {
           "type": "string",
           "description": "on a row failed by inputStability.severity 'error': the input that changed during the run"
@@ -718,8 +752,8 @@
             "required": ["file"],
             "properties": {
               "file": { "type": "string", "description": "absolute" },
-              "line": { "type": "integer" },
-              "col": { "type": "integer" }
+              "line": { "type": "integer", "description": "the line its output names" },
+              "col": { "type": "integer", "description": "the column its output names" }
             }
           }
         },
@@ -728,10 +762,26 @@
           "description": "on a sandboxed failed row: the exec.sandbox.allow entries that would have granted its denials",
           "additionalProperties": false,
           "properties": {
-            "read": { "type": "array", "items": { "type": "string" } },
-            "write": { "type": "array", "items": { "type": "string" } },
-            "network": { "type": "array", "items": { "type": "string" } },
-            "systemInfo": { "type": "array", "items": { "type": "string" } },
+            "read": {
+              "type": "array",
+              "description": "paths to add to exec.sandbox.allow.read",
+              "items": { "type": "string" }
+            },
+            "write": {
+              "type": "array",
+              "description": "paths to add to exec.sandbox.allow.write",
+              "items": { "type": "string" }
+            },
+            "network": {
+              "type": "array",
+              "description": "hosts to add to exec.sandbox.allow.network",
+              "items": { "type": "string" }
+            },
+            "systemInfo": {
+              "type": "array",
+              "description": "sysctl names to add to exec.sandbox.allow.systemInfo (macOS)",
+              "items": { "type": "string" }
+            },
             "withheld": {
               "type": "array",
               "description": "credential paths it denied and left out of the grants",

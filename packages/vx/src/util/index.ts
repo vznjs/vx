@@ -25,11 +25,13 @@ export {
   OUT_OF_FDS_HINT,
   thrownMessage,
   wantsJson,
+  REAL_STDOUT_WRITE,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
-export { envFlagOn } from './env-flag.js'
+export { ciProvider, envFlagOn } from './env-flag.js'
 export { type EmbeddedBinary, embeddedBinaryPath } from './embedded-binary.js'
 export { noteWrite, outputPaced } from './out-pace.js'
+export { jsonErrorAt } from './json-position.js'
 export { decodeRaw, rawBytes, rawEncode, RawUtf8Decoder } from './raw-utf8.js'
 export { keysSorted, xxh3, xxh3hex } from './hash.js'
 export {
@@ -192,7 +194,7 @@ export {
   parseDependencySpec,
   type DependencySpec,
 } from './dependency-spec.js'
-export { stripEscapes } from './plain-text.js'
-export { modeMatches, readUmask, restoredMode } from './umask.js'
+export { keepStyleEscapes, stripEscapes } from './plain-text.js'
+export { modeMatches, peekUmask, readUmask, restoredMode } from './umask.js'
 export type { Inline, Style, Token, Tone } from './styled.js'
 export { notify, onNotice, type Notice } from './notice.js'

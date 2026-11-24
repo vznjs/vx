@@ -62,6 +62,8 @@ interface Job {
   worker?: string
   /** When it last joined the run's queue. */
   queuedAt?: number
+  /** When core handed it over (`execute`): until its standing send, it waited for a worker. */
+  calledAt?: number
   /** The cores its worker booked for it. */
   booked?: number
   /** The workers that failed it after beginning it, with why: two fail it. */
@@ -102,6 +104,8 @@ const PIN_WAIT_MS = 10_000
 
 /** No task began or ended this long: the run says what it waits on, each time again. */
 const STALL_MS = 60_000
+/** As core's lock wait: a wait shorter than this says nothing. */
+const SAY_WAIT_MS = 1_000
 
 interface Worker extends RecordedWorker {
   readonly id: string
@@ -192,6 +196,10 @@ export interface OrchestratorOptions {
   readonly stalled?: (waiting: string) => void
   /** A fault the run works around (a message the relay would not take); default stderr. */
   readonly warn?: (message: string) => void
+  /** A line the run says that is no fault: a wait (`ExecutorContext.status`). */
+  readonly status?: (message: string) => void
+  /** An adapter starts the run's workers; without one they join when someone starts them. */
+  readonly adapter?: boolean
   /** Default `STALL_MS`. */
   readonly stallMs?: number
   /** How long a task waits on the worker holding its upstream's files (`PIN_WAIT_MS`). */
@@ -318,6 +326,8 @@ export class Orchestrator extends RunReport<Worker> {
   readonly trace = new Trace()
   /** When a task last began, ended or faulted, or the run last said it waits. */
   private movedAt = performance.now()
+  /** Says once that the run waits for a worker to join (`enqueue`). */
+  private sayWait: ReturnType<typeof setTimeout> | undefined
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
   private readonly realRoot: string
@@ -362,6 +372,7 @@ export class Orchestrator extends RunReport<Worker> {
   }
 
   private async take(req: ExecuteRequest): Promise<ExecuteResult> {
+    const calledAt = performance.now()
     // Walked once here, for every later read: walked again on the way in,
     // sharing, placing and sending, a run of 8000 tasks spent 17 s of this
     // machine's CPU on it (2026-11-05).
@@ -441,6 +452,7 @@ export class Orchestrator extends RunReport<Worker> {
         ...(nodes?.has(req.taskId) === true ? { up } : {}),
         need: { ...need, platform: req.platform ?? this.o.home },
         queuedAt: performance.now(),
+        calledAt,
         // Failed or stopped, it hands over none of its dependants: the plan
         // asked a worker for them, idle on arrival.
         resolve: (r) => {
@@ -553,6 +565,7 @@ export class Orchestrator extends RunReport<Worker> {
 
   async close(): Promise<void> {
     clearTimeout(this.relend)
+    clearTimeout(this.sayWait)
     if (this.due !== undefined) clearTimeout(this.due.timer)
     this.ended = true
     this.endedAt = performance.now()
@@ -620,6 +633,17 @@ export class Orchestrator extends RunReport<Worker> {
       this.bound?.again(j.req.taskId, j.need.platform)
     }
     if (jobs.length > 0) this.waited = true
+    // With no adapter, no worker comes until someone starts one: a pipe sat
+    // silent and the footer said this machine's pool (2026-11-23).
+    if (jobs.length > 0 && this.o.adapter !== true && this.sayWait === undefined) {
+      this.sayWait = setTimeout(() => {
+        if (!this.ended && this.workers.size + this.gone.length === 0)
+          (this.o.status ?? this.o.warn ?? ((l) => ui.say('info', l)))(
+            `[vx] waiting for a worker to join run ${this.o.run} on the relay…`,
+          )
+      }, SAY_WAIT_MS)
+      this.sayWait.unref()
+    }
   }
 
   /** The run's clock for the planner: ms since it began. */
@@ -757,6 +781,11 @@ export class Orchestrator extends RunReport<Worker> {
           )
         }
         if (a.faulty) return false
+        // It still holds an earlier attempt, cancelled and not yet answered:
+        // it drops an order for a task it runs, and that attempt's end would
+        // be taken as this one's.
+        const held = a.busy.get(task)
+        if (held !== undefined && held !== job) return false
         if (!roomier(job.need, a.cores, a.memory) && bigger(job.need)) return false
         if (pin?.only !== undefined && pin.only !== a.id) return false
         if (pin?.avoid !== undefined && pin.avoid === a.id) return false
@@ -1091,12 +1120,6 @@ export class Orchestrator extends RunReport<Worker> {
     return o === undefined ? undefined : Math.min(a.cores / 2, o)
   }
 
-  /** Whether a task of `a`'s holds its cores: its command still runs, or has yet to. */
-  private holding(a: Worker): boolean {
-    for (const j of a.busy.values()) if (j.held !== undefined) return true
-    return false
-  }
-
   /**
    * What a task books: a measured one its need times the share of their
    * history the run's tasks used, once they used `LEARN_MS` of it, and
@@ -1157,23 +1180,6 @@ export class Orchestrator extends RunReport<Worker> {
       a.other = was === undefined ? o : was + (o - was) * OTHER_WEIGHT
     }
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
-  }
-
-  /** Whether a worker of `platform` bigger than `above` is starting: a task that filled that size waits for it. */
-  private bigger(
-    above: { readonly cores: number; readonly memory: number },
-    platform: string | undefined,
-  ): boolean {
-    const joined = this.joinedLabels()
-    for (const [id, { declared }] of this.spawnedAt)
-      if (
-        this.starting(id, joined) &&
-        (platform === undefined || placeOf(declared) === platform) &&
-        ((this.sizeHas.get(declared.size)?.cores ?? declared.cpu) > above.cores ||
-          (this.sizeHas.get(declared.size)?.memory ?? declared.memory) > above.memory)
-      )
-        return true
-    return false
   }
 
   /**
@@ -1477,6 +1483,8 @@ export class Orchestrator extends RunReport<Worker> {
       args: { failed: why },
     })
     job.queuedAt = now
+    if (job.sentAt !== undefined && a.started.has(job.req.taskId))
+      a.usage.unfinished(job.sentAt, now)
     a.busy.delete(job.req.taskId)
     // Its outputs are not there to place a dependant by.
     a.has.delete(job.req.taskId)
@@ -1651,6 +1659,12 @@ export class Orchestrator extends RunReport<Worker> {
       this.usedMs += Math.min(head.cpuMs / share, a.cores * ms)
       this.needMs += Math.min(job.need.cores, a.cores) * ms
     }
+    // Cancelled: its retry may have run elsewhere meanwhile. Laid, its files
+    // lay over the retry's, and its key sent dependants its bytes.
+    if (job.req.signal?.aborted === true) {
+      this.pumpSoon()
+      return job.resolve(result(head, sentLog ?? []))
+    }
     this.savedAs.set(task, key)
     this.ranOn.set(task, a.id)
     const node = this.o.nodes()?.get(task)
@@ -1664,6 +1678,10 @@ export class Orchestrator extends RunReport<Worker> {
         projectDir: node?.projectDir ?? job.req.cwd,
         command: job.req.command,
         outputs: job.req.outputs,
+        env: job.req.env,
+        ...(node?.config.exec?.env?.secret === undefined
+          ? {}
+          : { secret: node.config.exec.env.secret }),
       })
     // A remote-only task's files stay off this disk: an install's
     // node_modules laid over this machine's own (schema: `'only'`). A
@@ -1677,6 +1695,11 @@ export class Orchestrator extends RunReport<Worker> {
       Promise.all((node?.deps ?? []).map((d) => this.homing.get(d)))
     const where = {
       where: a.label,
+      // Waiting for a worker to join or have room is its queue time: its
+      // span read 1.7 s for a 0.4 s task behind a warm-up, queued 1 ms.
+      ...(job.calledAt === undefined
+        ? {}
+        : { queuedMs: Math.max(0, Math.round(sent - job.calledAt)) }),
       machine: {
         cores: a.reported.cores,
         memoryBytes: a.reported.memory,
@@ -2125,6 +2148,30 @@ export class Orchestrator extends RunReport<Worker> {
             j.startedAt = here(m.startedAt) ?? j.startedAt ?? now
             j.ranAt = here(m.ranAt) ?? now
             this.pumpSoon()
+          } else if (m.type === 'differs') {
+            // Refused as another tree is: it began nothing, so its tasks go
+            // back with no fault, to workers that answer alike. One this run
+            // started is a failed start: its replacements are bounded, then
+            // the run says no worker could start.
+            this.refused.push(m.reason)
+            this.warn(`dte: refused worker ${a.label}: ${m.reason}`)
+            this.post(a, { type: 'refused', reason: m.reason })
+            a.started.clear()
+            this.workers.delete(a.id)
+            this.bound?.lost(a.label, this.clock())
+            a.usage.to = performance.now()
+            this.trace.left(a.label, 'refused', a.usage.to)
+            for (const k of this.parts.keys()) if (k.startsWith(`${a.id}\0`)) this.parts.delete(k)
+            const back: Job[] = []
+            for (const j of [...a.busy.values()]) {
+              const again = this.retry(a, j, 'refused')
+              if (again !== undefined) back.push(again)
+            }
+            this.enqueue(back)
+            if (this.spawnedAt.has(a.label)) this.failed(a.label, `refused: ${m.reason}`)
+            else this.pump()
+            this.pumpSoon()
+            break
           } else if (m.type === 'fault') {
             const j = a.busy.get(m.task)
             if (j === undefined) continue
@@ -2400,7 +2447,7 @@ function wiredFrame(body: unknown): ToOrchestrator[] | undefined {
     if (m['load'] !== undefined && !record(m['load'])) return undefined
     if (m['type'] === 'report') {
       if (!Array.isArray(m['running'])) return undefined
-    } else if (['ran', 'fault', 'part', 'end'].includes(m['type'])) {
+    } else if (['ran', 'fault', 'differs', 'part', 'end'].includes(m['type'])) {
       if (typeof m['task'] !== 'string') return undefined
       const lists = m['type'] === 'end' ? m['result'] : m
       if (!record(lists)) return undefined

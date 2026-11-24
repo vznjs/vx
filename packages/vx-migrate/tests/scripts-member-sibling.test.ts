@@ -19,6 +19,8 @@ it("names the part of a member's script that runs a sibling's work", () => {
     workspace: 'yarn workspace pinia build && tsc',
     recursive: 'pnpm -r --filter="./test/**" test',
     npmWorkspace: 'npm run dev --workspace=play',
+    // npm's short `-w` (probed, npm 10.9: run from a member, it runs pinia's build).
+    npmDashW: 'npm run build -w pinia && tsc',
     filter: 'pn --filter=pinia compile && pn .test',
     cd: 'cd ../pinia && tsdown',
     // A nested member is another member too (kit's test apps).
@@ -28,6 +30,8 @@ it("names the part of a member's script that runs a sibling's work", () => {
     fixture: 'pnpm install -C test/fixture --force',
     root: "yarn --cwd='../..' jest packages/app",
     self: 'pnpm -C . build',
+    // pnpm's `-w` is the workspace root, not a member.
+    pnpmRoot: 'pnpm -w run lint',
     unread: 'cd $DIR && make',
     plain: 'vite build',
   }
@@ -49,12 +53,14 @@ it("names the part of a member's script that runs a sibling's work", () => {
     workspace: ['yarn workspace pinia build'],
     recursive: ['pnpm -r --filter="./test/**" test'],
     npmWorkspace: ['npm run dev --workspace=play'],
+    npmDashW: ['npm run build -w pinia'],
     filter: ['pn --filter=pinia compile'],
     cd: ['cd ../pinia'],
     nested: ['cd test/app'],
     fixture: [],
     root: [],
     self: [],
+    pnpmRoot: [],
     unread: [],
     plain: [],
   })

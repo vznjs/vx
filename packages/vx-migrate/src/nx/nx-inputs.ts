@@ -185,34 +185,35 @@ export function expandNxInputs(
     }
     if (entry && typeof entry === 'object') {
       const o = entry as Record<string, unknown>
-      if (typeof o.env === 'string') {
-        into.envNames.push(o.env)
+      if (typeof o['env'] === 'string') {
+        // Each once: vx lock refuses a name twice in inputs.env.
+        if (!into.envNames.includes(o['env'])) into.envNames.push(o['env'])
         return
       }
-      if (typeof o.runtime === 'string') {
-        into.runtimeCmds.push(runtimeCommand(o.runtime, at.rel, at.name))
+      if (typeof o['runtime'] === 'string') {
+        into.runtimeCmds.push(runtimeCommand(o['runtime'], at.rel, at.name))
         return
       }
-      if (typeof o.fileset === 'string' && o.includeIgnored === true) {
-        ignored(entry, o.fileset, o.dependencies === true)
+      if (typeof o['fileset'] === 'string' && o['includeIgnored'] === true) {
+        ignored(entry, o['fileset'], o['dependencies'] === true)
         return
       }
-      if (typeof o.fileset === 'string') {
+      if (typeof o['fileset'] === 'string') {
         // `dependencies: true` is each dependency's fileset, as `^{projectRoot}/…`
         // is. Expanded as the project's own, a dependency's edit re-keyed
         // nothing here (nx-examples' inferred `typecheck` carries both).
-        if (o.dependencies === true) into.upstream.push({ name: o.fileset, of: 'deps' })
-        else expand(o.fileset, seen)
+        if (o['dependencies'] === true) into.upstream.push({ name: o['fileset'], of: 'deps' })
+        else expand(o['fileset'], seen)
         return
       }
-      if (typeof o.json === 'string') {
+      if (typeof o['json'] === 'string') {
         // `{ json, fields }` hashes only those fields; the whole file is a
         // superset. Reported and dropped, a `compilerOptions` edit to the root
         // tsconfig.json was a hit where Nx re-ran (@nx/vitest infers it).
-        expand(o.json.includes('{') ? o.json : `{workspaceRoot}/${o.json}`, seen)
+        expand(o['json'].includes('{') ? o['json'] : `{workspaceRoot}/${o['json']}`, seen)
         return
       }
-      if (o.externalDependencies !== undefined) {
+      if (o['externalDependencies'] !== undefined) {
         // Nx hashes each named package's resolved version, and core keys no
         // lockfile. With no plugin claiming the file, the task keys it whole,
         // a superset: a `left-pad` bump was a hit where Nx re-ran. A lockfile
@@ -221,7 +222,7 @@ export function expandNxInputs(
         // analogjs for `eslint`. Nx's inferred targets name root
         // devDependencies (eslint, vitest), not the project's package.json.
         into.externalDependencies = true
-        const names = Array.isArray(o.externalDependencies) ? o.externalDependencies : []
+        const names = Array.isArray(o['externalDependencies']) ? o['externalDependencies'] : []
         if (at.lockfile !== undefined) {
           expand(`{workspaceRoot}/${at.lockfile}`, seen)
           return
@@ -229,7 +230,7 @@ export function expandNxInputs(
         if (names.length > 0 && names.every((n) => typeof n === 'string' && at.rootDeps?.has(n)))
           return
         todos.push(
-          `input {externalDependencies: ${JSON.stringify(o.externalDependencies)}}: a @vzn/vx-lockfile ` +
+          `input {externalDependencies: ${JSON.stringify(o['externalDependencies'])}}: a @vzn/vx-lockfile ` +
             "plugin keys each task on its project's and the root's dependencies — one only another project installs is not keyed",
         )
         return
@@ -239,29 +240,31 @@ export function expandNxInputs(
       // output follows from its inputs. Nothing to map, and the todo it was sat
       // on 881 tasks of three real Nx repos. The mapper checks an edge is left
       // to carry them.
-      if (o.dependentTasksOutputFiles !== undefined) {
-        const g = o.dependentTasksOutputFiles
+      if (o['dependentTasksOutputFiles'] !== undefined) {
+        const g = o['dependentTasksOutputFiles']
         const glob = typeof g === 'string' ? g : JSON.stringify(g)
         into.dependentOutputs.push(glob)
-        if (o.transitive === true) into.transitiveOutputs.push(glob)
+        if (o['transitive'] === true) into.transitiveOutputs.push(glob)
         return
       }
       // `{ workingDirectory }` hashes where Nx was started (`cwd:relative`
       // in its plan). A vx task runs in its project dir from wherever vx
       // is started, so the fact is the same for every run: nothing to key.
-      if (o.workingDirectory === 'relative' || o.workingDirectory === 'absolute') return
-      if (typeof o.input === 'string') {
+      if (o['workingDirectory'] === 'relative' || o['workingDirectory'] === 'absolute') return
+      if (typeof o['input'] === 'string') {
         // Nx 23 still reads the pre-17 spellings `projects: "dependencies"`
         // (`^input`) and `projects: "self"` (the project's own); taken as
         // project names, each was a todo and the input was dropped.
         const listed =
-          o.projects !== undefined && o.projects !== 'self' && o.projects !== 'dependencies'
-        if (o.projects === 'dependencies' || (o.dependencies === true && !listed)) {
-          into.upstream.push({ name: o.input, of: 'deps' })
+          o['projects'] !== undefined &&
+          o['projects'] !== 'self' &&
+          o['projects'] !== 'dependencies'
+        if (o['projects'] === 'dependencies' || (o['dependencies'] === true && !listed)) {
+          into.upstream.push({ name: o['input'], of: 'deps' })
           return
         }
         if (listed) {
-          const of = typeof o.projects === 'string' ? [o.projects] : o.projects
+          const of = typeof o['projects'] === 'string' ? [o['projects']] : o['projects']
           if (!Array.isArray(of) || !of.every((p) => typeof p === 'string')) {
             todos.push(`input ${JSON.stringify(entry)} not representable in vx`)
             return
@@ -270,13 +273,13 @@ export function expandNxInputs(
           // projects' dependencies and Nx 23 as this project's: read as
           // this project's alone, a listed project's dependency edit was a
           // hit under Nx 24. Both are keyed, never less than either.
-          if (o.dependencies === true) {
-            into.upstream.push({ name: o.input, of: 'deps' })
-            into.upstream.push({ name: o.input, of: of as string[], depsOf: true })
-          } else into.upstream.push({ name: o.input, of: of as string[] })
+          if (o['dependencies'] === true) {
+            into.upstream.push({ name: o['input'], of: 'deps' })
+            into.upstream.push({ name: o['input'], of: of as string[], depsOf: true })
+          } else into.upstream.push({ name: o['input'], of: of as string[] })
           return
         }
-        expand(o.input, seen)
+        expand(o['input'], seen)
         return
       }
     }

@@ -5,7 +5,7 @@
   "description": "Distributed task execution for vx: one run spread over workers your own CI spawns, joined through a relay.",
   "keywords": [
     "vx",
-    "monorepo",
+    "task-orchestrator",
     "vx-plugin",
     "distributed",
     "ci"

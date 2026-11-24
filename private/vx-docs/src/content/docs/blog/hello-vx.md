@@ -5,11 +5,11 @@ authors:
   - vzn
 tags:
   - announcement
-excerpt: 'vx runs your monorepo''s tasks and caches them, on Bun, with nothing behind a paid cloud. Here it is in one picture and one run.'
+excerpt: 'vx is a task orchestrator: it runs your tasks and caches them, on Bun, with nothing behind a paid cloud. Here it is in one picture and one run.'
 ---
 
-vx runs your monorepo's tasks and caches the results. It is built on
-Bun, and nothing sits behind a paid cloud.
+vx is a task orchestrator: it runs your tasks and caches the results.
+It is built on Bun, and nothing sits behind a paid cloud.
 
 ```mermaid
 flowchart LR

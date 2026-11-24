@@ -3,6 +3,7 @@ import {
   errorDocument,
   maskedLine,
   nearest,
+  type RefusalParts,
   UserError,
   wantsJson,
 } from '../util/index.js'
@@ -14,9 +15,82 @@ export async function printHelp(
   verb?: string,
 ): Promise<void> {
   const text = verb === undefined ? helpText(pluginCommands) : verbHelpText(verb)
-  // The reference a script greps: painted on a terminal only, and strips
-  // back to `text` exactly, so it goes out as written.
-  ui.data('out', paintHelp(text, helpColors(process.stdout, detectColors), paint))
+  // The reference a script greps: refilled and painted on a terminal only;
+  // piped it is `text` exactly.
+  const columns = process.stdout.isTTY ? process.stdout.columns : undefined
+  ui.data(
+    'out',
+    paintHelp(wrapHelp(text, columns), helpColors(process.stdout, detectColors), paint),
+  )
+}
+
+/** Help's widest line on a terminal: it is written at about 80 columns. */
+const HELP_WIDTH = 80
+/** The least a description keeps beside its term before it moves under it. */
+const DESCRIPTION_ROOM = 20
+
+/**
+ * Help as a terminal `columns` wide shows it: an entry wider than the
+ * terminal, or than 80, is refilled at spaces, its lines under its
+ * description column, so a 60-column terminal does not break a word. Off a
+ * terminal (no columns) it goes as written, for a script that greps it.
+ */
+export function wrapHelp(text: string, columns: number | undefined): string {
+  if (columns === undefined) return text
+  const w = Math.min(columns, HELP_WIDTH)
+  const lines = text.split('\n')
+  const out: string[] = []
+  // Words filled from `row` (already indented), each new row at `hang`.
+  const fill = (row: string, words: string[], hang: number): void => {
+    let start = true
+    for (const word of words) {
+      if (!start && row.length + 1 + word.length > w) {
+        out.push(row)
+        row = ''
+      }
+      if (row === '') row = ' '.repeat(hang) + word
+      else if (start) row += word
+      else row += ` ${word}`
+      start = false
+    }
+    out.push(row)
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
+    if (line.length <= w) {
+      out.push(line)
+      continue
+    }
+    const lead = /^ */.exec(line)![0].length
+    const gap = /^ *\S.*? {2,}(?=\S)/.exec(line)?.[0].length
+    const column = gap ?? lead
+    // A usage line (`vx <verb> …`, no description) is an entry of its own:
+    // the next one is not its continuation, and it hangs under the verb.
+    const usage = gap === undefined && line.startsWith('vx ', lead)
+    // The entry's own continuation lines, authored under its description
+    // or hung deeper.
+    let body = line.slice(column)
+    while (!usage && i + 1 < lines.length && /^ *\S/.test(lines[i + 1]!)) {
+      const next = lines[i + 1]!
+      // Another entry (a term, two spaces, its description) is not this one's.
+      if (/^ */.exec(next)![0].length < column || /\S {2,}\S/.test(next)) break
+      body += ` ${next.trim()}`
+      i++
+    }
+    // Too narrow to keep it beside its term: under it, 4 in, or less when
+    // that leaves the description under 12 columns.
+    const under = Math.max(lead + 1, Math.min(lead + 4, w - 12))
+    const hang = usage ? lead + 3 : w - column >= DESCRIPTION_ROOM ? column : under
+    const words = body.split(' ').filter(Boolean)
+    if (column === hang || usage) fill(line.slice(0, column), words, hang)
+    else {
+      // The term alone, hung under itself when it is wider than the terminal.
+      const term = line.slice(lead, column).trim().split(' ')
+      fill(' '.repeat(lead), term, lead + 3)
+      fill('', words, hang)
+    }
+  }
+  return out.join('\n')
 }
 
 /**
@@ -178,7 +252,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '',
     'Execution (for run):',
     '  Each setting flag beats its VX_* variable, which beats .vx/workspace',
-    '  (https://vznjs.github.io/vx/schema/#settings).',
+    '  (https://vznjs.github.io/vx/schema/workspace/#settings).',
     '      --concurrency <n>           Max parallel tasks (default: usable cores);',
     '                                  50% means half of them.',
     '      --schedule <rule>           most-work (default) | critical-path |',
@@ -311,19 +385,23 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --cache-dir <path>  Read the cache a run with the same flag uses.',
     '',
     'Migration:',
-    '  vx init              Install vx globally and as the root devDependency, then',
-    '                       write .vx/workspace.ts and an empty root vx.config.ts. In a',
-    '                       Turbo or Nx repo: runs @vzn/vx-migrate, which maps turbo.json',
-    '                       or the Nx graph to vx (asking native or keep).',
+    '  vx init              Install vx globally and as the root devDependency,',
+    '                       then write .vx/workspace.ts and an empty root',
+    '                       vx.config.ts. In a Turbo or Nx workspace: runs',
+    '                       @vzn/vx-migrate, which maps turbo.json or the Nx',
+    '                       graph to vx (asking native or keep).',
     '      --dry            Print the generated files instead of writing them.',
-    '      --format json    With --dry: the plan as one JSON document (schemas/init.json).',
-    '      --force          Overwrite existing vx.config.* files.',
+    '      --format json    With --dry: the plan as one JSON document',
+    '                       (schemas/init.json).',
+    '      --force          Overwrite an existing .vx/workspace.* and vx.config.*.',
     '      --mjs            Write .mjs files (no type import) instead of .ts.',
-    '      --native         Turbo or Nx: write a vx.config.ts per package (no question).',
-    '      --keep           Turbo or Nx: only .vx/workspace.ts, declaring turbo() or nx().',
-    '      --plugin <hook>  Instead: write plugins/<hook>.ts, a runnable plugin, and its',
-    '                       test (executor, cache, telemetry, schedule, admit, commands,',
-    '                       project, graph, key).',
+    '      --native         Turbo or Nx: write a vx.config.ts per package (no',
+    '                       question).',
+    '      --keep           Turbo or Nx: only .vx/workspace.ts, declaring turbo()',
+    '                       or nx().',
+    '      --plugin <hook>  Instead: write plugins/<hook>.ts, a runnable plugin,',
+    '                       and its test (executor, cache, telemetry, schedule,',
+    '                       admit, commands, project, graph, key).',
     '',
     'Upgrade:',
     '  vx upgrade [TAG]     Bring vx to TAG (default: latest) the way it was installed.',
@@ -360,6 +438,10 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     ...(pluginCommands.length > 0 ? ['Plugin commands:', ...pluginCommands, ''] : []),
   ].join('\n')
 }
+
+/** `--affected=` with nothing after it: refused, as cli.md says, in run, watch and show. */
+export const AFFECTED_EMPTY =
+  '--affected= needs a value: pass bare --affected for the default base, or --affected=<ref>'
 
 /**
  * Every argument error ends with this. `vx <verb> --help` prints the reference;
@@ -540,9 +622,10 @@ export function refuse(
   args: readonly string[],
   message: string,
   code: string,
+  parts?: RefusalParts,
 ): number {
   const line = `vx ${verb}: ${message}`
-  ui.print('err', refusalNotice(`vx ${verb}`, message))
+  ui.print('err', refusalNotice(`vx ${verb}`, message, parts))
   if (wantsJson(args)) ui.data('out', errorDocument(code, maskedLine(line)))
   return 1
 }

@@ -50,6 +50,10 @@ it('a task that always rewrites its input in place settles after an edit', async
   const w = watch
   await until(() => w.out().includes('watching '), 'the watching marker')
   await until(async () => (await runs(f.log)) >= 1, 'the initial run')
+  // The first run sorts the file it was given unsorted, which starts one
+  // cycle: past it, not past a sleep (a loaded host was still in it when
+  // the gate went up, load 40, 2026-11-24).
+  await until(async () => (await runs(f.log)) >= 2, 'the cycle the first sort starts')
   await Bun.sleep(SETTLE_MS)
   const initial = await runs(f.log)
 
@@ -77,6 +81,10 @@ it('an editor saving over its rewrite mid-run still starts a cycle', async () =>
   const w = watch
   await until(() => w.out().includes('watching '), 'the watching marker')
   await until(async () => (await runs(f.log)) >= 1, 'the initial run')
+  // The first run sorts the file it was given unsorted, which starts one
+  // cycle: past it, not past a sleep (a loaded host was still in it when
+  // the gate went up, load 40, 2026-11-24).
+  await until(async () => (await runs(f.log)) >= 2, 'the cycle the first sort starts')
   await Bun.sleep(SETTLE_MS)
   await writeFile(path.join(f.outside, 'gate'), '')
   await writeFile(f.src, 'd\nc\n')

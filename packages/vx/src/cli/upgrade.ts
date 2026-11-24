@@ -760,6 +760,16 @@ export function upgradeArgv(install: ManagedInstall, version: string): string[] 
   const specs = [spec, ...(install.plugins ?? []).map((p) => `${p}@${version}`)]
   const argv = manager === 'npm' ? ['npm', 'install', ...specs] : [manager, 'add', ...specs]
   if (flag !== '') argv.push(flag)
+  // npm writes `^<version>` over an exact pin; pnpm, bun and yarn 1 keep it.
+  const listed = (
+    readJson(path.join(install.cwd, 'package.json'))?.[field] as Record<string, unknown> | undefined
+  )?.[PACKAGE]
+  if (
+    manager === 'npm' &&
+    typeof listed === 'string' &&
+    /^=?v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(listed.trim())
+  )
+    argv.push('--save-exact')
   // pnpm refuses an `add` at a workspace's root without saying it means the root.
   if (manager === 'pnpm' && existsSync(path.join(install.cwd, 'pnpm-workspace.yaml')))
     argv.push('--workspace-root')
@@ -1013,13 +1023,19 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
   }
   // A mistyped tag is the mistake to name, before any guard about this install.
   versionSpec(tag)
+  const handedOffFrom = process.env['VX_HANDED_OFF'] || undefined
   if (!isCompiledBinary()) {
+    // A global vx in a source checkout handed over: it is the one the user
+    // ran, and the refusal alone left it unmoved with no word on how.
+    const global =
+      handedOffFrom === undefined
+        ? ''
+        : `; \`vx upgrade -g\` moves the global vx that handed over (${handedOffFrom})`
     throw new UserError(
-      'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull',
+      `vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull${global}`,
     )
   }
   const dest = process.execPath
-  const handedOffFrom = process.env['VX_HANDED_OFF'] || undefined
   const latest = tag === undefined
   if (global) {
     // A launcher from before -g handed the call over: the global is the one that did.

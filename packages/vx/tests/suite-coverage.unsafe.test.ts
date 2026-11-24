@@ -16,7 +16,8 @@
 // `.unsafe`: it reads every package, which the cross-project law forbids a
 // sandboxed task.
 
-import { readdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { testFiles } from '../scripts/test-shard.js'
@@ -155,55 +156,182 @@ describe('every test file is launched by a task', () => {
   })
 
   // A test's own timeout argument overrides the flag: 17 tests ran on 3
-  // to 8 s of wall that way (2026-11-05). The test is found by walking
-  // back from its closing `}, N)` to the line that opened it. N may be a
-  // file's own `const NAME = N`: 18 files held their tests to 10-20 s that
-  // way, and a Mac worker that stalled ~20 s failed one (2026-11-06).
-  it('no test sets its own timeout under 30 s', () => {
+  // to 8 s of wall that way (2026-11-05), and a Mac worker that stalled
+  // ~20 s failed one held to 20 s (2026-11-06). A line-shape check missed
+  // `{ timeout: N }`, hooks, an indented `const`, and a `},` / `N,` / `)`
+  // whose body held a brace in a string (10 tests, 2026-11-24), so this
+  // reads the calls themselves: strings and comments blanked, brackets matched.
+  it('no test, hook or setDefaultTimeout sets a timeout under 30 s', () => {
     const short: string[] = []
     for (const top of ['packages', 'private']) {
       for (const file of new Bun.Glob('*/tests/**/*.test.ts').scanSync(path.join(repo, top))) {
-        const text = readFileSync(path.join(repo, top, file), 'utf8')
-        const consts = new Map(
-          [...text.matchAll(/^const (\w+) = ([\d_]+)$/gm)].map((c) => [
-            c[1]!,
-            Number(c[2]!.replaceAll('_', '')),
-          ]),
-        )
-        const ms = (arg: string): number =>
-          /^[\d_]+$/.test(arg) ? Number(arg.replaceAll('_', '')) : (consts.get(arg) ?? Infinity)
-        const lines = text.split('\n')
-        lines.forEach((line, i) => {
-          // One line: `it('…', fn, N)`.
-          const one = /^\s*(it|test)(\.\w+)*\(.*, *(\w+)\)\s*$/.exec(line)
-          if (one !== null && ms(one[3]!) < 30_000) {
-            short.push(`${top}/${file}:${i + 1}`)
-            return
-          }
-          // `}, N)`, or as the formatter breaks it: `},` / `N,` / `)`.
-          const arg =
-            /^\s*\}, *(\w+)\)\s*$/.exec(line)?.[1] ??
-            (/^\s*\},?\s*$/.test(line) && /^\s*\)/.test(lines[i + 2] ?? '')
-              ? /^\s*(\w+),?\s*$/.exec(lines[i + 1] ?? '')?.[1]
-              : undefined)
-          if (arg === undefined || ms(arg) >= 30_000) return
-          let depth = 0
-          for (let j = i; j >= 0; j--) {
-            depth += lines[j]!.split('}').length - lines[j]!.split('{').length
-            if (depth > 0) continue
-            // The opener holds `it(`, or the formatter put it a few lines up:
-            // `it(` / `'name',` / `async () => {`.
-            const opener = [0, 1, 2, 3].some((k) =>
-              k === 0
-                ? /^\s*(it|test)(\.\w+)*\(/.test(lines[j]!)
-                : /^\s*(it|test)(\.\w+)*\($/.test(lines[j - k] ?? ''),
-            )
-            if (opener) short.push(`${top}/${file}:${i + 1}`)
-            return
-          }
-        })
+        const full = path.join(repo, top, file)
+        for (const line of shortTimeouts(full)) short.push(`${top}/${file}:${line}`)
       }
     }
     expect(short).toEqual([])
+  }, 30_000)
+
+  it('the timeout scan sees each form a test file sets one in', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'vx-timeout-law-'))
+    try {
+      writeFileSync(
+        path.join(dir, 'helper.ts'),
+        'export const SLOW = 60_000\nexport const QUICK = 9_000\n',
+      )
+      const f = path.join(dir, 'x.test.ts')
+      writeFileSync(
+        f,
+        [
+          "import { QUICK, SLOW as LONG } from './helper.js'",
+          'const SHORT = 20_000',
+          "it('a', () => { const s = '{'; }, 10_000)", // 3
+          "it('b', () => {}, { timeout: 5_000 })", // 4
+          'beforeAll(() => {}, SHORT)', // 5
+          'setDefaultTimeout(1_000)', // 6
+          "it.each([[1]])('c %s', () => {}, QUICK)", // 7
+          "it('d', () => {}, LONG)",
+          "it('e', () => { setTimeout(() => {}, 5) })",
+          '// it(x, y, 1)',
+          "const s = 'it(a, b, 1)'",
+          "describe('f', () => { test('g', async () => {}, 30_000) })",
+        ].join('\n'),
+      )
+      expect(shortTimeouts(f)).toEqual([3, 4, 5, 6, 7])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
+
+const FLOOR_MS = 30_000
+const CALLS = /\b(it|test|describe|beforeAll|afterAll|beforeEach|afterEach|setDefaultTimeout)\b/g
+
+/** `text` with every string, template and comment blanked to spaces, lengths kept. */
+function blanked(text: string): string {
+  const out = text.split('')
+  const blank = (from: number, to: number): void => {
+    for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' '
+  }
+  let prev = '('
+  for (let i = 0; i < text.length;) {
+    const c = text[i]!
+    if (c === '/' && text[i + 1] === '/') {
+      const end = text.indexOf('\n', i)
+      const to = end === -1 ? text.length : end
+      blank(i, to)
+      i = to
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2)
+      const to = end === -1 ? text.length : end + 2
+      blank(i, to)
+      i = to
+    } else if (c === '"' || c === "'" || c === '`' || (c === '/' && /[(,=:[!&|?{};]/.test(prev))) {
+      let j = i + 1
+      let cls = false
+      while (j < text.length) {
+        const d = text[j]!
+        if (d === '\\') j += 2
+        // A `/` read as a regex that is division ends at the line, not the file.
+        else if ((c === '/' || c === "'" || c === '"') && d === '\n') break
+        else {
+          if (c === '/' && d === '[') cls = true
+          else if (c === '/' && d === ']') cls = false
+          else if (d === c && !cls) break
+          j++
+        }
+      }
+      blank(i, j + 1)
+      i = j + 1
+      prev = 'a'
+    } else {
+      if (!/\s/.test(c)) prev = c
+      i++
+    }
+  }
+  return out.join('')
+}
+
+/** The index of the bracket closing the one at `open`, in blanked text. */
+function closing(text: string, open: number): number {
+  let depth = 0
+  for (let i = open; i < text.length; i++) {
+    const c = text[i]!
+    if (c === '(' || c === '[' || c === '{') depth++
+    else if ((c === ')' || c === ']' || c === '}') && --depth === 0) return i
+  }
+  return text.length
+}
+
+/** The top-level arguments of the call whose `(` is at `open`. */
+function argsOf(text: string, open: number): string[] {
+  const close = closing(text, open)
+  const out: string[] = []
+  let from = open + 1
+  for (let i = open + 1; i < close; i++) {
+    const c = text[i]!
+    if (c === '(' || c === '[' || c === '{') i = closing(text, i)
+    else if (c === ',') {
+      out.push(text.slice(from, i))
+      from = i + 1
+    }
+  }
+  out.push(text.slice(from, close))
+  // A blanked string argument is blank, not absent; a trailing comma adds nothing.
+  const args = out.map((a) => a.trim())
+  if (args.length > 0 && args[args.length - 1] === '') args.pop()
+  return args
+}
+
+/** The ms an argument names: a number, a const of the file or one a relative import exports, `{ timeout }`. */
+function msOf(arg: string, text: string, file: string): number {
+  const literal = /^([\d_]+)$/.exec(arg)
+  if (literal) return Number(literal[1]!.replaceAll('_', ''))
+  const option = /^\{[^{}]*\btimeout\s*:\s*([\w$]+)/.exec(arg)
+  if (option) return msOf(option[1]!, text, file)
+  if (!/^[A-Za-z_$][\w$]*$/.test(arg)) return Infinity
+  const own = new RegExp(`\\bconst ${arg}\\s*=\\s*([\\d_]+)\\s*$`, 'm').exec(text)
+  if (own) return Number(own[1]!.replaceAll('_', ''))
+  for (const im of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(\.[^']+)'/g)) {
+    const named = im[1]!.split(',').map((x) => x.trim().split(/\s+as\s+/))
+    const hit = named.find((n) => n[n.length - 1] === arg)
+    if (hit === undefined) continue
+    const source = path.resolve(path.dirname(file), im[2]!.replace(/\.js$/, '.ts'))
+    let src: string
+    try {
+      src = readFileSync(source, 'utf8')
+    } catch {
+      return Infinity
+    }
+    const e = new RegExp(`export const ${hit[0]}\\s*=\\s*([\\d_]+)\\s*$`, 'm').exec(src)
+    return e ? Number(e[1]!.replaceAll('_', '')) : Infinity
+  }
+  return Infinity
+}
+
+/** The lines of `file` whose test, hook or `setDefaultTimeout` names a timeout under 30 s. */
+function shortTimeouts(file: string): number[] {
+  const raw = readFileSync(file, 'utf8')
+  const text = blanked(raw)
+  const lines: number[] = []
+  for (const m of text.matchAll(CALLS)) {
+    if (m.index > 0 && /[\w$.]/.test(text[m.index - 1]!)) continue
+    let i = m.index + m[0].length
+    // it.skip(…), it.each(rows)(…), test.if(cond)(…).
+    for (;;) {
+      const mod = /^\s*\.\s*\w+\s*/.exec(text.slice(i, i + 40))
+      if (mod === null) break
+      i += mod[0].length
+      if (text[i] === '(' && /\b(each|if|skipIf|todoIf)\b/.test(mod[0])) i = closing(text, i) + 1
+      while (/\s/.test(text[i] ?? '')) i++
+    }
+    while (/\s/.test(text[i] ?? '')) i++
+    if (text[i] !== '(') continue
+    const args = argsOf(text, i)
+    const want = m[0] === 'setDefaultTimeout' ? 1 : /^(before|after)/.test(m[0]) ? 2 : 3
+    if (args.length < want) continue
+    if (msOf(args[args.length - 1]!, raw, file) < FLOOR_MS)
+      lines.push(raw.slice(0, m.index).split('\n').length)
+  }
+  return lines
+}

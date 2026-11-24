@@ -27,6 +27,23 @@ beforeAll(async () => {
   await addProject(root, 'a', config('sleep 0.6'))
   expect(vx('run', 'a#work').code).toBe(0)
   expect(vx('run', 'a#work').code).toBe(0)
+  await addProject(
+    root,
+    'b',
+    `export default { tasks: {
+  moved: { exec: { command: 'true' } },
+  gone: { exec: { command: 'true' } },
+} }
+`,
+  )
+  expect(vx('run', 'b#moved', 'b#gone').code).toBe(0)
+  await writeFile(
+    path.join(root, 'packages', 'b', 'vx.config.mjs'),
+    `export default { tasks: {
+  moved: { exec: { command: 'echo moved' } },
+} }
+`,
+  )
   await writeFile(path.join(root, 'packages', 'a', 'vx.config.mjs'), config('true'))
   expect(vx('run', 'a#work').code).toBe(0)
 }, 60_000)
@@ -51,4 +68,19 @@ it("the replay's ±usual knows no usual for a command timed only by this run", (
   const r = vx('last')
   expect(r.code).toBe(0)
   expect(r.out).toMatch(/^ {12}success no-cache +— +\d\S* .* a#work$/m)
+})
+
+it('--stats of a task with runs only of another definition says so, not that none ran', () => {
+  expect([vx('last', '--stats', 'b#moved'), vx('last', '--stats', 'b#gone')]).toEqual([
+    {
+      code: 1,
+      out: '',
+      err: '✗ vx last  b#moved has no run since its command or env.define changed; the last 50 runs hold 1 of the old one\n',
+    },
+    {
+      code: 1,
+      out: '',
+      err: '✗ vx last  b#gone is no task now (removed or renamed); the last 50 runs hold 1 of it\n',
+    },
+  ])
 })

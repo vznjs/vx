@@ -18,7 +18,7 @@ export const GET: APIRoute = async ({ site }) => {
   ]
   const body = `# vx
 
-> vx is a Bun-native task runner and content-addressed cache for JavaScript monorepos. Tasks live in TypeScript configs (\`vx.config.ts\`), a run is \`vx run <task>\`, and plugins decide where tasks run and where the cache lives.
+> vx is a task orchestrator with a content-addressed cache, built on Bun. It is not tied to one language: JavaScript support comes from plugins, and any other system can hook in the same way. Tasks live in TypeScript configs (\`vx.config.ts\`), a run is \`vx run <task>\`, and plugins decide where tasks run and where the cache lives.
 
 Every page below is plain markdown, the docs in reading order: start with the Quickstart, then AI agents. The docs in one file, in the same order: ${base}llms-full.txt. In a vx workspace, \`bunx skills add vznjs/vx\` installs the vx skill, and \`--format json\` on \`vx show\`, \`vx info\`, \`vx why\` and \`vx last\` answers from the workspace itself (${base}docs/agents.md).
 

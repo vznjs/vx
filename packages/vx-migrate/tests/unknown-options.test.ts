@@ -48,3 +48,24 @@ it('no options is taken', () => {
   expect(refusal(() => turboCache({}))).not.toContain('unknown option')
   expect(refusal(() => nxCache({}))).not.toContain('unknown option')
 })
+
+// `oidc` is read only in a CI job's cache hook: a wrong shape passed
+// `vx lock` and every laptop run, then warned in CI and ran local only.
+it('refuses an oidc of the wrong shape at the call', () => {
+  expect(refusal(() => turboCache({ oidc: 'x' } as never))).toBe(
+    'turboCache() option "oidc" must be true or { tokenUrl, revokeUrl, audience, params }, got "x"',
+  )
+  expect(refusal(() => turboCache({ oidc: false } as never))).toBe(
+    'turboCache() option "oidc" must be true or { tokenUrl, revokeUrl, audience, params }, got false',
+  )
+  expect(refusal(() => turboCache({ oidc: { tokenURL: 'https://t.test' } } as never))).toBe(
+    'turboCache() option "oidc" has unknown option "tokenURL" (allowed: audience, params, revokeUrl, tokenUrl) — did you mean tokenUrl?',
+  )
+  expect(refusal(() => turboCache({ oidc: { audience: 5 } } as never))).toBe(
+    'turboCache() option "oidc.audience" must be a string, got 5',
+  )
+  expect(refusal(() => turboCache({ oidc: true }))).toBe('taken')
+  expect(
+    refusal(() => turboCache({ oidc: { tokenUrl: 'https://t.test', revokeUrl: false } })),
+  ).toBe('taken')
+})

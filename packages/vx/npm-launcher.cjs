@@ -138,7 +138,7 @@ if (bin !== undefined) {
   }
   run(bin, args)
 } else if (existsSync(source) && hasBun()) {
-  run('bun', ['--no-env-file', '--no-install', source, ...args])
+  run('bun', ['--no-env-file', '--no-install', '--config=/dev/null', source, ...args])
 } else {
   const supported = SUPPORTED.join(', ')
   process.stderr.write(

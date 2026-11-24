@@ -1,7 +1,15 @@
-{"version":8}
-#13b0fdwzz06wd	{"cache":true,"dependsOn":["^build"],"exec":{"command":"mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
-#1k8ks7fjuabp2	{"cache":true,"exec":{"command":"mkdir -p dist && cp src/*.js dist/"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
-#3m7y962ie9b4u	{"cache":true,"dependsOn":["build"],"exec":{"command":"sh tests/main.sh"},"inputs":{"files":["tests/**","package.json"]},"outputs":{"files":[]}}
-#w1kodr5va77n	{"dependsOn":["build","test"]}
-app	{"path":"packages/app","file":"vx.config.ts","config":{"tasks":{"build":"#13b0fdwzz06wd","test":"#3m7y962ie9b4u","ci":"#w1kodr5va77n"}}}
-lib	{"path":"packages/lib","file":"vx.config.ts","config":{"tasks":{"build":"#1k8ks7fjuabp2"}}}
+{"version":10}
+app	{"path":"packages/app"}
+#13b0fdw
+{"cache":true,"dependsOn":["^build"],"exec":{"command":"mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
+	build
+#w1kodr5
+{"dependsOn":["build","test"]}
+	ci
+#3m7y962
+{"cache":true,"dependsOn":["build"],"exec":{"command":"sh tests/main.sh"},"inputs":{"files":["tests/**","package.json"]},"outputs":{"files":[]}}
+	test
+lib	{"path":"packages/lib"}
+#1k8ks7f
+{"cache":true,"exec":{"command":"mkdir -p dist && cp src/*.js dist/"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
+	build

@@ -11,7 +11,6 @@
 
 import { readdirSync } from 'node:fs'
 import path from 'node:path'
-import { attestProvenance } from '@actions/attest'
 
 const DIST = path.join(import.meta.dir, '..', 'dist')
 
@@ -39,6 +38,13 @@ async function main(): Promise<void> {
       },
     })),
   )
+  // By path, not by name: a Mac sandbox may not list the workspace root
+  // (seatbelt.ts, darwinAncestorRules), so Bun's name lookup never found the
+  // root's node_modules. The task reads that path, and @vzn/vx declares no
+  // dependency for a release script.
+  const { attestProvenance } = (await import(
+    path.join(import.meta.dir, '..', '..', '..', 'node_modules', '@actions', 'attest')
+  )) as typeof import('@actions/attest')
   const { attestationID } = await attestProvenance({ subjects, token, sigstore: 'public-good' })
   console.log(`attested ${subjects.map((s) => s.name).join(', ')} (attestation ${attestationID})`)
 }

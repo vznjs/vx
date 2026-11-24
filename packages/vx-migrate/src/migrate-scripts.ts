@@ -200,7 +200,9 @@ function cacheTodo(command: string, buildInfo: BuildInfo = NO_BUILD_INFO): strin
 // `lint` is not here: a linter reads sources, and an edge to `build` serialises
 // the two for nothing (the init walkthrough).
 const AFTER_BUILD = new Set(['test', 'typecheck', 'check', 'e2e'])
-const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
+// What an install or a publish runs unasked (npm 10.9, pnpm 10.28).
+const LIFECYCLE =
+  /^(pre|post)(install|publish|pack|version|prepare)$|^(prepare|prepublishOnly|install|dependencies|pnpm:devPreinstall)$/
 
 /**
  * The script a command delegates to when it is NOTHING but a package-manager
@@ -601,6 +603,8 @@ function siblingRun(script: string, dir: string, others: readonly string[]): str
     for (let i = at + 1; i < words.length; i++) {
       const w = words[i]!
       if (ELSEWHERE_FLAG.test(w)) return s
+      // npm's `-w` is `--workspace`; pnpm's is the workspace root, no member.
+      if (words[at] === 'npm' && /^-w(=|$)/.test(w)) return s
       const flag = DIR_FLAG.exec(w)
       if (flag === null) continue
       const target = flag[2] ?? words[++i]
@@ -649,7 +653,7 @@ function usesPnp(dir: string): boolean {
 }
 
 const PNP_NOTE =
-  "Yarn Plug'n'Play installs this repo: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
+  "Yarn Plug'n'Play installs this workspace: a package's bins live in `.pnp.cjs`, not `node_modules/.bin`, so a task's `tsc` is not found under vx — set `nodeLinker: node-modules` in `.yarnrc.yml` and run `yarn install`, or write each command as `yarn exec '<command>'`"
 
 /** A runner of this package's scripts by name: `run-p build:*`. */
 const RUNS_OWN = /(?:^|\s)(?:run-s|run-p|npm-run-all)(?:\s|$)/
@@ -747,7 +751,7 @@ export function migrateScripts(
   const root = metas.length > 1 ? workspaceRootOf(metas) : undefined
   const notes: string[] = []
   const lifecycleBuilds: [string, string, string][] = []
-  // The rest check the whole repo (`lint: oxlint.`, `test: vitest`): `vx run
+  // The rest check the whole workspace (`lint: oxlint.`, `test: vitest`): `vx run
   // lint` found no project in remix, wagmi or element-plus. Such a script maps
   // onto the root, when the root has a name (vx skips a nameless one's config),
   // no config of its own, and no member declares the task, so `--all` never
@@ -818,10 +822,14 @@ export function migrateScripts(
   const listed = (names: readonly string[]): string =>
     names.slice(0, 8).join(', ') + (names.length > 8 ? ` and ${names.length - 8} more` : '')
   const outsideScripts = outside?.['scripts']
-  const outsideRuns =
-    typeof outsideScripts === 'object' &&
-    outsideScripts !== null &&
-    Object.values(outsideScripts).some((v) => typeof v === 'string' && v !== '')
+  // A root whose only scripts are install hooks has nothing to map or explain.
+  const runsAny = (scripts: unknown): boolean =>
+    typeof scripts === 'object' &&
+    scripts !== null &&
+    Object.entries(scripts).some(
+      ([n, v]) => typeof v === 'string' && v !== '' && !LIFECYCLE.test(n),
+    )
+  const outsideRuns = runsAny(outsideScripts)
   const unnamedMaps = (): string[] => {
     const meta: PackageMeta = {
       name: 'package.json',
@@ -856,16 +864,18 @@ export function migrateScripts(
     return `${shared.length < named.length ? 'run the workspace or ' : ''}share a member's task name (${list})`
   }
   const rootName =
-    root?.name ??
-    (outsideRuns
-      ? typeof outside?.['name'] === 'string' && outside['name'] !== ''
-        ? outside['name']
-        : 'package.json'
-      : undefined)
+    root !== undefined && !runsAny(scriptsOf(root))
+      ? undefined
+      : (root?.name ??
+        (outsideRuns
+          ? typeof outside?.['name'] === 'string' && outside['name'] !== ''
+            ? outside['name']
+            : 'package.json'
+          : undefined))
   if (rootName !== undefined && rootMapped > 0) {
     const { runs, shared } = leftOut(rootMeta!)
     notes.push(
-      `${rootName} (the workspace root): its scripts that check the whole repo are its tasks` +
+      `${rootName} (the workspace root): its scripts that check the whole workspace are its tasks` +
         (runs.length > 0
           ? `; left out as running the members (${membersExample(rootMeta && rootManager(rootMeta.dir, hookMemo))}, a runner): ${listed(runs)}`
           : '') +

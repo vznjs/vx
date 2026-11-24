@@ -12,6 +12,8 @@ const HEAVY = [
   'local-e2e-workers',
   'local-e2e-saves',
   'local-e2e-worktrees',
+  'local-e2e-artifacts',
+  'local-e2e-lifecycle',
   'units',
   'gitlab',
   'github',
@@ -47,7 +49,8 @@ const testTask = (files: string) => ({
     },
   },
   dependsOn: ['install'] as const,
-  inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+  // init.test.ts holds the README to the code; the sim tests import scripts/.
+  inputs: { files: ['src/**', 'tests/**', 'scripts/**', 'package.json', 'README.md'] },
   outputs: { files: [] as string[] },
   cache: true,
 })
@@ -71,12 +74,13 @@ export default defineProject({
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
-        command: 'oxlint --type-aware --type-check',
+        command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
       inputs: {
         files: [
+          '*.ts',
           'src/**',
           'tests/**',
           'scripts/**',

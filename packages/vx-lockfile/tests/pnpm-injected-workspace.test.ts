@@ -204,7 +204,7 @@ it("`vx lock --check` passes where the injected copy differs from the lock's", a
   const rec = await Bun.file(lockPath).text()
   // Each project's digests column dropped: the record holds no digest.
   const [head, ...lines] = rec.trimEnd().split('\n')
-  const bad = lines.map((l) => l.split('\t').slice(0, 3).join('\t').replace(/\t+$/, ''))
+  const bad = lines.map((l) => l.split('\t').slice(0, 2).join('\t').replace(/\t+$/, ''))
   expect(bad.join('\n')).not.toBe(lines.join('\n'))
   await writeFile(lockPath, `${[head, ...bad].join('\n')}\n`)
   expect(check()).toBe(1)

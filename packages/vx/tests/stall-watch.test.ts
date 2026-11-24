@@ -16,14 +16,23 @@ async function stderrOf(frozenMs: number, then = ''): Promise<string> {
     [
       process.execPath,
       '-e',
-      `await import(${JSON.stringify(WATCH)}); await Bun.sleep(300); ${then}; await Bun.sleep(3_000)`,
+      `await import(${JSON.stringify(WATCH)}); console.log('armed'); await Bun.sleep(300); ${then}; await Bun.sleep(3_000)`,
     ],
     {
       env: { ...process.env, VX_TEST_STALL_MS: '1000' },
-      stdout: 'ignore',
+      stdout: 'pipe',
       stderr: 'pipe',
     },
   )
+  // Frozen once the watch is armed: 300 ms after the spawn, a loaded host
+  // had not yet imported it, and the freeze went unseen.
+  const reader = p.stdout.getReader()
+  for (let seen = ''; !seen.includes('armed');) {
+    const { value, done } = await reader.read()
+    if (done) break
+    seen += new TextDecoder().decode(value)
+  }
+  reader.releaseLock()
   if (frozenMs > 0) {
     await Bun.sleep(300)
     p.kill('SIGSTOP')

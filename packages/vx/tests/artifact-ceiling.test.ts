@@ -99,6 +99,19 @@ describe('an output set past the artifact ceiling', () => {
     expect(again.outcomes.map((o) => o.status)).toEqual(['success'])
   })
 
+  // 1025 MiB past the default read `1.0 GB, past the 1.0 GB` (probed with a
+  // sparse file): sizes that print alike are named in bytes too.
+  it('names both sizes in bytes when they print alike', async () => {
+    await workspace(CEILING)
+    const lines: string[] = []
+    await runAt(CEILING + 3.5 * 1024, { cwd: root, tasks: ['build'], log: collecting(lines) })
+    expect(lines.filter((l) => l.includes('cache save failed'))).toEqual([
+      expect.stringMatching(
+        /its outputs pack to 68 KB \(\d+ bytes\), past the 68 KB \(69120 bytes\) cache\.artifactCeiling/,
+      ),
+    ])
+  })
+
   it('control: an output set under it is cached and hit, no line', async () => {
     await workspace(CEILING / 2)
     const lines: string[] = []

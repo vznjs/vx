@@ -28,7 +28,15 @@ export function shellVerdict(args: {
   stderr?: string | undefined
 }): string | undefined {
   if (args.code !== 127 && args.code !== 126) return signalVerdict(args.code, args.signal)
-  const word = execWord(args.command) ?? (args.code === 127 ? notFoundWord(args.stderr) : undefined)
+  const own = execWord(args.command)
+  // `ls | head` under a hermetic task: the shell says each is missing, and
+  // naming only the last left the rest for another round.
+  const said = own === undefined && args.code === 127 ? notFoundWords(args.stderr) : []
+  if (said.length > 1) return said.map((w) => wordVerdict(args, w)).join('\n')
+  return wordVerdict(args, own ?? said[0])
+}
+
+function wordVerdict(args: Parameters<typeof shellVerdict>[0], word: string | undefined): string {
   const what = word ?? 'a command in this task'
   if (word !== undefined && word.includes('/')) {
     const file = path.resolve(args.cwd, word)
@@ -74,20 +82,24 @@ export function shellVerdict(args: {
 }
 
 /**
- * The word the shell's last "not found" line names: dash's `sh: 1: cat:
- * not found`, bash's `bash: line 1: cat: command not found`. A command with
+ * The words the shell's "not found" lines name, each once, in order: dash's `sh: 1: cat:
+ * not found`, bash's `bash: line 1: cat: command not found`, or the
+ * loader's `python3: error while loading shared libraries: …`. A command with
  * a redirect or a `&&` has no one word to read from the command itself, and
  * a hermetic task's hidden `cat` was told to be installed (almost every
  * real command has one).
  */
-function notFoundWord(stderr: string | undefined): string | undefined {
-  if (stderr === undefined) return undefined
-  const lines = stderr.trimEnd().split('\n')
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const m = /: ([^:]+): (?:command )?not found$/.exec(lines[i]!.trimEnd())
-    if (m !== null) return m[1]
+function notFoundWords(stderr: string | undefined): string[] {
+  const words: string[] = []
+  for (const raw of (stderr ?? '').split('\n')) {
+    const line = raw.trimEnd()
+    // The loader's own line names the program that ran and lacked a library.
+    const word =
+      /: ([^:]+): (?:command )?not found$/.exec(line)?.[1] ??
+      /^([^:\s]+): error while loading shared libraries: /.exec(line)?.[1]
+    if (word !== undefined && !words.includes(word)) words.push(word)
   }
-  return undefined
+  return words
 }
 
 /** Where a loader looks for a library, by convention: a hidden one is named by its host path. */
@@ -265,19 +277,23 @@ function executable(file: string): boolean {
 }
 
 /**
- * The frame line for a failure whose last output names a variable vx's own
- * environment holds and the task's does not. A task sees only what
- * `passThrough` and `define` name, so `prisma migrate` in a shell that
- * exports `DATABASE_URL` failed "variable not found" with no word on why.
- * Names only, upper-case and four characters or more, whole words of the
- * output; never a value.
+ * The frame line for a failure whose last output names, or whose command
+ * expands, a variable vx's own environment holds and the task's does not. A
+ * task sees only what `passThrough` and `define` name, so `prisma migrate`
+ * in a shell that exports `DATABASE_URL` failed "variable not found" with no
+ * word on why, and `curl -H "Authorization: $API_TOKEN"` failed saying
+ * nothing of the token. Names only, upper-case and four characters or more,
+ * whole words; never a value.
  */
 export function unpassedEnv(
   tail: string,
   given: NodeJS.ProcessEnv,
   host: NodeJS.ProcessEnv,
+  command = '',
 ): string | undefined {
   const named = new Set(tail.match(/(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]{3,}(?![A-Za-z0-9_])/g) ?? [])
+  for (const m of command.matchAll(/\$\{?([A-Z][A-Z0-9_]{3,})(?![A-Za-z0-9_])/g))
+    if (!SHELL_SET.has(m[1]!)) named.add(m[1]!)
   const missing = [...named]
     .filter((n) => Object.hasOwn(host, n) && !Object.hasOwn(given, n))
     .sort()
@@ -290,3 +306,6 @@ export function unpassedEnv(
     `${one ? 'it' : 'them'} to passThrough, and to inputs.env if the output depends on ${one ? 'it' : 'them'}`
   )
 }
+
+/** Names the shell sets for itself: a task's empty one is not vx's doing. */
+const SHELL_SET = new Set(['OLDPWD', 'HOSTNAME', 'LINENO', 'RANDOM', 'SECONDS', 'OPTIND', 'SHLVL'])

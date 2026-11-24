@@ -21,7 +21,7 @@ export default defineProject({
       dependsOn: ['^build'],
       exec: { command: 'vite build' },
       // inputs make the cache key
-      inputs: { files: ['src/**'] },
+      inputs: { files: ['src/**', 'vite.config.*'] },
       // outputs go in the cache
       outputs: { files: ['dist/**'] },
       cache: true,

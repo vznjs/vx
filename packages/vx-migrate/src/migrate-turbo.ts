@@ -158,6 +158,26 @@ export function unbuiltOutputsNote(tasks: ReadonlyMap<string, readonly string[]>
 }
 
 /**
+ * Turbo caches the outputs a run wrote, and vx fails a task that writes
+ * none: `test.outputs ["coverage/**"]` is written only with coverage on, so
+ * `vitest run` failed under vx wherever an old coverage run had left the
+ * dir, and the files on disk said nothing (2026-11-24). Unless the command
+ * turns coverage on itself, each such output is named.
+ */
+function coverageOutputs(task: Record<string, unknown>, outputs: readonly string[]): string[] {
+  const command = (task['exec'] as { command?: unknown } | undefined)?.command
+  if (typeof command === 'string' && command.includes('coverage')) return []
+  return outputs.filter((g) => !g.startsWith('!') && g.split('/').includes('coverage'))
+}
+
+function coverageOutputTodo(glob: string, task: string): string {
+  return (
+    'Turbo treats outputs as optional; vx fails a task that writes none of its declared outputs: ' +
+    `drop \`${glob}\` from ${task}'s outputs or run it with coverage`
+  )
+}
+
+/**
  * Of the outputs that matched nothing, the ones a run would fail on (M
  * 2026-11-23): each literal path, or every one when none of `declared`
  * matched. A wildcard may match nothing beside one that matched.
@@ -183,13 +203,17 @@ function absentOutputTodos(
       const files = o?.files ?? []
       const ws = o?.workspaceFiles ?? []
       if (![...files, ...ws].some((g) => !g.startsWith('!'))) continue
+      const sometimes = coverageOutputs(t.task, [...files, ...ws])
+      for (const g of sometimes) t.todos.push(coverageOutputTodo(g, t.name))
       const own = matched(root, p.dir, files, committed)
       const top = matched(root, root, ws, committed)
       if (own.written || top.written) seen.add(t.name)
       const list = byName.get(t.name) ?? []
       list.push({
         todos: t.todos,
-        absent: required([...own.absent, ...top.absent], [...files, ...ws]),
+        absent: required([...own.absent, ...top.absent], [...files, ...ws]).filter(
+          (g) => !sometimes.includes(g),
+        ),
       })
       byName.set(t.name, list)
     }

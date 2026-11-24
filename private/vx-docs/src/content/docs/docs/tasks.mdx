@@ -16,8 +16,8 @@ import { Levels, Deeper, Concept, Quiz, Takeaway, NextStep } from '../../../comp
 import { TaskGraph, GlobTester, ConfigExplorer } from '../../../components/play'
 import ErrorFinder from '../../../components/docs/troubleshooting/ErrorFinder.astro'
 
-Your two projects, `@demo/ui` and `@demo/web`, have no tasks yet. By the
-end of this page they lint, build in order, and skip work already done.
+`@demo/web` has the quickstart's `build`; `@demo/ui` has no tasks yet. By
+the end of this page they lint, build in order, and skip work already done.
 
 ```ts title="packages/ui/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
@@ -41,7 +41,13 @@ export default defineProject({
 ## 1. Run a command
 
 The task's name is `lint`; `exec.command` is what runs, from the project's
-folder. Run it in every project that has it:
+folder. Install `oxlint` at the root, run `vx lock`, then run `lint` in every
+project that has it:
+
+```sh
+bun add -d oxlint
+vx lock
+```
 
 ```ansi
 [2m$[0m vx run lint --all
@@ -89,6 +95,23 @@ export default defineProject({
 
 The `^` means "`build` in **every project I import**". vx reads who
 imports whom from your lockfile, through a [lockfile plugin](../lockfiles/).
+
+`@demo/ui` needs a `build` to wait for. Add one beside its `lint`, then run `vx lock`:
+
+```ts title="packages/ui/vx.config.ts" ins={8-10}
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    lint: {
+      exec: { command: 'oxlint src' },
+    },
+    build: {
+      exec: { command: 'vite build' },
+    },
+  },
+})
+```
 
 ```ansi
 [2m$[0m vx run build --all
@@ -262,6 +285,7 @@ Type globs and watch which files a task reads. Files of other projects never mat
 Declared outputs are a promise. When the command ends:
 
 - a plain path, like `dist/index.js`, **must exist**;
+- a path with a trailing slash, like `dist/`, must be a folder;
 - a wildcard, like `coverage/**`, may match nothing;
 - but **at least one** declared output must exist.
 
@@ -366,7 +390,7 @@ build: {
       secret: ['SENTRY_AUTH_TOKEN'],
     },
   },
-  inputs: { files: ['src/**', 'index.html'], env: ['VITE_API_URL'] },
+  inputs: { files: ['src/**', 'index.html', 'vite.config.*'], env: ['VITE_API_URL'] },
 },
 ```
 
@@ -479,6 +503,8 @@ waits on `dev`. It stops the server when the rest of the run ends.
 <Concept term="Group">
   A task with no `exec`. It runs nothing itself, only what it depends on.
 </Concept>
+
+In a project with `lint`, `build` and `test` tasks:
 
 ```ts title="packages/web/vx.config.ts"
 ci: { dependsOn: ['lint', 'build', 'test'] },
@@ -638,7 +664,7 @@ Paste what vx printed, or open a code:
 
 - **`… has unknown field "<key>"`.** A typo, or a Turbo or Nx key. The message lists the fields vx allows.
 - **`dependsOn cycle`.** Two tasks wait for each other: remove one `dependsOn` from the loop it prints.
-- **`dependsOn …, but` `no project is named …` / `… declares no task …`.** Use the name it suggests, or add that task to that package.
+- **`dependsOn …, but` `no project is named …` / `… declares no task …`.** Use the name it suggests or one of the projects it lists, add that task to that package, or remove the entry.
 - **`timed out after …`.** The task ran past its time limit: raise `exec.timeout` or `--timeout` ([Handle failures and hangs](#5-handle-failures-and-hangs)).
 
 - **`inputs matched no files`.** The globs find nothing. Paths are

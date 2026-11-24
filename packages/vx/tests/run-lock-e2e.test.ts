@@ -200,7 +200,13 @@ describe('two runs on one workspace', () => {
           if (chunk.done) throw new Error(`prune never waited: ${err}${await out}`)
           err += new TextDecoder().decode(chunk.value)
         }
-        expect(err).toContain(`waiting for another vx run (pid ${process.pid}) on this workspace`)
+        // A status line, as a run says it, not a warning: `! vx  [vx] waiting…`.
+        expect(err).toMatch(
+          new RegExp(
+            `^\\[vx\\] waiting for another vx run \\(pid ${process.pid}\\) on this workspace`,
+            'm',
+          ),
+        )
         expect(artifacts()).toHaveLength(1)
         await release()
         released = true

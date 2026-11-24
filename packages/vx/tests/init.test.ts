@@ -8,7 +8,8 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { initVersion, migrateCommand, migrateHint, parseInitArgs } from '../src/cli/init.js'
+import { initVersion, migrateCommand, parseInitArgs } from '../src/cli/init.js'
+import { migrateHint } from '../src/cli/select.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import { definePlugin } from '../src/index.js'
 import { noticed } from './helpers/notice.js'
@@ -264,6 +265,41 @@ describe('vx init --plugin <hook>', () => {
         expect(dry.code).toBe(0)
         expect(existsSync(path.join(root, 'plugins', 'graph.ts'))).toBe(false)
         expect(existsSync(path.join(root, 'plugins', 'key.ts'))).toBe(true)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // Run below the workspace root, it wrote there but named the files from
+  // the root: `bun test plugins/executor.test.ts` matched nothing.
+  it(
+    'names the files from the directory it ran in',
+    async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-below-'))
+      try {
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+        await mkdir(path.join(root, '.vx'))
+        await writeFile(path.join(root, '.vx', 'workspace.ts'), 'export default {}\n')
+        await mkdir(path.join(root, 'sub'))
+        const r = await vx(path.join(root, 'sub'), ['init', '--plugin', 'executor'])
+        expect([r.code, r.err, r.out.split('\n')]).toEqual([
+          0,
+          '',
+          [
+            'wrote ../plugins/executor.ts and ../plugins/executor.test.ts',
+            "Declare it in ../.vx/workspace.ts: import { shellExecutor } from '../plugins/executor.ts', then plugins: [shellExecutor(…)]",
+            'Test it: bun test ../plugins/executor.test.ts (needs @vzn/vx installed)',
+            '',
+          ],
+        ])
+        expect(existsSync(path.join(root, 'plugins', 'executor.ts'))).toBe(true)
+        const again = await vx(path.join(root, 'sub'), ['init', '--plugin', 'executor'])
+        expect([again.code, again.err]).toEqual([
+          1,
+          noticed('vx init: ../plugins/executor.ts exists. --force overwrites it\n'),
+        ])
       } finally {
         await rm(root, { recursive: true, force: true })
       }

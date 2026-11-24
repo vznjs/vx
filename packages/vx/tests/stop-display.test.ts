@@ -69,3 +69,33 @@ it('a stop keeps the region: running rows say aborting, exited ones aborted', as
   log.status('footer')
   expect(out.text().endsWith('footer\n')).toBe(true)
 })
+
+// 2026-11-23: a Ctrl-C while a streamed task was still deriving its key (a
+// slow `inputs.runtime` probe) left its opened frame with no close, so the
+// log read as if the command had run and never ended.
+it('a frame opened before the stop reached the task still closes', () => {
+  const chunks: string[] = []
+  const out: StatusStream = {
+    isTTY: false,
+    columns: 100,
+    write(c: string) {
+      chunks.push(String(c))
+      return true
+    },
+  }
+  const log = defaultLogger({ enabled: false }, { mode: 'focused' }, out, { forceFloorMs: 0 })
+  const a = node('a')
+  log.runStart?.({ total: 1, concurrency: 1 })
+  log.taskStart?.(a)
+  expect(chunks.join('')).toContain('┌─ p#a')
+  log.runStop?.()
+  log.taskComplete(a, { node: a, status: 'aborted', exitCode: 1, durationMs: 0 })
+  log.runEnd?.()
+  log.runDone?.()
+  expect(
+    chunks
+      .join('')
+      .split('\n')
+      .filter((l) => l.startsWith('└─ p#a')),
+  ).toEqual(['└─ p#a ── not run'])
+})

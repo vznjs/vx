@@ -61,6 +61,7 @@ describe('an input under a nested project', () => {
       'packages/a#build reads "dist/**" in inputs.files, which lies inside the project packages/a/dist',
     )
     expect(msg).toContain('inputs.workspaceFiles ("packages/a/dist/**")')
+    expect(msg).toContain('Depend on a task of packages/a/dist, or name')
   })
 
   it('is refused as a literal file and as the directory itself', async () => {
@@ -90,6 +91,7 @@ describe('an output under a nested project', () => {
       'packages/a#build writes "dist/o/**" in outputs.files, which lies inside the project packages/a/dist',
     )
     expect(msg).toContain('outputs.workspaceFiles ("packages/a/dist/o/**")')
+    expect(msg).toContain('Let a task of packages/a/dist write them')
   })
 
   it('is refused in one alternative of a brace', async () => {
@@ -101,6 +103,49 @@ describe('an output under a nested project', () => {
   it('is no refusal for a sibling or a negation', async () => {
     expect(await lockError(await workspace(['src/**'], ['distx/**']))).toBeNull()
     expect(await lockError(await workspace(['src/**'], ['out/**', '!dist/**']))).toBeNull()
+  })
+})
+
+describe('a glob that reaches into a nested project past its fixed prefix', () => {
+  it('is refused at lock as an input, naming the glob and the project that owns the files', async () => {
+    const msg = await lockError(await workspace(['*/d.txt']))
+    expect(msg).toContain(
+      'packages/a#build reads "*/d.txt" in inputs.files, which reaches into the project packages/a/dist',
+    )
+    expect(msg).toContain(
+      'A task of packages/a/dist owns them: depend on it, or take them back with "!dist/**"',
+    )
+  })
+
+  it('is refused at lock as an output', async () => {
+    expect(await lockError(await workspace(['src/**'], ['d*/**']))).toContain(
+      'packages/a#build writes "d*/**" in outputs.files, which reaches into the project packages/a/dist',
+    )
+  })
+
+  it('is no refusal when a leading ** reaches it or a negation takes it back', async () => {
+    expect(await lockError(await workspace(['**/*.txt']))).toBeNull()
+    expect(await lockError(await workspace(['*/d.txt', '!dist/**']))).toBeNull()
+    expect(await lockError(await workspace(['src/**'], ['d*/**', '!dist/**']))).toBeNull()
+  })
+
+  it('is refused for a root output reaching a member through its parent folder', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-nested-root-', workspaceFile: false })
+    roots.push(root)
+    await writeFile(
+      path.join(root, 'vx.config.mjs'),
+      `export default { tasks: { build: {
+  exec: { command: 'true' },
+  inputs: { files: ['*.json'] },
+  outputs: { files: ['packages/**/*.log'] },
+  cache: true,
+} } }
+`,
+    )
+    await addProject(root, 'a', { config: 'export default { tasks: {} }\n' })
+    expect(await lockError(root)).toContain(
+      '//#build writes "packages/**/*.log" in outputs.files, which reaches into the project packages/a',
+    )
   })
 })
 

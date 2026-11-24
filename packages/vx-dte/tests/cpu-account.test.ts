@@ -59,7 +59,16 @@ it('keeps a Linux name with a slash whole, and a macOS path to its last part', (
   const { table } = parsePs(
     ['  12     2 00:00:01 kworker/0:1-events', '  13     1 00:00:01 /usr/libexec/mds'].join('\n'),
   )
-  expect([table.get(12)?.name, table.get(13)?.name]).toEqual(['kworker/0:1-events', 'mds'])
+  expect([table.get(12)?.name, table.get(13)?.name]).toEqual(['kworker/0:1', 'mds'])
+})
+
+// A worker's line read `kworker/u16:13-events_unbound 17.02 cores` on 4
+// cores: a kworker's name ends in the work queue it serves now, so the same
+// thread looked like a new process and its whole life was counted.
+it('counts a kworker across its work queue changing, by its thread', () => {
+  const before = parsePs('  12     2 00:00:30 kworker/u16:13-ext4-rsv-conversion').table
+  const after = parsePs('  12     2 00:00:31 kworker/u16:13-events_unbound')
+  expect(topBetween(before, after, 1)).toEqual([{ name: 'kworker/u16:13', ms: 1_000 }])
 })
 
 it('reads its reaped children from /proc/self/stat, none off Linux', () => {

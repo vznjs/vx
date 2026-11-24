@@ -3,6 +3,7 @@
 
 export {
   affectedChanges,
+  BASE_SIDE,
   type AffectedChanges,
   affectedProjects,
   defaultAffectedBase,
@@ -50,6 +51,7 @@ export {
   loadProjectConfig,
   loadProjectConfigs,
   loadWorkspaceConfig,
+  stdoutToStderr,
   WORKSPACE_CONFIG_FILENAMES,
 } from './project-loader.js'
 export {
@@ -69,6 +71,7 @@ export { repoIdsOf } from './repo-id.js'
 export {
   checkProjectNames,
   findWorkspaceRoot,
+  configsOutsideLock,
   findProjectConfigs,
   REVIEW_FILE,
   discoveredProject,

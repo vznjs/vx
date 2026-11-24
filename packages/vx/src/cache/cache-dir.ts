@@ -12,6 +12,7 @@ import {
   readdirSync,
   readFileSync,
   type Stats,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
@@ -225,7 +226,18 @@ function writeIgnore(file: string, text: string): void {
   try {
     writeFileSync(file, text, { flag: 'wx' })
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    const e = err as NodeJS.ErrnoException
+    if (e.code === 'EEXIST') return
+    // `wx` made it before the write was refused: an empty one would stand
+    // as "written" to every later run.
+    rmSync(file, { force: true })
+    // Bun's refused `write` names no path, so the line said "the disk that
+    // path is on is full" with no path in it.
+    if (e.path === undefined) {
+      e.path = file
+      e.message = `${e.message} '${file}'`
+    }
+    throw err
   }
 }
 

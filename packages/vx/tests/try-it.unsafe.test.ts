@@ -25,8 +25,8 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { withNpm } from './helpers/npm.js'
-import { installFromCheckout, withCheckoutNpm } from './helpers/npm-checkout.js'
+import { removeNpm, withNpm } from './helpers/npm.js'
+import { installFromCheckout, removeCheckoutNpm, withCheckoutNpm } from './helpers/npm-checkout.js'
 import { gitIn, gitInit } from './helpers/workspace.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
@@ -72,6 +72,8 @@ const COMMANDS = [
 
 const roots: string[] = []
 afterAll(() => {
+  removeNpm()
+  removeCheckoutNpm()
   for (const r of roots) rmSync(r, { recursive: true, force: true })
 })
 
@@ -280,11 +282,12 @@ function printedPlain(fence: string): string {
  * install. The guide's reader runs vx-migrate through bun x, so a release
  * also installs @vzn/vx and @vzn/vx-migrate; here both are installed
  * first, so a checkout installs neither and removes the vx-migrate a
- * native run no longer needs.
+ * native run no longer needs. A coloured title row is padded to the
+ * report's width.
  */
 function versionless(out: string): string {
   return out
-    .replace(/^  (vx-migrate|vx init) \S+$/m, '  $1')
+    .replace(/^  (vx-migrate|vx init) \S+ *$/m, '  $1')
     .replace(/^  ran +npm uninstall @vzn\/vx-migrate\n/m, '')
     .replace(
       /^(  ran +npm install -D )(.*)$/gm,

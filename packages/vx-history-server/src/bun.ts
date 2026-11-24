@@ -7,7 +7,7 @@ import { parseArgs } from 'node:util'
 import { oidcTokenAuth, parseAllow, statusLine } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer } from './server.js'
-import { type Db, sqliteStore } from './store.js'
+import { type Db, notOurs, sqliteStore, TABLES } from './store.js'
 
 const USAGE = `usage: vx-history-server [--db vx-history.sqlite] [--port 8080] [--host 0.0.0.0]
   ALLOW        who may take part, space separated, each issuer:owner/repo:workflow
@@ -19,8 +19,27 @@ const USAGE = `usage: vx-history-server [--db vx-history.sqlite] [--port 8080] [
 /** A SQLite file through bun:sqlite. */
 export function sqliteDb(path: string): Db {
   const db = new Database(path, { create: true, strict: true })
+  // A file another tool made started the server, and its first upload
+  // failed 500 after init had altered that tool's table.
+  for (const table of TABLES.keys()) {
+    const why = notOurs(
+      table,
+      new Set(
+        db
+          .query<{ name: string }, [string]>('SELECT name FROM pragma_table_info(?1)')
+          .all(table)
+          .map((c) => c.name),
+      ),
+    )
+    if (why !== undefined) {
+      db.close()
+      throw new Error(why)
+    }
+  }
   db.run('PRAGMA journal_mode = WAL')
-  db.run('PRAGMA busy_timeout = 5000')
+  // bun:sqlite waits for a lock on the server's one thread, stalling every
+  // request: a fold takes ms, so a lock held past this is no other fold's.
+  db.run('PRAGMA busy_timeout = 1000')
   return {
     all: async <T>(sql: string, params: readonly unknown[]) =>
       db.query(sql).all(...(params as never[])) as T[],
@@ -53,14 +72,14 @@ function main(argv: string[]): void {
   let allow
   let timingDays
   try {
-    allow = parseAllow(env.ALLOW ?? '')
+    allow = parseAllow(env['ALLOW'] ?? '')
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
   // An empty one started a server that refused every request.
   if (allow.length === 0) fail(`set ALLOW\n${USAGE}`)
   try {
-    timingDays = timingDaysOf(env.TIMING_DAYS)
+    timingDays = timingDaysOf(env['TIMING_DAYS'])
   } catch (err) {
     fail((err as Error).message)
   }
@@ -76,7 +95,7 @@ function main(argv: string[]): void {
   }
   // Unset, the audience would be the origin a request names: its Host
   // header, which the client picks. Workers know their own hostnames.
-  const audience = env.AUDIENCE?.trim() ?? ''
+  const audience = env['AUDIENCE']?.trim() ?? ''
   if (audience === '')
     fail(
       `set AUDIENCE: the aud a CI token names, the origin clients reach this server at\n${USAGE}`,
@@ -85,7 +104,7 @@ function main(argv: string[]): void {
     store: sqliteStore(db),
     authorize: oidcTokenAuth({
       allow,
-      readAccess: env.READ_ACCESS,
+      readAccess: env['READ_ACCESS'],
       audience,
     }),
     ...(timingDays === undefined ? {} : { timingDays }),

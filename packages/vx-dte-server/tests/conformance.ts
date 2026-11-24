@@ -79,7 +79,10 @@ export function conformance(name: string, target: Target): void {
     })
 
     it('refuses 4406 naming its range when none is shared, or none offered', async () => {
-      for (const offered of [['switchboard.v9'], []]) {
+      // Number() reads each of these as 1: answered switchboard.v1, a name it
+      // never offered, its client failed the handshake and read no refusal.
+      const near = ['switchboard.v01', 'switchboard.v1.0', 'switchboard.v0x1', 'switchboard.v1e0']
+      for (const offered of [['switchboard.v9'], [], ...near.map((t) => [t])]) {
         const h = await session().host(undefined, offered)
         // The frame is the refusal: workerd never ends TCP after its close.
         expect(h.first).toEqual({ close: 4406, error: 'supported: switchboard.v1-v1' })
@@ -222,28 +225,27 @@ export function conformance(name: string, target: Target): void {
       expect(await h.next()).toEqual({ n: 5, status: 413, error: 'body over 1 MiB' })
     })
 
-    it("passes a deep body or refuses it 400, and keeps the receiver's socket", async () => {
+    it("refuses a frame nested past 64 before parsing it, and keeps the receiver's socket", async () => {
       const s = session()
       const h = await s.host()
       const p = await s.peer()
       await h.next()
-      // Parsed, but nested past what Bun serializes (workerd's V8 does):
-      // the push threw, and the Bun relay unplugged the host over the
-      // peer's body while telling the peer it went.
-      const deep = 100_000
-      p.ws.send(`{"n":1,"sends":[{"to":"host","body":${'['.repeat(deep)}${']'.repeat(deep)}}]}`)
-      const answer = await p.next()
-      if (answer.results === undefined) {
-        expect(answer).toEqual({ n: 1 })
-        expect((await h.next()).messages[0].from).toBe(p.id)
-      } else {
-        expect(answer).toEqual({
-          n: 1,
-          results: [{ status: 400, error: 'body nests too deep to pass' }],
-        })
-      }
-      p.send({ n: 2, sends: [{ to: 'host', body: 'after' }] })
-      expect(await p.next()).toEqual({ n: 2 })
+      // The body opens at depth 4: 61 more is 64, the deepest a frame may go.
+      const frame = (n: number, deep: number) =>
+        `{"n":${n},"sends":[{"to":"host","body":${'['.repeat(deep)}${']'.repeat(deep)}}]}`
+      p.ws.send(frame(1, 61))
+      expect(await p.next()).toEqual({ n: 1 })
+      expect((await h.next()).messages[0].from).toBe(p.id)
+      p.ws.send(frame(2, 62))
+      expect(await p.next()).toEqual({ n: 2, status: 400, error: 'frame nests deeper than 64' })
+      // Bun's JSON.stringify spent 3 to 7 s of CPU on one 100k deep before it threw.
+      const before = process.cpuUsage()
+      p.ws.send(frame(3, 100_000))
+      expect(await p.next()).toEqual({ n: 3, status: 400, error: 'frame nests deeper than 64' })
+      const { user, system } = process.cpuUsage(before)
+      expect((user + system) / 1000).toBeLessThan(1000)
+      p.send({ n: 4, sends: [{ to: 'host', body: 'after' }] })
+      expect(await p.next()).toEqual({ n: 4 })
       expect(await h.next()).toEqual({ messages: [{ from: p.id, body: 'after' }] })
     })
   })

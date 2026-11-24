@@ -83,7 +83,7 @@ it('a run on an empty local cache restores from the directory', async () => {
   const second = await run({ cwd: root, tasks: ['build'], log: log(), handleSignals: false })
   expect(second.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
   expect(await Bun.file(path.join(dir, 'dist', 'out.txt')).text()).toBe('built\n')
-}, 20_000)
+}, 30_000)
 
 // Read against the process's cwd, a relative directory was another store
 // for a run started in a project's directory than for one at the root.

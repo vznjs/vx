@@ -40,3 +40,33 @@ it('puts back a config’s chdir and names the config', async () => {
   // CONTROL: configs that move nothing load.
   expect(await refusal([innocent, innocent])).toEqual(['loaded', 'cwd kept'])
 })
+
+it('rounds for two workspaces at once in one process both load', async () => {
+  // Each round moves the cwd to its root; overlapping, the second moved the
+  // first's mid-evaluation, and both were refused as a config's chdir.
+  const cwd = process.cwd()
+  const dirs = await Promise.all([0, 1].map(() => mkdtemp(path.join(os.tmpdir(), 'vx-chdir-'))))
+  try {
+    const slow = 'await new Promise((r) => setTimeout(r, 20))\nexport default { tasks: {} }\n'
+    const rounds = await Promise.all(
+      dirs.map(async (dir) => {
+        const files = await Promise.all(
+          [0, 1, 2].map(async (i) => {
+            const file = path.join(dir, `p${i}`, 'vx.config.mjs')
+            await Bun.write(file, slow)
+            return file
+          }),
+        )
+        return loadProjectConfigs(files, dir).then(
+          () => 'loaded',
+          (err: Error) => err.message,
+        )
+      }),
+    )
+    expect(rounds).toEqual(['loaded', 'loaded'])
+    expect(process.cwd()).toBe(cwd)
+  } finally {
+    process.chdir(cwd)
+    for (const dir of dirs) await rm(dir, { recursive: true, force: true })
+  }
+})

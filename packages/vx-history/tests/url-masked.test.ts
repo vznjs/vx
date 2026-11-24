@@ -41,8 +41,14 @@ async function warned(url: string): Promise<string[]> {
       ],
       cwd: other,
     })
-    // A token, so the run uploads: with none it reads only.
-    const env = { ...Bun.env, NO_COLOR: '1', HOME: path.join(other, 'home'), VX_HISTORY_TOKEN: 't' }
+    // A token on CI, so the run uploads: with none, or off CI, it reads only.
+    const env = {
+      ...Bun.env,
+      NO_COLOR: '1',
+      HOME: path.join(other, 'home'),
+      VX_HISTORY_TOKEN: 't',
+      CI: 'true',
+    }
     const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
     Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other, env })
     const cli = Bun.spawn({

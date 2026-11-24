@@ -19,7 +19,7 @@
 // snapshot as one JSON line; a follower then gets each `WireEvent` as a
 // line until `run:done`, and the run closes the connection.
 
-import { unlinkSync } from 'node:fs'
+import { statSync, unlinkSync } from 'node:fs'
 import type { Socket, UnixSocketListener } from 'bun'
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import {
@@ -83,21 +83,36 @@ const encoder = new TextEncoder()
  * path, synchronously, as run-lock.ts's release does; this one runs
  * first, so the path is left before the lock frees it for the next run.
  */
-const listening = new Set<string>()
+const listening = new Map<string, number>()
 let exitHooked = false
 function unlinkOnExit(socketPath: string): void {
-  listening.add(socketPath)
+  listening.set(socketPath, inodeOf(socketPath))
   if (exitHooked) return
   exitHooked = true
   process.prependListener('exit', () => {
-    for (const p of listening) {
-      try {
-        unlinkSync(p)
-      } catch {
-        // Gone already.
-      }
-    }
+    for (const [p, ino] of listening) unlinkIfOurs(p, ino)
   })
+}
+
+function inodeOf(p: string): number {
+  try {
+    return statSync(p).ino
+  } catch {
+    return -1
+  }
+}
+
+/**
+ * A run serving its server past the lock (run.ts) leaves the path only if it
+ * is still its own: a later run took the path when it took the lock.
+ */
+function unlinkIfOurs(p: string, ino: number): void {
+  if (inodeOf(p) !== ino) return
+  try {
+    unlinkSync(p)
+  } catch {
+    // Gone already.
+  }
 }
 
 /**
@@ -113,6 +128,8 @@ export function serveLive(opts: {
   startedAt: number
   nodes: () => Iterable<TaskNode>
   warnings: () => readonly string[]
+  /** A server still up: its task completed at ready, but it runs. */
+  serving: (id: string) => boolean
 }): { unlisten(): void; dispose(): void } {
   // Each task's start, then its end: one map, not one for each.
   const seen = new Map<string, number | Ended>()
@@ -155,11 +172,13 @@ export function serveLive(opts: {
       if (isGroupTask(node)) continue
       const at = seen.get(node.id)
       tasks.push(
-        typeof at === 'object'
-          ? { taskId: node.id, ...at }
-          : at !== undefined
-            ? { taskId: node.id, status: 'running', startedAt: at, durationMs: null }
-            : { taskId: node.id, status: 'waiting', startedAt: null, durationMs: null },
+        typeof at === 'object' && opts.serving(node.id)
+          ? { taskId: node.id, status: 'running', startedAt: at.startedAt, durationMs: null }
+          : typeof at === 'object'
+            ? { taskId: node.id, ...at }
+            : at !== undefined
+              ? { taskId: node.id, status: 'running', startedAt: at, durationMs: null }
+              : { taskId: node.id, status: 'waiting', startedAt: null, durationMs: null },
       )
     }
     const rank = (t: LiveTask): number =>
@@ -278,12 +297,9 @@ export function serveLive(opts: {
       if (listener === undefined) return
       listener.stop()
       listener = undefined
+      const ino = listening.get(opts.socketPath)
       listening.delete(opts.socketPath)
-      try {
-        unlinkSync(opts.socketPath)
-      } catch {
-        // Gone already.
-      }
+      if (ino !== undefined) unlinkIfOurs(opts.socketPath, ino)
     },
     dispose: () => {
       unsubscribe()

@@ -42,6 +42,8 @@ export const nx: Adapter = {
   // and nothing keeps a command from what it never declared. Every host
   // variable reaches a task, keying none it does not name.
   lacks: {
+    'folder-output':
+      'Nx’s `outputs` name a file or directory path; its docs give a trailing slash no meaning, so nothing declares an output a folder.',
     'idle-timeout': 'Nx has no limit on how long a task may print nothing.',
     'output-checksum': 'Nx has no way to pin an output’s bytes to a checksum.',
     'determinism-check': 'No Nx run rebuilds a cached task to compare its bytes.',

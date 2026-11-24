@@ -2,68 +2,97 @@
 
 Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
-Distributed task execution for vx: one `vx run` spread over workers your
-own CI starts, replayed here as one run. The run you start is the
-orchestrator. It runs no task itself, only restores cache hits: it starts
-workers and hands the ready tasks to the workers with room, critical path first,
-ranked by history and ranked again when fetched timings land. A worker runs it in its own checkout and saves the task's
-output and the files its declared outputs left to the workspace's cache,
-under the task's key. They land here before the task ends, so the run
-reports the task as its own. No file travels through the relay: it
-carries only orders and status, so the workers and this machine need one
-cache they all read (a remote the workers write, or one shared store). A worker reads that cache as the run does:
-under the run's refs, with the short-lived access the run's remote lends
-it (an OIDC exchange's token, never a stored secret) when it has none of
-its own.
+Distributed task execution for vx. One `vx run` spreads its tasks over
+workers your own CI starts, and you see it as one run.
+
+How a run works:
+
+- The run you start is the orchestrator. It runs no task itself; it only
+  restores cache hits.
+- It starts workers and hands the ready tasks to the workers with room,
+  critical path first.
+- It ranks tasks by history, and ranks them again when fetched timings land.
+- A worker runs a task in its own checkout. It saves the task's output, and
+  the files its declared outputs left, to the workspace's cache under the
+  task's key.
+- Those land here before the task ends, so the run reports the task as its
+  own.
+
+No file travels through the relay; it carries only orders and status. So
+the workers and this machine need one cache they all read: a remote the
+workers write, or one shared store.
+
+A worker reads that cache as the run does, under the run's refs.
+
+With no access of its own, a worker borrows short-lived access from the
+run's remote: an OIDC exchange's token, never a stored secret.
 
 Workers and the orchestrator meet at a relay
-([`@vzn/vx-dte-server`](../vx-dte-server/README.md)), since CI runners
-take no inbound connection. It speaks the
-[Switchboard protocol](../vx-dte-server/PROTOCOL.md): the run is a
-session, its id the run id, the orchestrator its host and each worker a
-peer. Host your own: its
-[README](../vx-dte-server/README.md) has a Deploy to Cloudflare button,
-which asks only for the repositories whose runs it carries.
+([`@vzn/vx-dte-server`](../vx-dte-server/README.md)), since CI runners take
+no inbound connection.
 
-A run id is a channel. Workers join it before or after the orchestrator
-does, and the orchestrator claims it with a key made for that run; the
-relay keeps the public half and passes nothing to or from a side that
-cannot sign by it. The orchestrator checks each worker the moment it
-appears and removes any without the run's key from the channel.
+The relay speaks the [Switchboard protocol](../vx-dte-server/PROTOCOL.md).
+The run is a session, its id the run id, the orchestrator its host and each
+worker a peer.
+
+Host your own relay: its [README](../vx-dte-server/README.md) has a Deploy
+to Cloudflare button, which asks only for the repositories whose runs it
+carries.
+
+A run id is a channel:
+
+- Workers join it before or after the orchestrator does.
+- The orchestrator claims it with a key made for that run.
+- The relay keeps the key's public half, and passes nothing to or from a
+  side that cannot sign by it.
+- The orchestrator checks each worker the moment it appears, and removes
+  any without the run's key from the channel.
 
 The relay reads nothing they say. Each worker and the orchestrator run a
-[Noise](https://noiseprotocol.org/noise.html) handshake through it, one
-session per worker, with keys made for that session only. With the run's
-key (`VX_DTE_SECRET`, or one an adapter made for its workers) it is `Noise_NNpsk0_25519_AESGCM_SHA256`: the key is the
-pre-shared key, so a side without it cannot finish the handshake, and the
-worker's `join` info (cores, memory, tree) is already encrypted. On GitHub
-Actions with no key it is `Noise_NN_25519_AESGCM_SHA256`, and each side
-binds the handshake by an OIDC token of this repository (`id-token:
-write`): no secret is stored anywhere. With no adapter and no GitHub, set
-the same `VX_DTE_SECRET` on the run and each worker. A message the relay
-changes loses its worker; one it replays is dropped. The key never
-encrypts a message, so a leaked one opens no past run.
+[Noise](https://noiseprotocol.org/noise.html) handshake through it.
 
-It runs workers with `local()`, `docker()`, `github()` and `gitlab()`.
+- There is one session per worker, with keys made for that session only.
+- With the run's key (`VX_DTE_SECRET`, or one an adapter made for its
+  workers), the handshake is `Noise_NNpsk0_25519_AESGCM_SHA256`.
+- The key is the pre-shared key, so a side without it cannot finish the
+  handshake.
+- The worker's `join` info (cores, memory, tree) is already encrypted.
+- On GitHub Actions with no key, it is `Noise_NN_25519_AESGCM_SHA256`.
+- There, each side binds the handshake by an OIDC token of this repository
+  (`id-token: write`). No secret is stored anywhere.
+- With no adapter and no GitHub, set the same `VX_DTE_SECRET` on the run
+  and on each worker.
+- A message the relay changes loses its worker; one it replays is dropped.
+- A worker's join the relay delivers again admits no second worker: under
+  its id it is dropped, under another it is refused.
+- The key never encrypts a message, so a leaked key opens no past run.
+
+You start workers with `local()`, `docker()`, `github()` and `gitlab()`.
 
 ## Bodies
 
-What vx-dte puts in Switchboard's `info` and `body`, for anyone writing a
-worker or orchestrator of their own. Each worker and the orchestrator run
-a Noise handshake through the relay, prologue `vx-dte\0<run>`, the worker
-the initiator.
+This section says what vx-dte puts in Switchboard's `info` and `body`. You
+need it only to write your own worker or orchestrator.
 
-- With the run's key: `Noise_NNpsk0_25519_AESGCM_SHA256`, the psk the
+<details><summary>Details</summary>
+
+Each worker and the orchestrator run a Noise handshake through the relay,
+prologue `vx-dte\0<run>`, with the worker as the initiator.
+
+- With the run's key: `Noise_NNpsk0_25519_AESGCM_SHA256`, the psk being the
   key's SHA-256.
-- Keyless on GitHub Actions: `Noise_NN_25519_AESGCM_SHA256`. The worker's
-  `join` carries an OIDC token whose audience is
-  `vx-dte:<base64url SHA-256 of "join\0<run>\0<message 1>">`; the
-  orchestrator's `hello` one for `"hello\0<run>\0<handshake hash>"`. Each
-  side checks the other's as a token of the same `repository_id`; with
-  `github()`, the orchestrator also checks a worker's `run_id` is a
-  workflow run it dispatched, since the run's id is a dispatch input
-  anyone who reads the repository's Actions sees. A dispatch GitHub
-  answers without a run id (204) is refused, so its workers exit.
+- Keyless on GitHub Actions: `Noise_NN_25519_AESGCM_SHA256`.
+- Keyless, the worker's `join` carries an OIDC token whose audience is
+  `vx-dte:<base64url SHA-256 of "join\0<run>\0<message 1>">`.
+- Keyless, the orchestrator's `hello` carries one for
+  `"hello\0<run>\0<handshake hash>"`.
+- Each side checks the other's as a token of the same `repository_id`.
+- With `github()`, the orchestrator also checks that a worker's `run_id` is
+  a workflow run it dispatched.
+- That check matters because the run's id is a dispatch input: anyone who
+  reads the repository's Actions sees it.
+- A dispatch GitHub answers without a run id (204) is refused, so its
+  workers exit.
 
 | Who           | `info` / `body`                                            |
 | ------------- | ---------------------------------------------------------- |
@@ -72,37 +101,50 @@ the initiator.
 | orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove`    |
 | either, then  | `["<n>.<ciphertext>", …]`, or `["+", …]` with more to come |
 
-The orchestrator checks each worker the moment the relay says it joined,
-and `remove`s one whose handshake fails. Message 1's payload is the
-worker's info (JSON), encrypted under the psk. After the handshake every
-body is Noise transport messages, base64, each at most 65535 bytes and
-naming its nonce `n` (Noise §11.4, since a relay may reorder); each is
-sealed with associated data `<first n>.<parts>` of its body, so no part
-opens in another body, and a body's parts take consecutive nonces, so
-none is repeated or reordered in it. A body of more than 5 parts goes
-over several sends of 5, each but the last led by `"+"`, so no frame
-passes the relay's 1 MiB; the receiver holds them until the last and
-opens the body whole. A body whose first nonce was seen before is a
-replay and is dropped; one older than a body already opened (the relay
-held it back: the wire's numbers are outside the seal) or that does not
-open loses its sender. The plaintext is a lead byte, the length of
-every body its sender sealed before (4 bytes, big-endian, mod 2³²), and
-then, `1`, its JSON, an array of the messages sent together (up to 64
-KiB), or `0`, when smaller so, its zstd frame's length (4 bytes) and
-the frame: compressed before sealing, since no
-relay or socket compresses what is sealed. The orchestrator's are
-compressed against the last 16 KiB of its bodies' JSON to that worker
-as their dictionary, so a batch's env and paths said before cost a few
-bytes; a worker's go without one, which would cost the orchestrator
-some 100 µs to open each. A body whose length is not
-the receiver's own count was sealed after one it never opened, which the
-relay kept back, and loses its sender. It
-is padded with trailing spaces to its size class, a power of two from
-64 bytes, then whole transport messages, so the relay learns no size
-within a class. Inside, each send is numbered and acknowledged
-end to end (`{ "n", "b", "a"? }`: its number, body and ack), and a quiet worker reports (Switchboard § Delivery, § Liveness).
+- The orchestrator checks each worker the moment the relay says it joined,
+  and `remove`s one whose handshake fails.
+- Message 1's payload is the worker's info (JSON), encrypted under the psk.
+- After the handshake, every body is Noise transport messages, base64, each
+  at most 65535 bytes.
+- Each message names its nonce `n` (Noise §11.4), since a relay may reorder.
+- Each is sealed with associated data `<first n>.<parts>` of its body, so no
+  part opens in another body.
+- A body's parts take consecutive nonces, so none is repeated or reordered
+  in it.
+- A body of more than 5 parts goes over several sends of 5, each but the
+  last led by `"+"`, so no frame passes the relay's 1 MiB.
+- The receiver holds those sends until the last, and opens the body whole.
+- A body whose first nonce was seen before is a replay, and is dropped.
+- A body older than one already opened loses its sender: the relay held it
+  back, since the wire's numbers are outside the seal.
+- A body that does not open loses its sender.
+- The plaintext is a lead byte, then the length of every body its sender
+  sealed before (4 bytes, big-endian, mod 2³²), then the payload.
+- Lead byte `1`: the payload is JSON, an array of the messages sent
+  together (up to 64 KiB).
+- Lead byte `0`, when smaller so: its zstd frame's length (4 bytes), then
+  the frame.
+- It is compressed before sealing, since no relay or socket compresses what
+  is sealed.
+- The orchestrator's bodies are compressed with the last 16 KiB of its
+  bodies' JSON to that worker as their dictionary.
+- So a batch's env and paths said before cost a few bytes.
+- A worker's bodies go without a dictionary, which would cost the
+  orchestrator some 100 µs to open each.
+- A body whose length is not the receiver's own count was sealed after one
+  it never opened, which the relay kept back. It loses its sender.
+- A body is padded with trailing spaces to its size class: a power of two
+  from 64 bytes, then whole transport messages.
+- So the relay learns no size within a class.
+- Inside, each send is numbered and acknowledged end to end
+  (`{ "n", "b", "a"? }`: its number, body and ack).
+- A quiet worker reports (Switchboard § Delivery, § Liveness).
+
+</details>
 
 ## Try it
+
+Install the plugin, declare it, and give the run a name:
 
 ```sh
 bun add -d @vzn/vx-dte
@@ -124,46 +166,54 @@ export default defineWorkspace({
 ```
 
 ```sh
-VX_DTE_RUN=$(uuidgen) vx run build --all
+VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())') vx run build --all
 ```
 
-`VX_DTE_RUN` names the run and turns distribution on; without it, `vx run`
-runs here as always (on GitHub Actions, `github()` with a relay names one
-itself). It is a random UUID, so no one can guess a run to
-open it first or join it; vx and the relay refuse any other. `local()` starts each worker as a process in its own
-git worktree of the tracked files as they are, uncommitted changes
-included, and a file mid-merge or flagged `assume-unchanged` or
-`skip-worktree` as it is on disk (untracked files are not: a task that keys
-one fails until it is `git add`ed), at the
-workspace's place in it (a workspace in a subdirectory of its repository too),
-saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
-A run from a git hook works too: the worktree and its worker drop the
-hook's repository variables (`git rev-parse --local-env-vars`), so the
-index being committed is left as it is, and a linked worktree's hook
-`GIT_DIR` is dropped where git finds that repository anyway, as core
-does, so a workspace in a subdirectory is found there. When a worker
-fails, or cannot start, its row names
-the error line and the log that holds its whole stderr and all `prepare`
-printed (the error line alone when the log cannot be written). At the run's end,
-or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
-a detached shell waits up to 5 s for the workers to leave, kills any
-still running, removes the worktrees and prunes git's records. A run whose vx
-was killed (`kill -9`) removes none; the next `local()` run on the
-machine removes them, once their run's process is gone.
+`VX_DTE_RUN` names the run and turns distribution on. Without it, `vx run`
+runs here as always. Set but empty, the run is refused.
+
+On GitHub Actions, `github()` with a relay names the run itself.
+
+The run id is a random UUID, so no one can guess a run to open it first or
+join it. vx and the relay refuse any other id.
+
+`local()` starts each worker as a process in its own git worktree, at the
+workspace's place in it:
+
+- The worktree holds the tracked files as they are, uncommitted changes
+  included.
+- A file mid-merge, or flagged `assume-unchanged` or `skip-worktree`, is
+  taken as it is on disk.
+- Untracked files are not taken: a task that keys one fails until you
+  `git add` it.
+- A workspace in a subdirectory of its repository works too.
+- Workers save to the run's store, a relative `cache.dir` or `--cache-dir`
+  too.
+
+<details><summary>Details</summary>
+
+- A run from a git hook works too. The worktree and its worker drop the
+  hook's repository variables (`git rev-parse --local-env-vars`).
+- So the index being committed is left as it is.
+- A linked worktree's hook `GIT_DIR` is dropped where git finds that
+  repository anyway, as core does.
+- So a workspace in a subdirectory is found there.
+- When a worker fails, or cannot start, its row names the error line and
+  the log that holds its whole stderr and all `prepare` printed.
+- When that log cannot be written, the row names the error line alone.
+- At the run's end, or on Ctrl-C, vx exits without waiting for the
+  worktrees to be removed.
+- A detached shell waits up to 5 s for the workers to leave, kills any still
+  running, removes the worktrees and prunes git's records.
+- A run whose vx was killed (`kill -9`) removes none.
+- The next `local()` run on the machine that starts a worker removes them,
+  once their run's process is gone. A run of cache hits starts none and
+  leaves them.
+
+</details>
 
 `docker()` starts each worker as a container held to its size: `--cpus`
-and `--memory` come from `cpu` and `memory`. The container clones this
-checkout (mounted read-only) into its own filesystem at its tracked
-files as they are, uncommitted changes too, runs
-`prepare`, then the workspace's own `node_modules/.bin/vx dte worker`, so
-the image needs Bun and git, and `prepare` installs vx. This machine's store
-(`~/.vx`) and a cache dir the workspace names (`cache.dir`, `VX_CACHE_DIR`, `--cache-dir`)
-are mounted at their own paths, and the
-clone keeps this checkout's `origin`, so the workers save where the run
-reads, as `local()`'s do; no remote is needed. On Linux a container runs
-as this user (its home is `/tmp`, where the store is mounted), so what it
-writes is this user's and git trusts the mounted checkout. A container that fails
-names its error line and the log of its whole stderr and all `prepare` printed:
+and `--memory` come from `cpu` and `memory`.
 
 ```ts
 dte({
@@ -172,13 +222,28 @@ dte({
 })
 ```
 
-The relay stays on loopback: on Linux a container joins the host's
-network; elsewhere it reaches the relay through `host.docker.internal`.
-A container ends with its worker; one still up when the run ends is
-removed.
+- The container clones this checkout (mounted read-only) into its own
+  filesystem, at its tracked files as they are, uncommitted changes too.
+- It runs `prepare`, then the workspace's own
+  `node_modules/.bin/vx dte worker`.
+- So the image needs Bun and git, and `prepare` installs vx.
+- This machine's store (`~/.vx`) is mounted at its own path.
+- So is a cache dir the workspace names (`cache.dir`, `VX_CACHE_DIR`,
+  `--cache-dir`).
+- The clone keeps this checkout's `origin`, so the workers save where the
+  run reads, as `local()`'s do. No remote is needed.
+- On Linux a container runs as your user (its home is `/tmp`, where the
+  store is mounted).
+- So what it writes is yours, and git trusts the mounted checkout.
+- A container that fails names its error line, and the log of its whole
+  stderr and all `prepare` printed.
+- The relay stays on loopback. On Linux a container joins the host's
+  network; elsewhere it reaches the relay through `host.docker.internal`.
+- A container ends with its worker. One still up when the run ends is
+  removed.
 
-With no adapter, vx starts no workers: the run uses whichever join its
-relay. In three terminals on one checkout's commit:
+With no adapter, vx starts no workers: the run uses whichever workers join
+its relay. For example, in three terminals on one checkout's commit:
 
 ```ts
 // .vx/workspace.ts
@@ -188,16 +253,23 @@ export default defineWorkspace({ plugins: [dte({ relay: 'http://127.0.0.1:8080' 
 ```sh
 bun /path/to/vx/packages/vx-dte-server/src/bun.ts --no-auth --port 8080   # the relay
 export VX_DTE_SECRET=$(openssl rand -base64 32)                          # in each terminal: the same one
-export VX_DTE_RUN=$(uuidgen)                                             # in each terminal: the same one
+export VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())')   # in each terminal: the same one
 vx run build --all                                                       # the run, first
 vx dte worker                                                             # a worker, as many as you like
 ```
 
 A worker started before its run finds no run on the relay: it says so
-and exits.
+and exits. So does one the run ends before taking (a warm run takes none).
 
-A worker prints its name, the run, the relay and its machine, then a row
-as each task starts and ends:
+A run with no worker yet says once, a second in,
+`[vx] waiting for a worker to join run <id> on the relay…`.
+
+Its live
+`workers` row reads `0 joined · waiting for a worker to join the relay`
+with no time left shown until one does.
+
+A worker prints its name, the run, the relay and its machine. Then it
+prints a row as each task starts and ends:
 
 ```
 ─ vx dte worker ───────────────────────────────────────────────
@@ -211,27 +283,40 @@ as each task starts and ends:
 
 ## On GitHub
 
-The run is your own job's `vx run`. When it needs workers it dispatches
-`.github/workflows/vx-worker.yml` once per size, with the workers of that
-size as a matrix, each job named for its worker (`name: ${{ matrix.worker }}`):
-a job that ends badly before its worker joins marks that worker `failed`
-with the step it failed at, and the run starts another in its place. When the run ends it cancels each worker run it
-dispatched, so one still queued does not hold a runner the next run
-waits for. Every job of a repository shares its `GITHUB_TOKEN`'s API
-limit, 1000 requests an hour, so the run reads its workers' jobs at most
-every 30 s, asks with each answer's ETag (an unchanged answer is free),
-and asks nothing until a spent limit resets. A dispatch the limit refuses
-is sent again at the reset, if that comes within 5 minutes; past that it
-fails, naming when. A cancel the limit refuses is sent again at the
-reset, if that comes within a minute. A run that dies before it cancels
-(a kill, a timed-out job) leaves it to its workers: the first that starts
-finds the run gone at the relay, and cancels its own workflow run, its
-queued fellows with it.
-On GitHub Actions with a relay, the run names itself: no
-`VX_DTE_RUN` to set. No secret: each side proves its key with the job's OIDC
-token, and the relay's token is an OIDC token for the relay's URL. Such a
-token lasts 5 minutes, so each side asks for a new one a minute before
-its token expires.
+The run is your own job's `vx run`. When it needs workers, it dispatches
+`.github/workflows/vx-worker.yml` once per size.
+
+- That size's workers run as a matrix, each job named for its worker
+  (`name: ${{ matrix.worker }}`).
+- A job that ends badly before its worker joins marks that worker `failed`,
+  with the step it failed at.
+- The run then starts another worker in its place.
+- When the run ends, it cancels each worker run it dispatched. So one still
+  queued does not hold a runner the next run waits for.
+- On GitHub Actions with a relay, the run names itself: you set no
+  `VX_DTE_RUN`.
+- No secret: each side proves its key with the job's OIDC token.
+- The relay's token is an OIDC token for the relay's URL.
+- Such a token lasts 5 minutes, so each side asks for a new one a minute
+  before its token expires.
+
+<details><summary>Details</summary>
+
+- Every job of a repository shares its `GITHUB_TOKEN`'s API limit, 1000
+  requests an hour.
+- So the run reads its workers' jobs at most every 30 s.
+- It asks with each answer's ETag, since an unchanged answer is free.
+- It asks nothing until a spent limit resets.
+- A dispatch the limit refuses is sent again at the reset, if that comes
+  within 5 minutes. Past that it fails, naming when.
+- A cancel the limit refuses is sent again at the reset, if that comes
+  within a minute.
+- A run that dies before it cancels (a kill, a timed-out job) leaves the
+  cancel to its workers.
+- The first worker that starts finds the run gone at the relay, and cancels
+  its own workflow run, its queued fellows with it.
+
+</details>
 
 ```ts
 // .vx/workspace.ts
@@ -288,31 +373,48 @@ jobs:
       - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
 ```
 
-`vx dte init` writes both from `dte()`, the run's above and the workers' below,
-and prints what is left: a relay that admits them (its `ALLOW`, and how
-to deploy one), a shared remote cache, the commit. In a terminal it asks
-what main runs and what a pull request runs (main's by default); without
-one it names none, and the run fails, listing the tasks, until you do. A
-workspace in a subdirectory of its repository gets them at the repository's
-root, its jobs running in that directory. Each size runs on
-its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
-`ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`), or on the label
-a machine's `runsOn: 'ubuntu-latest-16-cores'` names, as
-`gitlab({ tags })` does. It installs with the package manager your lockfile
-names and runs vx as `bun vx`, which runs the repo's own and never
-downloads one, as `pnpm exec` does (Yarn too: Bun reads no Plug'n'Play,
-so a Yarn workspace sets `nodeLinker: node-modules`). `--dry` prints it; a file you changed
-is kept unless `--force`. A worker's job is its setup and one command:
-`vx dte worker` reads what the run dispatched it with (the run, the relay,
-`github({ env })`) from the event (`GITHUB_EVENT_NAME`, `GITHUB_EVENT_PATH`,
-in the workflow `GITHUB_WORKFLOW_REF` names), joins, works, and leaves when
-the run ends. For the sizes above:
+`vx dte init` writes both workflows from `dte()`: the run's above and the
+workers' below. Then it prints what is left to do:
+
+- a relay that admits them (its `ALLOW`, and how to deploy one)
+- a shared remote cache
+- the commit
+
+What `vx dte init` writes:
+
+- In a terminal it asks what main runs and what a pull request runs (main's
+  by default).
+- Without a terminal it names none, and the run fails, listing the tasks,
+  until you do.
+- A workspace in a subdirectory of its repository gets the files at the
+  repository's root, its jobs running in that directory.
+- Each size runs on its platform's GitHub-hosted runner: `ubuntu-latest`
+  for none named, `ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`.
+- Or it runs on the label a machine's `runsOn: 'ubuntu-latest-16-cores'`
+  names, as `gitlab({ tags })` does.
+- It installs with the package manager your lockfile names.
+- It runs vx as `bun vx`, which runs the repo's own vx and never downloads
+  one, as `pnpm exec` does.
+- Yarn works too, but Bun reads no Plug'n'Play, so a Yarn workspace sets
+  `nodeLinker: node-modules`.
+- `--dry` prints the files. A file you changed is kept unless you pass
+  `--force`.
+
+A worker's job is its setup and one command, `vx dte worker`:
+
+- It reads what the run dispatched it with (the run, the relay,
+  `github({ env })`) from the event.
+- The event is `GITHUB_EVENT_NAME` and `GITHUB_EVENT_PATH`, in the workflow
+  `GITHUB_WORKFLOW_REF` names.
+- It joins, works, and leaves when the run ends.
+
+For the sizes above:
 
 ```yaml
 # .github/workflows/vx-worker.yml
 # Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
-# DTE run, which github() dispatches once per size. Run vx dte init
-# again after changing the sizes.
+# DTE run, which github() dispatches once per size. After changing the
+# sizes, run vx dte init --force.
 name: vx-worker
 
 on:
@@ -364,19 +466,25 @@ jobs:
 
 ## On GitLab
 
-One pipeline file. Your `vx` job is the orchestrator; once it is on the
-relay, it triggers a pipeline of the same file for each wave of workers
-it asks of a size, with the job's own `CI_JOB_TOKEN`, so no worker starts
-before the run and no token is stored. Each size's job is a matrix of
-`max` slots (`VX_DTE_SLOT`); that pipeline runs only the slots the wave
-names (`VX_DTE_PICK`), at the run's commit, and each takes its name from
-`VX_DTE_IDS`. The run starts workers as its work needs them, up to each
-size's `max`, which `gitlab()` needs (at most 200, a matrix's limit).
-GitLab lets a job token trigger but not cancel, so a worker the run no
-longer needs leaves when it joins or when the run ends. Each trigger
-passes the workers' variables, so set Settings > CI/CD > Variables >
-"Minimum role to use pipeline variables" to Developer: a project made
-since GitLab 17.7 lets no one, and refuses every trigger.
+You need one pipeline file. Your `vx` job is the orchestrator.
+
+- Once on the relay, it triggers a pipeline of the same file for each wave
+  of workers it asks of a size.
+- It triggers with the job's own `CI_JOB_TOKEN`, so no worker starts before
+  the run and no token is stored.
+- Each size's job is a matrix of `max` slots (`VX_DTE_SLOT`).
+- That pipeline runs only the slots the wave names (`VX_DTE_PICK`), at the
+  run's commit.
+- Each slot takes its name from `VX_DTE_IDS`.
+- The run starts workers as its work needs them, up to each size's `max`.
+- `gitlab()` needs `max`, at most 200 (a matrix's limit).
+- GitLab lets a job token trigger a pipeline but not cancel one.
+- So a worker the run no longer needs leaves when it joins, or when the run
+  ends.
+- Each trigger passes the workers' variables. So set Settings > CI/CD >
+  Variables > "Minimum role to use pipeline variables" to Developer.
+- A project made since GitLab 17.7 lets no one use pipeline variables, and
+  refuses every trigger.
 
 ```ts
 // .vx/workspace.ts
@@ -391,8 +499,8 @@ export default defineWorkspace({
 })
 ```
 
-`vx dte init` writes it, from `dte()`, in the package manager your
-lockfile names, asking what main and a merge request run:
+`vx dte init` writes the file from `dte()`, in the package manager your
+lockfile names. It asks what main and a merge request run:
 
 ```yaml
 # .gitlab-ci.yml
@@ -448,362 +556,609 @@ vx:
   rules: [{ if: $VX_DTE_SIZE == "linux.small" && $VX_DTE_SLOT =~ $VX_DTE_PICK }]
 ```
 
-`gitlab({ tags })` names each size's runner tags. Each job's ID token
-(`VX_DTE_TOKEN`) admits it to the relay; the worker proves itself to the
-run by the run's secret, made for that run only and passed as a trigger
-variable, since a GitLab ID token's audience is fixed when its job starts
-and cannot bind the handshake as GitHub's does. Set `VX_DTE_SECRET` to
-use your own instead.
+- `gitlab({ tags })` names each size's runner tags.
+- Each job's ID token (`VX_DTE_TOKEN`) admits it to the relay.
+- The worker proves itself to the run by the run's secret, made for that
+  run only and passed as a trigger variable.
+- A GitLab ID token cannot bind the handshake as GitHub's does: its
+  audience is fixed when its job starts.
+- Set `VX_DTE_SECRET` to use your own secret instead.
 
 ## What runs where
 
+Tasks run on workers, cache hits restore here, and every result comes back
+here. The rules below say how.
+
+**Room on a worker.** A task goes to a worker only when it fits now: while
+one of its cores is free and the task's memory fits.
+
 - A worker reports the cores and memory its machine has when it joins.
-  One the run started is held to the size it was started as, so
-  `local()` workers sharing a host split it rather than each take all of
-  it. Each frame it sends (a task saved, its report, a fault) carries its
-  machine's load: cores busy over the last second and memory in use. A
-  heartbeat with nothing else to say, it sends its report: that load, the
-  tasks it runs and the last batch it read. A task of that batch or before
-  its report no longer names goes back to the queue at once. A task goes to it only when it fits now: while
-  one of its cores is free and the task's memory fits. What a worker has
-  in use is what its running tasks used on their last run (history's
-  measured CPU and peak RAM), plus the cores its machine spends on no
-  task of the run while it runs some (each frame's load less its tasks',
-  averaged: a GitHub runner's own agent and the like, 0.6 to 1.1 of a
-  4-core small's), or what its tasks use live (its machine's load where
-  it does not say), those cores and what was sent since, when that is more. Never less: load lags a task's start, and a test
-  shard idle for a second then uses all its cores. A command that ended
-  frees its cores while its outputs save, and its worker's load until the
-  next frame: that load counted the task. Every
-  task sent begins at once; none waits in a worker's queue. Where each
-  task goes is the plan's (see `workers` under [API](#api)): a task fills
-  a worker before another is asked, so a 10-core task facing one free
-  core asks a worker, and two small tasks share a busy one rather than
-  pay a warm-up. A task that filled its worker last time runs only on a
-  bigger size while the run has or may ask one. A task wider than every
-  worker runs on the most cores free on one when that ends the run
-  sooner than waiting for room: a 20-core task of 60 s starts now on the
-  9 free cores of a 10-core worker busy with a 150 s chain, not after it.
-- A task naming `exec.platforms` runs only on a worker of the platform
-  core placed it on: this machine's when a size has it, else the first of
-  the task's a size has. A worker reports its platform when it joins: a
-  size naming one refuses a worker of another; a size naming none is
-  planned as this machine's and takes any worker. When the sizes run
-  this machine's platform and another, a task naming none runs only on
-  this machine's: a worker of another platform runs only the tasks that
-  name it, so they never wait behind the rest, and leaves when they are
-  done. The run starts a worker of each
-  platform its work needs. A task none of whose platforms any size has
-  refuses the run before a worker starts.
-- A task naming `exec.worker` runs only on machines of that worker type;
-  any other on the first type, in declared order, with a machine of one
-  of its platforms. So a type listed last (a costly Mac) gets only the
-  tasks no other type can take. Core refuses the run before a worker
-  starts when no type has the name, or none of its machines runs one of
-  the task's platforms. A worker that joins on its own is of the first
-  type with its platform.
-- Of equal choices, a task goes to the worker the last plan gave it,
-  then to the busiest, so workers fill before the next takes work and the
-  ones the rest no longer needs fall idle and leave.
-- A sandboxed task runs on a worker inside the worker's own sandbox, with
-  the same `exec.sandbox`, built there (`workerRuntime().prepare`): its paths,
-  walls and credential stores are the worker's, so an orchestrator on
-  Linux can run macOS workers. A violation there fails it here, named in
-  this checkout's paths. An empty file it wrote over a write grant's
-  placeholder is its output; only a placeholder it never touched goes.
-  The outputs of its dependencies it may read are listed there too, once
-  they are restored on the worker: its order names the dependencies, so
-  it is sent before their files are back on the orchestrator.
-  A sandbox the worker cannot host (no `bwrap` in its image) fails the
-  task there, as it fails here; the worker stays in the run.
-- A task whose dependants all run on workers is done once it ran:
-  its `end` carries its output, and its files come to the orchestrator
-  meanwhile (core's `download: 'trailing'`). A dependant starts at once,
-  its own files land after its upstream's, and the run ends with every
-  file here. A cached one is saved here once its files land. An output
-  over 256 KB is read from the entry first, as before.
-- A task that declares no output (a test, a lint) is done here once its
-  worker says so: its `end` carries its output, and its entry is not read
-  back first. Core saves it here as after any task.
-- A persistent task a task depends on starts on the worker that runs the
-  task, once per worker, ready before it, and stops there once no task left
-  in the run uses it (the run's `unneeded`), or when the worker leaves;
-  the orchestrator never starts it, and a worker no dependant reaches
-  never does (2026-10-22). Its CPU is learned on the worker each second
-  as `cores = base + each running dependant's cost`: the base from looks
-  with no dependant running, each cost from looks with it (a look on a
-  full machine only raises them). Each dependant's cost is added to its
-  CPU, so its history books it; the base is booked once on each worker
-  that starts the server, in placement and in the plan, and kept in
-  history for the next run, as warm-ups are. A server that crashes (a
-  non-zero exit) fails the dependant that ran against it, and each one
-  after it on that worker, naming the server: on one machine the server
-  fails and the run with it, so a run over workers does too.
-- A task whose key hashes a runtime probe (`inputs.runtime`, such as
-  `bun --version`) runs on a worker, which answers the probe first and
-  fails the task when it answers otherwise than this machine did. A path
-  under the worker's checkout root reads as the same path under this
-  machine's, as the task's environment does.
-- A task's command runs on a worker as written: a plugin changes where a
-  command runs, never what it is. A path under this machine's checkout
-  in the environment is moved to the worker's; one written into the
-  command is not, so a `local()` worker would read and write this
-  checkout through it. Name a file relative to the task's directory, or
-  through `$PWD`.
-- No task runs on the orchestrator, only cache hits restore there
-  (2026-10-24): a task with `exec.remote: false`, an interactive
-  one and their dependants run on workers too (the executor is
-  `exclusive`). A task no worker can take refuses the run before any
-  starts, naming it: one whose `exec.platforms` no size offers, or a
-  persistent task asked for on its own.
+- A worker the run started is held to the size it was started as.
+- So `local()` workers sharing a host split it, rather than each take all
+  of it.
+- Every task sent begins at once; none waits in a worker's queue.
+
+<details><summary>Details</summary>
+
+- Each frame a worker sends (a task saved, its report, a fault) carries its
+  machine's load.
+- That load is the cores busy over the last second, and the memory in use.
+- With nothing else to say, the worker sends its report as a heartbeat:
+  that load, the tasks it runs and the last batch it read.
+- A task of that batch, or of one before, that its report no longer names
+  goes back to the queue at once.
+- A worker's use counts what its running tasks used on their last run
+  (history's measured CPU and peak RAM).
+- Plus the cores its machine spends on no task of the run while it runs
+  some: each frame's load less its tasks', averaged.
+- That overhead is a GitHub runner's own agent and the like: 0.6 to 1.1
+  cores of a 4-core small.
+- The use is instead what its tasks use live, when that is more.
+- Live use is its machine's load where the tasks do not say, plus those
+  cores and what was sent since.
+- Never less: load lags a task's start, and a test shard idle for a second
+  then uses all its cores.
+- A command that ended frees its cores while its outputs save.
+- It also frees its worker's load until the next frame, since that load
+  counted the task.
+
+</details>
+
+**Which worker gets a task.** Where each task goes is the plan's (see
+`workers` under [API](#api)). A task fills a worker before another is
+asked.
+
+- So a 10-core task facing one free core asks a worker.
+- And two small tasks share a busy worker rather than pay a warm-up.
+- Of equal choices, a task goes to the worker the last plan gave it, then
+  to the busiest.
+- So workers fill before the next takes work, and the ones no longer needed
+  fall idle and leave.
+
+<details><summary>Details</summary>
+
+- A task that filled its worker last time runs only on a bigger size while
+  the run has or may ask one.
+- A task wider than every worker runs on the most cores free on one, when
+  that ends the run sooner than waiting for room.
+- For example, a 20-core task of 60 s starts now on the 9 free cores of a
+  10-core worker busy with a 150 s chain, not after it.
+
+</details>
+
+**Platforms and worker types.** A task naming `exec.platforms` runs only on
+a worker of the platform core placed it on.
+
+- That is this machine's platform when a size has it, else the first of the
+  task's platforms that a size has.
+- A task naming `exec.worker` runs only on machines of that worker type.
+- Any other task runs on the first type, in declared order, with a machine
+  of one of its platforms.
+- So a type listed last (a costly Mac) gets only the tasks no other type
+  can take.
+
+<details><summary>Details</summary>
+
+- A worker reports its platform when it joins.
+- A size naming a platform refuses a worker of another.
+- A size naming none is planned as this machine's, and takes any worker.
+- When the sizes run this machine's platform and another, a task naming
+  none runs only on this machine's.
+- A worker of another platform runs only the tasks that name it, so they
+  never wait behind the rest. It leaves when they are done.
+- The run starts a worker of each platform its work needs.
+- A task none of whose platforms any size has refuses the run before a
+  worker starts.
+- Core refuses the run before a worker starts when no type has the
+  `exec.worker` name.
+- It refuses it too when none of that type's machines runs one of the
+  task's platforms.
+- A worker that joins on its own is of the first type with its platform.
+
+</details>
+
+**Nothing runs here.** No task runs on the orchestrator; only cache hits
+restore there.
+
+- A task with `exec.remote: false`, an interactive task, and their
+  dependants run on workers too (the executor is `exclusive`).
+- A task no worker can take refuses the run before any starts, naming it.
+- That is one whose `exec.platforms` no size offers, or a persistent task
+  asked for on its own.
 - An `exec.remote: 'only'` task's files stay on the workers: this machine
-  restores its output, never its files. Under `--cache-download=toplevel`
-  or `none`, a task's files it defers land here only if a task here needs
-  them.
-- A task's output replays here as its worker read it: stdout and stderr
-  in the order the task wrote them, bounded as core bounds a run's.
+  restores its output, never its files.
+- Under `--cache-download=toplevel` or `none`, a task's files it defers land
+  here only if a task here needs them.
+
+**Sandboxed tasks.** A sandboxed task runs on a worker inside the worker's
+own sandbox, with the same `exec.sandbox`, built there
+(`workerRuntime().prepare`).
+
+<details><summary>Details</summary>
+
+- Its paths, walls and credential stores are the worker's. So an
+  orchestrator on Linux can run macOS workers.
+- A violation there fails the task here, named in this checkout's paths.
+- Its `fix:` line names the grant a run here would, from what the worker's
+  checkout held when the task ended (`SandboxViolation.entry`).
+- An empty file it wrote over a write grant's placeholder is its output.
+  Only a placeholder it never touched is removed.
+- The outputs of its dependencies that it may read are listed there too,
+  once they are restored on the worker.
+- Its order names the dependencies, so it is sent before their files are
+  back on the orchestrator.
+- A sandbox the worker cannot host (no `bwrap` in its image) fails the task
+  there, as it fails here. The worker stays in the run.
+
+</details>
+
+**Results coming back.** A task's output replays here as its worker read
+it: stdout and stderr in the order the task wrote them, bounded as core
+bounds a run's.
+
+<details><summary>Details</summary>
+
+- A task whose dependants all run on workers is done once it ran. Its `end`
+  carries its output.
+- Its files come to the orchestrator meanwhile (core's
+  `download: 'trailing'`).
+- A dependant starts at once, its own files land after its upstream's, and
+  the run ends with every file here.
+- They land as the worker made them, through its entry: bytes, modes,
+  symlinks and empty directories. A dependant on another worker gets them
+  the same way.
+- Two runs that make one key at once each land their own; the cache keeps
+  one whole entry, and a later hit lands that one.
+- A cached one is saved here once its files land.
+- An output over 256 KB is read from the entry first.
+- A task that declares no output (a test, a lint) is done here once its
+  worker says so.
+- Its `end` carries its output, and its entry is not read back first. Core
+  saves it here as after any task.
 - A result too long for one relay frame (thousands of sandbox violations,
   or of files a formatter changed) is sent in parts, none of it dropped.
-  An order too long for one frame (a task with thousands of deps) sends
-  its deps ahead of it the same way.
+- An order too long for one frame (a task with thousands of deps) sends its
+  deps ahead of it the same way.
 - A worker gets each dependency in full once. Later orders name it, so a
   deep graph's orders stay small.
-- A task runs with the orchestrator's environment under the worker's
-  root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
-  the task's `env.define` sets them or its `inputs.env` keys them: a keyed
-  one is the orchestrator's value, or unset where it is unset there, so
-  the worker runs on what the key saw; `npm_execpath` is the workspace's
-  package manager on the worker, as core sets it on a local task.
-- A worker restores, by key, the declared outputs of every task the one
-  it runs depends on, each after its own dependencies (an additive task's
-  rewrite of an upstream file stands), unless it ran or restored them before. Files a task
-  writes without declaring them stay on the worker. An uncached task
-  declares none, so no cache carries its files: its dependants go to the
-  worker it ran on, unless it is sandboxed with no write grant and so
-  leaves no file. One waits there up to 10 s; past that, with that worker
-  gone or of another platform, or with its uncached upstreams on two
-  workers, the upstream runs again where the dependant can go, and the
-  dependant follows it. An idle worker holding such files stays while a
-  task to come reads them, and no new worker is asked for such a task. One whose `exec.worker` or `exec.platforms` rules
-  out where its dependant runs refuses the run before a worker starts,
-  naming both: cache it, or run both alike. A task whose upload no remote took after three
-  tries (too big, a 429, a reset connection) is its worker's fault: that
-  worker takes no more tasks and the task runs on another; a second fault
-  fails the run. Before a task runs, its
-  worker removes the files under its outputs that an earlier task left,
-  except committed files, nested projects' files, and its dependencies'
-  outputs (an additive task builds on its upstream's tree); before laying
-  what it left, this machine removes the same, cached task or not, so its
-  outputs end as the worker's did. An upstream's
-  file the task leaves as it found it is not saved in its entry; one it
-  removes, or a committed file under its own outputs it removes, is
-  removed on this machine too, unless a link on its path leads
-  elsewhere (that file is kept, with a warning), and the task saves no
-  entry, as core saves none.
-- A hit only this machine's cache holds (the remote evicted it, or this
-  run does not write the remote) is uploaded to the remotes the workers
-  read before a task that depends on it is sent; with none written, its
-  dependant fails on the worker, naming the entry. One whose remote copy
-  does not read back on a worker (a truncated upload) is sent again from
-  this machine over that copy, and the task runs again; once per entry.
-- A failed or uncached task is saved under a key of the run, the task and
-  the send (a retry gets its own), so no later lookup ever hits it; so is one core would not save (a
-  `--no-cache` or read-only run, one built on a dependency
-  `--exclude-dependencies` left out, one that left a process running that may still
-  write its outputs, one a stopped run cancelled, one whose declared outputs did not all land
-  there by core's rule, which fails it as a run here does), and one that left a tracked file under its project
-  changed on its worker (a formatter's input), or that found an untracked,
-  unignored file under its project there (its outputs and its dependencies'
-  aside), which this machine never sees: core withholds its own save when
-  the key read that file or its inputs declare it, and says so.
-- Under `--force`, a success is saved under its key (which keeps an entry
-  it already holds, as core does) and under the run's key, which this
-  machine and the dependants' workers restore: the bytes this run built,
-  never the entry it bypassed.
-- A worker whose tracked files differ from the orchestrator's (another
-  tree, or the same commit with a tracked file changed, such as by a
-  prepare step) is refused, and the orchestrator says so as it happens:
-  `[vx] dte: refused worker <id>: <reason>`. The reason names a project
-  of the run git does not track first (`git add` it: a worktree lacks it,
-  so its install rewrites the lockfile), then up to three tracked files
-  the worker changed after checkout. Both sides read their tracked files as they
-  are on disk, a file flagged `assume-unchanged` or `skip-worktree` too
-  (one a sparse checkout left off disk is its index's), so the same change
-  on both is the same tree.
+
+</details>
+
+**Persistent tasks.** A persistent task a task depends on starts on the
+worker that runs the task, once per worker, ready before it.
+
+<details><summary>Details</summary>
+
+- It stops there once no task left in the run uses it (the run's
+  `unneeded`), or when the worker leaves.
+- The orchestrator never starts it, and a worker no dependant reaches never
+  does.
+- Its CPU is learned on the worker each second as
+  `cores = base + each running dependant's cost`.
+- The base comes from looks with no dependant running, each cost from looks
+  with it. A look on a full machine only raises them.
+- Each dependant's cost is added to its CPU, so its history books it.
+- The base is booked once on each worker that starts the server, in
+  placement and in the plan.
+- The base is kept in history for the next run, as warm-ups are.
+- A server that crashes (a non-zero exit) or never becomes ready fails, as
+  on one machine.
+- A dependant that ran against it ends as its command did, but is not
+  saved, nor is what builds on it.
+- A dependant that had not begun is skipped, blocked by it.
+- Each says why as a warning.
+
+</details>
+
+**Commands and environment.** A task's command runs on a worker as written:
+a plugin changes where a command runs, never what it is.
+
+- A path under this machine's checkout in the environment is moved to the
+  worker's.
+- A path written into the command is not. So a `local()` worker would read
+  and write this checkout through it.
+- Name a file relative to the task's directory, or through `$PWD`.
+
+<details><summary>Details</summary>
+
+- A task runs with the orchestrator's environment under the worker's root.
+- `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless the
+  task's `env.define` sets them or its `inputs.env` keys them.
+- A keyed one is the orchestrator's value, or unset where it is unset
+  there. So the worker runs on what the key saw.
+- `npm_execpath` is the workspace's package manager on the worker, as core
+  sets it on a local task.
+- A task whose key hashes a runtime probe (`inputs.runtime`, such as
+  `bun --version`) runs on a worker, which answers the probe first.
+- A worker that answers otherwise than this machine did is refused, as
+  one on another tree is.
+- Its line: `[vx] dte: refused worker <id>: \`bun --version\`
+  answers "1.4.3" on this worker, "1.4.4" on the run's machine, …`.
+- It runs nothing more, and its tasks go to workers that answer alike.
+- One the run started counts as a failed start: with none left, the run
+  says no worker could start.
+- A worker answers each probe once, in each directory it is asked in.
+- A path under the worker's checkout root reads as the same path under this
+  machine's, as the task's environment does.
+
+</details>
+
+**Dependencies' files.** A worker restores, by key, the declared outputs of
+every task the one it runs depends on.
+
+- It restores each after its own dependencies, so an additive task's
+  rewrite of an upstream file stands.
+- It skips the ones it ran or restored before.
+- Files a task writes without declaring them stay on the worker.
+
+<details><summary>Details</summary>
+
+- An uncached task declares no outputs, so no cache carries its files.
+- Its dependants go to the worker it ran on, unless it is sandboxed with no
+  write grant and so leaves no file.
+- A dependant waits there up to 10 s. Past that, the upstream runs again
+  where the dependant can go, and the dependant follows it.
+- The same happens when that worker is gone or of another platform, or when
+  its uncached upstreams are on two workers.
+- An idle worker holding such files stays while a task to come reads them.
+  No new worker is asked for such a task.
+- An uncached task whose `exec.worker` or `exec.platforms` rules out where
+  its dependant runs refuses the run before a worker starts.
+- That refusal names both tasks: cache the upstream, or run both alike.
+- A task whose upload no remote took after three tries (too big, a 429, a
+  reset connection) is its worker's fault.
+- That worker takes no more tasks, and the task runs on another. A second
+  fault fails the run.
+- Before a task runs, its worker removes the files under its outputs that
+  an earlier task left.
+- It keeps committed files, nested projects' files, and its dependencies'
+  outputs (an additive task builds on its upstream's tree).
+- Before laying what the task left, this machine removes the same, cached
+  task or not. So its outputs end as the worker's did.
+- An upstream's file the task leaves as it found it is not saved in its
+  entry.
+- One it removes, or a committed file under its own outputs it removes, is
+  removed on this machine too.
+- Unless a link on its path leads elsewhere: that file is kept, with a
+  warning.
+- Such a task saves no entry, as core saves none.
+- A hit only this machine's cache holds (the remote evicted it, or this run
+  does not write the remote) is uploaded to the remotes the workers read.
+- That upload happens before a task that depends on it is sent.
+- With no remote written, its dependant fails on the worker, naming the
+  entry.
+- A hit whose remote copy does not read back on a worker (a truncated
+  upload) is sent again from this machine over that copy.
+- The task then runs again; this happens once per entry.
+
+</details>
+
+**Saves no lookup hits.** A failed or uncached task is saved under a key of
+the run, the task and the send, so no later lookup ever hits it. A retry
+gets its own key.
+
+<details><summary>Details</summary>
+
+The same goes for a task core would not save:
+
+- one of a `--no-cache` or read-only run
+- one built on a dependency `--exclude-dependencies` left out
+- one that left a process running that may still write its outputs
+- one a stopped run cancelled
+- one whose declared outputs did not all land there by core's rule, which
+  fails it, as a run here does
+- one that left a tracked file under its project changed on its worker (a
+  formatter's input)
+- one that found an untracked, unignored file under its project there (its
+  outputs and its dependencies' aside), which this machine never sees
+
+For those last two, core withholds its own save when the key read that file
+or its inputs declare it, and says so.
+
+- Under `--force`, a success is saved under its key (which keeps an entry it
+  already holds, as core does) and under the run's key.
+- This machine and the dependants' workers restore the run's key: the bytes
+  this run built, never the entry it bypassed.
+
+</details>
+
+**Same tree.** A worker whose tracked files differ from the orchestrator's
+is refused. The orchestrator says so as it happens:
+`[vx] dte: refused worker <id>: <reason>`.
+
+<details><summary>Details</summary>
+
+- A different tree is another commit, or the same commit with a tracked
+  file changed, such as by a prepare step.
+- The reason first names a project of the run git does not track.
+- `git add` that project: a worktree lacks it, so its install rewrites the
+  lockfile.
+- Then the reason names up to three tracked files the worker changed after
+  checkout.
+- Both sides read their tracked files as they are on disk, a file flagged
+  `assume-unchanged` or `skip-worktree` too.
+- A file a sparse checkout left off disk is read as its index holds it.
+- So the same change on both sides is the same tree.
 - A worker runs the commit's bytes and modes, which are the ones the key
-  read: the run's snapshot stages each file's executable bit as on disk
-  (under `core.fileMode=false` too, as core keys it), and a worker writes
-  back as the commit holds it each file a git filter of its own checked
-  out otherwise (`text`, `eol`, `ident`, `filter` such as LFS,
-  `working-tree-encoding`, `core.autocrlf`). A task whose key hashes a
-  tracked file that is on disk other than the commit holds it (CRLF such
-  a filter wrote, an expanded ident, an LFS file's content) fails, naming
-  the file: no worker builds on those bytes.
-- A task whose key hashes a file the run's commit lacks (untracked, or
-  gitignored and named outright, or inside a submodule, whose files the
-  commit holds only as a gitlink) fails, naming the file: no worker has it.
-  `git add` puts it in the tree `local()` and `docker()` workers check out;
-  workers on CI check out the pushed commit, so there it must be committed.
-  A dependency's declared output is not one: its worker restores it first,
-  or, uncached, ran it there.
-  A task whose project the commit lacks (no file under it tracked) fails,
-  naming the project, and a run whose `.vx/workspace.*` is untracked is
-  refused before a worker starts.
-- A task's `exec.timeout` counts from its start on its worker: the wait
-  for a worker still booting is not its run (the executor declares
-  `timeouts`).
+  read.
+- The run's snapshot takes each file's executable bit as on disk, under
+  `core.fileMode=false` too, as core keys it.
+- A worker writes back, as the commit holds it, each file a git filter of
+  its own checked out otherwise.
+- Those filters are `text`, `eol`, `ident`, `filter` such as LFS,
+  `working-tree-encoding`, and `core.autocrlf`.
+- A task whose key hashes a tracked file that is on disk other than the
+  commit holds it fails, naming the file.
+- Examples: CRLF such a filter wrote, an expanded ident, an LFS file's
+  content. No worker builds on those bytes.
+- A task whose key hashes a file the run's commit lacks fails, naming the
+  file: no worker has it.
+- Such a file is untracked, gitignored and named outright, or inside a
+  submodule, whose files the commit holds only as a gitlink.
+- `git add` puts it in the tree `local()` and `docker()` workers check out.
+- Workers on CI check out the pushed commit, so there it must be committed.
+- A dependency's declared output is not such a file: its worker restores it
+  first, or, uncached, ran it there.
+- A task whose project the commit lacks (no file under it tracked) fails,
+  naming the project.
+- A run whose `.vx/workspace.*` is untracked is refused before a worker
+  starts.
+
+</details>
+
+**Timeouts and retries.** A task's `exec.timeout` counts from its start on
+its worker: the wait for a worker still booting is not its run (the
+executor declares `timeouts`).
+
+<details><summary>Details</summary>
+
 - A worker that stops answering, stops saying it holds a task, or cannot
-  run one (a full disk) gets no more work, and its tasks run again on
-  another. A task two such workers were sent fails, naming both; one whose
-  send failed does not count. With no worker of the run left
-  to take it and none starting, it fails at once.
+  run one (a full disk) gets no more work.
+- Its tasks run again on another worker.
+- A task two such workers were sent fails, naming both. One whose send
+  failed does not count.
+- With no worker of the run left to take it and none starting, it fails at
+  once.
 - A task that failed and retries (its `retries`, or the one retry a
   known-flaky task gets) runs on another worker than the attempt that
-  failed, as core asks (`ExecuteRequest.attempt`): the worker, or what
-  ran beside it, may be the flake. With no other worker of its platform
-  in the run, it runs there again rather than wait.
-- A relay that answers nothing for 10 s, every try counted, fails every task not done
-  (`the relay is unreachable`); none runs here, which may be far smaller
-  than the workers. What finished is saved, so a rerun resumes from it.
-  The footer counts each worker that had joined `lost`, with what it ran.
-  A fault (a `5xx`, a dropped or refused connection) is tried again 3
-  times, by the orchestrator and workers alike, and the third failed
-  retry ends them (`no socket in 3 dials`). The waits are random, from
-  up to 250 ms doubling to up to half a heartbeat, about 3 s at most in
-  all on the default, so a relay down or restarting is asked through
-  only when it is back within them: one down under a second usually is,
-  one down 2 s usually fails the run.
-- The relay stores nothing, so a restart forgets the run. The orchestrator
-  joins again as its host and each worker joins again as itself, for two
-  heartbeats (4 s on the default); tasks keep running meanwhile, and what
-  either side sent goes again once both are back, taken once. A worker
-  keeps what it runs, and one sent a task it runs already
-  does not run it again, so no work repeats. One not back by then
-  ends: a worker's tasks run elsewhere, an orchestrator's run fails.
-  Joining has the same 10 s in all and the same 3 retries, its waits
-  spread over the 10 s (1.25 s doubling, jittered to half: 4.4 to 8.75 s
-  in all), so a relay or network down a few seconds is still joined. A
-  relay silent that long fails the run with `cannot connect to the relay
-<origin>: no answer in 10 s`; four failed tries say why and how long,
-  as `cannot connect to the relay <origin>: ENOTFOUND, 4 dials in 9.1 s`.
-- A worker that never joins says why on its row (`failed  exited 1:
-…`); its job ending, a success too, is what says so. A worker asked is
-  never given up for joining late: the run waits on it until its job ends
-  or the run does. Given up and asked again, a CI with no runner to give
-  queues both, and later hands over the extra ones only for them to be
-  told to exit. The first three such failures in a
-  run each start another worker in its place, as a checkout, install or
-  join can fail on the network; a fourth starts none. No worker is
-  promised: a run may get one of those it asked, or none. A late one
-  blocks no ask; each worker the plan needs is asked, up to its size's
-  max, and the run goes on with whichever join. When none is online
-  or starting and this machine has no share, the remaining tasks fail
-  with `no worker could start`.
-- Only `leave` ends a participant at once (2026-10-25): the
-  orchestrator's at its run's end is the final call that closes the run,
-  and a worker's when it is done. Either whose socket drops without it
-  dials again, 3 times as above and within 10 s, and the relay keeps it,
-  and its run, for 10 s; past either the run is over. Either side hearing nothing
-  from the other for 3 heartbeats (6 s on the default) loses it, and the
-  rest follows from that: a worker that said nothing for half of it (3 s)
-  sends its report; the orchestrator never speaks on a timer, only orders
-  and the acks of what it heard; a send unacknowledged for 3 s goes again.
-  A worker that loses its orchestrator stops its tasks, says so, and joins
-  the run again as a new worker; once the run is over it exits. One the
-  orchestrator lost that speaks again is answered no more, so it does the
-  same: its tasks already run elsewhere. Nobody probes, the relay answers
-  neither, and nobody pings. An orchestrator
-  with no worker yet asks the relay an empty frame instead; a frame the
-  relay leaves unanswered a heartbeat closes the socket, which is dialed
-  again.
-- The orchestrator's socket, its acks and redials run on a thread
-  of their own, so sync work on the run's loop never holds them (one CI
-  run went quiet 12 s that way and lost every worker). A loop held a
-  second or more says so, with how long; one held 5 heartbeats (10 s)
-  ends the run, as a dead orchestrator would.
+  failed.
+- Core asks for this (`ExecuteRequest.attempt`): the worker, or what ran
+  beside it, may be the flake.
+- With no other worker of its platform in the run, it runs there again
+  rather than wait.
+- A worker still holding a cancelled attempt that it has not answered
+  takes no new attempt of that task until it ends that one. Its end is
+  never counted as the retry's.
+- A cancelled attempt that ends after its retry lays none of its files
+  here, and dependants are sent the retry's entry, not its own.
+
+</details>
+
+**Relay faults.** A relay that answers nothing for 10 s, every try counted,
+fails every task not done (`the relay is unreachable`).
+
+<details><summary>Details</summary>
+
+- None of those tasks runs here, since this machine may be far smaller than
+  the workers.
+- What finished is saved, so a rerun resumes from it.
+- The footer counts each worker that had joined as `lost`, with what it
+  ran.
+- A fault (a `5xx`, a dropped or refused connection) is tried again 3
+  times, by the orchestrator and workers alike.
+- The third failed retry ends them (`no socket in 3 dials`).
+- The waits are random, from up to 250 ms doubling to up to half a
+  heartbeat: about 3 s at most in all on the default.
+- So a relay down or restarting is asked through only when it is back
+  within them.
+- A relay down under a second usually is; one down 2 s usually fails the
+  run.
+- The relay stores nothing, so a restart forgets the run.
+- After one, the orchestrator joins again as its host and each worker joins
+  again as itself, for two heartbeats (4 s on the default).
+- Tasks keep running meanwhile. What either side sent goes again once both
+  are back, taken once.
+- A worker keeps what it runs, and one sent a task it runs already does not
+  run it again. So no work repeats.
+- One not back by then ends: a worker's tasks run elsewhere, an
+  orchestrator's run fails.
+- Joining has the same 10 s in all and the same 3 retries.
+- Its waits spread over the 10 s (1.25 s doubling, jittered to half: 4.4 to
+  8.75 s in all).
+- So a relay or network down a few seconds is still joined.
+- A relay silent that long fails the run with
+  `cannot connect to the relay <origin>: no answer in 10 s`.
+- Four failed tries say why and how long, as
+  `cannot connect to the relay <origin>: ENOTFOUND, 4 dials in 9.1 s`.
+
+</details>
+
+**Workers that never join.** A worker that never joins says why on its row
+(`failed  exited 1: …`). Its job ending, a success too, is what says so.
+
+<details><summary>Details</summary>
+
+- A worker asked is never given up for joining late: the run waits on it
+  until its job ends or the run does.
+- Giving up and asking again would not help. A CI with no runner to give
+  queues both.
+- That CI later hands over the extra workers, only for them to be told to
+  exit.
+- The first three such failures in a run each start another worker in its
+  place, as a checkout, install or join can fail on the network.
+- A fourth failure starts none.
+- No worker is promised: a run may get one of those it asked, or none.
+- A late worker blocks no ask. Each worker the plan needs is asked, up to
+  its size's max.
+- The run goes on with whichever workers join.
+- When none is online or starting and this machine has no share, the
+  remaining tasks fail with `no worker could start`.
+
+</details>
+
+**Leaving and liveness.** Only `leave` ends a participant at once: the
+orchestrator's at its run's end is the final call that closes the run, and
+a worker's when it is done.
+
+<details><summary>Details</summary>
+
+- Either side whose socket drops without `leave` dials again, 3 times as
+  above and within 10 s.
+- The relay keeps it, and its run, for 10 s. Past either limit the run is
+  over.
+- Either side hearing nothing from the other for 3 heartbeats (6 s on the
+  default) loses it. The rest follows from that.
+- A worker that said nothing for half of that (3 s) sends its report.
+- The orchestrator never speaks on a timer: only orders, and the acks of
+  what it heard.
+- A send unacknowledged for 3 s goes again.
+- A worker that loses its orchestrator stops its tasks, says so, and joins
+  the run again as a new worker. Once the run is over it exits.
+- A worker the orchestrator lost that speaks again is answered no more. So
+  it does the same: its tasks already run elsewhere.
+- Nobody probes, the relay answers neither, and nobody pings.
+- An orchestrator with no worker yet asks the relay an empty frame instead.
+- A frame the relay leaves unanswered a heartbeat closes the socket, which
+  is dialed again.
+- The orchestrator's socket, its acks and redials run on a thread of their
+  own. So sync work on the run's loop never holds them.
+- A loop held a second or more says so, with how long.
+- A loop held 5 heartbeats (10 s) ends the run, as a dead orchestrator
+  would.
 - Each send is numbered for its receiver and held until the receiver
-  acknowledges it, so one a socket or the relay dropped goes again after
-  a heartbeat and a half, or at once on a new socket; the receiver takes
-  each once, in order. An ack rides the next send back; the orchestrator's,
-  with no order to ride, go together after half a heartbeat, except a
-  quiet worker's beat, acked at once.
-- A task sent runs at once: no message says it began. A command that
-  ended (`ran`, with when it began and ended by the worker's clock) rides
-  the worker's next frame, never alone; a task that saves first says it
-  in its `end` (begun, ran, ended). The run reads those times against the
-  clock of the frame that carried them.
-- A run where no task began or ended for a minute warns what it waits
-  on, a line a task: which worker, and whether it runs or saves.
-- A message the relay would not take is a warning naming it, its
-  receiver and the relay's answer; one to a participant the relay already
-  lost (404) is not, since its loss is reported on its own. Its number
-  still reaches the receiver, carrying nothing, so the sends after it are
-  not held up. A worker whose
-  OIDC token could not be checked is refused by that cause, not as a key
-  mismatch, and the run says so.
+  acknowledges it.
+- So a send a socket or the relay dropped goes again after a heartbeat and
+  a half, or at once on a new socket.
+- The receiver takes each send once, in order.
+- An ack rides the next send back.
+- The orchestrator's acks, with no order to ride, go together after half a
+  heartbeat. A quiet worker's beat is acked at once.
+- A task sent runs at once: no message says it began.
+- A command that ended (`ran`, with when it began and ended by the worker's
+  clock) rides the worker's next frame, never alone.
+- A task that saves first says it in its `end` (begun, ran, ended).
+- The run reads those times against the clock of the frame that carried
+  them.
+- A run where no task began or ended for a minute warns what it waits on.
+- That warning is a line a task: which worker, and whether it runs or
+  saves.
+- A message the relay would not take is a warning naming it, its receiver
+  and the relay's answer.
+- A message to a participant the relay already lost (404) is not a warning,
+  since that loss is reported on its own.
+- Its number still reaches the receiver, carrying nothing, so the sends
+  after it are not held up.
+- A worker whose OIDC token could not be checked is refused by that cause,
+  not as a key mismatch, and the run says so.
+
+</details>
 
 ## What the run shows
 
-Each task a worker ran says which one last on its row and after the id
-on its frame, in that worker's own color, by size and the order the run
-started it:
+Each task a worker ran names that worker last on its row, and after the id
+on its frame:
 
 ```
  ⏺︎   308ms success miss     c#build · linux.small#1
 ```
 
-An idle worker the rest of the run cannot keep busy leaves (`left`): one
-beyond the peak of the cores the remaining tasks keep busy, so a lull
-between two wide parts keeps it. One a remaining task needs for its size
-stays, and so does one a later task needs when its size's `max` is
-spent, since none could start in its place. With that `max` spent, the
-last worker of its platform also stays while any task of that platform
-has not ended: a hit whose restore fails runs after all. A lost worker's tasks run again on
-another, and the run starts one in its place. A worker is lost when its
-socket closes, when it says nothing for 3 heartbeats (6 s), or at
-once when its adapter sees its process or job end. Workers start at the first
-task the cache does not answer, so a warm run starts none. Once one has
-joined, its warm-up is what the next of its size takes at the least: work
-that ends sooner starts no worker while others are online or starting, and
-new workers are started for the cores the run keeps busy after that
-warm-up, not before it. Each size's worker is timed as a task is:
-`@vzn/vx-dte#worker:<size>`, defined by the size's name, platform, cores,
-memory and runner, so a size changed starts over. Its warm-up is the
-task's time, at most twice what history said (more is the CI's queue),
-and its machine's cores besides the run's tasks its cores; its join spread is `@vzn/vx-dte#join-spread:<size>`; its pace,
-`@vzn/vx-dte#pace:<size>`, how long its tasks took per 1000 ms history said
-(history keeps a task's time alone, and packed tasks run slower), so a plan
-reads each platform's work as long as it ran before any of its tasks ends; its pace's spread,
-`@vzn/vx-dte#pace-spread:<size>`, how far its tasks' times strayed from that (per 1000 of the mean), so a
-plan's first decides leave each lane room for a task that runs long, not end it on the dot; and each server's
-base `@vzn/vx-dte#server-base:<task>`, its start that measure's time. Core keeps them in the run's
-history, and a history plugin (`@vzn/vx-history`) shares them as it does
-task timings, so the next run plans by them before any worker of that
-size joins.
+- The name is the worker's size and the order the run started it.
+- It is in that worker's own color.
 
-The `workers` rows, live while the run goes and again in the footer,
-give each worker its status (`starting`, `online`, `left`, `lost`, or `failed`
-with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`; once the
-run is over, one still starting is `not joined`), the tasks it
-has done, failed or had aborted by a stop, and the ones it runs now; while the run goes, those that left
-are one line (`3 workers  left  9 done`). A worker the
-run started is named by its size and the order it was started in; one
-that joined on its own is `worker#N`. A task waiting for a worker has no
-row; the tasks line counts it `scheduled`
-(`30 success · 4 running · 12 scheduled · 62 total`). Its row and clock
-start when it is sent: a worker runs what it is sent at once. A worker is `online` while the run
-goes; it ends `left` when the run let it go as not needed, `lost` when
-it crashed or went silent, and `stopped` when the run's end stopped it.
-Once the run is over, each worker adds its warm-up (from asking the
-adapter to its join), and under it the cores and memory its size
-declares and its machine reports, green when they agree and red when
-not:
+**When workers start and leave.** Workers start at the first task the cache
+does not answer, so a warm run starts none.
+
+- An idle worker the rest of the run cannot keep busy leaves (`left`).
+- That is a worker beyond the peak of the cores the remaining tasks keep
+  busy. So a lull between two wide parts keeps it.
+- A lost worker's tasks run again on another, and the run starts one in its
+  place.
+
+<details><summary>Details</summary>
+
+- A worker a remaining task needs for its size stays.
+- So does one a later task needs when its size's `max` is spent, since none
+  could start in its place.
+- With that `max` spent, the last worker of its platform also stays while
+  any task of that platform has not ended.
+- That is because a hit whose restore fails runs after all.
+- A worker is lost when its socket closes, or when it says nothing for 3
+  heartbeats (6 s).
+- It is lost at once when its adapter sees its process or job end.
+- Once one worker has joined, its warm-up is the least the next of its size
+  takes.
+- So work that ends sooner starts no worker while others are online or
+  starting.
+- New workers are started for the cores the run keeps busy after that
+  warm-up, not before it.
+
+</details>
+
+**What history learns.** Each size's worker is timed as a task is, so the
+next run plans by it before any worker of that size joins.
+
+<details><summary>Details</summary>
+
+- The worker's measure is `@vzn/vx-dte#worker:<size>`, defined by the
+  size's name, platform, cores, memory and runner.
+- So a size you change starts over.
+- Its warm-up is the task's time, at most twice what history said (more is
+  the CI's queue).
+- Its cores are its machine's cores besides the run's tasks.
+- Its join spread is `@vzn/vx-dte#join-spread:<size>`.
+- Its pace, `@vzn/vx-dte#pace:<size>`, is how long its tasks took per 1000
+  ms history said.
+- History keeps a task's time alone, and packed tasks run slower.
+- So a plan reads each platform's work as long as it ran, before any of its
+  tasks ends.
+- Its pace's spread, `@vzn/vx-dte#pace-spread:<size>`, is how far its tasks'
+  times strayed from that, per 1000 of the mean.
+- So a plan's first decisions leave each lane room for a task that runs
+  long, rather than end it on the dot.
+- Each server's base is `@vzn/vx-dte#server-base:<task>`, its start that
+  measure's time.
+- Core keeps them in the run's history.
+- A history plugin (`@vzn/vx-history`) shares them as it shares task
+  timings.
+
+</details>
+
+**The workers rows.** The `workers` rows show live while the run goes, and
+again in the footer:
 
 ```
   workers    linux.small#1  online    3 done · 2 running
             linux.small#2  starting
             local    online    1 done
 ```
+
+- Each worker shows its status: `starting`, `online`, `left`, `lost`, or
+  `failed` with why.
+- A failure's why reads like `exited 1: Cannot find package '@vzn/vx-dte'`.
+- Once the run is over, a worker still starting is `not joined`.
+- Each row counts the tasks done, failed or aborted by a stop, and the ones
+  running now.
+- While the run goes, the workers that left share one line
+  (`3 workers  left  9 done`).
+- A worker the run started is named by its size and the order it was
+  started in. One that joined on its own is `worker#N`.
+
+<details><summary>Details</summary>
+
+- A task waiting for a worker has no row.
+- The tasks line counts it `scheduled`
+  (`30 success · 4 running · 12 scheduled · 62 total`).
+- Its row and clock start when it is sent: a worker runs what it is sent at
+  once.
+- A worker is `online` while the run goes.
+- It ends `left` when the run let it go as not needed, `lost` when it
+  crashed or went silent, and `stopped` when the run's end stopped it.
+- Once the run is over, each worker adds its warm-up, from asking the
+  adapter to its join.
+- Under it go the cores and memory its size declares and its machine
+  reports: green when they agree, red when not.
+
+</details>
 
 ```
   workers    linux.small#1  stopped  5 done · warm-up 0.1s
@@ -814,51 +1169,15 @@ not:
                      actual 10c/32G
 ```
 
-A run over that started none (every task a hit) says
-`workers   none started: no task needed one`; one where a task waited
-on a worker and none joined says
-`workers   none joined: a task waited on one`, or, when the run refused
-workers, `workers   none joined: 2 refused (<first reason>)`.
+- A finished run that started no worker (every task a hit) says
+  `workers   none started: no task needed one`.
+- One where a task waited on a worker and none joined says
+  `workers   none joined: a task waited on one`.
+- When the run refused workers, it says
+  `workers   none joined: 2 refused (<first reason>)`.
 
-Under each worker, and `local`, the footer then spells out what it did:
-its time online, busy and idle; its CPU peak and average in cores and
-the cores the run booked for the tasks it was running, on average (a
-booked from a task's start to its command's end); its cpu utilization from its first task's send to its last
-one's end, the warm-up and the wait for a first task left out: its machine's (any process's busy core-time over
-the core-time it had, so what is left is idle cores), its tasks' and its worker process's; its memory peak and average, when its tasks reported any; and, for a worker, the messages and
-bytes the run sent it and received from it. The `probe` line says when
-core's cache probe answered, how many tasks it left to run (held in no
-cache, or not answered for) and how many of them it found in none. The `asked` line says each
-time the run asked for workers: how many, when, for how many tasks that
-missed, how many of them with a measured need (an unmeasured one counts
-as `unmeasured`), and the planner's estimate of the run's time then. The `ideal` line is the run's ideal end
-and the `perfect` line its perfect end (below), so every log reads them beside core's `time` row; the
-`perfect` line also gives the least
-CPU a run ending then holds: on each platform, its tasks' cores for as
-long as each held its worker, on as few workers of the least costly size
-as end that work by then, each worker's cores less what its machine
-spends besides the run's tasks, and each worker's warm-up. The `drift`
-line says how far past each the run ended and what kept it from the perfect end, along the
-chain of tasks that ended the run: tasks waiting while a worker asked
-for their platform is still to join past its fastest warm-up, waiting for
-room with every one joined, their inputs reaching their worker, a dependency's files coming to this
-machine before the run hands over the task that waited on it, an
-uncached dependency made again for it where its first worker left or
-stayed full, and the run's time after its last task. The first ask
-waits for the needs another plugin fetches (`ctx.refining()`), such as
-`@vzn/vx-history`'s default-branch timings. The `unmeasured`
-line names the tasks the first ask had no measure of, and a worker that
-ran two tasks or fewer names them on its row. `used avg` is the cores
-its tasks used, `machine avg` the cores its machine was busy on average since
-the worker started, any process's, as its last frame said. Where the
-rest went, the worker says in its own log as it leaves: `cpu over 61.2s:
-machine 2.80 cores · tasks 2.00 cores · this worker 0.15 cores · its other
-children 0.05 cores · most besides: Runner.Worker 0.30 cores`, the last
-from one `ps` as it starts and one as it leaves. The `total` line is the same cpu utilization of every
-machine together, the share of their history the run's tasks used, and
-the CPU the workers held: each one's cores from when the run asked for it
-until it left, was cancelled or the run ended, idle or not, so it reads
-against the `perfect` line's least:
+**The footer.** Under each worker, and `local`, the footer spells out what
+it did:
 
 ```
             linux.small#1  stopped  5 done · warm-up 0.2s
@@ -879,217 +1198,459 @@ against the `perfect` line's least:
             total    cpu utilization machine 74% · tasks 60% · worker 2% · held 52.1 core-s
 ```
 
-`vx run --profile[=<path>]` adds the run in time to the profile it
-writes (open it in https://ui.perfetto.dev or `chrome://tracing`).
-Each worker is a process: its first row holds its warm-up (split, when it
-says when its `vx` started, into its machine's start and vx's boot), its
-idle stretches, how it ended, a `cores` counter of the cores booked
-and used at once, and a `machine` counter of the cores its machine
-reported busy, its tasks' or not (placement never fills a worker past
-it), beside the cores its running tasks' process trees used, read each
-second as core's `task.sample` reads them; each task takes the first lane free over its time
-there, from its send through restoring its dependencies, its command
-and its save, with its exit code, duration, CPU time, booked cores and
-where its worker says the save's time went (`checkMs` reading what it
-left, `saveMs` saving here, `uploadMs` until a remote took it).
-The `orchestrator` process holds the cache probe, each ask for workers, each
-plan that started or let go of workers with what it saw of each worker
-(one that started workers also with each task's planned time, cores and
-platform and each size's warm-up, so it can be played back; the run's
-first, and one that played its work because the packing ended later or
-left a task out, also with all `plan()` was given, as `input`),
-stalls, the time each task waited for room, and each restore. Times are
-the orchestrator's: when it heard. Without `--profile` nothing is
-written. On CI, upload the file as an artifact; this repo's `ci.yml`
-does and links it from the job summary.
+<details><summary>Details</summary>
 
-Before the run, the planner's figure is an estimate. After it, `dte()`
-works out two ends no run of these tasks could beat. The perfect end has
-no worker cap: its longest chain, each task as long as it held its
-worker, no task waiting for room, each worker there after its platform's
-fastest real warm-up. The ideal end is the best with the workers the run
-may start: the perfect end, or later where a platform's work (each
-task's cores for as long as it held them) fills every core its sizes'
-`max` allows, each worker from the first ask after its own real
-warm-up (a slot no worker joined, after the platform's fastest): the
-spread of joins is no plan's, but when it asked is. The ideal end
-(`distribution.idealMs`) sits beside the real time in the run summary
-and the footer's `ideal` line, and `@vzn/vx-ci` prints it.
+Each worker's lines give:
 
-A replay of the run says which workers to declare next time
-(`TaskExecutor.advice`), each from an empty run with the plan's own
-rule (the fewest that end it within 5% of the soonest): `best`
-is how many of each size; `more`, shown only when more than a size's
-`max` would end the run sooner past that margin, is how many it would
-take; `any` is one shape for each platform, of 2 to 64 cores (memory a
-core as the platform's sizes have most), the one ending as soon for the
-least CPU held, each worker from its ask to its last task's end. A task goes only on a size with room for its cores
-and peak memory, when one is declared. The replays plan plain, as a live
-run does under history's spread, and play side by side on this machine's
-cores once the run ends. Raise a size's `max`, or change its `cpu` and
-`memory`, by them. They are in the footer and the run summary, and
-`@vzn/vx-ci` prints them under "Workers to declare".
+- its time online, busy and idle
+- its CPU peak and average in cores
+- the cores the run booked for the tasks it was running, on average (a task
+  is booked from its start to its command's end)
+- its cpu utilization from its first task's send to its last one's end, the
+  warm-up and the wait for a first task left out
+- that utilization for its machine, its tasks, and its worker process
+- its memory peak and average, when its tasks reported any
+- for a worker, the messages and bytes the run sent it and received from it
+
+More on those lines:
+
+- The machine's utilization is any process's busy core-time over the
+  core-time it had. So what is left is idle cores.
+- A worker that ran two tasks or fewer names them on its row.
+- `used avg` is the cores its tasks used.
+- `machine avg` is the cores its machine was busy on average since the
+  worker started, any process's, as its last frame said.
+
+Where the rest went, the worker says in its own log as it leaves. The last
+part comes from one `ps` as it starts and one as it leaves:
+
+```
+cpu over 61.2s: machine 2.80 cores · tasks 2.00 cores · this worker 0.15 cores · its other children 0.05 cores · most besides: Runner.Worker 0.30 cores
+```
+
+- A Linux kernel worker is named by its thread (`kworker/0:1`), not the work
+  queue it serves at the moment.
+
+The run's lines:
+
+- `probe`: when core's cache probe answered, and how many tasks it left to
+  run (held in no cache, or not answered for).
+- It also says how many of those it found in none.
+- `asked`: each time the run asked for workers: how many, when, and for how
+  many tasks that missed.
+- It also says how many of them had a measured need (an unmeasured one
+  counts as `unmeasured`), and the planner's estimate of the run's time
+  then.
+- The first ask waits for the needs another plugin fetches
+  (`ctx.refining()`), such as `@vzn/vx-history`'s default-branch timings.
+- `unmeasured`: the tasks the first ask had no measure of.
+- `ideal` and `perfect`: the run's ideal end and perfect end (see below).
+  So every log reads them beside core's `time` row.
+- The `perfect` line also gives the least CPU a run ending then holds.
+- That least is, on each platform, its tasks' cores for as long as each
+  held its worker.
+- It counts as few workers of the least costly size as end that work by
+  then.
+- It counts each worker's cores less what its machine spends besides the
+  run's tasks, plus each worker's warm-up.
+- `drift`: how far past each end the run ended, and what kept it from the
+  perfect end, along the chain of tasks that ended the run.
+
+What `drift` names:
+
+- tasks waiting while a worker asked for their platform is still to join
+  past its fastest warm-up
+- waiting for room with every worker joined
+- their inputs reaching their worker
+- a dependency's files coming to this machine before the run hands over
+  the task that waited on it
+- an uncached dependency made again for it where its first worker left or
+  stayed full
+- the run's time after its last task
+
+The `total` line:
+
+- It gives the same cpu utilization of every machine together, and the
+  share of their history the run's tasks used.
+- It gives the CPU the workers held: each one's cores from when the run
+  asked for it until it left, was cancelled or the run ended, idle or not.
+- So it reads against the `perfect` line's least.
+
+</details>
+
+**Profiles.** `vx run --profile[=<path>]` adds the run in time to the
+profile it writes. Open it in https://ui.perfetto.dev or
+`chrome://tracing`.
+
+<details><summary>Details</summary>
+
+- Each worker is a process. Its first row holds its warm-up, its idle
+  stretches, and how it ended.
+- The warm-up is split, when the worker says when its `vx` started, into
+  its machine's start and vx's boot.
+- A `cores` counter shows the cores booked and used at once.
+- A `machine` counter shows the cores its machine reported busy, its tasks'
+  or not. Placement never fills a worker past it.
+- Beside it are the cores its running tasks' process trees used, read each
+  second as core's `task.sample` reads them.
+- Each task takes the first lane free over its time there: from its send,
+  through restoring its dependencies, its command, and its save.
+- It shows its exit code, duration, CPU time and booked cores.
+- It shows where its worker says the save's time went: `checkMs` reading
+  what it left, `saveMs` saving here, `uploadMs` until a remote took it.
+- The `orchestrator` process holds the cache probe, each ask for workers,
+  stalls, the time each task waited for room, and each restore.
+- It holds each plan that started or let go of workers, with what it saw of
+  each worker.
+- A plan that started workers also holds each task's planned time, cores
+  and platform, and each size's warm-up, so it can be played back.
+- The run's first plan holds all `plan()` was given, as `input`.
+- So does a plan that played its work because the packing ended later or
+  left a task out.
+- Times are the orchestrator's: when it heard.
+- Without `--profile` nothing is written.
+- On CI, upload the file as an artifact. This repo's `ci.yml` does, and
+  links it from the job summary.
+
+</details>
+
+**Ideal and perfect ends.** Before the run, the planner's figure is an
+estimate. After it, `dte()` works out two ends no run of these tasks could
+beat.
+
+- The perfect end has no worker cap: its longest chain, each task as long
+  as it held its worker, no task waiting for room.
+- In it, each worker is there after its platform's fastest real warm-up.
+- The ideal end is the best with the workers the run may start.
+- That is the perfect end, or later where a platform's work fills every
+  core its sizes' `max` allows.
+- A platform's work is each task's cores for as long as it held them.
+- With no `workers` declared, the workers that joined stand for the sizes,
+  for the ideal end and for `best` and `any` alike.
+- With no task run on a worker, there is nothing to replay: the footer says
+  `ideal  not worked out`.
+- The ideal end (`distribution.idealMs`) sits beside the real time in the
+  run summary and the footer's `ideal` line. `@vzn/vx-ci` prints it.
+
+<details><summary>Details</summary>
+
+- In the ideal end, each worker comes from the first ask after its own real
+  warm-up.
+- A slot no worker joined comes after the platform's fastest warm-up.
+- The spread of joins is no plan's, but when the run asked is.
+
+</details>
+
+**Workers to declare.** A replay of the run says which workers to declare
+next time (`TaskExecutor.advice`).
+
+- `best` is how many of each size.
+- `more`, shown only when more than a size's `max` would end the run sooner
+  past the margin, is how many it would take.
+- `any` is one shape for each platform, of 2 to 64 cores: the one ending as
+  soon for the least CPU held.
+- Raise a size's `max`, or change its `cpu` and `memory`, by them.
+- They are in the footer and the run summary, and `@vzn/vx-ci` prints them
+  under "Workers to declare".
+- The replays get 2 s at the run's end. Past that, no `best`, `more` or
+  `any` line is given, not even from the replays that finished, and the
+  footer says `best  not worked out` instead; the summary has none.
+
+<details><summary>Details</summary>
+
+- Each replay starts from an empty run, with the plan's own rule: the
+  fewest workers that end it within 5% of the soonest.
+- For `any`, memory a core is the most the platform's sizes have.
+- For `any`, each worker counts from its ask to its last task's end.
+- A task goes only on a size with room for its cores and peak memory, when
+  one is declared.
+- The replays plan plain, as a live run does under history's spread.
+- They play side by side on this machine's cores once the run ends.
+
+</details>
 
 ## Environment
 
-What `@vzn/vx-dte` reads from the CI job it runs in:
+`@vzn/vx-dte` reads these variables from the CI job it runs in:
 
 - `GITHUB_SHA`: the commit every worker checks out.
-- `GITHUB_HEAD_REF` or `GITHUB_REF_NAME`, then `GITHUB_BASE_REF`: the
-  ref `github()` dispatches the worker workflow on, the base when the
-  head has no workflow file.
-- `GITHUB_RUN_ID` and `GITHUB_RUN_ATTEMPT`: the run's attempt, so a
-  worker that starts after it ended cancels itself.
-- `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`:
-  where the job asks GitHub for its OIDC token; `GITHUB_REPOSITORY_ID`:
-  the repository a token must name.
+- `GITHUB_API_URL`, `GITHUB_REPOSITORY` and `GITHUB_TOKEN`: the API
+  `github()` dispatches, watches and cancels worker runs through.
+- `GITHUB_HEAD_REF` or `GITHUB_REF_NAME`, then `GITHUB_BASE_REF`: the ref
+  `github()` dispatches the worker workflow on.
+- It falls back to the base ref when the head has no workflow file.
+- `GITHUB_RUN_ID`, `GITHUB_REPOSITORY` and `GITHUB_TOKEN`, on a worker: one
+  that finds its run over cancels its own workflow run, so its queued
+  fellows hold no runner.
+- `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`: where
+  the job asks GitHub for its OIDC token.
+- `GITHUB_REPOSITORY_ID`: the repository a token must name.
 - `GITLAB_CI` and `CI_JOB_TOKEN`: `gitlab()` runs on GitLab CI.
+- `CI_API_V4_URL`, `CI_PROJECT_ID` and `CI_COMMIT_SHA`: the API, project
+  and commit `gitlab()` triggers each wave's pipeline with.
 - `CI_MERGE_REQUEST_SOURCE_BRANCH_NAME` or `CI_COMMIT_REF_NAME`, then
   `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`: the ref worker pipelines run on.
 - `PATH`: a worker keeps the task's own bin directories, then its own
-  machine's `PATH`. A task whose `exec.env.define` sets `PATH`, or whose
-  `inputs.env` names it, runs on that `PATH` as the orchestrator sent it.
-- `GIT_INDEX_FILE`: `local()` clears it before `git worktree add`, so a
-  run started from a git hook checks out the run's commit, not the hook's
-  index.
+  machine's `PATH`.
+- A task whose `exec.env.define` sets `PATH`, or whose `inputs.env` names
+  it, runs on that `PATH` as the orchestrator sent it.
+- `GIT_INDEX_FILE`: `local()` clears it before `git worktree add`. So a run
+  started from a git hook checks out the run's commit, not the hook's index.
 - `GIT_DIR`: with no `GIT_WORK_TREE`, the run's snapshot and `local()`'s
-  and `docker()`'s git drop it when git finds that repository from the
-  workspace anyway (a linked worktree's hook sets it), as core does.
+  and `docker()`'s git drop it when git finds that repository anyway.
+- That is, when git finds it from the workspace (a linked worktree's hook
+  sets it), as core does.
 
 ## API
 
-- `dte(options?: DteOptions)` is the plugin. `DteOptions` is
-  `{ workers?, adapter?, relay?, local?, token?, unmeasured?, headers? }`;
-  a key it does not take, in a size or `unmeasured` too, is refused.
-  `headers` go on every dial to the relay, the orchestrator's and each
-  worker's (redials too), for a proxy in front of it, such as a
-  Cloudflare Access service token (`{ 'CF-Access-Client-Id':
-process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
-  a name the dial sets itself (`authorization`, `content-type`,
-  `relay-proof`) is refused. The rest:
-  - `workers` names each worker type, a `WorkerType` `{ machines }`, in order of
-    preference (`exec.worker` picks one). Each machine is a size the
-    adapter may start, named `<type>.<machine>` (`linux.small`; each name
-    letters, digits, `_` and `-`, as worker ids and log files carry them,
-    and a machine's `.` after its first character, `c5.large`) in the
-    run's output and an adapter's options, and is a `WorkerSize`,
-    `{ cpu, memory, max?, platform?, runsOn? }` (`runsOn`: the runner
-    label `vx dte init` writes for it): its cores
-    and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
-    when it starts one, until the worker reports what its machine has,
-    how many of it one run may start (absent, no cap), and its machines'
-    platform (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`;
-    absent, planned as this machine's and not checked on join). With no adapter, the sizes' platforms are
-    the ones joining workers may have. Only work counts:
-    a task that missed the cache, or waits on a cached one that did, and
-    every uncached task, which runs every time; groups and hits need no worker. The run
-    plans that work over its workers and new ones (`src/plan/engine.ts`,
-    design `docs/design/dte-planner-2026-11.md`), each new one joining
-    after its size's warm-up (the mean of this run's joins of that size,
-    else an earlier run's) and a spread after the one of its size asked
-    before it, as a CI queue lets them in one after another: the spread
-    the workers this run asked together showed, else an earlier run's
-    (kept in history, as warm-ups are). A worker's tasks share its cores:
-    past them, each runs at its share. A task's time is its history
-    scaled by how this run's finished tasks compared to theirs; a running
-    task's rest is what tasks that ran that long took more; their times
-    are their commands' own, told with each result, not when the run
-    heard them end. A task's dependants and the run's end also wait for
-    the servers it starts first (each server's learned start, its cores
-    free meanwhile). A task history
-    never measured takes what the measured ones take, with the unmeasured
-    that ended, and each still running past that mean counted as ended at
-    what it has run, so the first to end, the short ones, do not speak
-    for all; while
-    no task's time is known at all, no idle worker leaves. The plan compares, in order: the run's expected end, then the
-    core-time its workers are held (warm-ups included), then fewer
-    workers. Each task, least slack first, goes where it adds least to
-    the first, then the second: room on a worker now, a wait for room
-    there, or a new worker of the smallest size it fits, asked a warm-up
-    before the task needs it. A task waiting on running tasks whose ends
-    are uncertain expects to start past the latest of them, not their
-    mean; a task placed before one whose start is uncertain pays the
-    lateness its overrun would add. With every time known, the plan tries
-    other starts within each task's slack, up to 16 times a decision
-    (fewer as tasks grow), and keeps the best, trying it first at the
-    next. Past 10,000 tasks it plans in one forward
-    pass instead: a million plan in about two seconds. The run
-    then starts what the plan starts now, asks the workers it asks now,
-    and plans again at each event: a task ready, started or ended, a
-    worker asked, joined or lost. An idle worker no planned task needs
-    leaves, unless it holds files a task to come reads.
-    Before any worker can say what misses, the run counts as work each
-    cached task whose inputs changed since HEAD's parent (`git diff
-HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
-    `.vx/` change counts every cached task. A hit it guessed wrong costs a
-    worker the plan cancels; with no parent, the run waits for its misses.
-    Each task core's up-front cache probe found in no store, and each
-    uncached task, which no probe asks (`TaskExecutor.demand`'s `missed`),
-    counts as work too, the moment the probe answers.
-    A measured task counts for the cores it kept busy on average, and a
-    whole core at least. What a task used counts divided by its share of
-    the CPU: a Linux worker reads its run queue (`procs_running` in
-    /proc/stat) every 200 ms, a macOS one its load average while all its
-    cores are busy, and a task whose threads got a third of a core each
-    used a third of its need, not its need. The run history keeps that
-    share (`ExecuteResult.machine.cpuShare`) and learns the need, at most
-    the machine's cores, as the mean over runs.
-    A worker still starting is cancelled once its platform has no task
-    left: the adapter stops it before its setup if it can (`github()` cancels its
-    workflow run once no worker in it is needed and none of its jobs has a
-    runner), and one that joins anyway is told to exit. One the adapter
-    leaves running (its job had a runner, its run holds a worker still
-    needed, or the adapter stops none) is counted again, and the run takes
-    it when it joins. A task that used all of its worker's cores or memory
-    (90%) last time runs only on a bigger size while the run has or may
-    ask one. Each run's history keeps where every task ran and that
-    machine's size, so sizing improves run by run.
-  - `adapter` is the `DteAdapter` that starts workers, of the sizes in
-    `workers`: at least one with `max` above 0, or `dte()` is refused.
-    Absent, the run starts none and uses the workers that join `relay`.
-  - `relay` is the relay's base URL, http(s), without `/v1`, `?query` or `#fragment`; absent, the adapter's own. `VX_DTE_RELAY`, read when the run starts, beats it, so a pipeline's `env` can switch distribution on.
-  - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
-    is asked again a minute before the token's `exp`, when it has one.
-  - `unmeasured`, `{ cpu, memory }`, is what a task with no measure keeps
-    busy: a new task, or one over before the Linux sandbox's first look
-    (250 ms), which leaves no CPU. The plan counts it for `cpu` cores;
-    absent, for the measured tasks' mean. On a worker it holds one free
-    core and no memory, so it goes to any worker with a free core.
-- `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (unset or empty,
-  `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
-  `VX_DTE_WORKER` (its name). It is
-  described only by the cores and memory its machine reports. It exits 0
-  when the run ended before it joined. On SIGINT or SIGTERM it stops its
-  tasks, leaves the run, which runs them again on another worker, and
-  exits 130 or 143; a second signal ends it at once.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), workerId?(), handed?(), over?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined, and may answer with those it left running, which the run takes; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset; `keyless` workers prove themselves by GitHub OIDC, and `workerRuns` names the workflow runs whose jobs alone may join as them (`undefined`: any job of the repository). In a worker's job, `handed` returns the `Handed` its CI gave it (`{ run?, relay?, env }`, which `vx dte worker` reads before it joins), and `over` stops the workers its CI still holds for a run that ended before this one joined.
-  `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env }`,
-  with `memory` in bytes and `max` its size's (`Infinity` uncapped),
-  where `id` is the worker's name (`linux.small#2`, numbered within its size), `commit` the
-  tracked files as the run saw them at its start (uncommitted changes included), whose
-  tree a worker must check out, `cacheDir` the run's cache dir (absolute) when the
-  workspace names one, for workers on this machine to save where the run reads, and
-  `env` holds the three variables the worker reads.
-- `docker(options: DockerOptions)` starts workers as containers and a relay
-  of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
-- `github(options?: GithubOptions)` dispatches workers as matrix jobs of
-  one workflow, one dispatch per size and demand (at most 256 workers,
-  a matrix's limit). `GithubOptions` is `{ workflow?, env? }`:
-  `workflow` defaults to `vx-worker.yml`, a file name in
-  `.github/workflows` other than `ci.yml`, the run's own; `env` is variables every
-  worker gets (one-line strings, no secret-named one: the worker job's
-  log shows them), sent as the
-  dispatch's `env` input only when set, which `vx dte init`'s workflow
-  exports. Its workers are `keyless`, and only jobs of the workflow runs
-  it dispatched join as them. It
-  needs `GITHUB_TOKEN` with `actions: write`. See [On GitHub](#on-github).
-- `gitlab(options?: GitlabOptions)` triggers a pipeline of the project's
-  `.gitlab-ci.yml` per wave and size, with `CI_JOB_TOKEN`. `GitlabOptions` is
-  `{ tags? }`: runner tags by size, which `vx dte init` writes. See
-  [On GitLab](#on-gitlab).
-- `local(options?: LocalOptions)` starts workers on this machine and a relay
-  of its own on loopback. `LocalOptions` is `{ prepare? }`: a shell line
-  each worktree runs before its worker starts.
+`dte(options?: DteOptions)` is the plugin, as in
+`dte({ workers, adapter: github() })`.
 
-`@vzn/vx-dte-server` is a dependency for `local()`'s and `docker()`'s relay, loaded only
-when a DTE run starts.
+- `DteOptions` is `{ workers?, adapter?, relay?, token?, unmeasured?, headers? }`.
+- A key it does not take, in a size or `unmeasured` too, is refused.
+
+**`headers`** go on every dial to the relay, the orchestrator's and each
+worker's (redials too), for a proxy in front of it.
+
+- For example, a Cloudflare Access service token:
+  `{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID, … }`.
+- An unset value is left out.
+- A name the dial sets itself (`authorization`, `content-type`,
+  `relay-proof`) is refused.
+
+**`workers`** names each worker type, a `WorkerType` `{ machines }`, in
+order of preference. `exec.worker` picks one.
+
+- Each machine is a size the adapter may start, named `<type>.<machine>`
+  (`linux.small`) in the run's output and an adapter's options.
+- Each name is letters, digits, `_` and `-`, as worker ids and log files
+  carry them.
+- A machine's name may also have a `.` after its first character
+  (`c5.large`).
+- A size is a `WorkerSize`: `{ cpu, memory, max?, platform?, runsOn? }`.
+- `cpu` and `memory` (bytes, or `'8GB'`, `'512MiB'`) are what the run counts
+  on when it starts one, until the worker reports what its machine has.
+- `max` is how many of it may be in the run at once, a lost one replaced.
+  Absent, there is no cap.
+- `platform` is its machines' platform: `linux-x64`, `linux-arm64`,
+  `darwin-x64` or `darwin-arm64`.
+- Absent, the size is planned as this machine's platform and not checked on
+  join.
+- `runsOn` is the runner label `vx dte init` writes for it.
+- With no adapter, the sizes' platforms are the ones joining workers may
+  have.
+
+**What counts as work.** Only work needs a worker: a task that missed the
+cache, or waits on a cached one that did, and every uncached task. Groups
+and hits need none.
+
+- An uncached task runs every time, so it is always work.
+- Before any worker can say what misses, the run guesses from git.
+- It counts as work each cached task whose inputs changed since HEAD's
+  parent (`git diff HEAD^`), and every task after one (`src/forecast.ts`).
+- A lockfile or `.vx/` change counts every cached task.
+- A hit it guessed wrong costs a worker the plan cancels.
+- With no parent commit, the run waits for its misses.
+- Each task core's up-front cache probe found in no store counts as work
+  too, the moment the probe answers.
+- So does each uncached task, which no probe asks
+  (`TaskExecutor.demand`'s `missed`).
+
+**How the run plans.** The run plans that work over its workers and new
+ones (`src/plan/engine.ts`, design `docs/design/dte-planner-2026-11.md`).
+
+- The plan compares, in order: the run's expected end, then the core-time
+  its workers are held (warm-ups included), then fewer workers.
+- Each task, least slack first, goes where it adds least to the first, then
+  the second.
+- That is room on a worker now, a wait for room there, or a new worker of
+  the smallest size it fits.
+- A new worker is asked a warm-up before the task needs it.
+- The run starts what the plan starts now, and asks the workers it asks
+  now.
+- It plans again at each event: a task ready, started or ended, or a worker
+  asked, joined or lost.
+- An idle worker no planned task needs leaves, unless it holds files a task
+  to come reads.
+
+<details><summary>Details</summary>
+
+- Each new worker joins after its size's warm-up: the mean of this run's
+  joins of that size, else an earlier run's.
+- It also joins a spread after the one of its size asked before it, as a CI
+  queue lets them in one after another.
+- That spread is what the workers this run asked together showed, else an
+  earlier run's (kept in history, as warm-ups are).
+- A worker's tasks share its cores: past them, each runs at its share.
+- A task's time is its history, scaled by how this run's finished tasks
+  compared to theirs.
+- A running task's rest is what tasks that ran that long took more.
+- Those times are the commands' own, told with each result, not when the
+  run heard them end.
+- A task's dependants and the run's end also wait for the servers it starts
+  first: each server's learned start, its cores free meanwhile.
+- A task history never measured takes what the measured ones take, with the
+  unmeasured that ended.
+- Each unmeasured task still running past that mean counts as ended at what
+  it has run.
+- So the first to end, the short ones, do not speak for all.
+- While no task's time is known at all, no idle worker leaves.
+- A task waiting on running tasks whose ends are uncertain expects to start
+  past the latest of them, not their mean.
+- A task placed before one whose start is uncertain pays the lateness its
+  overrun would add.
+- With every time known, the plan tries other starts within each task's
+  slack, up to 16 times a decision (fewer as tasks grow).
+- It keeps the best, and tries it first at the next decision.
+- Past 10,000 tasks it plans in one forward pass instead: a million plan in
+  about two seconds.
+
+</details>
+
+**Measured need.** A measured task counts for the cores it kept busy on
+average, and a whole core at least.
+
+<details><summary>Details</summary>
+
+- What a task used counts divided by its share of the CPU.
+- A Linux worker reads its run queue (`procs_running` in /proc/stat) every
+  200 ms.
+- A macOS worker reads its load average while all its cores are busy.
+- So a task whose threads got a third of a core each used a third of its
+  need, not its need.
+- The run history keeps that share (`ExecuteResult.machine.cpuShare`).
+- It learns the need, at most the machine's cores, as the mean over runs.
+
+</details>
+
+**Cancelling and sizing.** A worker still starting is cancelled once its
+platform has no task left.
+
+<details><summary>Details</summary>
+
+- The adapter stops it before its setup if it can. One that joins anyway is
+  told to exit.
+- `github()` cancels its workflow run once no worker in it is needed and
+  none of its jobs has a runner.
+- A worker the adapter leaves running is counted again, and the run takes
+  it when it joins.
+- That happens when its job had a runner, its run holds a worker still
+  needed, or the adapter stops none.
+- A task that used all of its worker's cores or memory (90%) last time runs
+  only on a bigger size while the run has or may ask one.
+- Each run's history keeps where every task ran and that machine's size,
+  so sizing improves run by run.
+
+</details>
+
+**The other options:**
+
+- `adapter` is the `DteAdapter` that starts workers, of the sizes in
+  `workers`.
+- With an adapter, at least one size needs `max` above 0, or `dte()` is
+  refused.
+- Absent, the run starts no workers and uses the ones that join `relay`.
+- `relay` is the relay's base URL, http(s), without `/v1`, `?query` or
+  `#fragment`. Absent, the adapter's own.
+- `VX_DTE_RELAY`, read when the run starts, beats `relay`, so a pipeline's
+  `env` can switch distribution on.
+- `token` answers the relay's bearer token (default `VX_DTE_TOKEN`).
+- It is asked again a minute before the token's `exp`, when it has one.
+- `unmeasured`, `{ cpu, memory }`, is what a task with no measure keeps
+  busy.
+- That is a new task, or one over before the Linux sandbox's first look
+  (250 ms), which leaves no CPU.
+- The plan counts it for `cpu` cores; absent, for the measured tasks' mean.
+- On a worker it holds one free core and no memory, so it goes to any
+  worker with a free core.
+
+**`vx dte worker`** is a worker.
+
+- It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (unset or empty: `relay`), and
+  `VX_DTE_SECRET` (the run's).
+- When the run started it, it also reads `VX_DTE_WORKER` (its name).
+- It is described only by the cores and memory its machine reports.
+- It exits 0 when the run ended before it joined.
+- A relay that refuses it or cannot be reached is one line,
+  `vx dte worker: cannot connect to the relay …`, and exit 1.
+- On SIGINT or SIGTERM it stops its tasks and leaves the run, which runs
+  them again on another worker.
+- It then exits 130 or 143; a second signal ends it at once.
+
+**`DteAdapter`** starts workers:
+
+```text
+{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), workerId?(), handed?(), over?(), adopt?(worker), report?(warn), keyless?, workerRuns?() }
+```
+
+- `init` gets a `DteSetup` and returns a `DteInit`: the CI files
+  `vx dte init` writes and the steps it prints.
+- A `DteSetup` holds the workspace root, its directory in the repository,
+  the relay, the sizes, the `PackageManager` read from the lockfile, and the
+  tasks asked for.
+- `report` hands it the run's warning channel as the run starts.
+- There `github()` reports a status poll or a cancel the CI API refused, by
+  status and body.
+- `adopt` hands each worker the CI started before the run to
+  `worker(id, size)`, which counts it and returns its spawn.
+- `cancel` stops workers the run no longer needs that have not joined.
+- `cancel` may answer with those it left running, which the run takes.
+- `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is
+  unset.
+- `workerId` names a worker in a job its CI started for several, when
+  `VX_DTE_WORKER` is unset.
+- `keyless` workers prove themselves by GitHub OIDC.
+- `workerRuns` names the workflow runs whose jobs alone may join as them
+  (`undefined`: any job of the repository).
+- In a worker's job, `handed` returns the `Handed` its CI gave it:
+  `{ run?, relay?, env }`, which `vx dte worker` reads before it joins.
+- In a worker's job, `over` stops the workers its CI still holds for a run
+  that ended before this one joined.
+
+**`WorkerSpawn`** is what `spawn` gets:
+
+```text
+{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env, exited }
+```
+
+- `memory` is in bytes, and `max` is its size's (`Infinity` uncapped).
+- `id` is the worker's name (`linux.small#2`, numbered within its size).
+- `commit` is the tracked files as the run saw them at its start,
+  uncommitted changes included. A worker must check out its tree.
+- `cacheDir` is the run's cache dir (absolute) when the workspace names
+  one, so workers on this machine save where the run reads.
+- `env` holds what the worker reads: `VX_DTE_RUN`, `VX_DTE_WORKER`,
+  `VX_DTE_RELAY`, and `VX_DTE_SECRET` when the run has a key.
+- `exited(reason)` says the worker's job or process ended, a success
+  too, and why: its exit or its last stderr line.
+
+**The adapters:**
+
+- `docker(options: DockerOptions)` starts workers as containers, and a
+  relay of its own on loopback.
+- `DockerOptions` is `{ image, prepare? }`.
+- `github(options?: GithubOptions)` dispatches workers as matrix jobs of one
+  workflow, one dispatch per size and demand.
+- It dispatches at most 256 workers, a matrix's limit.
+- `GithubOptions` is `{ workflow?, env? }`.
+- `workflow` defaults to `vx-worker.yml`: a file name in `.github/workflows`
+  other than `ci.yml`, the run's own.
+- `env` is variables every worker gets: one-line strings, and no
+  secret-named one, since the worker job's log shows them.
+- `env` is sent as the dispatch's `env` input only when set, which
+  `vx dte init`'s workflow exports.
+- `github()` workers are `keyless`, and only jobs of the workflow runs it
+  dispatched join as them.
+- It needs `GITHUB_TOKEN` with `actions: write`. See
+  [On GitHub](#on-github).
+- `gitlab(options?: GitlabOptions)` triggers a pipeline of the project's
+  `.gitlab-ci.yml` per wave and size, with `CI_JOB_TOKEN`.
+- `GitlabOptions` is `{ tags? }`: runner tags by size, which `vx dte init`
+  writes. See [On GitLab](#on-gitlab).
+- `local(options?: LocalOptions)` starts workers on this machine, and a
+  relay of its own on loopback.
+- `LocalOptions` is `{ prepare? }`: a shell line each worktree runs before
+  its worker starts.
+
+`@vzn/vx-dte-server` is a dependency for the relay of `local()` and
+`docker()`, loaded only when a DTE run starts.

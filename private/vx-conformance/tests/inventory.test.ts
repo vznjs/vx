@@ -4,18 +4,40 @@ import { CASES } from '../cases/index.ts'
 import { INVENTORY } from '../src/inventory.ts'
 import { ref } from '../src/report.ts'
 
-const PACKAGES = path.join(import.meta.dir, '..', '..', '..', 'packages')
+const ROOT = path.join(import.meta.dir, '..', '..', '..')
 
-/** Every test file of every package, named as the inventory names it. */
+/**
+ * Every test file of every package, shipped (`packages/`) or not
+ * (`private/`), at any depth, named as the inventory names it: core's bare,
+ * another's `<dir>/<path>` from its package dir, `tests/` and `.test.ts` off
+ * (`vx-docs/site-build`, `vx-plugin-examples/plugins/budget`). Only the top
+ * level of `packages/*\/tests` was read: 94 files under `private/` were in
+ * no list (2026-11-24).
+ */
 function testFiles(): string[] {
-  return [...new Bun.Glob('*/tests/*.test.ts').scanSync(PACKAGES)]
-    .map((f) => {
-      const [pkg, , file] = f.split('/') as [string, string, string]
-      const name = file.slice(0, -'.test.ts'.length)
-      return pkg === 'vx' ? name : `${pkg}/${name}`
-    })
-    .sort()
+  const out: string[] = []
+  for (const top of ['packages', 'private'])
+    for (const f of new Bun.Glob('*/**/*.test.{ts,tsx,js,mjs,cjs,mts}').scanSync(
+      path.join(ROOT, top),
+    )) {
+      if (f.split('/').includes('node_modules')) continue
+      const [pkg, ...rest] = f.split('/')
+      const name = rest
+        .join('/')
+        .replace(/^tests\//, '')
+        .replace(/\.test\.\w+$/, '')
+      out.push(top === 'packages' && pkg === 'vx' ? name : `${pkg}/${name}`)
+    }
+  return out.sort()
 }
+
+test('the inventory reads every package, private ones and nested files too', () => {
+  const files = testFiles()
+  expect(files).toContain('parity-turbo')
+  expect(files).toContain('vx-dte/units')
+  expect(files.some((f) => f.startsWith('vx-docs/'))).toBe(true)
+  expect(files.some((f) => /^vx-plugin-examples\/\w+\//.test(f))).toBe(true)
+})
 
 test('every test file is in exactly one list', () => {
   const listed = Object.values(INVENTORY).flat()

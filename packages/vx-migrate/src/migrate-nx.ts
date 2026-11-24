@@ -113,7 +113,7 @@ function bareNotes(projects: readonly GeneratedProject[]): string[] {
   const ids = binTasks(projects)
   if (ids.length === 0) return []
   return [
-    `${ids.join(', ')} run${ids.length === 1 ? 's' : ''} through nx-exec or nx-env, @vzn/vx-migrate's bins, which a repo with no package.json cannot install: rewrite ${ids.length === 1 ? 'it' : 'them'} as commands`,
+    `${ids.join(', ')} run${ids.length === 1 ? 's' : ''} through nx-exec or nx-env, @vzn/vx-migrate's bins, which a workspace with no package.json cannot install: rewrite ${ids.length === 1 ? 'it' : 'them'} as commands`,
   ]
 }
 

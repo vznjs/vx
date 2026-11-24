@@ -11,8 +11,13 @@ import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { isDefaultBuild } from '../graph/index.js'
-import { affectedTaskProjects, projectAtDir, unlockedDir } from '../orchestrator/index.js'
-import { flagHint, formatValue, refuse, seeHelp } from './help.js'
+import {
+  affectedTaskProjects,
+  projectAtDir,
+  renamedSinceLock,
+  unlockedDir,
+} from '../orchestrator/index.js'
+import { AFFECTED_EMPTY, flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   listed,
   nearMatches,
@@ -74,8 +79,10 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
       out.affected = ''
       const next = args[i + 1]
       if (next !== undefined && !next.startsWith('-')) out.spacedBase ??= next
-    } else if (a.startsWith('--affected=')) out.affected = a.slice('--affected='.length)
-    else if (a.startsWith('-'))
+    } else if (a.startsWith('--affected=')) {
+      out.affected = a.slice('--affected='.length)
+      if (out.affected === '') return { ...out, error: `${AFFECTED_EMPTY}${seeHelp('show')}` }
+    } else if (a.startsWith('-'))
       return { ...out, error: `unknown flag: ${a}${flagHint('show', a)}${seeHelp('show')}` }
     else if (out.target === 'project')
       // Nx's spelling: `nx show project <name>`.
@@ -116,15 +123,17 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     const name = projectAtDir(typed, root, metas)
     return name === undefined ? undefined : ` — did you mean ${name}${suffix}?`
   }
-  // A directory whose config came after the lock: the line `vx run` gives,
+  // A directory whose config came after the lock, or a package renamed since:
+  // the line `vx run` gives,
   // not "unknown project" and a guess.
   const refuseUnlocked = async (typed: string): Promise<void> => {
     const config = await unlockedDir(typed, metas, root)
-    if (config === undefined) return
-    throw new UserError(
-      `${parsed.target}: ${relPosix(root, config)} is not in the lock yet — run \`vx lock\``,
-      'VX_E_LOCK',
-    )
+    const line =
+      config === undefined
+        ? await renamedSinceLock(typed, metas, root)
+        : `${relPosix(root, config)} is not in the lock yet — run \`vx lock\``
+    if (line === undefined) return
+    throw new UserError(`${parsed.target}: ${line}`, 'VX_E_LOCK')
   }
   const hashAt = parsed.target?.indexOf('#') ?? -1
   const projectName =
@@ -391,10 +400,9 @@ function renderList(
     }
   })
   if (format === 'json') {
-    return `${JSON.stringify(rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })))}\n`
+    return `${JSON.stringify(rows.map(({ name, dir, tags, tasks, hasDefault }) => ({ name, dir, tags, tasks, defaultBuild: hasDefault })))}\n`
   }
   if (rows.length === 0) return []
-  const anyTags = rows.some((r) => r.tags.length > 0)
   const cells = rows.map((r) => {
     const n = r.tasks.length
     const count = `${n} task${n === 1 ? '' : 's'}`
@@ -410,11 +418,31 @@ function renderList(
           ? 'no vx config'
           : r.onlyDefault
             ? `${count}, default build (no vx config)`
-            : `${count} from plugins (no vx config)`
-    return [ui.id(r.name), r.dir, tasks, ...(anyTags ? [r.tags.join(', ')] : [])]
+            : r.hasDefault
+              ? `${count}, ${n - 1} from plugins, default build (no vx config)`
+              : `${count} from plugins (no vx config)`
+    return { name: r.name, dir: r.dir, tasks, tags: r.tags }
   })
-  const columns = ['project', 'dir', 'tasks', ...(anyTags ? ['tags'] : [])]
-  return [ui.section('Projects', String(rows.length), ui.table(columns, cells))]
+  return [ui.section('Projects', String(rows.length), projectTable(cells))]
+}
+
+/**
+ * The project list's table. On a terminal too narrow for it (78 columns at
+ * 60, 2026-11-24) the tags go, then the dir: a project and its tasks stay.
+ */
+export function projectTable(
+  rows: readonly { name: string; dir: string; tasks: string; tags: readonly string[] }[],
+): ui.Block {
+  const anyTags = rows.some((r) => r.tags.length > 0)
+  return ui.table(
+    [
+      'project',
+      { title: 'dir', drop: 2 },
+      'tasks',
+      ...(anyTags ? [{ title: 'tags', drop: 1 }] : []),
+    ],
+    rows.map((r) => [ui.id(r.name), r.dir, r.tasks, ...(anyTags ? [r.tags.join(', ')] : [])]),
+  )
 }
 
 /**
@@ -439,7 +467,8 @@ function renderProject(
     // Round-trip so the printed object is exactly the JSON form of the
     // resolved config (drops `undefined` fields).
     const shown = shownConfig(config)
-    return `${JSON.stringify({ name, dir, config: shown })}\n`
+    const defaultBuild = Object.values(config?.tasks ?? {}).some((t) => isDefaultBuild(t))
+    return `${JSON.stringify({ name, dir, defaultBuild, config: shown })}\n`
   }
   const tags = config?.tags ?? []
   const tasks = Object.entries(config?.tasks ?? {})
@@ -469,7 +498,13 @@ function renderTask(
   format: 'pretty' | 'json',
 ): Shown {
   if (format === 'json') {
-    const obj = { name, dir, task: taskName, config: shownTask(task) }
+    const obj = {
+      name,
+      dir,
+      task: taskName,
+      defaultBuild: isDefaultBuild(task),
+      config: shownTask(task),
+    }
     return `${JSON.stringify(obj)}\n`
   }
   return [taskReport(name, dir, taskName, task)]
@@ -486,6 +521,7 @@ function renderTaskAcross(
       name: p.name,
       dir: relPosix(root, p.dir) || '.',
       task: taskName,
+      defaultBuild: isDefaultBuild(p.config.tasks![taskName]!),
       config: shownTask(p.config.tasks![taskName]!),
     }))
     return `${JSON.stringify(list)}\n`
@@ -497,7 +533,11 @@ function renderTaskAcross(
 
 /** The `app#build` panel: the project's dir, then every field the run reads. */
 function taskReport(name: string, dir: string, taskName: string, task: TaskConfig): ui.Block {
-  return ui.section(`${name}#${taskName}`, ui.fields([['dir', dir], ...taskRows(task)]))
+  const rows = ui.fields([['dir', dir], ...taskRows(task)])
+  // Marked as the project view marks it: unmarked, it read as declared.
+  return isDefaultBuild(task)
+    ? ui.section(`${name}#${taskName}`, ui.dim(' default'), rows)
+    : ui.section(`${name}#${taskName}`, rows)
 }
 
 /** Every field the run reads, in the order the schema declares them. */

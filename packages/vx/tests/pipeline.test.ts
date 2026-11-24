@@ -9,7 +9,7 @@ import type { Pipeline, WorkspaceConfig } from '../src/config.js'
 import { acceptedFlags } from '../src/cli/help.js'
 import { PIPELINE_FLAGS, pipelineRunArgs, validateWorkspace } from '../src/workspace/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { addProject, git, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const LOCK_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -212,6 +212,10 @@ describe('vx pipeline <name>', () => {
           own: { tasks: ['keep'], filter: ['a'], noCache: true, env: { VX_CACHE_POLICY: 'local:rw' } },
           base: { tasks: ['build'], affected: true },
           solo: { tasks: ['solo'], filter: ['a'] },
+          plan: { tasks: ['build'], filter: ['a'], dry: true },
+          gone: { tasks: ['build'], filter: ['zzz'] },
+          badplan: { tasks: ['build'], dry: true, format: 'json', cachePolicy: 'bogus' },
+          envfail: { tasks: ['need'], filter: ['a'], env: { SHOWN: 'vx-only' } },
         }`,
       ),
     )
@@ -222,6 +226,7 @@ describe('vx pipeline <name>', () => {
         `export default { tasks: {
           build: { exec: { command: 'true' } },
           show: { exec: { command: 'echo "shown=[$SHOWN]"', env: { passThrough: ['SHOWN'] } } },
+          need: { exec: { command: 'echo "need SHOWN"; exit 1', env: { passThrough: ['SHOWN'] } } },
           probe: { exec: { command: 'true' }, inputs: { files: ['package.json'], runtime: ['echo "ci=[$CI]" > probe.txt'] }, outputs: { files: [] }, cache: true },
           keep: { exec: { command: 'echo k > k.txt' }, inputs: { files: ['package.json'] }, outputs: { files: ['k.txt'] }, cache: true },
         } }`,
@@ -247,6 +252,17 @@ describe('vx pipeline <name>', () => {
     // vx itself reads it: the run's output is off.
     const quiet = await vx('pipeline', 'quiet')
     expect([quiet.code, quiet.out.includes('shown=')]).toEqual([0, false])
+  }, 30_000)
+
+  // A failure naming a variable only the pipeline set told the user to pass
+  // what passThrough already named: no passThrough gives a task vx's own.
+  it('says nothing of a variable its env set when a task fails naming it', async () => {
+    const r = await vx('pipeline', 'envfail', '--output-logs=full')
+    expect([
+      r.code,
+      r.out.includes('need SHOWN'),
+      r.out.includes('set in your environment'),
+    ]).toEqual([1, true, false])
   }, 30_000)
 
   // A path in the workspace file stands from the root, as `cache.dir` there
@@ -291,6 +307,19 @@ describe('vx pipeline <name>', () => {
     expect([both.code, both.err]).toEqual([0, ''])
   }, 30_000)
 
+  // A pipeline that saves `format: 'json'` is read by a script: a saved
+  // value it refused printed no error document, only the human line.
+  it('prints the error document for a refused saved value of a JSON plan', async () => {
+    const r = await vx('pipeline', 'badplan')
+    expect(r.code).toBe(1)
+    expect(JSON.parse(r.out)).toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: 'VX_E_CONFIG' }),
+    })
+    // CONTROL: a typed --format pretty beats the saved json.
+    expect((await vx('pipeline', 'badplan', '--format', 'pretty')).out).toBe('')
+  }, 30_000)
+
   // Its own `env` is saved as its keys are: its policy variable dropped its
   // `noCache`, as only a typed one (or one already set) should.
   it('keeps a saved key over its own env', async () => {
@@ -318,6 +347,20 @@ describe('vx pipeline <name>', () => {
     expect(typed.err).not.toContain('`pipelines.')
   }, 30_000)
 
+  // The refusal says `filter(s)`, not `--filter`, so the key went unnamed.
+  it('names the key behind a saved filter that matches nothing', async () => {
+    const r = await vx('pipeline', 'gone')
+    expect([r.code, r.err]).toEqual([
+      1,
+      expect.stringContaining('no projects matched filter(s): "zzz"'),
+    ])
+    expect(r.err).toContain('--filter is `pipelines.gone.filter` in .vx/workspace\n')
+    // CONTROL: a typed filter is the user's own, no key behind it.
+    const typed = await vx('pipeline', 'check', '--filter', 'zzz')
+    expect(typed.err).toContain('no projects matched filter(s): "zzz"')
+    expect(typed.err).not.toContain('`pipelines.')
+  }, 30_000)
+
   // Every pipeline passes --all, and --all beside a filter is the filter's
   // selection: the hint said "pass --all", which `vx pipeline` refuses and
   // `vx run --all --filter a` had already taken.
@@ -338,6 +381,22 @@ describe('vx pipeline <name>', () => {
     } finally {
       cwd = ''
     }
+  }, 30_000)
+
+  // The typed flags were checked alone before the saved ones joined them:
+  // `--format json` on a pipeline that saves `dry` was refused as needing --dry.
+  it('takes a typed --format for a pipeline that saves dry', async () => {
+    const r = await vx('pipeline', 'plan', '--format', 'json')
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect((JSON.parse(r.out) as { tasks: { id: string }[] }).tasks.map((t) => t.id)).toEqual([
+      'a#build',
+    ])
+    // CONTROL: a pipeline with no saved dry still refuses it.
+    const real = await vx('pipeline', 'check', '--format', 'json')
+    expect([real.code, real.err]).toEqual([
+      1,
+      expect.stringContaining('--format prints the plan, so it needs --dry'),
+    ])
   }, 30_000)
 
   it('refuses no name, an unknown one, a task and --all, naming the fix', async () => {
@@ -361,4 +420,114 @@ describe('vx pipeline <name>', () => {
       expect([r.code, r.err]).toEqual([1, expect.stringContaining(`no pipeline named ${name}`)])
     }
   }, 30_000)
+})
+
+// On the base branch a bare --affected has no base. The hint said "drop
+// --affected, --all runs every project": `vx pipeline` refuses --all, and a
+// saved `affected` is no flag to drop.
+describe('vx pipeline with affected, on the base branch', () => {
+  let root = ''
+  const pipelines = (fields: string): Promise<void> =>
+    writeFile(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([], '', undefined, fields))
+  const vx = async (...args: string[]): Promise<{ code: number; err: string }> => {
+    const proc = Bun.spawn([process.execPath, BIN, ...args], {
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', VX_AFFECTED_BASE: '' },
+    })
+    const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+    return { code, err }
+  }
+  const head = '--affected has no default on the base branch (main): '
+  const tail = ', or name the last good commit, --affected=<sha>'
+
+  beforeAll(async () => {
+    root = await realpath(await makeWorkspace({ prefix: 'vx-pipeline-base-', git: 'commit' }))
+    await addProject(
+      root,
+      'a',
+      `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+    )
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'a')
+    git(root, 'branch', '-M', 'main')
+    git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+    git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+  })
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('names a pipeline without affected, or the key to drop, never --all', async () => {
+    await pipelines(
+      `pipelines: { pr: { tasks: ['build'], affected: true }, main: { tasks: ['build'] } }`,
+    )
+    const saved = await vx('pipeline', 'pr')
+    expect(saved.code).toBe(1)
+    expect(saved.err).toContain(
+      `${head}run vx pipeline main, which has no \`affected\` (the cache skips what did not change)${tail}`,
+    )
+    expect(saved.err).toContain('--affected is `pipelines.pr.affected` in .vx/workspace\n')
+    // Typed, the flag is the user's to drop.
+    const typed = await vx('pipeline', 'main', '--affected')
+    expect(typed.err).toContain(
+      `${head}drop --affected (the cache skips what did not change)${tail}`,
+    )
+    expect(typed.err).not.toContain('`pipelines.')
+    // No pipeline without it: the key is the thing to drop.
+    await pipelines(`pipelines: { pr: { tasks: ['build'], affected: true } }`)
+    const only = await vx('pipeline', 'pr')
+    expect(only.err).toContain(
+      `${head}drop \`affected\` from pipelines.pr (the cache skips what did not change)${tail}`,
+    )
+    for (const r of [saved, typed, only]) expect(r.err).not.toContain('--all')
+  }, 60_000)
+})
+
+// `vx lock` refuses a pipeline task no project declares, but the workspace
+// file is not in the lock: edited after it, the run named the task and
+// never the key that holds it.
+describe('vx pipeline naming a task no project declares', () => {
+  let root = ''
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('names the pipeline key that holds it', async () => {
+    root = await realpath(await makeWorkspace({ prefix: 'vx-pipeline-typo-' }))
+    await addProject(
+      root,
+      'a',
+      `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+    )
+    const ws = (fields: string): Promise<void> =>
+      writeFile(
+        path.join(root, '.vx/workspace.mjs'),
+        localWorkspaceSource([], '', undefined, fields),
+      )
+    const vx = async (bin: string, ...args: string[]): Promise<{ code: number; err: string }> => {
+      const proc = Bun.spawn([process.execPath, bin, ...args], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+      })
+      const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+      return { code, err }
+    }
+    await ws(`pipelines: { ok: { tasks: ['build'] } }`)
+    expect((await vx(BIN, 'pipeline', 'ok')).code).toBe(0)
+    await ws(`pipelines: { ok: { tasks: ['build'] }, typo: { tasks: ['biuld'] } }`)
+    const r = await vx(LOCK_BIN, 'pipeline', 'typo')
+    expect([r.code, r.err]).toEqual([
+      1,
+      expect.stringContaining('no projects declare task(s): biuld'),
+    ])
+    expect(r.err).toContain('tasks are `pipelines.typo.tasks` in .vx/workspace\n')
+    // CONTROL: `vx run` has no pipeline to name.
+    const run = await vx(LOCK_BIN, 'run', 'biuld', '--all')
+    expect(run.err).toContain('no projects declare task(s): biuld')
+    expect(run.err).not.toContain('`pipelines.')
+  }, 60_000)
 })

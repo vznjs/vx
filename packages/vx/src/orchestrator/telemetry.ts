@@ -143,6 +143,11 @@ export interface TaskTelemetry {
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   /** On a `failed` task: vx's own `timeout` killed it (exit 143 is the deadline, not a signal). Additive. */
   timedOut?: true
+  /**
+   * On a `failed` task whose command exited 0: the declared outputs that
+   * matched no file (`exitCode` 1 is vx's, not the command's). Additive.
+   */
+  outputsMissing?: readonly string[]
   /** On a sandboxed task: how many declared-boundary violations the sandbox recorded (a failure on its own). Additive. */
   sandboxViolations?: number
   /** On a failed persistent task: why it never became ready. `exitCode` is the child's own when it exited. Additive. */
@@ -269,6 +274,8 @@ export interface RunSummaryRecord {
    * Not in `tasks`, since they never ran. Absent when none. Additive.
    */
   notRunCount?: number
+  /** Those tasks' ids, in the run's order: a sink lists them as the terminal counts them. Absent when none. Additive. */
+  notRun?: readonly string[]
   hitCount: number
   /** Hits by the layer that answered, up-to-date ones included. */
   hitLocalCount: number
@@ -334,6 +341,7 @@ export function assembleRunSummary(
     exitOk: boolean
     abortedCount: number
     notRunCount?: number
+    notRun?: readonly string[]
     stages?: readonly RunStage[]
     uploads?: { count: number; bytes: number; ms: number; failed: number }
     machines?: readonly MachineReport[]
@@ -370,6 +378,7 @@ export function assembleRunSummary(
     ...(timing.notRunCount !== undefined && timing.notRunCount > 0
       ? { notRunCount: timing.notRunCount }
       : {}),
+    ...(timing.notRun !== undefined && timing.notRun.length > 0 ? { notRun: timing.notRun } : {}),
     hitCount: hitLocalCount + hitRemoteCount,
     hitLocalCount,
     hitRemoteCount,
@@ -530,6 +539,11 @@ export function createTelemetrySource(args: {
   // Precompute which sinks want each kind, so per-event fan-out is a plain
   // array walk with no per-record `wants` scanning.
   const wantsLog = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.log'))
+  // A summary-only sink (vx-ci's) wants no start: building one masked the
+  // command against the whole env per task, ~0.3 s at 10k tasks for nothing.
+  // The mask itself is built per task (a task's env.secret, and an env a
+  // plugin changed mid-run): never memoized.
+  const wantsStart = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.start'))
   const wantsSample = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.sample'))
 
   // taskId → its running root and what the looks at it saw. One timer for
@@ -670,7 +684,7 @@ export function createTelemetrySource(args: {
         return
       case 'task:start': {
         const node = event.node
-        if (node.config.exec === undefined) return // group task — no command, skip
+        if (node.config.exec === undefined || !wantsStart) return // group task — no command, skip
         const rec: TelemetryRecord = {
           v: TELEMETRY_SCHEMA_VERSION,
           kind: 'task.start',
@@ -859,6 +873,7 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.blockedBy !== undefined) t.blockedBy = o.blockedBy
   if (o.otherPlatform !== undefined) t.otherPlatform = o.otherPlatform
   if (o.timedOut === true) t.timedOut = true
+  if (o.outputsMissing !== undefined) t.outputsMissing = o.outputsMissing
   if (o.sandbox?.violations !== undefined) t.sandboxViolations = o.sandbox.violations
   if (o.notReady !== undefined) t.notReady = o.notReady
   if (o.attempts?.failed !== undefined) t.failedAttempts = o.attempts.failed

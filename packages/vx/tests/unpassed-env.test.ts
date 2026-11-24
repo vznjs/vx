@@ -36,6 +36,20 @@ describe('unpassedEnv', () => {
     expect(line).not.toContain('postgres')
   })
 
+  // `curl -H "Authorization: $API_TOKEN" …` fails on an empty header and
+  // prints nothing that names it: the command does.
+  it('names a variable the command expands, though the output does not', () => {
+    expect(
+      unpassedEnv('exit 1\n', { PATH: '/bin' }, host, 'deploy --db "${DATABASE_URL}" $API_KEY'),
+    ).toBe(LINE('API_KEY, DATABASE_URL', false))
+  })
+
+  it('reads no name from the command that the shell sets itself', () => {
+    expect(
+      unpassedEnv('', {}, { OLDPWD: '/', HOSTNAME: 'h' }, 'cd $OLDPWD && echo $HOSTNAME'),
+    ).toBeUndefined()
+  })
+
   it.each([
     ['one the task was given', 'missing DATABASE_URL', { DATABASE_URL: 'x' }],
     ['one the host does not hold', 'missing REDIS_URL', {}],

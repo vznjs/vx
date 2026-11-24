@@ -4,7 +4,7 @@
 // final config: diffed at the base and now, the tasks whose entry is the same
 // are unchanged by the edit. A project-level field or a task added or removed
 // still reaches the whole project.
-import { rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { addProject, gitIn, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
@@ -61,6 +61,19 @@ it('an edit that leaves every locked task the same selects none', async () => {
   expect(kept()).toEqual({})
 })
 
+// The lock keeps each task's JSON as the config wrote it: reordered tasks
+// or keys move every line of the project's lock entry and no locked value.
+it('tasks or keys reordered in the config select none', async () => {
+  await edit(`export default {
+  tasks: {
+    test: { cache: true, outputs: { files: [] }, inputs: { files: ['src/**'] }, exec: { command: 'true' } },
+    build: { inputs: { files: ['src/**'] }, exec: { command: 'true' }, cache: true, outputs: { files: [] } },
+  },
+}
+`)
+  expect(kept()).toEqual({})
+})
+
 it('a task added still reaches the whole project', async () => {
   await edit(config('true', "\n    lint: { exec: { command: 'true' } },"))
   expect(Object.keys(kept()).sort()).toEqual(['app#build', 'app#test'])
@@ -89,4 +102,21 @@ it('a group whose edges moved selects nothing itself: it runs nothing', async ()
     tasks: Array<{ id: string }>
   }
   expect(plan.tasks.map((t) => t.id)).toEqual([])
+})
+
+it('an imported file that moves one task names the lock as that task’s input', async () => {
+  // The label read "(every task in its project)" of a change that reached
+  // one task: the config did not change, so the lock is the input shown.
+  const git = gitIn(root)
+  await mkdir(path.join(root, 'shared'))
+  await writeFile(path.join(root, 'shared/cmd.mjs'), "export const cmd = 'true'\n")
+  await edit(`import { cmd } from '../../shared/cmd.mjs'\n${config("' + cmd + '")}`)
+  git('add', '-A')
+  git('commit', '-qm', 'import')
+  await writeFile(path.join(root, 'shared/cmd.mjs'), "export const cmd = 'echo built'\n")
+  vx('lock')
+  expect(kept()).toEqual({ 'app#build': { kind: 'input', file: '.vx/projects.lock' } })
+  expect(vx('run', 'build', 'test', '--affected=HEAD', '--dry')).toContain(
+    'app#build  affected: .vx/projects.lock changed (an input)',
+  )
 })

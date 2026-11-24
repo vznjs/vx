@@ -160,6 +160,7 @@ describe('assembleRunRecords', () => {
       upToDateCount: 1,
       restoredLocalCount: 1,
       restoredRemoteCount: 1,
+      abortedCount: 0,
       exitOk: false,
       commitSha: 'abc123',
       branch: 'main',
@@ -201,6 +202,8 @@ describe('assembleRunRecords', () => {
     expect(runs.map((r) => `${r.project}#${r.task}`)).toStrictEqual(counted)
     expect(telemetryTasks.map((t) => t.taskId)).toStrictEqual(counted)
     expect(invocation.taskCount).toBe(6)
+    // d#build never started: the terminal's `not run`, no `aborted`.
+    expect(invocation.abortedCount).toBe(0)
     const totals = formatRunSummary(outcomes, 10).filter((l) => l.includes(' total'))
     expect(totals).toStrictEqual([
       '            1 failed · 4 success · 1 skipped · 1 not run · 7 total',

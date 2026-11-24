@@ -19,6 +19,8 @@ export const viteTask: Adapter = {
   // dependsOn names tasks exactly; a task has no time limit, no retries, and
   // is never a long-running process the run stops.
   lacks: {
+    'folder-output':
+      'Vite Task’s docs give a trailing slash in an output no meaning, so nothing declares an output a folder.',
     mutex: 'No Vite Task setting keeps two tasks from running at the same time.',
     'idle-timeout': 'Vite Task has no limit on how long a task may print nothing.',
     'output-checksum': 'Vite Task has no way to pin an output’s bytes to a checksum.',

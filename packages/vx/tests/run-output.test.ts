@@ -120,6 +120,24 @@ describe('failedOutputLog — what it says was dropped', () => {
   })
 })
 
+describe('failedOutputLog — an entry cut tighter than a failure', () => {
+  // `run.logs.captureHead` / `captureTail` set below a failure's bounds:
+  // the entry's head and tail fit the failure's head whole, so the dropped
+  // line fell after both, saying a failure's 8 KB and 56 KB were kept.
+  it('keeps the gap where it was and names what was kept', () => {
+    const c = new BoundedCapture(1024, 1024)
+    c.push('h'.repeat(1024))
+    c.push('m'.repeat(5000))
+    c.push('t'.repeat(1024), true)
+    const text = decodeOutputLog(failedOutputLog(c, true))
+      .map((t) => t.text)
+      .join('')
+    expect(text).toBe(
+      `${'h'.repeat(1024)}${droppedOutputLine(5000, 1024, 1024)}${'t'.repeat(1024)}`,
+    )
+  })
+})
+
 describe('failedOutputLog — secrets', () => {
   // The re-bound masked the capture's head and its tail apart. Nothing is
   // dropped between them, so a value written across the head's end (a

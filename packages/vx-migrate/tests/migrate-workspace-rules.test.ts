@@ -62,6 +62,15 @@ describe('turbo.json boundaries', () => {
         `turbo.json boundaries.tags.internal.dependents.allow ["ops"]: vx rules say what a project may depend on, not who may depend on it — add deny: ['tag:internal'] to the rule of each other tag`,
       ],
     })
+    // An empty list says nothing, and a rule of an empty deny alone is one
+    // vx lock refuses: dropped.
+    expect(
+      turboBoundaryRules({
+        boundaries: {
+          tags: { a: { dependencies: { deny: [] } }, b: { dependencies: { allow: [], deny: [] } } },
+        },
+      }),
+    ).toEqual({ rules: [{ from: 'tag:b', allow: [] }], gaps: [] })
     // CONTROL: none, no tags, or a list Turbo refuses (its indexes are no tags).
     expect([
       turboBoundaryRules({}),

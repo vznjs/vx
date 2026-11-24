@@ -92,9 +92,40 @@ const OUTCOMES = `CREATE TABLE IF NOT EXISTS outcomes (issuer TEXT NOT NULL, rep
 const SWEEPS =
   'CREATE TABLE IF NOT EXISTS sweeps (id INTEGER PRIMARY KEY CHECK (id = 1), at INTEGER NOT NULL)'
 
+/**
+ * Each table this server keeps, and the columns a file made before it must
+ * already hold (`slow_ms` it adds), read off the statements that make them.
+ */
+export const TABLES: ReadonlyMap<string, readonly string[]> = new Map(
+  [SCHEMA, OUTCOMES, SWEEPS].map((sql) => {
+    const name = /CREATE TABLE IF NOT EXISTS (\w+)/.exec(sql)![1]!
+    const body = sql
+      .slice(sql.indexOf('(') + 1, sql.lastIndexOf(')'))
+      .replace(/PRIMARY KEY \([^)]*\)/g, '')
+    const columns = body
+      .split(',')
+      .map((c) => c.trim().split(' ')[0]!)
+      .filter((c) => c !== '' && c !== 'slow_ms')
+    return [name, columns]
+  }),
+)
+
+/**
+ * Why `table` is not this server's, from the columns it has (none: it does
+ * not exist yet), or undefined: a database another tool made took `ALTER`,
+ * then failed every upload 500.
+ */
+export function notOurs(table: string, has: ReadonlySet<string>): string | undefined {
+  const missing = has.size === 0 ? [] : TABLES.get(table)!.filter((c) => !has.has(c))
+  return missing.length === 0
+    ? undefined
+    : `its table ${table} is not this server's: it has no column ${missing.join(', ')}`
+}
+
 // One statement per 2 MB of a report's rows, passed as one JSON parameter:
 // D1 binds at most 100 parameters, and a free plan's Worker runs at most
-// 50 queries a request.
+// 50 queries a request. A row already written at this fold's time is left:
+// D1 sends again a write that may have landed, which folded it twice.
 const FOLD = `INSERT INTO timings (issuer, repository, ref, hash, duration_ms, cores, rss_bytes, runs, updated_at, slow_ms)
 SELECT ?1, ?2, ?3, j.value ->> '$.hash', j.value ->> '$.durationMs', j.value ->> '$.cores', j.value ->> '$.rssBytes', 1, ?4, j.value ->> '$.durationMs'
 FROM json_each(?5) AS j WHERE true
@@ -107,10 +138,10 @@ ON CONFLICT (issuer, repository, ref, hash) DO UPDATE SET
   slow_ms = max(excluded.duration_ms, CAST(coalesce(slow_ms, duration_ms) * ${SLOW_DECAY} AS INTEGER)),
   runs = runs + 1,
   updated_at = excluded.updated_at
-WHERE abs(excluded.duration_ms - duration_ms) > duration_ms * ${NOISE}
+WHERE excluded.updated_at <> updated_at AND (abs(excluded.duration_ms - duration_ms) > duration_ms * ${NOISE}
   OR (excluded.cores IS NOT NULL AND (cores IS NULL OR abs(excluded.cores - cores) > cores * ${NOISE}))
   OR (excluded.rss_bytes IS NOT NULL AND (rss_bytes IS NULL OR excluded.rss_bytes > rss_bytes))
-  OR excluded.updated_at - updated_at >= ${DAY_MS}`
+  OR excluded.updated_at - updated_at >= ${DAY_MS})`
 
 // A failure or a run's flake writes its row; a row already as it would
 // be is rewritten only when a day old, since each write is billed.
@@ -178,6 +209,11 @@ function jsonParams(items: readonly unknown[]): string[] {
 export function sqliteStore(db: Db): Store {
   return {
     async init() {
+      for (const table of TABLES.keys()) {
+        const has = await db.all<{ name: string }>(`PRAGMA table_info(${table})`, [])
+        const why = notOurs(table, new Set(has.map((c) => c.name)))
+        if (why !== undefined) throw new Error(why)
+      }
       await db.run(DROP_OLD, [])
       await db.run(SCHEMA, [])
       await db.run(ADD_SLOW, []).catch((err: unknown) => {

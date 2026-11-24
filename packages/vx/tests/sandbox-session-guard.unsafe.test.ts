@@ -197,6 +197,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
         )
         const proc = Bun.spawn([process.execPath, script], {
           cwd: root,
+          // SIGKILL leaves the child's runtime sockets behind; in root they go with it.
+          env: { ...process.env, TMPDIR: root },
           stdout: 'pipe',
           stderr: 'inherit',
         })

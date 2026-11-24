@@ -54,7 +54,7 @@ export function github(options: GithubPluginOptions = {}): VxPlugin | undefined 
     },
     async config(workspace, ctx) {
       if (options.cacheScope === false) return
-      ctx.setBranch(await githubBranch(process.env, workspace.baseBranch))
+      ctx.setBranch(await githubBranch(process.env, workspace.baseBranch, (m) => ctx.warn(m)))
     },
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']

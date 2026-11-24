@@ -198,6 +198,41 @@ it('an edit to the code that keeps its size and mtime moves the code identity', 
   }
 }, 60_000)
 
+// The key folds the vx version (`foldHead`), but a source install's identity
+// stamped only src/**/*.ts: a version moved in package.json alone read back
+// the keys the old version derived, so the upgrade's one miss never came.
+it('a version change in package.json alone moves the code identity', async () => {
+  const tmp = await mkdtemp(path.join(tmpdir(), 'vx-run-keys-version-'))
+  try {
+    await cp(path.resolve(import.meta.dir, '..', 'src'), path.join(tmp, 'src'), {
+      recursive: true,
+    })
+    const manifest = path.join(tmp, 'package.json')
+    await cp(path.resolve(import.meta.dir, '..', 'package.json'), manifest)
+    const identity = (): string => {
+      const p = Bun.spawnSync({
+        cmd: [
+          process.execPath,
+          '-e',
+          `import { codeIdentity } from ${JSON.stringify(path.join(tmp, 'src', 'orchestrator', 'run-keys.ts'))}; console.log(codeIdentity())`,
+        ],
+        stderr: 'pipe',
+      })
+      if (p.exitCode !== 0) throw new Error(p.stderr.toString())
+      return p.stdout.toString().trim()
+    }
+    const before = identity()
+    // CONTROL: nothing changed, the same identity.
+    expect(identity()).toBe(before)
+    const text = await readFile(manifest, 'utf8')
+    const version = (JSON.parse(text) as { version: string }).version
+    await writeFile(manifest, text.replace(`"version": "${version}"`, '"version": "9.9.9"'))
+    expect(identity()).not.toBe(before)
+  } finally {
+    await rm(tmp, { recursive: true, force: true })
+  }
+}, 60_000)
+
 it('a release binary built from a source tree that is gone remembers keys', async () => {
   // `--minify` inlines the build machine's `import.meta.dir`: the binary
   // must not read the derivation's identity from a `src/` it names.

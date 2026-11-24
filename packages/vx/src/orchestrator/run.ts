@@ -132,6 +132,7 @@ import {
   type Measure,
   neverStarted,
   plainOutput,
+  terminalOutput,
   resolveOutputView,
   type RunEvent,
   terminalSubscriber,
@@ -390,9 +391,12 @@ export async function runCore(options: CoreRunOptions): Promise<RunSummary> {
   // run and taken off on every way out, or it reported the next run twice.
   const bus = options.bus ?? createEventBus()
   // Tasks run with colour forced (exec/env.ts); where the terminal prints
-  // plain, their escapes are stripped. A custom logger gets the task's
-  // bytes as written, as the cache holds them: it formats its own output.
-  const render = terminalSubscriber(terminal === null || colors.enabled ? sink : plainOutput(sink))
+  // plain, their escapes are stripped, and where it is coloured only their
+  // colours and links are kept. A custom logger gets the task's bytes as
+  // written, as the cache holds them: it formats its own output.
+  const render = terminalSubscriber(
+    terminal === null ? sink : colors.enabled ? terminalOutput(sink) : plainOutput(sink),
+  )
   let unsubscribeTerminal = bus.subscribe(render)
   // What the run warned of, no task's: the footer repeats it (`warn`).
   const warned: string[] = []
@@ -492,6 +496,11 @@ async function runOnBus(
   // and a `vx cache clean` holding this lock while waiting for open stores,
   // deadlocked; a clear also deleted the store under a run opening it.
   let heldLock: RunLockRelease | undefined
+  /**
+   * When the run began asking for its lock: its time counts a wait behind
+   * another run (`time 33ms` after a 3 s wait), as the user's did.
+   */
+  let lockAskedAt: { ns: bigint; ms: number } | undefined
   const takeRunLock = async (root: string, sharedCacheDir: string | undefined): Promise<void> => {
     // A nested run is refused below with its own reason, holding nothing.
     const outer = process.env[VX_RUN_WORKSPACE_ENV] || undefined
@@ -506,8 +515,14 @@ async function runOnBus(
         : (held ?? options.signal)
     // Waiting is taking turns, a status line; only a lock vx could not take warns.
     const wait = (line: string): void => log.status(line)
+    lockAskedAt = { ns: process.hrtime.bigint(), ms: wallNow() }
     const lock = await step('vx:run-lock', () =>
-      acquireRunLock(root, { log: warnOf(log), wait, signal }),
+      acquireRunLock(root, {
+        log: warnOf(log),
+        wait,
+        signal,
+        holder: options.handoff?.watch === true ? 'watch' : 'run',
+      }),
     )
     heldLock = lock
     // Another workspace's clean of a shared cache directory takes no lock of
@@ -701,6 +716,7 @@ async function runOnBus(
         workspaceRoot: prepared.workspaceRoot,
         cacheDir: prepared.cacheDir,
         warn: warnOf(log),
+        status: (line) => log.status(line),
         concurrency,
         artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
         cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),
@@ -797,6 +813,8 @@ async function runOnBus(
   // the touch record, and LRU `vx cache clean` could evict entries the run just
   // hit. Once only: the normal path closes before a persistent task's wait.
   let live: ReturnType<typeof serveLive> | undefined
+  /** A foreground server outlives the lock: `vx last --live` still answers until it ends. */
+  let liveOutlivesLock = false
   let unfold = (): void => {}
   let cacheClosed = false
   // Stops the snapshots the run takes while it goes; every exit, before the close.
@@ -809,7 +827,7 @@ async function runOnBus(
     await stopSnapshots?.()
     await prepared.localCache.stopCheckpoints()
     cache.close()
-    live?.unlisten()
+    if (!liveOutlivesLock) live?.unlisten()
     // Released with the handle, on every exit (see run-lock.ts). Awaited:
     // fire-and-forget lost the race with the CLI's exit and left a lock
     // directory per run in the temp dir.
@@ -824,12 +842,18 @@ async function runOnBus(
     startedAt: Date.now(),
     nodes: () => nodes.values(),
     warnings: () => warned,
+    serving: (id) => {
+      const child = persistentRegistry.get(id)
+      return child !== undefined && !hasEnded(child)
+    },
   })
   try {
-    const runStartHrTimeNs = process.hrtime.bigint()
+    // From the lock's ask, so a wait for another run counts. One instant with
+    // the wall start below: a task's times are offsets from both.
+    const runStartHrTimeNs = lockAskedAt?.ns ?? process.hrtime.bigint()
     // Whole ms, floored here and ceiled at the end, so every stage between
     // lies inside the run's window.
-    const endedAtMsAtStart = Math.floor(wallNow())
+    const endedAtMsAtStart = Math.floor(lockAskedAt?.ms ?? wallNow())
     // Every remote turned off by its `open` is no remote: a task must not clean
     // its outputs for a save that goes nowhere.
     const remoteCacheEnabled = prepared.hasRemoteLayer && !remotesClosed
@@ -1181,7 +1205,10 @@ async function runOnBus(
     }
     // A server that ended on its own is failed (the end of the run says so);
     // what has not yet started hears it before it dispatches.
+    // Carried servers that died where they ran (`carriedDied`).
+    const carriedDead = new Set<string>()
     const serverDied = (id: string): boolean => {
+      if (carriedDead.has(id)) return true
       const child = persistentRegistry.get(id)
       return child !== undefined && hasEnded(child) && child.exitCode !== 0
     }
@@ -1243,6 +1270,7 @@ async function runOnBus(
       colors,
       inputStability,
       serverReady: serverOut.ready,
+      carriedDied: (id) => carriedDead.add(id),
     }
     if (hasServers)
       scope.serverDiedUnder = async (node) => {
@@ -1678,6 +1706,11 @@ async function runOnBus(
       keyed: keyedHeld,
       endedBeforeStop: stop.endedBeforeStop,
     })
+    // What a server wrote since ready prints at runEnd, after this: one vx
+    // stopped closes `stopped`, not `running`.
+    for (const id of servers.released) terminal?.serverStopped(id)
+    for (const id of persistentRegistry.keys())
+      if (!keepAlive.nodes.some((n) => n.id === id)) terminal?.serverStopped(id)
     // A `setup` hook may have written: what was stat'ed before it proves no hit.
     if (prepared.plugins.some((p) => p.setup !== undefined)) prepared.localCache.memo.dropWarm()
 
@@ -1811,7 +1844,8 @@ async function runOnBus(
     ): void => {
       if (keeps) writeRunFailures(into, runId, final, warnOf(log), workspaceRoot)
     }
-    if (stop.stoppedBy === undefined && !historyAfterWait) {
+    const bundled = stop.stoppedBy === undefined && !historyAfterWait
+    if (bundled) {
       stepSync('vx:history', () => {
         recordHistory(() =>
           runHistory(prepared.localCache).recordRunBundle({
@@ -1856,6 +1890,18 @@ async function runOnBus(
       await prefetchDone
       await Promise.all([cache.drainUploads?.(), keeper?.settled()])
     })
+    // The run ends once its uploads have: the footer is printed after them, and
+    // a slow remote's drain read as no time at all (a 6.4 s run said 3.2 s).
+    let runEnd = prepared.hasRemoteLayer
+      ? {
+          at: Math.ceil(wallNow()),
+          totalMs: Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000,
+        }
+      : { at: endedAtMs, totalMs }
+    if (runEnd.at !== endedAtMs && bundled)
+      recordHistory(() =>
+        runHistory(prepared.localCache).recordRunEnd(runId, runEnd.at, Math.round(runEnd.totalMs)),
+      )
     if (keeps) {
       // Beside the run's rows (cache/run-notes.ts); a refused write costs only them.
       try {
@@ -1894,7 +1940,7 @@ async function runOnBus(
     ): Promise<void> => {
       if (sinks === undefined || runContextRecord === undefined) return
       sinks.endServers(final)
-      const ended = after ?? { at: endedAtMs, totalMs }
+      const ended = after ?? runEnd
       const timed = after === undefined ? step : undefined
       const tasks =
         after === undefined ? records.telemetryTasks : recordsOf(final, runOk).telemetryTasks
@@ -1905,7 +1951,12 @@ async function runOnBus(
         exitOk: runOk,
         // As the terminal counts them: `1 aborted · 1 not run`.
         abortedCount: tasks.filter((t) => t.status === 'aborted').length,
-        notRunCount: final.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length,
+        ...(() => {
+          const notRun = final
+            .filter((o) => neverStarted(o) && !isGroupTask(o.node))
+            .map((o) => o.node.id)
+          return { notRunCount: notRun.length, notRun }
+        })(),
         stages: stageTimes(),
         uploads: prepared.localCache.uploads,
         machines: executors.flatMap(reports.machines),
@@ -1918,6 +1969,22 @@ async function runOnBus(
     // A kept server can still fail the run in the wait below: its summary goes
     // out once the wait decides, or sinks read a pass over exit 1.
     if (!historyAfterWait) await summarize(list, ok)
+    // The footer is printed after the flush too: a slow collector's 3 s read
+    // as no time. The summary just sent cannot count its own flush.
+    if (sinks !== undefined && !historyAfterWait) {
+      runEnd = {
+        at: Math.ceil(wallNow()),
+        totalMs: Number(process.hrtime.bigint() - runStartHrTimeNs) / 1_000_000,
+      }
+      if (bundled)
+        recordHistory(() =>
+          runHistory(prepared.localCache).recordRunEnd(
+            runId,
+            runEnd.at,
+            Math.round(runEnd.totalMs),
+          ),
+        )
+    }
     // Each plugin's teardown, crash-isolated and time-bounded, after the drains
     // above; other exits reach it through `teardown`. Output-directory
     // snapshots first (miss-save.ts).
@@ -1929,6 +1996,7 @@ async function runOnBus(
     telemetry?.dispose()
     await teardown(undefined, report)
     await bundling
+    liveOutlivesLock = keepAlive.children.length > 0 && !hold
     await step('vx:close', closeCache)
     mark('close')
     printTimings()
@@ -1969,7 +2037,8 @@ async function runOnBus(
       ...(keptNothing ? { runId: undefined } : {}),
     }
     if (options.footer !== false)
-      for (const line of formatRunSummary(list, totalMs, colors, footerContext)) log.status(line)
+      for (const line of formatRunSummary(list, runEnd.totalMs, colors, footerContext))
+        log.status(line)
 
     // A requested persistent task (dev server, watcher): the run is done in
     // every bookkeeping sense but the server is the point, so stay in the
@@ -1986,6 +2055,9 @@ async function runOnBus(
           forwardArgs: options.forwardArgs,
           outOf: serverOut.outOf,
           keyOf: (id) => (keyedHeld.has(id) ? outcomes.get(id)?.hash : undefined),
+          // `vx watch dev | head`: the reader's EPIPE stops the watch as this
+          // run prints its "running" list, and the kill it sends is no crash.
+          stopped: () => stop.signal.aborted && stop.signal.reason !== CYCLE_INTERRUPT,
         }),
       }
     }
@@ -1995,6 +2067,11 @@ async function runOnBus(
       // Only the ones still up are stopped: a kept server already dead was
       // counted as one.
       const others = keepAlive.children.filter((c, j) => j !== first.i && !hasEnded(c)).length
+      // The server that ended the session on its own, not cleanly, failed.
+      // A stop's own kill is no crash: the user ended the session. Failed
+      // before the line naming it: under errors-only that prints its tail.
+      const crashed = !stop.signal.aborted && first.code !== 0
+      if (crashed) failServer(outcomes, node.id, first.code, keepAlive.children[first.i])
       // Not when the run was stopped: the user ended the server, and "exited
       // with code 130" read as a crash.
       if (!stop.signal.aborted) {
@@ -2010,10 +2087,6 @@ async function runOnBus(
       // in the grace cut short a graceful shutdown.
       if (stop.signal.aborted) await stop.aborting?.catch(() => {})
       else await terminateChildren(() => keepAlive.children)
-      // The server that ended the session on its own, not cleanly, failed.
-      // A stop's own kill is no crash: the user ended the session.
-      const crashed = !stop.signal.aborted && first.code !== 0
-      if (crashed) failServer(outcomes, node.id, first.code)
       if (historyAfterWait) {
         recordHistory(() => {
           // A writer's open: another vx version may have reset the index
@@ -2062,6 +2135,7 @@ async function runOnBus(
     log.runEnd?.()
     log.runDone?.()
     unfold()
+    live?.unlisten()
     live?.dispose()
     stop.detach()
     // Plugins installed at the top of run() get their bus subscriptions
@@ -2408,6 +2482,9 @@ async function unresolvedHint(
     prepared.declaredElsewhere,
     prepared.taskless,
     prepared.workspaceRoot,
+    selected ?? [...prepared.projects.keys()],
+    byFilter,
+    prepared.projects,
   )
   const init = await initHint(prepared)
   // "No project declares a task yet" beside configs that declare one: the
@@ -2468,6 +2545,9 @@ function didYouMean(
   elsewhere: readonly string[],
   taskless: (name: string) => boolean,
   root: string,
+  selected?: readonly string[],
+  byFilter = false,
+  loaded: ReadonlyMap<string, ProjectEntry> = projects,
 ): string {
   // A default `build` is no declared task: no match, menu item or hint
   // (`p#build` would be refused).
@@ -2477,6 +2557,11 @@ function didYouMean(
       .map(([t]) => t)
   const allTasks = new Set<string>()
   for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
+  // With nothing near, the list is of what this run could take: the loaded
+  // projects' tasks, or every task when they declare none.
+  const here = new Set<string>()
+  for (const p of loaded.values()) for (const t of tasksOf(p)) here.add(t)
+  const listable = here.size > 0 ? here : allTasks
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
   // A typo past two edits named nothing to pick from: with no near name, say
@@ -2491,10 +2576,18 @@ function didYouMean(
     }
     if (at < 0) {
       const t = nearest(spec, allTasks)
-      if (t !== undefined) hints.add(t)
+      if (t !== undefined) {
+        hints.add(t)
+        // The nearest name may be declared only outside the selection: a
+        // run of it would be refused in turn.
+        if (selected !== undefined && !selected.some((p) => tasksOf(projects.get(p)).includes(t)))
+          lists.add(
+            `Only projects outside the selection declare it — ${byFilter ? 'widen --filter to include them, or drop it' : 'pass --all, or a --filter that includes them'}.`,
+          )
+      }
       // A name outside the selection is already said, with `--all`.
       else if (allTasks.size > 0 && !elsewhere.includes(spec)) {
-        lists.add(`Tasks: ${listed(allTasks)}.`)
+        lists.add(`Tasks: ${listed(listable)}.`)
       } else if (allTasks.size === 0 && elsewhere.length === 0) lists.add(NO_TASK)
       continue
     }

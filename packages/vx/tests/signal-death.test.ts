@@ -91,9 +91,9 @@ describe('a task killed by a signal', () => {
       return frame.slice(frame.search(rule)).replace(rule, '').split('\n└─')[0]!
     }
     expect([at('slow'), at('whole'), at('partial'), at('killed')]).toEqual([
-      '[vx] timed out after 300ms — killed (SIGTERM)\n',
-      'whole\n[vx] timed out after 300ms — killed (SIGTERM)\n',
-      'half\n[vx] timed out after 300ms — killed (SIGTERM)\n',
+      "[vx] timed out after 300ms — killed (SIGTERM); the task's exec.timeout; raise it to give it longer\n",
+      "whole\n[vx] timed out after 300ms — killed (SIGTERM); the task's exec.timeout; raise it to give it longer\n",
+      "half\n[vx] timed out after 300ms — killed (SIGTERM); the task's exec.timeout; raise it to give it longer\n",
       expect.stringMatching(/^\[vx\] exit 137 is how the shell reports/),
     ])
   })

@@ -7,9 +7,20 @@
 
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { beforeAll, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { SETTLE_MS, until } from './helpers/watch-loop.js'
-import { floor, linux, peakMib, spawnVx, TIMEOUT, workspace } from './helpers/memory-ceiling.js'
+import {
+  floor,
+  linux,
+  peakMib,
+  removeScratch,
+  spawnVx,
+  TIMEOUT,
+  workspace,
+} from './helpers/memory-ceiling.js'
+
+// 5,000 projects' files take minutes to remove on a loaded disk.
+afterEach(removeScratch, TIMEOUT * 3)
 
 const CYCLES = 80
 const WARM = 20
@@ -28,7 +39,7 @@ describe.skipIf(!linux)('vx watch memory over time', () => {
       })
       const w = spawnVx(root, ['watch', 'a#out'])
       try {
-        await until(() => w.out().includes('watching'), 'watching', 30_000)
+        await until(() => w.out().includes('watching'), 'watching')
         await Bun.sleep(SETTLE_MS)
         const heapFile = `${w.probe}.heap`
         const heapMib = async (): Promise<number> => {

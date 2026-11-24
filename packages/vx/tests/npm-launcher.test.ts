@@ -139,7 +139,7 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     const fakeBun = path.join(binDir, 'bun')
     writeFileSync(
       fakeBun,
-      '#!/bin/sh\nif [ "$1" = "--version" ]; then echo 1.4.0; exit 0; fi\nkill -s "$4" $$\nexit 9\n',
+      '#!/bin/sh\nif [ "$1" = "--version" ]; then echo 1.4.0; exit 0; fi\nkill -s "$5" $$\nexit 9\n',
     )
     chmodSync(fakeBun, 0o755)
     mkdirSync(path.join(pkgDir, 'src'))
@@ -176,7 +176,7 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     expect(r.code).toBe(0)
     // The launcher locates the source beside its own REAL path (import.meta.url).
     expect(r.out).toBe(
-      `fake bun: --no-env-file --no-install ${path.join(realpathSync(pkgDir), 'src', 'bin.ts')} --version\n`,
+      `fake bun: --no-env-file --no-install --config=/dev/null ${path.join(realpathSync(pkgDir), 'src', 'bin.ts')} --version\n`,
     )
   })
 

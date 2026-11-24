@@ -48,7 +48,7 @@ is. Its steps write, delete, chmod and
 link files, run `sh`, install, commit, change the config, check the tree,
 and run a task (or several): in some projects, by selectors, from a directory, with
 args, a concurrency limit, a signal sent mid-run (and again, as a second
-Ctrl-C), its stdin held open as an idle terminal, going on past a failure,
+Ctrl-C), its stdin held open as an idle terminal, its stdout a full disk, going on past a failure,
 forced past the cache, reading the cache without writing it, or planned
 without running; or watch a task. Each run says what must hold:
 

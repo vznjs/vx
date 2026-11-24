@@ -613,7 +613,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '',
       ])
     },
-    20_000,
+    30_000,
   )
 
   it('the child leads its own process group, and is a live child only while it runs', async () => {

@@ -39,6 +39,7 @@ import { rmdirSync, rmSync, unlinkSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { Database } from 'bun:sqlite'
 import { VX_RUN_TASK_ENV, VX_RUN_WORKSPACE_ENV } from '../exec/index.js'
 import { isTmpdirRefusal, procfsIsOwn, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
 
@@ -117,6 +118,19 @@ export interface RunLockOptions {
    * a review copy and the lock from different runs.
    */
   of?: 'lock'
+  /**
+   * What takes the run lock, written in its entry so a waiter names it:
+   * a run beside a `vx watch` waited on "another vx run" that was the watch.
+   */
+  holder?: RunLockHolder
+}
+
+/** What holds a run lock; an older vx's entry names none and reads as a run. */
+type RunLockHolder = 'run' | 'watch' | 'cache clean'
+
+const HOLDER_PHRASE: Record<string, string> = {
+  watch: 'a vx watch cycle',
+  'cache clean': 'a vx cache clean',
 }
 
 /** Releases a taken run lock; `path` is its directory (`runLockPath`). */
@@ -277,7 +291,7 @@ function alive(pid: number): boolean {
  * onto it. Resolves to the entry that names this taking, or null when
  * another run holds it.
  */
-async function place(lockDir: string): Promise<string | null> {
+async function place(lockDir: string, holder: RunLockHolder): Promise<string | null> {
   const entry = nextEntry()
   // Random too: where procfs is not this namespace's the entry names no
   // start time, and a restarted container's pid 1 would meet the staging
@@ -294,7 +308,7 @@ async function place(lockDir: string): Promise<string | null> {
   }
   placed.add(entry)
   try {
-    await writeFile(path.join(staging, entry), '')
+    await writeFile(path.join(staging, entry), holder === 'run' ? '' : holder)
     await rename(staging, lockDir)
     return entry
   } catch (err) {
@@ -381,7 +395,7 @@ export async function acquireRunLock(
     try {
       // A caller's own `dir` (a test's) is theirs to vouch for.
       if (opts.dir === undefined) ownLockRoot(lockDir)
-      const entry = await place(lockDir)
+      const entry = await place(lockDir, opts.holder ?? 'run')
       if (entry !== null) {
         heldHere.set(lockDir, 1)
         takers.set(lockDir, entry)
@@ -412,13 +426,59 @@ export async function acquireRunLock(
     }
     if (h !== null && !said && Date.now() - started >= SAY_AFTER_MS) {
       said = true
+      const kind =
+        opts.of === 'lock' || h.entry === LEGACY_PID
+          ? ''
+          : await readFile(path.join(lockDir, h.entry), 'utf8').catch(() => '')
       // Spelled out: the Troubleshooting page quotes the run's line as printed.
+      const holder = HOLDER_PHRASE[kind]
       ;(opts.wait ?? opts.log)(
         opts.of === 'lock'
           ? `[vx] waiting for another vx lock (pid ${h.pid}) on this workspace to finish…`
-          : `[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`,
+          : holder === undefined
+            ? `[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`
+            : `[vx] waiting for ${holder} (pid ${h.pid}) on this workspace to finish…`,
       )
     }
     await Bun.sleep(POLL_MS)
+  }
+}
+
+/**
+ * Hold the workspace's two lock files still: `exclusive` while `vx lock`
+ * renames both, `shared` while a run reads both. `vx lock` renames them one
+ * after the other, and a run reading between the renames paired one
+ * branch's projects with the other's edges. SQLite's lock on a file beside
+ * the run lock, so it dies with its process; a shared hold costs a run one
+ * open (~0.3 ms). One that cannot be taken is no hold: the reads go ahead as
+ * before.
+ */
+export async function holdLockFiles(
+  workspaceRoot: string,
+  mode: 'shared' | 'exclusive',
+): Promise<() => void> {
+  const file = `${runLockPath(workspaceRoot)}-files`
+  for (;;) {
+    let db: Database
+    try {
+      ownLockRoot(file)
+      db = new Database(file)
+      db.exec('PRAGMA busy_timeout = 0')
+    } catch {
+      return () => {}
+    }
+    try {
+      if (mode === 'exclusive') db.exec('BEGIN EXCLUSIVE')
+      else {
+        db.exec('BEGIN')
+        db.query('SELECT count(*) FROM sqlite_master').get()
+      }
+      return () => db.close()
+    } catch (err) {
+      db.close()
+      if ((err as { code?: string }).code !== 'SQLITE_BUSY') return () => {}
+    }
+    // Jittered: two waiters trying in step would each meet the other's try.
+    await Bun.sleep(5 + Math.random() * 10)
   }
 }

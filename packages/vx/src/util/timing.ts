@@ -9,7 +9,7 @@
 // prints (a push per stage, ~15 a run): a telemetry sink draws them as
 // spans (`stageTimes`). The per-call `span`s stay off unless enabled.
 
-const enabled = process.env.VX_DEBUG_TIMING === 'true' || process.env.VX_DEBUG_TIMING === '1'
+const enabled = process.env['VX_DEBUG_TIMING'] === 'true' || process.env['VX_DEBUG_TIMING'] === '1'
 let t0 = Bun.nanoseconds()
 // The wall clock at t0, read then: `performance.timeOrigin` plus the
 // monotonic clock drifted 34 ms from `Date.now()` on macOS CI, so stages

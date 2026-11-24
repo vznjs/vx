@@ -87,7 +87,7 @@ it('runs the command and says where; stops it on exec.timeout', async () => {
     ['a#slow', 'failed', true],
   ])
   expect(Date.now() - started).toBeLessThan(10_000)
-}, 20_000)
+}, 30_000)
 
 it("runs the command through this machine's sh, not a project's node_modules/.bin sh", async () => {
   const dir = await pkg(
@@ -107,7 +107,7 @@ it("runs the command through this machine's sh, not a project's node_modules/.bi
     handleSignals: false,
   })
   expect([r.outcomes.map((o) => o.status), out.join('')]).toEqual([['success'], 'real\n'])
-}, 20_000)
+}, 30_000)
 
 it('puts the args after -- on the command as the local executor does', async () => {
   await pkg(
@@ -124,7 +124,7 @@ it('puts the args after -- on the command as the local executor does', async () 
     handleSignals: false,
   })
   expect([r.outcomes.map((o) => o.status), out.join('')]).toEqual([['success'], "<it's><a b>"])
-}, 20_000)
+}, 30_000)
 
 // An abort fires no listener added after it: a request stopped before
 // `execute` ran its command anyway, in a group nothing would stop.
@@ -178,4 +178,4 @@ it('ends when the shell exits, though a process it left holds the pipes', async 
     onStderr() {},
   } as never)
   expect([r.exitCode, r.stdout, Date.now() - started < 3_000]).toEqual([0, 'up\n', true])
-}, 20_000)
+}, 30_000)

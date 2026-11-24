@@ -63,3 +63,34 @@ it('a root with both says both', async () => {
     "root (the workspace root) not mapped: its scripts run the workspace or share a member's task name (lint); declare its own tasks in its vx.config by hand",
   ])
 })
+
+// A root whose only scripts are install hooks has nothing to map, and the
+// note said "its scripts run the workspace" (probed: `postinstall`, `prepare`).
+it('a root with only lifecycle scripts gets no note', async () => {
+  expect(await rootNote({ postinstall: 'echo hi', prepare: 'husky' })).toEqual([])
+})
+
+it('a member root with only lifecycle scripts gets no note either', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-root-'))
+  roots.push(root)
+  await writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify({ name: 'root', private: true, scripts: { postinstall: 'echo hi' } }),
+  )
+  await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - '.'\n  - packages/*\n")
+  await writeFile(path.join(root, 'pnpm-lock.yaml'), '')
+  await mkdir(path.join(root, 'packages', 'web'), { recursive: true })
+  await writeFile(
+    path.join(root, 'packages', 'web', 'package.json'),
+    JSON.stringify({ name: 'web', scripts: { build: 'vite build' } }),
+  )
+  expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)
+  const r = Bun.spawnSync({
+    cmd: [process.execPath, '--no-install', BIN, '--no-install'],
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  expect(r.exitCode).toBe(0)
+  expect(r.stdout.toString() + r.stderr.toString()).not.toContain('(the workspace root)')
+})

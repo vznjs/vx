@@ -10,6 +10,7 @@ import {
   errorDocument,
   hasControl,
   hideEnvFromTasks,
+  hookStarted,
   isFsRefusal,
   isOutOfFds,
   isUserError,
@@ -43,7 +44,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   // place `--help` is not being asked of vx. Core verbs only — a plugin verb
   // owns its own arguments, `--help` included.
   if (command !== undefined && wantsHelp(command, rest)) {
-    await printHelp(await (await plugins()).pluginCommandHelp(), command)
+    await printHelp([], command)
     return 0
   }
   if (command !== undefined && forwardsNothing(command, rest)) {
@@ -65,10 +66,18 @@ export async function run(argv: readonly string[]): Promise<number> {
   }
   applyWorkspaceLimits(undefined)
 
+  // A plugin hook's or a config's print reached stdout ahead of the
+  // document: `ui.data` alone writes there. A plugin verb owns its stdout.
+  const release =
+    command !== undefined && isCoreVerb(command) && wantsJson(argv)
+      ? (await import('../workspace/index.js')).stdoutToStderr()
+      : undefined
   try {
     return await dispatch(command, rest)
   } catch (err) {
     throw await brokenLockNamed(err)
+  } finally {
+    release?.()
   }
 }
 
@@ -219,7 +228,11 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         }
         return dispatch(verb, ['--help'])
       }
-      await printHelp(await (await plugins()).pluginCommandHelp(), core ? verb : undefined)
+      // A core verb's reference lists no plugin verb: no workspace load.
+      await printHelp(
+        core ? [] : await (await plugins()).pluginCommandHelp(),
+        core ? verb : undefined,
+      )
       return 0
     }
     case '--version':
@@ -274,9 +287,12 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       const resolved = await (await plugins()).resolvePluginCommand(command)
       if (resolved !== null && !('loadError' in resolved) && !('declaredVerbs' in resolved)) {
         let code: number
+        const settled = hookStarted(resolved.plugin.name, `command '${command}'`)
         try {
           code = await resolved.command.run(rest, resolved.ctx)
+          settled()
         } catch (err) {
+          settled()
           // A verb's own refusal is its one line; anything else is the
           // plugin's crash, named as every other stage names one.
           if (isUserError(err)) throw err
@@ -292,7 +308,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // that returned 256 (a count of failures, say) exited 0.
         if (!Number.isInteger(code) || code < 0 || code > 255) {
           throw new UserError(
-            `plugin '${resolved.plugin.name}': command '${command}' resolved ${typeof code === 'bigint' ? `${String(code)}n` : typeof code === 'number' || code === undefined ? String(code) : JSON.stringify(code)} instead of an exit code (an integer 0–255)`,
+            `plugin '${resolved.plugin.name}': command '${command}' resolved ${typeof code === 'bigint' ? `${String(code)}n` : typeof code === 'number' || code === undefined ? String(code) : jsonOr(code)} instead of an exit code (an integer 0–255)`,
           )
         }
         return code
@@ -415,4 +431,13 @@ function verbSourceNote(resolved: unknown, declaredVerbs: readonly string[]): st
   }
   const here = resolved === null ? 'there is no workspace here' : 'no plugin here adds one'
   return `  A plugin declared in .vx/workspace.ts can add verbs; ${here}.\n`
+}
+
+/** `v` as JSON, or inspected where JSON cannot say it (a BigInt, a cycle). */
+function jsonOr(v: unknown): string {
+  try {
+    return JSON.stringify(v)
+  } catch {
+    return Bun.inspect(v, { compact: true })
+  }
 }

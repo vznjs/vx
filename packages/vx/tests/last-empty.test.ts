@@ -39,9 +39,13 @@ it('before any run, every form says nothing has run', () => {
     vx('last', '0199'),
     vx('last', '--stats'),
     vx('last', '--stats', 'packages/a#build'),
+    vx('last', '--log', 'build'),
+    vx('last', '--log', 'packages/a#build'),
     vx('last', '--list'),
     vx('last', '--list', '--failed'),
   ]).toEqual([
+    [1, '', NONE],
+    [1, '', NONE],
     [1, '', NONE],
     [1, '', NONE],
     [1, '', NONE],

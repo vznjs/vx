@@ -39,9 +39,14 @@ function vx(...args: string[]): { code: number | null; stdout: string; stderr: s
   return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
 }
 
-/** The fenced block after the one whose line is `command`. */
-function printed(page: string, command: string): string {
-  const at = page.indexOf(`\n${command}\n`)
+/**
+ * The fenced block after the one whose line is `command`, the first such
+ * past `past` when a page runs that command more than once.
+ */
+function printed(page: string, command: string, past = ''): string {
+  const from = page.indexOf(past)
+  expect(from).toBeGreaterThan(-1)
+  const at = page.indexOf(`\n${command}\n`, from)
   expect(at).toBeGreaterThan(-1)
   const after = page.indexOf('```', page.indexOf('```', at) + 3)
   return /```[^\n]*\n([\s\S]*?)\n```/.exec(page.slice(after))![1]!
@@ -380,7 +385,7 @@ export default {
     expect(run('lock').code).toBe(0)
     expect(r.code).toBe(1)
     // The page runs vite; the fixture copies a file. vx's own lines are held.
-    const own = printed(page, 'vx run @demo/ui#build')
+    const own = printed(page, 'vx run @demo/ui#build', 'but vite writes `dist/index.js`')
       .split('\n')
       .filter((l) => /^(?:\[vx\]|└─)/.test(plain(l)))
     expect(own.length).toBe(2)
@@ -467,14 +472,20 @@ describe("the caching page's verdict table", () => {
 describe("the sandboxing guide's failures", () => {
   const command = 'vite build'
   const node = {
-    id: '@demo/web#build',
-    projectName: '@demo/web',
+    id: '@demo/ui#build',
+    projectName: '@demo/ui',
     taskName: 'build',
     config: { exec: { command } },
   } as unknown as TaskNode
   // The live frame a terminal shows for one task: its opening line, the
-  // tool's output as it streamed, then the violations and the close.
-  const frame = (records: string[], fix: Record<string, string[]>, stderr: string): string =>
+  // tool's output as it streamed, then the violations and the close. A
+  // hint line (`vx: …`) is listed but not counted.
+  const frame = (
+    records: string[],
+    fix: Record<string, string[]>,
+    stderr: string,
+    violations = records.length,
+  ): string =>
     [
       formatFrameOpen(node),
       stderr,
@@ -483,55 +494,56 @@ describe("the sandboxing guide's failures", () => {
         status: 'failed',
         exitCode: 1,
         durationMs: 12,
-        sandbox: { violations: records.length, lines: records, fix },
+        sandbox: { violations, lines: records, fix },
       } as TaskOutcome),
     ].join('\n')
   const page = readFileSync(path.join(GUIDES, '..', 'docs', 'sandboxing.mdx'), 'utf8')
   // The page shows a recorded coloured run: compared without its colours,
   // its typed command line, and with the run's own duration made stable.
   const tab = (title: string): string =>
-    plain(sample(page.slice(page.indexOf(title)), 'vx run @demo/web#build'))
-      .replace(/^\$ vx run @demo\/web#build\n\n/, '')
+    plain(sample(page.slice(page.indexOf(title)), 'vx run @demo/ui#build'))
+      .replace(/^\$ vx run @demo\/ui#build\n\n/, '')
       .replace(/\(\d+ms\)/g, '(12ms)')
-  const web = '/repo/packages/web'
+  // vite's own output, as recorded: the lines between the frame's open and
+  // its violations. What vx draws around it is held to the formatter.
+  const tool = (shown: string): string => {
+    const lines = shown.split('\n')
+    const end = lines.findIndex((l) => l.startsWith('├─ SANDBOX VIOLATIONS'))
+    return lines.slice(1, end).join('\n')
+  }
+  const ui = '/repo/packages/ui'
 
   it('are the frames vx draws', () => {
     expect(page).toContain(`command: '${command}'`)
-    expect(tab('title="1. The build passes, and vx fails it"')).toBe(
+    const one = tab('title="1. vite fails, and vx says why"')
+    expect(one).toBe(
       frame(
         [
-          `access(${web}/vite.config.ts) = -1 ENOENT  [${web}/vite.config.ts]`,
-          `access(${web}/package.json) = -1 ENOENT  [${web}/package.json]`,
-          `openat(${web}/package.json) = -1 ENOENT  [${web}/package.json]`,
+          `access(${ui}/vite.config.ts) = -1 ENOENT  [${ui}/vite.config.ts]`,
+          `access(${ui}/package.json) = -1 ENOENT  [${ui}/package.json]`,
+          `openat(${ui}/package.json) = -1 ENOENT  [${ui}/package.json]`,
+          "vx: the sandbox hid paths outside the project that exist on this machine, which are not reported as violations: /repo/package.json. If the task reads one, grant it, e.g. `allow: { read: ['../../package.json'] }`, and, if the output depends on it, key it: `inputs: { workspaceFiles: ['package.json'] }`.",
         ],
-        {
-          read: ['package.json', 'vite.config.ts'],
-          inputs: ['vite.config.ts'],
-        },
-        [
-          'vite v8.3.8 building client environment for production...',
-          'transforming...',
-          '✓ 4 modules transformed.',
-          'rendering chunks...',
-          'computing gzip size...',
-          'dist/index.html                0.12 kB │ gzip: 0.12 kB',
-          'dist/assets/index-Cdr0KPAF.js  0.71 kB │ gzip: 0.41 kB',
-          '',
-          '✓ built in 66ms',
-        ].join('\n'),
+        { read: ['package.json', 'vite.config.ts'], inputs: ['vite.config.ts'] },
+        tool(one),
+        3,
       ),
     )
-    expect(tab('title="2. Grant the config, key it, run again"')).toBe(
+    const two = tab('title="2. Grant the config, key it, run again"')
+    const temp = /\[(\/repo\/packages\/ui\/node_modules\/\.vite-temp\/[^\]]+)\]/.exec(two)![1]!
+    expect(two).toBe(
       frame(
-        [
-          `mkdir(${web}/node_modules/.vite-temp) = a write no grant covers  [${web}/node_modules/.vite-temp]`,
-        ],
+        [`openat(${temp}) = a write no grant covers  [${temp}]`],
         { write: ['node_modules/.vite-temp/'] },
-        [
-          `failed to load config from ${web}/vite.config.ts`,
-          'error during build:',
-          `Error: ENOENT: no such file or directory, mkdir '${web}/node_modules/.vite-temp'`,
-        ].join('\n'),
+        tool(two),
+      ),
+    )
+    const three = tab('title="3. Grant the temp folder"')
+    expect(three).toBe(
+      frame(
+        [`access(${ui}/public) = -1 ENOENT  [${ui}/public]`],
+        { read: ['public'], inputs: ['public'] },
+        tool(three),
       ),
     )
   })
@@ -607,6 +619,15 @@ describe("the quickstart's output", () => {
       run('run', 'build')
       const ms = (t: string) => t.replace(/\(\d+ms\)/g, '(<ms>)')
       expect(ms(runColour('run', 'build')).split('\n')).toContain(ms(hit))
+      // A restore replays the saved log too: the third run's sample showed
+      // the closing line alone.
+      const third = /```ansi title="third run"\n([\s\S]*?)```/.exec(page)![1]!
+      await rm(path.join(dir, 'dist'), { recursive: true })
+      const restored = run('run', 'build')
+      expect([restored.includes('restored-local'), restored.includes('┌─')]).toEqual([
+        true,
+        plain(third).includes('┌─'),
+      ])
       await writeFile(path.join(dir, 'src/main.js'), '2\n')
       run('run', 'build')
       const why = runColour('why', 'build')
@@ -846,12 +867,22 @@ describe('the running patterns show what vx prints at phone width', () => {
       .replace(/\s+/g, ' ')
       .trim()
   /** vx's own lines of a sample: its tables, summaries and frame edges, not the tool's. */
-  const own = (sample: string) =>
-    sample
-      .split('\n')
-      .filter((l) =>
-        /^(?: {2}(?:Plan|Tasks|tasks|predicted)\b| {12}\S|\[vx\]|└─|┌─.* > failed)/.test(plain(l)),
-      )
+  // A `vx:` step row shows only past 150 ms, which a fixture need not reach;
+  // so does the `Tasks` header over step rows alone.
+  const own = (sample: string) => {
+    const lines = sample.split('\n').map(plain)
+    const step = (l: string | undefined) => l !== undefined && / vx:\S/.test(l)
+    return sample.split('\n').filter((l, i) => {
+      const p = lines[i]!
+      if (step(p)) return false
+      if (/^ {2}Tasks\b/.test(p) && step(lines[i + 1])) {
+        let j = i + 1
+        while (step(lines[j])) j++
+        if (!/^ {12}\S/.test(lines[j] ?? '')) return false
+      }
+      return /^(?: {2}(?:Plan|Tasks|tasks|predicted)\b| {12}\S|\[vx\]|└─|┌─.* > failed)/.test(p)
+    })
+  }
   const holds = (sample: string, out: string) => {
     expect(sample).toContain(ESC)
     const lines = own(sample)
@@ -907,22 +938,24 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
           'packages/ui': { name: '@demo/ui', version: '1.0.0' },
           'packages/web': { name: '@demo/web', version: '1.0.0', dependencies: uses },
           'packages/admin': { name: '@demo/admin', version: '1.0.0', dependencies: uses },
+          'packages/api': { name: '@demo/api', version: '1.0.0' },
         },
         packages: {
           '@demo/ui': ['@demo/ui@workspace:packages/ui'],
           '@demo/web': ['@demo/web@workspace:packages/web'],
           '@demo/admin': ['@demo/admin@workspace:packages/admin'],
+          '@demo/api': ['@demo/api@workspace:packages/api'],
         },
       }),
     )
-    for (const name of ['ui', 'web', 'admin']) {
+    for (const name of ['ui', 'web', 'admin', 'api']) {
       await mkdir(path.join(ws, `packages/${name}/src`), { recursive: true })
       await write(
         `packages/${name}/package.json`,
         JSON.stringify({
           name: `@demo/${name}`,
           version: '1.0.0',
-          ...(name === 'ui' ? {} : { dependencies: uses }),
+          ...(name === 'ui' || name === 'api' ? {} : { dependencies: uses }),
         }),
       )
       await write(`packages/${name}/src/index.ts`, '1\n')
@@ -932,12 +965,19 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
           ? config(
               'ui',
               `${build(false, 'sleep 0.3 && mkdir -p dist && cp src/index.ts dist/index.js')}
-    test: { dependsOn: ['^build'], exec: { command: "echo 'expected 1 to be 2' && exit 1" } },`,
+    test: { dependsOn: ['^build'], exec: { command: "sleep 0.6 && echo 'expected 1 to be 2' && exit 1" } },`,
             )
-          : app(name, true),
+          : name === 'api'
+            ? config(
+                'api',
+                `${build(false, 'mkdir -p dist && cp src/index.ts dist/index.js')}
+    test: { exec: { command: 'sleep 1' } },`,
+              )
+            : app(name, true),
       )
     }
     await write('packages/ui/README.md', '# ui\n')
+    await write('packages/web/src/main.js', '1\n')
     expect(sh('git', 'init', '-q', '-b', 'main')).toBe(0)
     expect(vxSync('lock')).toBe(0)
     expect(sh('git', 'add', '-A')).toBe(0)
@@ -966,12 +1006,9 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
 
   it('running-tasks: a filter brings what its tasks need', async () => {
     const page = guide('running-tasks.mdx')
-    // History has timed both builds; an edit to each makes them misses.
+    // Both built: the dependency comes along as a cache hit.
     expect(vxSync('run', 'build', '--all')).toBe(0)
-    await write('packages/ui/src/index.ts', '3\n')
-    await write('packages/web/src/index.ts', '3\n')
     const r = await phone('run', 'build', '--filter', '@demo/web', '--dry')
-    expect(sh('git', 'checkout', '-q', '--', '.')).toBe(0)
     expect(r.code).toBe(0)
     holds(block(page, '<Deeper level="patterns" title="Run one project\'s tasks">'), r.out)
   })
@@ -981,7 +1018,7 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
     expect(vxSync('run', 'build', '--all')).toBe(0)
     for (const [tab, file] of [
       ['Edit ui/src', 'packages/ui/src/index.ts'],
-      ['Edit web/src', 'packages/web/src/index.ts'],
+      ['Edit web/src', 'packages/web/src/main.js'],
       ['Edit ui/README.md', 'packages/ui/README.md'],
     ] as const) {
       expect(sh('git', 'checkout', '-qb', 'edit')).toBe(0)
@@ -997,12 +1034,12 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
 
   it('running-tasks: the rest runs, then --fail-fast aborts it', async () => {
     const page = guide('running-tasks.mdx')
-    const rest = await phone('run', 'test', '--all')
+    const rest = await phone('run', 'test', '--all', '--no-cache')
     expect(rest.code).toBe(1)
-    holds(printed(page, 'vx run test --all'), rest.out)
-    const fast = await phone('run', 'test', '--all', '--fail-fast')
+    holds(printed(page, 'vx run test --all --no-cache'), rest.out)
+    const fast = await phone('run', 'test', '--all', '--no-cache', '--fail-fast')
     expect(fast.code).toBe(1)
-    holds(printed(page, 'vx run test --all --fail-fast'), fast.out)
+    holds(printed(page, 'vx run test --all --no-cache --fail-fast'), fast.out)
   })
 
   it('running-tasks: --timeout fails the task', async () => {
@@ -1044,7 +1081,7 @@ export default {
     expect(sh('git', 'commit', '-qam', 'ci')).toBe(0)
     expect(vxSync('pipeline', 'main', '--filter', '@demo/web')).toBe(0)
     expect(sh('git', 'checkout', '-qb', 'feature')).toBe(0)
-    await write('packages/web/src/index.ts', '2\n')
+    await write('packages/web/src/main.js', '2\n')
     expect(sh('git', 'commit', '-qam', 'web')).toBe(0)
     const r = await phone('pipeline', 'pr', '--dry')
     expect(sh('git', 'checkout', '-q', 'main')).toBe(0)

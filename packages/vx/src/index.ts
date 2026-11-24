@@ -10,6 +10,8 @@ export { VERSION } from './version.js'
 
 // Clean error type — user-input failures print a message without a stack.
 export { UserError, isUserError } from './util/index.js'
+// Where a refused package.json stops parsing: Bun's parsers never say.
+export { jsonErrorAt } from './util/index.js'
 // Every hook a plugin may fill, in pipeline order — the one list the
 // loader, the host and `vx info` read; exported so a doc pin outside core
 // (the site's guides) holds its tables to the same list.
@@ -70,8 +72,9 @@ export { mergeBaseWith } from './workspace/index.js'
 // re-added when one appears, shaped by its use.
 export { run, planRun, prepareRun } from './orchestrator/index.js'
 // Which declared outputs matched nothing where a remote executor ran the
-// task (`ExecuteResult.outputsMissing`): core's rule, where the files are.
-export { missingOutputs } from './orchestrator/index.js'
+// task (`ExecuteResult.outputsMissing`), and why (`outputsMissingFacts`):
+// core's rule, where the files are.
+export { missingOutputs, outputsMissingFacts } from './orchestrator/index.js'
 // The per-task duration history a `schedule` plugin learns from
 // (`@vzn/vx-history` does; a plugin package reaches core only
 // through this façade, which is what put these here).
@@ -261,6 +264,7 @@ export type {
   ExecuteResult,
   InputFile,
   RunResult,
+  OutputsMissingFacts,
   SandboxViolation,
   TaskInputs,
   ExecuteSandbox,

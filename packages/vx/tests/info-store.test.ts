@@ -2,7 +2,7 @@
 // the one the index last recorded: after HOME moved, info pointed at the
 // old home's store and counted its entries while a run opened another.
 
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -65,6 +65,25 @@ describe('vx info names the store a run opens', () => {
         cacheStore: string | null
       }
       expect(same.cacheStore).toBe(path.join(before, '.vx', id!, 'cache'))
+    },
+    TIMEOUT,
+  )
+  // A home vx cannot use keeps the entries in the cache dir (store-index.ts).
+  // Info named that dir the store "shared by this workspace's checkouts".
+  it(
+    'a home that is not a directory is no shared store',
+    async () => {
+      const home = path.join(homes[0]!, 'file')
+      writeFileSync(home, '')
+      expect((await vx(['run', 'build', '--all'], home)).code).toBe(0)
+      const facts = JSON.parse((await vx(['info', '--format', 'json'], home)).out) as {
+        cacheStore: string | null
+        cacheEntries: number
+      }
+      expect(facts).toMatchObject({ cacheStore: null, cacheEntries: 1 })
+      const text = (await vx(['info'], home)).out
+      expect(text).toContain('cache store       none: the cache dir holds the entries')
+      expect(text).not.toContain('shared by')
     },
     TIMEOUT,
   )

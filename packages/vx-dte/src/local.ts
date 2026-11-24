@@ -3,7 +3,7 @@
 // loopback. For tests, demos
 // and trying a distributed run before a CI starts the workers.
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -99,11 +99,21 @@ export function local(options: LocalOptions = {}): DteAdapter {
         if (closed) return
         // The run's own snapshot: one taken here, after a hit restored a
         // committed file, was another tree, and every worker was refused.
-        const add = await run(
-          ['git', 'worktree', 'add', '-q', '--detach', dir, a.commit],
-          a.workspaceRoot,
-          { ...repoEnv(a.workspaceRoot), GIT_INDEX_FILE: undefined },
-        )
+        const adding = () =>
+          run(['git', 'worktree', 'add', '-q', '--detach', dir, a.commit], a.workspaceRoot, {
+            ...repoEnv(a.workspaceRoot),
+            GIT_INDEX_FILE: undefined,
+          })
+        let add = await adding()
+        // Added beside another worker's, git read that one's record half
+        // written and refused before making anything ("failed to read
+        // .git/worktrees/1/commondir: Success"): that worker never joined
+        // (2026-11-24). Asked again, it reads the record whole.
+        for (let i = 1; i <= 3 && add.code !== 0 && OTHER_RECORD.test(add.err); i++) {
+          if (existsSync(dir) || closed) break
+          await Bun.sleep(50 * i)
+          add = await adding()
+        }
         if (add.code !== 0) throw new Error(`git worktree add: ${errorLine(add.err)}`)
         // The workspace's own place in the checkout: from the worktree's root,
         // a workspace in a subdirectory of its repository had no
@@ -131,12 +141,14 @@ export function local(options: LocalOptions = {}): DteAdapter {
         // Every end reported, a start that threw too: one lost left the run
         // waiting for good on a worker that never joined.
         void run([...vx(), 'dte', 'worker'], at, env, false)
+          // After close, the stop ended it: no reason is reported, so none is
+          // written (a stopped run left a `vx-dte-logs-*` dir in TMPDIR).
           .then(
-            (r) => why(`exited ${r.code}`, a.id, r.err),
+            (r) => (closed ? undefined : why(`exited ${r.code}`, a.id, r.err)),
             (err: Error) => `could not start: ${err.message}`,
           )
           .then((reason) => {
-            if (!closed) a.exited(reason)
+            if (!closed && reason !== undefined) a.exited(reason)
           })
       })()
       pending.add(work)
@@ -201,6 +213,8 @@ rm -rf "$d"; for r; do git -C "$r" worktree prune; done`
 
 const BASE_PREFIX = 'vx-dte-'
 const OWNER = 'owner'
+/** Git's refusal over another worktree's record, as one being added leaves it. */
+const OTHER_RECORD = /failed to read \S*worktrees\//
 /** `mkdtemp`'s name: the prefix and six characters. */
 const OWN_BASE = new RegExp(`^${BASE_PREFIX}[A-Za-z0-9]{6}$`)
 

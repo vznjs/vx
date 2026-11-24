@@ -430,6 +430,29 @@ describe('OTLP builders', () => {
     expect([exit('skipped'), exit('failed')]).toEqual([undefined, '1'])
   })
 
+  // The README says a skipped task, an aborted one and a failed restore carry
+  // no vx.cache.source; their spans said `none`, a value the attribute lists
+  // nowhere (miss, local or remote).
+  it('a task that never engaged the cache carries no cache source', () => {
+    const t: TaskTelemetry = {
+      taskId: 'b#build',
+      project: 'b',
+      task: 'build',
+      status: 'skipped',
+      cacheSource: 'none',
+      exitCode: 1,
+      durationMs: 0,
+    }
+    const source = (over: Partial<TaskTelemetry>): unknown =>
+      attrMap(taskSpanAttributes({ ...t, ...over }, TASK_RUN))['vx.cache.source']
+    expect([
+      source({}),
+      source({ status: 'aborted' as TaskTelemetry['status'] }),
+      source({ status: 'failed' }),
+      source({ status: 'success', cacheSource: 'miss' }),
+    ]).toEqual([undefined, undefined, undefined, 'miss'])
+  })
+
   it('surfaces retry attempts on the task span', () => {
     const t: TaskTelemetry = {
       taskId: 'a#flaky',
@@ -620,6 +643,57 @@ describe('OtelSink end-to-end', () => {
     }
     const point = metrics.resourceMetrics[0]!.scopeMetrics[0]!.metrics[0]!.sum!.dataPoints[0]!
     expect([point.startTimeUnixNano, point.timeUnixNano]).toEqual(['0', '100000000'])
+  })
+
+  // A vx-dte task waited 3 s for a worker after it started here: its span
+  // read 3.4 s for a 0.3 s task. The wait is its queue time.
+  it("starts a task's span after an executor's wait for a machine", async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    const rec = (r: Record<string, unknown>) =>
+      sink.onRecord({ v: 3, runId: 'r', ...r } as TelemetryRecord)
+    rec({ kind: 'run.start', run: RUN, total: 2, ts: 0, startedAt: 0 })
+    for (const id of ['a#build', 'a#lint'])
+      rec({ kind: 'task.start', taskId: id, project: 'a', task: id.slice(2), ts: 1000 })
+    const end = (taskId: string, extra: Partial<TaskTelemetry>) => ({
+      kind: 'task.end',
+      taskId,
+      project: 'a',
+      task: taskId.slice(2),
+      cacheSource: 'miss',
+      exitCode: 0,
+      status: 'success',
+      ts: 4500,
+      durationMs: 300,
+      ...extra,
+    })
+    rec(
+      end('a#build', {
+        queuedMs: 3000,
+        wallclockStartNs: '4000000000',
+        wallclockEndNs: '4500000000',
+      }),
+    )
+    // CONTROL: one that waited for no machine keeps its start.
+    rec(end('a#lint', { wallclockStartNs: '1000000000', wallclockEndNs: '4500000000' }))
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    const spans = (
+      calls.find((c) => c.url.endsWith('/v1/traces'))!.body as {
+        resourceSpans: {
+          scopeSpans: {
+            spans: {
+              name: string
+              startTimeUnixNano: string
+              attributes: { key: string; value: { stringValue?: string } }[]
+            }[]
+          }[]
+        }[]
+      }
+    ).resourceSpans[0]!.scopeSpans[0]!.spans.filter((s) => s.name === 'vx.task')
+    const startOf = (id: string) =>
+      spans.find((s) => s.attributes.some((a) => a.value.stringValue === id))!.startTimeUnixNano
+    expect([startOf('a#build'), startOf('a#lint')]).toEqual(['4000000000', '1000000000'])
   })
 
   it("charts each task: its totals at the end, and its tree's CPU usage and memory as it ran", async () => {
@@ -1039,6 +1113,7 @@ const FULL_TASK: Required<TaskTelemetry> = {
   attempts: 2,
   blockedBy: 'lib#build',
   timedOut: true,
+  outputsMissing: ['dist/**', 'types/*.d.ts'],
   carried: true,
   otherPlatform: { needs: ['darwin-arm64'], host: 'linux-x64' },
   sandboxViolations: 2,
@@ -1149,6 +1224,7 @@ describe('OTLP losslessness', () => {
       'notReady',
       'otherPlatform',
       'outputs',
+      'outputsMissing',
       'peakRssBytes',
       'project',
       'queuedMs',
@@ -1325,6 +1401,9 @@ describe('OTLP losslessness', () => {
     expect(a['vx.task.platforms_needed']).toEqual({ values: [{ stringValue: 'darwin-arm64' }] })
     expect(a['vx.task.platform_host']).toBe('linux-x64')
     expect(a['vx.task.timed_out']).toBe(true)
+    expect(a['vx.task.outputs_missing']).toEqual({
+      values: [{ stringValue: 'dist/**' }, { stringValue: 'types/*.d.ts' }],
+    })
     expect(a['vx.task.sandbox_violations']).toBe('2')
     expect(a['vx.task.not_ready']).toBe('timeout')
     expect(a['vx.cache.restored']).toBe(true)
@@ -3120,6 +3199,24 @@ describe('signals link to each other', () => {
       name: 'vx.sandbox.violations_dropped',
       attributes: [{ key: 'vx.sandbox.violations_dropped', value: { intValue: '3' } }],
     })
+  })
+
+  it('a task span keeps within the 128 events a collector keeps, however many retries', () => {
+    // `retries` has no maximum: 150 retry events pushed the timeout, the
+    // violations and their dropped count past the limit, cut unsaid.
+    const failedAttempts = Array.from({ length: 150 }, (_, i) => ({ endedAt: i, exitCode: 1 }))
+    const lines = Array.from({ length: 103 }, (_, i) => `deny file-read /x${i}`)
+    const events = taskSpanEvents(
+      { ...FULL_TASK, failedAttempts, sandboxViolationLines: lines },
+      '7',
+    )
+    expect(events.length).toBeLessThanOrEqual(128)
+    expect(events.filter((e) => e.name === 'vx.task.retry')).toHaveLength(20)
+    expect(events.find((e) => e.name === 'vx.task.retries_dropped')?.attributes).toEqual([
+      { key: 'vx.task.retries_dropped', value: { intValue: '130' } },
+    ])
+    expect(events.some((e) => e.name === 'vx.task.timeout')).toBe(true)
+    expect(events.at(-1)?.name).toBe('vx.sandbox.violations_dropped')
   })
 })
 

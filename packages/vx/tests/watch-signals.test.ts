@@ -1,4 +1,4 @@
-// `vx watch` owns SIGINT/SIGTERM for its lifetime and exits 0 on either.
+// `vx watch` owns SIGINT/SIGTERM/SIGHUP for its lifetime and exits 0 on each.
 // What that must include: the cycle in flight — its children are torn
 // down (SIGTERM, grace, SIGKILL) before the process goes. Until
 // 2026-09-10 the handlers were installed after the initial run, so a
@@ -107,7 +107,7 @@ describe('vx watch under a signal (e2e)', () => {
     const quick = Bun.spawnSync([process.execPath, BIN, 'run', 'quick', '--all'], { cwd: root })
     expect(quick.exitCode).toBe(0)
     expect(list()).toEqual(['ok'])
-    for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
       await rm(path.join(dir, 'pid.txt'), { force: true })
       const proc = Bun.spawn([process.execPath, BIN, 'watch', 'slow', '--all'], {
         cwd: root,

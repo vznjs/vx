@@ -1,6 +1,6 @@
-// A declared output that matches no files after the command exits 0 fails
-// the task: an empty artifact replayed by every later hit reads as a build
-// that ran (M 2026-11-22: every declared output is required).
+// A literal output that matches no files after the command exits 0 fails
+// the task, and so do outputs that matched nothing at all: an empty artifact
+// replayed by every later hit reads as a build that ran (M 2026-11-23).
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -59,6 +59,8 @@ describe('a declared literal output that matches no files', () => {
         optional: { exec: { command: 'mkdir -p opt && echo x > opt/a.js' },
           inputs: { files: ['src/**'] }, outputs: { files: ['.next/**', 'opt/**', '*.tsbuildinfo'] }, cache: true },
         uncached: { exec: { command: 'true' }, outputs: { files: ['gone'] } },
+        typo: { exec: { command: 'mkdir -p typo && echo x > typo/index.js' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['typo/main.js'] }, cache: true },
         wild: { exec: { command: 'true' },
           inputs: { files: ['src/**'] }, outputs: { files: ['lost1/**', 'lost2/**'] }, cache: true },
         partial: { exec: { command: 'echo x > partial.info' },
@@ -76,6 +78,10 @@ describe('a declared literal output that matches no files', () => {
           inputs: { files: ['src/**'] }, outputs: { files: ['void/**'] }, cache: true },
         dirsonly: { exec: { command: 'mkdir -p gen/a/b' },
           inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] }, cache: true },
+        slashfile: { exec: { command: 'echo x > out2' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['out2/'] }, cache: true },
+        slashdir: { exec: { command: 'mkdir -p out3 && echo x > out3/a' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['out3/'] }, cache: true },
         noop: { exec: { command: 'true' },
           inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
       } }\n`,
@@ -91,10 +97,24 @@ describe('a declared literal output that matches no files', () => {
     expect(first.ok).toBe(false)
     expect(first.status).toBe('failed')
     expect(first.lines).toEqual([
-      '[vx] app#lost: outputs matched no files (build/index.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
+      '[vx] app#lost: outputs matched no files (build/index.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it',
     ])
     // Nothing was saved: the next run runs the command again and fails again.
     expect((await runTask('lost')).status).toBe('failed')
+  })
+
+  // A trailing slash names a folder: a file of that name is no match (M 2026-11-24).
+  it('fails a trailing-slash output written as a file, saying so', async () => {
+    const r = await runTask('slashfile')
+    expect(r.status).toBe('failed')
+    expect(r.lines).toEqual([
+      expect.stringContaining(
+        'app#slashfile: outputs matched no files (out2/) — the command exited 0 but never wrote it',
+      ),
+    ])
+    expect(r.lines[0]).toContain('— a folder was declared, a file was written: out2')
+    const d = await runTask('slashdir')
+    expect([d.ok, d.lines]).toEqual([true, []])
   })
 
   it('fails an uncached task too', async () => {
@@ -103,7 +123,17 @@ describe('a declared literal output that matches no files', () => {
     expect(r.lines).toHaveLength(1)
   })
 
+  // Nx and Turbo cache whichever outputs exist; vx fails a task that wrote
+  // none, and an Nx test target's coverage dir failed every run without
+  // coverage. The line says what to do; a task that wrote some is not told.
   it('names only the literal that matched nothing', async () => {
+    expect((await runTask('partial')).lines[0]).not.toContain('it wrote none of its outputs')
+    // A mistyped path beside what it wrote is not a sometimes-output.
+    expect((await runTask('typo')).lines).toEqual([
+      expect.stringMatching(
+        /app#typo: outputs matched no files \(typo\/main\.js\) — .*fix the pattern$/,
+      ),
+    ])
     expect((await runTask('partial')).lines).toEqual([
       expect.stringContaining('app#partial: outputs matched no files (emit/a.js) —'),
     ])
@@ -145,7 +175,7 @@ describe('a declared literal output that matches no files', () => {
   // focused run, red inside a frame.
   it('is a warning: tagged in colour, plain without it, never task output', async () => {
     const body =
-      ' app#lost: outputs matched no files (build/index.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern'
+      ' app#lost: outputs matched no files (build/index.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it'
     for (const enabled of [true, false]) {
       const out: string[] = []
       const err: string[] = []

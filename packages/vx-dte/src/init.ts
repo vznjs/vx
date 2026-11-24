@@ -243,8 +243,8 @@ export function githubInit(options: GithubOptions, setup: DteSetup): DteInit {
     ...installLines(setup.manager).map((l) => `      - run: ${l}`),
   ]
   const text = `# Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
-# DTE run, which github() dispatches once per size. Run vx dte init
-# again after changing the sizes.
+# DTE run, which github() dispatches once per size. After changing the
+# sizes, run vx dte init --force.
 name: vx-worker
 
 on:

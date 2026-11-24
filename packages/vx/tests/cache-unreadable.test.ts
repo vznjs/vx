@@ -84,6 +84,25 @@ describe('an unreadable cache index is refused by name, not with a stack', () =>
     expect(open(false)).toBeNull()
     expect(open(true)).toBeNull()
   })
+
+  // Held past the open's 5 s busy_timeout (a tool with it open, a stuck
+  // process): `vx last` printed SQLiteError "database is locked" and a stack.
+  it('an index another connection holds locked past the wait, for a run and for a reading verb', () => {
+    new Cache(dir).close()
+    const holder = new Database(db)
+    holder.exec('PRAGMA journal_mode = DELETE')
+    holder.exec('BEGIN EXCLUSIVE')
+    try {
+      const locked =
+        `the cache index ${db} is locked: another process held it past 5s ` +
+        `(database is locked) — re-run once it lets go`
+      expect(open(false)).toBe(locked)
+      expect(open(true)).toBe(locked)
+    } finally {
+      holder.exec('ROLLBACK')
+      holder.close()
+    }
+  }, 30_000)
 })
 
 describe('an index corrupt past the pages the open reads', () => {

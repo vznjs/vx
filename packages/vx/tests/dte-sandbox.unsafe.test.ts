@@ -21,7 +21,7 @@ describe.skipIf(!available)('a sandboxed task on a worker', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-sb-'))
     const files: Record<string, string> = {
       'package.json': JSON.stringify({ name: 'ws', private: true }),
-      '.gitignore': 'out\nstamp\nraw.txt\n.vx/cache\n',
+      '.gitignore': 'out\nstamp\nraw.txt\nstray.txt\nres.txt\nfolder\n.vx/cache\n',
       '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
 export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1, cpu: 2, memory: '1GB' } } } }, adapter: local() })] }
 `,
@@ -73,6 +73,12 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
     inputs: { files: ['vx.config.mjs'] },
     outputs: { files: ['stamp'] },
     cache: true,
+  },
+  slow: { exec: { command: 'sleep 5', timeout: '1s' } },
+  none: { exec: { command: 'true' }, outputs: { files: ['cov/'] } },
+  asfile: { exec: { command: 'echo x > folder' }, outputs: { files: ['folder/'] } },
+  stray: {
+    exec: { command: 'echo x > stray.txt; exit 0', sandbox: { allow: { read: ['.'], write: ['res.txt'] } } },
   },
   peek: {
     exec: { command: 'cat ../secret/s.txt', sandbox: { allow: { read: ['.'] } } },
@@ -144,6 +150,36 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
     const out = r.stdout.toString() + r.stderr.toString()
     expect([r.exitCode, out]).toEqual([0, expect.stringContaining('after:RAW')])
     expect(await readFile(path.join(root, 'a/raw.txt'), 'utf8')).toBe('RAW\n')
+  }, 60_000)
+
+  // The fix was worked out against this checkout's disk, where the write
+  // the worker's bind let through never landed: it read the file as one vx
+  // would make empty before the run and granted the whole project, `'.'`.
+  it('names the same narrow write grant as a run here', () => {
+    const r = vx(['run', 'a#stray'], crypto.randomUUID())
+    const out = r.stdout.toString() + r.stderr.toString()
+    expect(r.exitCode).not.toBe(0)
+    expect(out).toContain("fix: exec.sandbox.allow: { write: ['stray.txt'] }")
+  }, 60_000)
+
+  // Worked out against this checkout's disk, where the worker's writes
+  // never land: the reasons a run here gives were left off.
+  it('says why outputs matched nothing as a run here does', () => {
+    const said = (task: string) => {
+      const r = vx(['run', `a#${task}`], crypto.randomUUID())
+      return r.stdout.toString() + r.stderr.toString()
+    }
+    expect(said('none')).toContain('— it wrote none of its outputs:')
+    expect(said('asfile')).toContain('— a folder was declared, a file was written: folder')
+  }, 60_000)
+
+  // The worker reports the signal it sent, as a run here knows it: the
+  // line said only "as its executor reported".
+  it('says how a timed-out task was stopped, as a run here does', () => {
+    const r = vx(['run', 'a#slow'], crypto.randomUUID())
+    expect(r.stdout.toString() + r.stderr.toString()).toContain(
+      '[vx] timed out after 1000ms — killed (SIGTERM)',
+    )
   }, 60_000)
 
   it('fails a read outside its grants, naming this checkout', () => {

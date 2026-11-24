@@ -312,6 +312,47 @@ describe('Cache.prune', () => {
     }
   })
 
+  // A sparse output and a hard-linked pair take a few blocks in the
+  // workspace, but the store holds each whole and apart: the entry's size
+  // is what its tree takes, or `--max-size` undercounts the store.
+  it('an entry counts the blocks its stored tree takes, holes filled and links apart', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      const sparse = path.join(projectDir, 'dist', 'disk.img')
+      await writeFile(sparse, 'x')
+      Bun.spawnSync(['truncate', '-s', '8M', sparse])
+      const a = path.join(projectDir, 'dist', 'a.bin')
+      await writeFile(a, crypto.getRandomValues(new Uint8Array(64 * 1024)))
+      const b = path.join(projectDir, 'dist', 'b.bin')
+      Bun.spawnSync(['ln', a, b])
+      const hash = '00000000000000c1'
+      await cache.save({
+        hash,
+        projectDir,
+        outputFiles: [sparse, a, b],
+        entry: { taskId: `p#${hash}`, command: 'echo', durationMs: 1, stdout: '' },
+      })
+      const du = (p: string): number => {
+        const st = lstatSync(p)
+        return st.isDirectory()
+          ? readdirSync(p).reduce((n, e) => n + du(path.join(p, e)), diskBytes(st))
+          : diskBytes(st)
+      }
+      const row = indexDb(cache)
+        .query('SELECT size_bytes FROM entries WHERE hash = ?')
+        .get(hash) as {
+        size_bytes: number
+      }
+      const tree = path.join(cacheDir, `${hash}.tree`)
+      expect(row.size_bytes).toBe(du(tree))
+      // The whole length and both copies: the workspace's few blocks would undercount.
+      expect(row.size_bytes).toBeGreaterThanOrEqual(8 * 1024 * 1024 + 2 * 64 * 1024)
+      expect(statSync(path.join(tree, 'dist', 'a.bin')).nlink).toBe(1)
+    } finally {
+      cache.close()
+    }
+  })
+
   it('a row-less artifact counts toward maxSize, oldest use first with the rows', async () => {
     const cache = new Cache(
       cacheDir,

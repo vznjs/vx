@@ -110,6 +110,21 @@ describe('sandboxFix', () => {
     ).toEqual({ network: ['npmjs.org'] })
   })
 
+  // A loopback host passes only an entry naming its port: the fix named
+  // `0.0.0.0` (every port this machine listens on) or `::ffff:7f00:1`,
+  // which a lock refuses.
+  it('suggests a loopback host as localhost with its port', () => {
+    const net = (host: string) =>
+      v(
+        `deny network-outbound ${host}:4173 (a loopback host is reached only on a port the list names)`,
+        ['network'],
+        `${host}:4173`,
+      )
+    expect(sandboxFix([net('0.0.0.0'), net('::ffff:7f00:1'), net('localhost')], dir, dir)).toEqual({
+      network: ['localhost:4173'],
+    })
+  })
+
   it('grants a write under a read input as the file alone', () => {
     const write = (p: string) => v('deny(1) file-write-create', ['write'], path.join(dir, p))
     const denials = [write('src/gen.js'), write('dist/a.js'), write('lib/x.js')]
@@ -139,6 +154,21 @@ describe('sandboxFix', () => {
     // CONTROL: every read keyed, and a task with no cache, name none.
     expect(sandboxFix(denials, dir, dir, undefined, { files: ['**'] })?.inputs).toBeUndefined()
     expect(sandboxFix(denials, dir, dir)?.inputs).toBeUndefined()
+  })
+
+  // Vite probes `public` with `access`: with `public/**` already an input,
+  // the fix told the user to add `public` to inputs.files, which keys nothing
+  // more.
+  it('names no input for a directory whose contents the inputs already key', () => {
+    mkdirSync(path.join(dir, 'public'))
+    const denials = [v('access(public) = -1 ENOENT', ['read', 'write'], path.join(dir, 'public'))]
+    const fix = sandboxFix(denials, dir, dir, undefined, { files: ['src/**', 'public/**'] })
+    expect(fix?.read).toEqual(['public'])
+    expect(fix?.inputs).toBeUndefined()
+    // CONTROL: inputs that key only part of it still name the directory.
+    expect(sandboxFix(denials, dir, dir, undefined, { files: ['public/*.svg'] })?.inputs).toEqual([
+      'public',
+    ])
   })
 
   // A read elsewhere in the workspace was granted by its absolute path,

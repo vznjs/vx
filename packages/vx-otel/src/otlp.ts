@@ -141,6 +141,7 @@ const VX_ATTR = {
   taskPlatformsNeeded: 'vx.task.platforms_needed',
   taskPlatformHost: 'vx.task.platform_host',
   taskTimedOut: 'vx.task.timed_out',
+  taskOutputsMissing: 'vx.task.outputs_missing',
   taskSandboxViolations: 'vx.task.sandbox_violations',
   taskNotReady: 'vx.task.not_ready',
   taskOutputs: 'vx.task.outputs',
@@ -169,6 +170,7 @@ const VX_ATTR = {
   storedPeakRssBytes: 'vx.cache.stored_peak_rss_bytes',
   sandboxViolation: 'vx.sandbox.violation',
   sandboxViolationsDropped: 'vx.sandbox.violations_dropped',
+  retriesDropped: 'vx.task.retries_dropped',
   stageName: 'vx.stage.name',
   wallclockStartNs: 'vx.task.wallclock_start_ns',
   wallclockEndNs: 'vx.task.wallclock_end_ns',
@@ -218,7 +220,8 @@ interface OtlpSpanLink {
  * (`vx.sandbox.violation`, its line).
  */
 export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanEvent[] {
-  const events: OtlpSpanEvent[] = (t.failedAttempts ?? []).map((a, i) => ({
+  const attempts = t.failedAttempts ?? []
+  const events: OtlpSpanEvent[] = attempts.slice(0, MAX_RETRY_EVENTS).map((a, i) => ({
     timeUnixNano: String(Math.trunc(a.endedAt) * 1_000_000),
     name: 'vx.task.retry',
     attributes: [
@@ -227,6 +230,14 @@ export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanE
       ...(a.timedOut === true ? [boolAttr(VX_ATTR.taskTimedOut, true)] : []),
     ],
   }))
+  if (attempts.length > MAX_RETRY_EVENTS) {
+    const last = attempts.at(-1)!
+    events.push({
+      timeUnixNano: String(Math.trunc(last.endedAt) * 1_000_000),
+      name: VX_ATTR.retriesDropped,
+      attributes: [intAttr(VX_ATTR.retriesDropped, attempts.length - MAX_RETRY_EVENTS)],
+    })
+  }
   if (t.timedOut === true) {
     events.push({ timeUnixNano: endUnixNano, name: 'vx.task.timeout', attributes: [] })
   }
@@ -248,8 +259,13 @@ export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanE
   return events
 }
 
-/** A collector keeps 128 events per span by default; the rest say how many they were. */
+/**
+ * A collector keeps 128 events per span by default; the rest say how many
+ * they were. `retries` has no maximum, so retries get their own share:
+ * 20 + 1 dropped + 1 timeout + 100 + 1 dropped stays under it.
+ */
 const MAX_VIOLATION_EVENTS = 100
+const MAX_RETRY_EVENTS = 20
 
 /**
  * A child span of the run for one of its stages (`VX_DEBUG_TIMING`'s marks):
@@ -506,9 +522,11 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
     intAttr(VX_ATTR.taskRunStartedAt, run.startedAt),
     strAttr(VX_ATTR.taskProject, t.project),
     strAttr(VX_ATTR.taskTask, t.task),
-    strAttr(VX_ATTR.cacheSource, t.cacheSource),
     intAttr(VX_ATTR.taskDurationMs, t.durationMs),
   ]
+  // `none` is core's word for a task that never engaged the cache (skipped,
+  // aborted, a restore that threw): no source, as the README says.
+  if (t.cacheSource !== 'none') attrs.push(strAttr(VX_ATTR.cacheSource, t.cacheSource))
   // A skipped task never ran: core's 1 (blocked) or 0 (other platform) is
   // no process's exit.
   if (t.status !== 'skipped') attrs.push(intAttr(VX_ATTR.taskExitCode, t.exitCode))
@@ -529,6 +547,10 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
   }
   // vx's own deadline killed the task: the 143 is a timeout, not a signal.
   if (t.timedOut === true) attrs.push(boolAttr(VX_ATTR.taskTimedOut, true))
+  // The command exited 0 and these declared outputs matched no file: the
+  // exit code 1 is vx's.
+  if (t.outputsMissing !== undefined)
+    attrs.push(strArrayAttr(VX_ATTR.taskOutputsMissing, t.outputsMissing))
   if (t.sandboxViolations !== undefined)
     attrs.push(intAttr(VX_ATTR.taskSandboxViolations, t.sandboxViolations))
   // Why a persistent task never became ready ('timeout' | 'exited' | 'spawn').
@@ -730,33 +752,58 @@ function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
     strAttr(VX_ATTR.taskProject, project),
     strAttr(VX_ATTR.taskTask, task),
   ]
-  const exemplars = (p: TaskMetricPoint, value: number, timeUnixNano: string) =>
-    p.span === undefined
-      ? {}
-      : { exemplars: [{ timeUnixNano, asDouble: value, filteredAttributes: [], ...p.span }] }
+  // One task's points share its attribute array: the JSON is the same, and
+  // up to nine copies a task were 10k tasks' largest allocation.
+  const exemplars = (
+    span: { traceId: string; spanId: string },
+    value: number,
+    timeUnixNano: string,
+  ) => [
+    {
+      timeUnixNano,
+      asDouble: value,
+      filteredAttributes: [],
+      traceId: span.traceId,
+      spanId: span.spanId,
+    },
+  ]
   for (const p of points) {
+    const span = p.span
     if (p.kind === 'sample') {
-      const at = (value: number) => ({
-        asDouble: value,
-        timeUnixNano: p.timeUnixNano,
-        attributes: taskAttrs(p.taskId, p.project, p.task),
-        ...exemplars(p, value, p.timeUnixNano),
-      })
+      const attributes = taskAttrs(p.taskId, p.project, p.task)
+      const at = (value: number) =>
+        span === undefined
+          ? { asDouble: value, timeUnixNano: p.timeUnixNano, attributes }
+          : {
+              asDouble: value,
+              timeUnixNano: p.timeUnixNano,
+              attributes,
+              exemplars: exemplars(span, value, p.timeUnixNano),
+            }
       add('vx.task.cpu_usage', '1', at(p.cpuUsage))
       add('vx.task.memory', 'By', at(p.rssBytes))
       continue
     }
     const t = p.task
-    const at = (value: number) => ({
-      asDouble: value,
-      startTimeUnixNano: p.startUnixNano,
-      timeUnixNano: p.endUnixNano,
-      attributes: [
-        ...taskAttrs(t.taskId, t.project, t.task),
-        strAttr(VX_ATTR.cacheSource, t.cacheSource),
-      ],
-      ...exemplars(p, value, p.endUnixNano),
-    })
+    const attributes = [
+      ...taskAttrs(t.taskId, t.project, t.task),
+      strAttr(VX_ATTR.cacheSource, t.cacheSource),
+    ]
+    const at = (value: number) =>
+      span === undefined
+        ? {
+            asDouble: value,
+            startTimeUnixNano: p.startUnixNano,
+            timeUnixNano: p.endUnixNano,
+            attributes,
+          }
+        : {
+            asDouble: value,
+            startTimeUnixNano: p.startUnixNano,
+            timeUnixNano: p.endUnixNano,
+            attributes,
+            exemplars: exemplars(span, value, p.endUnixNano),
+          }
     add('vx.task.duration', 'ms', at(t.durationMs))
     if (t.cpuMs !== undefined) add('vx.task.cpu_time', 'ms', at(t.cpuMs))
     if (t.peakRssBytes !== undefined) add('vx.task.peak_memory', 'By', at(t.peakRssBytes))

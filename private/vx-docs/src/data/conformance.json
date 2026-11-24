@@ -1018,18 +1018,18 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2134,
-        "can": 2134,
-        "of": 2203
+        "pass": 2144,
+        "can": 2144,
+        "of": 2214
       },
       "correctness": {
-        "pass": 1719,
-        "can": 1719,
-        "of": 1780
+        "pass": 1730,
+        "can": 1730,
+        "of": 1791
       },
       "efficiency": {
-        "pass": 326,
-        "can": 326,
+        "pass": 325,
+        "can": 325,
         "of": 333
       },
       "data": {
@@ -1038,9 +1038,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 313,
-        "can": 313,
-        "of": 320
+        "pass": 314,
+        "can": 314,
+        "of": 321
       },
       "config": {
         "pass": 88,
@@ -1048,9 +1048,9 @@
         "of": 88
       },
       "failure": {
-        "pass": 155,
-        "can": 155,
-        "of": 167
+        "pass": 157,
+        "can": 157,
+        "of": 169
       },
       "affected": {
         "pass": 186,
@@ -1063,19 +1063,19 @@
         "of": 128
       },
       "inputs": {
-        "pass": 479,
-        "can": 479,
-        "of": 491
+        "pass": 481,
+        "can": 481,
+        "of": 494
+      },
+      "outputs": {
+        "pass": 308,
+        "can": 308,
+        "of": 319
       },
       "env": {
         "pass": 146,
         "can": 146,
         "of": 149
-      },
-      "outputs": {
-        "pass": 303,
-        "can": 303,
-        "of": 314
       },
       "report": {
         "pass": 89,
@@ -1095,14 +1095,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 1392,
-        "can": 1804,
-        "of": 2203
+        "pass": 1397,
+        "can": 1814,
+        "of": 2214
       },
       "correctness": {
-        "pass": 1118,
-        "can": 1457,
-        "of": 1780
+        "pass": 1123,
+        "can": 1467,
+        "of": 1791
       },
       "efficiency": {
         "pass": 244,
@@ -1115,9 +1115,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 197,
-        "can": 269,
-        "of": 320
+        "pass": 198,
+        "can": 270,
+        "of": 321
       },
       "config": {
         "pass": 56,
@@ -1126,8 +1126,8 @@
       },
       "failure": {
         "pass": 61,
-        "can": 105,
-        "of": 167
+        "can": 107,
+        "of": 169
       },
       "affected": {
         "pass": 144,
@@ -1140,19 +1140,19 @@
         "of": 128
       },
       "inputs": {
-        "pass": 340,
-        "can": 475,
-        "of": 491
+        "pass": 342,
+        "can": 478,
+        "of": 494
+      },
+      "outputs": {
+        "pass": 236,
+        "can": 305,
+        "of": 319
       },
       "env": {
         "pass": 133,
         "can": 137,
         "of": 149
-      },
-      "outputs": {
-        "pass": 234,
-        "can": 301,
-        "of": 314
       },
       "report": {
         "pass": 30,
@@ -1172,14 +1172,14 @@
     },
     "nx": {
       "all": {
-        "pass": 1392,
-        "can": 1839,
-        "of": 2203
+        "pass": 1395,
+        "can": 1849,
+        "of": 2214
       },
       "correctness": {
-        "pass": 1079,
-        "can": 1482,
-        "of": 1780
+        "pass": 1082,
+        "can": 1492,
+        "of": 1791
       },
       "efficiency": {
         "pass": 283,
@@ -1192,9 +1192,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 231,
-        "can": 270,
-        "of": 320
+        "pass": 232,
+        "can": 271,
+        "of": 321
       },
       "config": {
         "pass": 39,
@@ -1202,9 +1202,9 @@
         "of": 88
       },
       "failure": {
-        "pass": 83,
-        "can": 115,
-        "of": 167
+        "pass": 84,
+        "can": 117,
+        "of": 169
       },
       "affected": {
         "pass": 124,
@@ -1218,18 +1218,18 @@
       },
       "inputs": {
         "pass": 346,
-        "can": 491,
-        "of": 491
+        "can": 494,
+        "of": 494
+      },
+      "outputs": {
+        "pass": 225,
+        "can": 305,
+        "of": 319
       },
       "env": {
         "pass": 135,
         "can": 146,
         "of": 149
-      },
-      "outputs": {
-        "pass": 224,
-        "can": 301,
-        "of": 314
       },
       "report": {
         "pass": 30,
@@ -1249,14 +1249,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 1026,
-        "can": 1388,
-        "of": 2203
+        "pass": 1028,
+        "can": 1397,
+        "of": 2214
       },
       "correctness": {
-        "pass": 861,
-        "can": 1167,
-        "of": 1780
+        "pass": 863,
+        "can": 1176,
+        "of": 1791
       },
       "efficiency": {
         "pass": 156,
@@ -1271,7 +1271,7 @@
       "graph": {
         "pass": 179,
         "can": 226,
-        "of": 320
+        "of": 321
       },
       "config": {
         "pass": 50,
@@ -1280,8 +1280,8 @@
       },
       "failure": {
         "pass": 62,
-        "can": 83,
-        "of": 167
+        "can": 85,
+        "of": 169
       },
       "affected": {
         "pass": 0,
@@ -1295,18 +1295,18 @@
       },
       "inputs": {
         "pass": 314,
-        "can": 476,
-        "of": 491
+        "can": 479,
+        "of": 494
+      },
+      "outputs": {
+        "pass": 208,
+        "can": 305,
+        "of": 319
       },
       "env": {
         "pass": 133,
         "can": 136,
         "of": 149
-      },
-      "outputs": {
-        "pass": 206,
-        "can": 301,
-        "of": 314
       },
       "report": {
         "pass": 9,
@@ -1326,14 +1326,14 @@
     },
     "nix": {
       "all": {
-        "pass": 1097,
-        "can": 1385,
-        "of": 2203
+        "pass": 1100,
+        "can": 1393,
+        "of": 2214
       },
       "correctness": {
-        "pass": 940,
-        "can": 1189,
-        "of": 1780
+        "pass": 943,
+        "can": 1197,
+        "of": 1791
       },
       "efficiency": {
         "pass": 147,
@@ -1346,9 +1346,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 104,
-        "can": 110,
-        "of": 320
+        "pass": 105,
+        "can": 111,
+        "of": 321
       },
       "config": {
         "pass": 39,
@@ -1356,9 +1356,9 @@
         "of": 88
       },
       "failure": {
-        "pass": 61,
-        "can": 93,
-        "of": 167
+        "pass": 62,
+        "can": 95,
+        "of": 169
       },
       "affected": {
         "pass": 0,
@@ -1372,18 +1372,18 @@
       },
       "inputs": {
         "pass": 346,
-        "can": 434,
-        "of": 491
+        "can": 435,
+        "of": 494
+      },
+      "outputs": {
+        "pass": 234,
+        "can": 312,
+        "of": 319
       },
       "env": {
         "pass": 122,
         "can": 130,
         "of": 149
-      },
-      "outputs": {
-        "pass": 233,
-        "can": 308,
-        "of": 314
       },
       "report": {
         "pass": 10,
@@ -1403,14 +1403,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1278,
-        "can": 1735,
-        "of": 2203
+        "pass": 1283,
+        "can": 1745,
+        "of": 2214
       },
       "correctness": {
-        "pass": 1007,
-        "can": 1416,
-        "of": 1780
+        "pass": 1012,
+        "can": 1426,
+        "of": 1791
       },
       "efficiency": {
         "pass": 236,
@@ -1423,9 +1423,9 @@
         "of": 90
       },
       "graph": {
-        "pass": 186,
-        "can": 242,
-        "of": 320
+        "pass": 187,
+        "can": 243,
+        "of": 321
       },
       "config": {
         "pass": 59,
@@ -1433,9 +1433,9 @@
         "of": 88
       },
       "failure": {
-        "pass": 92,
-        "can": 143,
-        "of": 167
+        "pass": 93,
+        "can": 145,
+        "of": 169
       },
       "affected": {
         "pass": 144,
@@ -1448,19 +1448,19 @@
         "of": 128
       },
       "inputs": {
-        "pass": 349,
-        "can": 491,
-        "of": 491
+        "pass": 350,
+        "can": 494,
+        "of": 494
+      },
+      "outputs": {
+        "pass": 193,
+        "can": 308,
+        "of": 319
       },
       "env": {
         "pass": 138,
         "can": 146,
         "of": 149
-      },
-      "outputs": {
-        "pass": 191,
-        "can": 304,
-        "of": 314
       },
       "report": {
         "pass": 35,
@@ -4845,6 +4845,38 @@
       }
     },
     {
+      "id": "graph/forwarded-args-reach-a-task-named-twice",
+      "ref": "omhs4q",
+      "category": "graph",
+      "kind": "correctness",
+      "title": "Args forwarded to a run naming one task twice reach that one task",
+      "why": "A task name typed twice, from a script that joins two lists or a repeated shell word, is still one task: the run starts it once. Arguments after `--` then have one command to go to, so they reach it. Refusing them as if two tasks were named sends the user hunting for a second task that does not exist.",
+      "from": [
+        "forward-args-one-task"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "`vp run` runs one task name per run."
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "graph/forwarded-args-refused-for-many-projects",
       "ref": "73v3ve",
       "category": "graph",
@@ -5202,6 +5234,37 @@
       "why": "The outer git records a nested repository as one path, or not at all, so it never lists the files inside. A task whose input glob covers them still reads those files. A key built only from the outer repository misses the edit and replays output built from the old content.",
       "from": [
         "workspace-files-nested-repo"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/root-output-into-member-not-dropped",
+      "ref": "llgmwl",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A workspace-root output glob over a member’s folder is restored or refused, never dropped",
+      "why": "A root task may name an output glob that passes through a member’s folder, such as `packages/**/*.log`. If the member boundary quietly drops those files from the saved output, a cache hit restores the rest and reports success while the member’s file is missing. Restoring it or refusing the glob is right; a silent gap is not.",
+      "from": [
+        "root-project"
       ],
       "outcomes": {
         "vx": {
@@ -9172,7 +9235,8 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "`vx lock` refuses a glob that names its way into a nested project (`gen/**` over `gen/sub`), so it never skips that project’s files silently; a `!gen/sub/**` entry takes it back."
         },
         "turbo": {
           "status": "fail",
@@ -10997,6 +11061,43 @@
           "status": "fail",
           "step": 5,
           "detail": "packages/a/out.txt is \"O1\\n\", expected \"O2\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 3,
+          "detail": "exited 100, expected success"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/file-link-into-unrelated-project",
+      "ref": "hjh4u6",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit behind an input link into a project the task does not depend on reruns, or the link is refused",
+      "why": "A link in the inputs can point into another project the task has no dependency on. The task still reads that project’s file, so an edit there must rerun it. A tool that keys the link by the path it names, trusting the other project to key its own files, replays the build made from the old contents. Refusing the link up front, and asking for the dependency, is as good as keying it.",
+      "from": [
+        "linked-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/out.txt is \"B1\\n\", expected \"B2\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/out.txt is \"B1\\n\", expected \"B2\\n\""
         },
         "nix": {
           "status": "fail",
@@ -15587,18 +15688,18 @@
         },
         "turbo": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "nx": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "nix": {
           "status": "fail",
@@ -15678,7 +15779,7 @@
         "moon": {
           "status": "fail",
           "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.txt is missing, expected \"x2\\n\""
+          "detail": "play 1 of 5: packages/a/dist/x.txt is missing, expected \"x2\\n\""
         }
       }
     },
@@ -15698,21 +15799,23 @@
         },
         "turbo": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.js is \"x2\\n\", a stale result"
         },
         "nx": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.js is \"x2\\n\", a stale result"
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.js is \"x2\\n\", a stale result"
         },
         "nix": {
-          "status": "pass"
+          "status": "fail",
+          "step": 7,
+          "detail": "play 1 of 5: packages/a/dist/x.js is missing, expected \"x2\\n\""
         },
         "moon": {
           "status": "fail",
@@ -16410,18 +16513,18 @@
         },
         "turbo": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "nx": {
           "status": "fail",
           "step": 5,
-          "detail": "play 3 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "nix": {
           "status": "fail",
@@ -16430,8 +16533,8 @@
         },
         "moon": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         }
       }
     },
@@ -16687,16 +16790,18 @@
         },
         "nx": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/build/b.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/build/b.js is \"x2\\n\", a stale result"
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/build/b.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/build/b.js is \"x2\\n\", a stale result"
         },
         "nix": {
-          "status": "pass"
+          "status": "fail",
+          "step": 7,
+          "detail": "play 1 of 5: packages/a/build/b.js is missing, expected \"x2\\n\""
         },
         "moon": {
           "status": "fail",
@@ -16787,21 +16892,23 @@
         },
         "turbo": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/b/dist/a.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x2\\n\", a stale result"
         },
         "nx": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x2\\n\", a stale result"
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x2\\n\", a stale result"
         },
         "nix": {
-          "status": "pass"
+          "status": "fail",
+          "step": 7,
+          "detail": "play 1 of 5: packages/b/dist/a.txt is missing, expected \"x2\\n\""
         },
         "moon": {
           "status": "fail",
@@ -17758,6 +17865,41 @@
           "status": "fail",
           "step": 4,
           "detail": "packages/a/lib/dist/stray.js exists, expected none"
+        }
+      }
+    },
+    {
+      "id": "outputs/anywhere-pattern-old-empty-dir-not-cached",
+      "ref": "4cmv40",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An empty directory an older build left under an anywhere-pattern (`**/dist/**`) does not come back with a hit",
+      "why": "A cache entry holds what the task made, not what older builds left behind. `dist/old` predates the run and the task never writes it, so it must not be stored or restored. A tool that cleans only below a fixed folder treats `**/dist/**` as having none, saves the emptied `dist/old`, and recreates it on every hit, on every machine.",
+      "from": [
+        "output-prune-rooted"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },
@@ -28405,6 +28547,43 @@
       }
     },
     {
+      "id": "failure/output-to-full-disk-fails-the-run",
+      "ref": "7qhll6",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A run whose own output cannot be written fails, after the task ran",
+      "why": "When the runner’s output goes to a full disk, every line it prints is lost. Exiting 0 then tells a CI log or a pipe that all went well while nothing of the run reached it. A run that cannot write its output must say so on stderr and fail, as `cat` and other core tools do.",
+      "from": [
+        "disk-full.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "graph/server-after-its-deps-until-stopped",
       "ref": "nfev2o",
       "category": "graph",
@@ -33116,6 +33295,42 @@
       }
     },
     {
+      "id": "outputs/folder-output-written-as-file-fails",
+      "ref": "zzsp6a",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output declared as a folder (`dist/`) that the command wrote as a file fails",
+      "why": "A trailing slash says the output is a folder. A command that writes a file of that name instead did something else: a typo in the tool’s flag, or an archive where a folder was meant. Caching the file replays it to every later run, and the tasks that read `dist/` as a folder break far from the cause.",
+      "from": [
+        "missing-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo’s `outputs` are globs; its docs give a trailing slash no meaning of its own, so `dist/` is not declared a folder."
+        },
+        "nx": {
+          "status": "n/a",
+          "detail": "Nx’s `outputs` name a file or directory path; its docs give a trailing slash no meaning, so nothing declares an output a folder."
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task’s docs give a trailing slash in an output no meaning, so nothing declares an output a folder."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "A derivation’s output is its whole `$out`; there is no output path to declare as a folder."
+        },
+        "moon": {
+          "status": "n/a",
+          "detail": "moon’s `outputs` take files and folders alike; its docs give a trailing slash no meaning of its own, so `dist/` is not declared a folder."
+        }
+      }
+    },
+    {
       "id": "outputs/optional-output-left-unwritten-passes",
       "ref": "hjozhv",
       "category": "outputs",
@@ -37395,6 +37610,121 @@
         "moon": {
           "status": "n/a",
           "detail": "moon keeps no task from files, network or home it never declared."
+        }
+      }
+    },
+    {
+      "id": "outputs/literal-link-outputs-restored",
+      "ref": "f6j2g7",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "Outputs named outright that are links out of the project, or dangling, come back as links",
+      "why": "A link the task writes is an output like any file, whether the pattern names it outright or matches it with a wildcard. One that leads out of its project, or to a file not there yet, is still the link the build made. A tool that stores nothing for it replays an entry without it, and the next run is green with the link gone.",
+      "from": [
+        "output-links"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/up.txt is missing"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dang.txt is missing"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "outputs/emptied-dir-under-rootless-glob-not-replayed",
+      "ref": "p7cjxd",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A directory the last build wrote, under `**/dist/**`, is not replayed by the next build",
+      "why": "The build writes `dist/<name>/a.js`, and renaming the source moves it. The old directory belongs to the old build, so the new build’s replay must not bring it back, empty or not. A tool that stores it gives every later checkout a stale directory the command never made, and a tool reading `dist` sees a module that no longer exists.",
+      "from": [
+        "output-prune-rooted"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/old exists"
+        }
+      }
+    },
+    {
+      "id": "failure/killed-shell-takes-its-children",
+      "ref": "55vcpg",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A task whose shell is killed leaves nothing it started running",
+      "why": "A shell killed by the kernel or a SIGKILL (out of memory, a watchdog) runs no cleanup of its own. What it forked is still the task’s, and the run that started it is the only thing that knows. A tool that lets those children run on leaves a server holding its port and a process writing into the outputs after the run says it failed.",
+      "from": [
+        "dead-shell-group"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 30 s"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: sleep 60"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "left running: sleep 60"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "did not finish within 30 s"
         }
       }
     },
@@ -51023,7 +51353,7 @@
         "moon": {
           "status": "fail",
           "step": 1,
-          "detail": "ran a#build, expected it replayed or left out"
+          "detail": "ran a#prep, a#build, expected it replayed or left out"
         }
       }
     },
@@ -77700,6 +78030,84 @@
           "status": "fail",
           "step": 8,
           "detail": "did not run a#build"
+        }
+      }
+    },
+    {
+      "id": "inputs/patch-edit-built-before-install-not-replayed",
+      "ref": "ipe8mb",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A build run after a patch edit but before the install is not replayed once the install applies it",
+      "why": "A pull can change a patch file while the installed package still holds the old patched bytes. A build run then reads the old bytes, but the patch file it is keyed on is already the new one. Stored under that key, the old build comes back after the install, so the patch looks applied when it is not. The tool must refuse to build on the stale install, or keep that result out of the cache.",
+      "from": [
+        "vx-lockfile/bun-patch-installed"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"one\\n\", expected \"two\\n\""
+        }
+      }
+    },
+    {
+      "id": "inputs/first-patch-built-before-install-not-replayed",
+      "ref": "xekvrr",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A build run after a first patch is added but before the install is not replayed once the install applies it",
+      "why": "A pull that adds a patch leaves the unpatched package installed until the next install. A build run in between reads the unpatched bytes under a key that already names the patch. Stored, it comes back after the install and hides the patch entirely. The tool must refuse to build on the stale install, or keep that result out of the cache.",
+      "from": [
+        "vx-lockfile/bun-patch-installed"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"x\\n\", expected \"one\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"x\\n\", expected \"one\\n\""
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Nix reads no package.json or lockfile and installs nothing into node_modules: what a build depends on is written in Nix."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 10,
+          "detail": "packages/a/dist/out.txt is \"x\\n\", expected \"one\\n\""
         }
       }
     },

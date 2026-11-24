@@ -156,10 +156,45 @@ it("the workspace's baseBranch is the default branch a run reads last", async ()
   })
 })
 
+// 2026-11-23: the scope read GitLab's default branch and not the workspace's
+// `baseBranch`, as github() and the refs do: a run on `trunk` got a branch
+// scope, and one on GitLab's `main` got none.
+it("the workspace's baseBranch names the default branch, as it does for the refs", async () => {
+  expect(await branchOf(job('trunk'), {}, 'trunk')).toEqual({ refs: ['refs/heads/trunk'] })
+  expect(await branchOf(job('main'), {}, 'trunk')).toEqual({
+    scope: 'acme/web/app:main',
+    refs: ['refs/heads/main', 'refs/heads/trunk'],
+  })
+})
+
 it('off GitLab CI it declines; with cacheScope: false it names nothing; an unknown option is refused', async () => {
   expect(await branchOf({ CI_PROJECT_PATH: 'a/b', CI_COMMIT_REF_NAME: 'feat' })).toBe('declined')
   expect(await branchOf(job('feat-x'), { cacheScope: false })).toEqual({})
   expect(
     branchOf(job('feat-x'), { cachescope: true } as Parameters<typeof gitlab>[0]),
   ).rejects.toThrow('gitlab()')
+})
+
+// 2026-11-24: a job that lost a predefined variable fell back silently;
+// the variable it missed is named.
+it('a missing predefined variable is named', async () => {
+  const saved = GITLAB_KEYS.map((k) => [k, process.env[k]] as const)
+  for (const k of GITLAB_KEYS) delete process.env[k]
+  Object.assign(process.env, { GITLAB_CI: 'true', CI_DEFAULT_BRANCH: 'main' })
+  const warns: string[] = []
+  try {
+    await gitlab()!.config!(
+      {},
+      { workspaceRoot: '/ws', warn: (m) => warns.push(m), setBranch: () => {} },
+    )
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  }
+  expect(warns).toEqual([
+    '[vx] vx-ci: CI_PROJECT_PATH and CI_COMMIT_REF_NAME are not set, so gitlab() cannot name the branch',
+  ])
+  expect(await branchOf(job('feat-x'))).not.toBe('declined')
 })

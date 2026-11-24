@@ -6,6 +6,11 @@
 // `include` brought in was missing for them. The check runs tsc
 // (`typescript`, a root devDependency for this test alone) over every
 // public entry with `bun init`'s options, from outside the repo's tsconfigs.
+// A strict user's flags too: with `noUnusedLocals` and `noUnusedParameters`
+// (Vite's templates turn both on) tsc failed inside @vzn/vx, vx-lockfile,
+// vx-dte, vx-dte-server and vx-reapi on dead names, and with
+// `noPropertyAccessFromIndexSignature` (@tsconfig/strictest) on 152
+// `process.env.X` reads (hardening, 2026-11-24).
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -25,7 +30,8 @@ function entries(): string[] {
   return out
 }
 
-it("every public entry type-checks under bun init's tsconfig", () => {
+/** What tsc says over every public entry under bun init's options plus `extra`. */
+function check(extra: Record<string, boolean>): { said: string; code: number | null } {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-consumer-types-'))
   try {
     const files = entries()
@@ -51,6 +57,7 @@ it("every public entry type-checks under bun init's tsconfig", () => {
           noImplicitOverride: true,
           typeRoots: [path.join(ROOT, 'node_modules/@types')],
           types: ['bun'],
+          ...extra,
         },
         files,
       }),
@@ -60,10 +67,23 @@ it("every public entry type-checks under bun init's tsconfig", () => {
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    const said = `${tsc.stdout.toString()}${tsc.stderr.toString()}`
-    expect(said).toBe('')
-    expect(tsc.exitCode).toBe(0)
+    return { said: `${tsc.stdout.toString()}${tsc.stderr.toString()}`, code: tsc.exitCode }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
-})
+}
+
+it("every public entry type-checks under bun init's tsconfig", () => {
+  expect(check({})).toEqual({ said: '', code: 0 })
+}, 60_000)
+
+it('every public entry type-checks under a strict user’s flags (@tsconfig/strictest)', () => {
+  expect(
+    check({
+      noUnusedLocals: true,
+      noUnusedParameters: true,
+      exactOptionalPropertyTypes: true,
+      noPropertyAccessFromIndexSignature: true,
+    }),
+  ).toEqual({ said: '', code: 0 })
+}, 60_000)

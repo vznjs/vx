@@ -173,7 +173,7 @@ describe('`^task` needs an edge source', () => {
         const r = await vx(root, ['run', 'build', '--all', '--dry', '--format', 'json'])
         expect([r.code, r.err.split('\n')[2]]).toEqual([
           1,
-          '  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',
+          '  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns `deps`',
         ])
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -196,7 +196,7 @@ describe('`^task` needs an edge source', () => {
         const r = await vx(root, ['run', 'app#build', '--dry', '--format', 'json'])
         expect([r.code, r.err.split('\n')[0]]).toEqual([
           1,
-          '✗ vx run  app#build: app declares no build, so it is the default build, whose ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',
+          '✗ vx run  app#build: app declares no build, so it is the default build, whose ^build needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns `deps`',
         ])
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -233,7 +233,7 @@ describe('`^task` needs an edge source', () => {
         })
         expect([check.exitCode, check.stderr.toString().split('\n')[0]]).toEqual([
           1,
-          '✗ vx lock --check  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',
+          '✗ vx lock --check  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns `deps`',
         ])
       } finally {
         await rm(root, { recursive: true, force: true })

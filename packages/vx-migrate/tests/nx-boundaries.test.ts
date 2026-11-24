@@ -41,6 +41,8 @@ export default [
             { allSourceTags: ['a', 'b'], onlyDependOnLibsWithTags: ['c'] },
             { sourceTag: '/^x/', onlyDependOnLibsWithTags: ['c'] },
             { sourceTag: 'type:ui', bannedExternalImports: ['lodash'] },
+            // An empty deny alone checks nothing, and vx lock refuses such a rule.
+            { sourceTag: 'type:util', notDependOnLibsWithTags: [] },
           ],
         },
       ],

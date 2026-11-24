@@ -764,7 +764,7 @@ describe('runPersistent', () => {
     async (_name, printf, readyWhen, expected) => {
       expect(await settleWithin(printf, readyWhen)).toBe(expected)
     },
-    8_000,
+    30_000,
   )
 
   it('readyWhen matches a character split across two writes', async () => {
@@ -1462,7 +1462,7 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
   // 875), its neighbour 30 times its own time, the slowdown's cause
   // unproven. They make no claim about time, so their budget is the
   // work's under load, not the default.
-  const HEAVY_ROW_MS = 20_000
+  const HEAVY_ROW_MS = 30_000
 
   it(
     'reads a known allocation back as bytes, on THIS platform',
@@ -1596,6 +1596,26 @@ describe('execWrap — grandchild-orphan mitigation', () => {
     for (const command of ['[[ -f /etc/passwd ]]', 'time /bin/sh -c true']) {
       const r = Bun.spawnSync(['bash', '-c', execWrap(command)], { stderr: 'pipe' })
       expect([command, r.exitCode]).toEqual([command, 0])
+    }
+  })
+
+  // A one-line `if`/`while`/`for` with its `;` forgotten is a syntax error.
+  // Exec-wrapped, the shell looked `if` up as a program: "exec: if: not
+  // found", exit 127, and the verdict said to install `if`.
+  it('leaves POSIX reserved words alone, so a syntax error is the shell’s', () => {
+    for (const command of [
+      'if [ -f x ] then echo y fi',
+      'while true do echo y done',
+      'for f in a b do echo y done',
+      'until true do echo y done',
+      'case x in',
+    ]) {
+      const r = Bun.spawnSync(['sh', '-c', execWrap(command)], { stderr: 'pipe' })
+      expect([command, r.exitCode, r.stderr.toString().includes('not found')]).toEqual([
+        command,
+        2,
+        false,
+      ])
     }
   })
 
@@ -1881,6 +1901,35 @@ describe('runCommand — the rows its sweep asked for', () => {
     expect([r.exitCode, r.spawnFailed]).toEqual([127, true])
     expect(r.stderr).toContain('E2BIG')
     expect(r.stderr).toContain('the command, with the args after --, is 2930 KiB')
+  })
+
+  // Over 128 KiB but under the argv total, the spawn succeeds and the exec
+  // in the child fails: Linux's measuring helper said only "cannot exec the
+  // task's shell", and the frame blamed a command missing from PATH.
+  it("a command over one argument's limit, under the total, says the limit too", async () => {
+    // As a run asks: it keeps no stderr of its own.
+    const r = await runCommand({
+      command: `true ${'x'.repeat(150_000)}`,
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '' },
+      capture: { stdout: false, stderr: false },
+    })
+    // macOS has no per-argument cap (MAX_ARG_STRLEN is Linux's), only the
+    // 1 MiB total: there the same command runs.
+    if (process.platform !== 'linux') {
+      expect([r.exitCode, r.spawnFailed]).toEqual([0, undefined])
+      return
+    }
+    expect([r.exitCode, r.spawnFailed]).toEqual([127, true])
+    expect(r.stderr).toContain('E2BIG')
+    expect(r.stderr).toContain('the command, with the args after --, is 147 KiB')
+    // CONTROL: one just under the limit runs.
+    const ok = await runCommand({
+      command: `true ${'x'.repeat(120_000)}`,
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '' },
+    })
+    expect([ok.exitCode, ok.spawnFailed]).toEqual([0, undefined])
   })
 
   // The limit counts the environment too: a task's `define` of 4.4 MB

@@ -67,6 +67,7 @@ const root = mkdtempSync(path.join(require('node:os').tmpdir(), 'vx-lazy-'))
 writeFileSync(path.join(root, 'pnpm-workspace.yaml'), 'packages: [a]\\nnodeLinker: hoisted\\n')
 const ctx = { workspaceRoot: root, cacheDir: root, warn() {}, locked: async () => undefined }
 const key = await m.pnpm().key({ projectDir: root }, ctx)
+require('node:fs').rmSync(root, { recursive: true, force: true })
 console.log('SEEN ' + JSON.stringify({ key: Object.keys(key ?? {}), seen: [...seen].sort() }))
 `
 

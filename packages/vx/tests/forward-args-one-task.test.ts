@@ -22,6 +22,13 @@ describe('vx run … -- <args>', () => {
     )
   })
 
+  it('takes a task named twice as the one task it is', () => {
+    expect(parseRunArgs(['test', 'test', '--', 'x']).error).toBeUndefined()
+    expect(parseRunArgs(['test', 'test', 'lint', '--', 'x']).error).toBe(
+      `${ONE_TASK} (got 2 tasks)`,
+    )
+  })
+
   it('CONTROL: the same runs without forwarded args parse', () => {
     for (const args of [
       ['test', '--affected'],

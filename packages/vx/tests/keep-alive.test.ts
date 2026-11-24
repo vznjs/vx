@@ -688,6 +688,43 @@ describe('a persistent server that dies before the run stops it', () => {
     })
   }, 30_000)
 
+  // A crash after ready was timed to ready: a server up 1.5 s read `17ms`
+  // in the footer's table and `vx last`.
+  it("a crashed server's time runs to its crash, not to ready", async () => {
+    await addProject(
+      root,
+      'app',
+      crashing('echo READY; until [ -f go ]; do sleep 0.02; done; sleep 1.5; touch gone; exit 3'),
+    )
+    const proc = track(
+      Bun.spawn(
+        [process.execPath, BIN, 'run', 'e2e', '--all', '--output-logs=none', '--verbosity', '1'],
+        {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
+        },
+      ),
+    )
+    const [out, err] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ])
+    expect(await proc.exited).toBe(1)
+    const row = (out + err).split('\n').find((l) => l.startsWith('app#srv '))
+    expect(Number(/(\d+)ms$/.exec(row!)?.[1])).toBeGreaterThanOrEqual(1_500)
+    const last = Bun.spawn([process.execPath, BIN, 'last', '--format', 'json'], {
+      cwd: root,
+      stdout: 'pipe',
+    })
+    const rows = JSON.parse(await new Response(last.stdout).text()).tasks as Array<{
+      task: string
+      durationMs: number
+    }>
+    expect(rows.find((t) => t.task === 'srv')!.durationMs).toBeGreaterThanOrEqual(1_500)
+  }, 30_000)
+
   // Dead within a few ms of its spawn, the server was not yet reaped when
   // the graph ended: nothing gave Bun a turn, so `exitCode` still read
   // null, the footer said `1 success` with the server `running`, over a
@@ -755,6 +792,44 @@ describe('a persistent server that dies before the run stops it', () => {
       1,
       ['└─ ▸ app#srv ── (T) running', '└─ ▸ app#srv ── (T) failed (exit 3)'],
     ])
+  }, 30_000)
+
+  // 2026-11-23: a dependency-only server vx stopped once its dependant
+  // ended printed its shutdown output in a block closing `running`
+  // (focused flow: the block prints at the graph's end).
+  it('a dependency-only server vx stopped closes its output block stopped', async () => {
+    await addProject(
+      root,
+      'app',
+      crashing(
+        "trap 'echo bye' TERM; echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; while :; do sleep 0.02; done",
+        false,
+      ),
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'app#e2e'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: {
+          ...process.env,
+          CI: '',
+          GITHUB_ACTIONS: '',
+          // The full grace: its `bye` is read long before the SIGKILL.
+          NO_COLOR: '1',
+        },
+      }),
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    const closes = (out + err)
+      .split('\n')
+      .filter((l) => l.startsWith('└─') && l.includes('app#srv'))
+      .map((l) => l.replace(/\(\d+(\.\d+)?m?s\)/, '(T)'))
+    expect([code, closes, out.includes('bye')]).toEqual([0, ['└─ ▸ app#srv ── (T) stopped'], true])
   }, 30_000)
 
   // WD-11: the count of servers it stopped took in one already dead. Each
@@ -931,6 +1006,77 @@ describe('a persistent server that dies before the run stops it', () => {
       `[vx] exit 127 is the shell's "command not found": vitee is not on this task's PATH — vx puts `,
     )
     expect(r.said).toHaveLength(2)
+  }, 30_000)
+
+  // A server's last words before it dies are its crash message: the exit
+  // line went out and the run returned while the pipe still held them, and
+  // the user read "exited with code 1" with no reason (4 of 5 runs).
+  it('a requested server that dies after ready has its last output shown first', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: { command: 'echo READY; sleep 0.2; echo boom-last-words >&2; exit 1', persistent: { readyWhen: 'READY' } } } } }`,
+    )
+    // Lost in 4 of 5 runs: three in a row all keep it.
+    for (let i = 0; i < 3; i++) {
+      const proc = track(
+        Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all'], {
+          cwd: root,
+          stdout: 'pipe',
+          stderr: 'pipe',
+          env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
+        }),
+      )
+      const [out, err, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ])
+      const lines = (out + err).split('\n')
+      expect({
+        code,
+        said: lines.filter((l) => l.startsWith('vx: ')),
+        last: lines.filter((l) => l.endsWith('boom-last-words')).length,
+      }).toEqual({ code: 1, said: ['vx: app#dev exited with code 1'], last: 1 })
+    }
+  }, 30_000)
+
+  // CI's default view: what a kept server wrote after the summary went to a
+  // tail nothing printed when it died, and the log said only its exit code
+  // (cli.md: errors-only shows it "with what it wrote since").
+  it('errors-only shows what a kept server wrote before it died', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { dev: { exec: { command: 'echo READY; sleep 0.2; echo boom-last-words >&2; exit 1', persistent: { readyWhen: 'READY' } } } } }`,
+    )
+    const proc = track(
+      Bun.spawn([process.execPath, BIN, 'run', 'dev', '--all', '--output-logs=errors-only'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms', NO_COLOR: '1' },
+      }),
+    )
+    const [out, err, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    const lines = (out + err).split('\n')
+    expect({
+      code,
+      said: lines.filter((l) => l.startsWith('vx: ')),
+      last: lines.filter((l) => l.endsWith('boom-last-words')).length,
+      close: lines
+        .filter((l) => l.startsWith('└─') && l.includes('app#dev'))
+        .map((l) => l.replace(/\(\d+(\.\d+)?m?s\)/, '(T)')),
+    }).toEqual({
+      code: 1,
+      said: ['vx: app#dev exited with code 1'],
+      last: 1,
+      close: ['└─ ▸ app#dev ── (T) failed (exit 1)'],
+    })
   }, 30_000)
 
   it('a dependency-only server that crashes after ready is told the verdict once', async () => {

@@ -64,7 +64,7 @@ Three more companions, split 2026-09-09 as pure code motion:
   inside them (`punchWritePaths`), and the SRT custom config.
 - `sandbox/paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`,
   `isUnderAny`, `sandboxReads`, `unique`, `grantAlternatives`,
-  `replacedBySandbox`, `nameDir` / `wildcardAt` / `globOf` (a project
+  `unmountable`, `nameDir` / `wildcardAt` / `globOf` (a project
   directory whose name holds a wildcard, read as a name).
 - `sandbox/deny-scan.ts` — `scopedMandatoryDenies`: SRT's mandatory
   write denies (`.bashrc`, `.mcp.json`, `.vscode/`, `.git/hooks`, …),
@@ -350,9 +350,10 @@ export function globOf(pattern: string): Bun.Glob
 // The grants one declared grant stands for: braces expanded as a task
 // glob's are, and an escaped brace or comma in a literal read as itself.
 export function grantAlternatives(grant: string): string[]
-// Linux: `dir` is under `/dev`, which the sandbox mounts afresh, so no
-// sandboxed task runs there (refused by the request builder; `vx info`).
-export function replacedBySandbox(dir: string): boolean
+// Why no sandboxed task can run in `dir` (a line break, a Linux backslash
+// or `/dev`, which the sandbox mounts afresh, a macOS wildcard), with the
+// rest of the message; null when it can.
+export function unmountable(dir: string): { why: string; rest: string } | null
 // The one path a grant names: a literal, or one whose only brackets are
 // escaped (`out/\[id\]` names `out/[id]`); undefined for a pattern.
 export function namedPath(grant: string): string | undefined
@@ -1440,9 +1441,9 @@ are a port bridge's: spawned guarded, released and unlinked with it,
 and the unix-socket lift is set for the task's wrap. A port the task
 also bridges out (`localBinding: [p]`) is its own and not relayed. On
 macOS the profile allows `(remote ip "localhost:<port>")` for each
-(`macProfileRules`), and the lookup of configd, which curl makes for
-the proxy settings before it dials: refused, its record failed a client
-that had its answer. `sandbox-loopback-reach.unsafe.test.ts` holds a
+(`macProfileRules`). Any network grant allows the lookup of configd,
+which curl makes for the proxy settings before it dials, a host the list
+names or not: refused, its record failed a client that had its answer. `sandbox-loopback-reach.unsafe.test.ts` holds a
 sandboxed client reaching an unsandboxed server and one behind a port
 bridge, and refused with no grant or another port's.
 
@@ -1454,6 +1455,16 @@ connect` or, since 8.7, `Could not connect`, `[::1]:<port>`) gets a hint naming 
 or every address (`/proc/net/tcp`, `tcp6`), and the task neither grants
 nor binds it. Before, it got a bare refusal and no word of vx
 (`sandbox-loopback-hint.unsafe.test.ts`).
+
+A failed Linux task whose output's tail holds Node's
+`getaddrinfo EAI_AGAIN <host>` (or `ENOTFOUND`) gets a hint naming
+`NODE_USE_ENV_PROXY=1` (`selfLookupHint`): the task has no DNS, and Node's
+fetch and https dial the host themselves instead of the proxy in
+`HTTPS_PROXY`, so the proxy refused nothing and no violation said why. The
+hint says Node 22 then warns at start, and adds
+`allow: { network: ['<host>'] }` when no entry covers the host. vx does
+not set the variable itself: on Node 22 every process would print that warning
+(`sandbox-dns-hint.unsafe.test.ts`).
 
 `releaseBridges` also unlinks each port's socket. The task's socat dies
 with the namespace and never removes it, so every bridged run left one

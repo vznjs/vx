@@ -899,7 +899,7 @@ describe('output negation', () => {
       // `*/**` reaches every dir the negations do not name; committed files
       // there are taken back, untracked ones are cleaned (EA, 2026-10-14:
       // nx()'s rule), and the sources under `src` survive a real run.
-      // Every declared output is required, so each build writes `.medusa`.
+      // A wildcard output may match nothing; each build writes `.medusa` so its restore is covered.
       await pkg('lib', {
         build: 'mkdir -p dist .medusa && echo lib > dist/lib.js && echo m > .medusa/m',
       })
@@ -1248,6 +1248,7 @@ describe('the mapping reads the projects the run has', () => {
       dir: ghost.dir,
       projects: [ghost],
       lock: false,
+      read() {},
     })
     expect(config.tasks?.build?.exec?.command).toBe('echo ghost')
   })
@@ -1459,7 +1460,7 @@ describe('turbo(): the mapping cache', () => {
 // Every run reads configs from the lock, on real Turbo repos too: the
 // plugin's tasks are no vx.config, so the lock records none of them and a
 // run maps turbo.json live. A config written after the lock waits for
-// `vx lock`: the run maps the package as before, and `--check` names it.
+// `vx lock`: an --all run refuses it, and `--check` names it.
 describe('turbo() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
@@ -1494,10 +1495,12 @@ describe('turbo() under vx lock', () => {
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
         'export default { tasks: { build: { exec: { command: "true" } } } }\n',
       )
+      // A config the lock lacks refuses an --all run until `vx lock`.
       const third = vx('run', 'build', '--all')
-      // The new file is an input of the mapped build, which re-runs; the config is not read.
-      expect({ code: third.code, err: third.err }).toEqual({ code: 0, err: '' })
-      expect(third.out).toContain('lib#build')
+      expect({ code: third.code, err: third.err }).toEqual({
+        code: 1,
+        err: '✗ vx run  packages/lib/vx.config.mjs is not in the lock yet — run `vx lock`\n',
+      })
       expect(vx('lock', '--check')).toEqual({
         code: 1,
         out: '',
@@ -1511,7 +1514,7 @@ describe('turbo() under vx lock', () => {
   // the lock blindly." A run mapped turbo.json and the scripts afresh, so
   // an edit ran with no `vx lock`.
   it(
-    'a run follows the mapping vx lock made: an edit maps only at the next vx lock',
+    'a run refuses an edit vx lock has not mapped, naming the files and vx lock',
     async () => {
       expect(vx('lock').code).toBe(0)
       const kept = await Array.fromAsync(
@@ -1522,9 +1525,12 @@ describe('turbo() under vx lock', () => {
       // Unreadable to the mapper: a run that mapped would refuse it.
       await writeFile(path.join(root, 'turbo.json'), '{ not json')
       const stale = vx('run', 'lib#build', '--no-cache')
-      expect({ code: stale.code, err: stale.err }).toEqual({ code: 0, err: '' })
+      expect(stale.code).toBe(1)
+      expect(stale.err).toContain(
+        'packages/lib/package.json, turbo.json changed since the last `vx lock` — run `vx lock`',
+      )
       const lib = path.join(root, 'packages', 'lib', 'dist', 'lib.js')
-      expect(await Bun.file(lib).text()).toBe('lib\n')
+      expect(await Bun.file(lib).exists()).toBe(false)
       // Nothing was mapped, so nothing was kept.
       expect(
         await Array.fromAsync(

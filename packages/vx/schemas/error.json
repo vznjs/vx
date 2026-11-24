@@ -6,9 +6,10 @@
   "additionalProperties": false,
   "required": ["ok", "error"],
   "properties": {
-    "ok": { "const": false },
+    "ok": { "const": false, "description": "always false: the verb refused" },
     "error": {
       "type": "object",
+      "description": "what was refused",
       "additionalProperties": false,
       "required": ["code", "message"],
       "properties": {

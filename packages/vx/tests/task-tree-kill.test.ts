@@ -58,17 +58,22 @@ const CONFIG = `
   }
 `
 
-async function grandchildPid(root: string): Promise<number> {
+// Until the task writes it or vx is gone, never a wall deadline: 10 s ran
+// out before a loaded host's vx reached the task (load 40, 2026-11-24).
+// The row's timeout guards a hang.
+async function grandchildPid(root: string, vx: ReturnType<typeof Bun.spawn>): Promise<number> {
   const marker = path.join(root, 'packages', 'app', 'gc.pid')
-  const deadline = Date.now() + 10_000
-  while (Date.now() < deadline) {
+  for (;;) {
     if (existsSync(marker)) {
       const pid = Number.parseInt(readFileSync(marker, 'utf8'), 10)
       if (pid > 0) return pid
     }
+    if (vx.exitCode !== null || vx.signalCode !== null)
+      throw new Error(
+        `vx exited ${vx.exitCode ?? vx.signalCode} before the task wrote its grandchild pid`,
+      )
     await Bun.sleep(20)
   }
-  throw new Error('the task never wrote its grandchild pid')
 }
 
 // Every vx a row spawns, SIGKILLed after the row if it still runs: a row
@@ -122,7 +127,7 @@ describe('a task dies with everything it forked', () => {
     'a timeout reaps the grandchild',
     async () => {
       const proc = spawnVx(root, 'timed')
-      const gc = await grandchildPid(root)
+      const gc = await grandchildPid(root, proc)
       leaked.push(gc)
       expect(isAlive(gc)).toBe(true)
       const [out, err, code] = await Promise.all([
@@ -145,7 +150,7 @@ describe('a task dies with everything it forked', () => {
       // exited 1 and the grandchild ran on under init (nx#11782's sibling,
       // reproduced on vx 2026-09-24).
       const proc = spawnVx(root, 'timedTrap')
-      const gc = await grandchildPid(root)
+      const gc = await grandchildPid(root, proc)
       leaked.push(gc)
       const [out, err, code] = await Promise.all([
         new Response(proc.stdout as ReadableStream<Uint8Array>).text(),
@@ -164,7 +169,7 @@ describe('a task dies with everything it forked', () => {
   const reapsOn =
     (signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP' | 'SIGQUIT', code: number) => async () => {
       const proc = spawnVx(root, 'forever')
-      const gc = await grandchildPid(root)
+      const gc = await grandchildPid(root, proc)
       leaked.push(gc)
       expect(isAlive(gc)).toBe(true)
       // To the pid alone, as a terminal or `kill` sends it — never to a
@@ -188,11 +193,10 @@ describe('a task dies with everything it forked', () => {
       // for the shell alone, never SIGKILLed the group, and vx printed its
       // summary and never exited (nx#8286 reproduced on vx, 2026-09-24).
       const proc = spawnVx(root, 'e2e')
-      const gc = await grandchildPid(root)
+      const gc = await grandchildPid(root, proc)
       leaked.push(gc)
-      const exit = await Promise.race([proc.exited, Bun.sleep(10_000).then(() => 'hung' as const)])
-      if (exit === 'hung') proc.kill('SIGKILL')
-      expect(exit).toBe(0)
+      // A hang is the row's timeout, and the row's guard SIGKILLs it.
+      expect(await proc.exited).toBe(0)
       expect(await waitForDead(gc, 1000)).toBe(true)
     },
     TIMEOUT,
@@ -209,7 +213,7 @@ describe('a task dies with everything it forked', () => {
       // gone, or the row times out. That a zombie counts as gone is
       // kill-tree-proc.unsafe.test.ts's, decided by state, not a clock.
       const proc = spawnVx(root, 'graceful', 600_000)
-      const gc = await grandchildPid(root)
+      const gc = await grandchildPid(root, proc)
       leaked.push(gc)
       process.kill(proc.pid, 'SIGTERM')
       expect(await proc.exited).toBe(143)
@@ -226,7 +230,7 @@ describe('a task dies with everything it forked', () => {
       // guard SIGKILLs the task (kill-tree.md): the grandchild is gone
       // either way, so only the cleanup tells the handled hang-up apart.
       const proc = spawnVx(root, 'graceful', 5000)
-      const gc = await grandchildPid(root)
+      const gc = await grandchildPid(root, proc)
       leaked.push(gc)
       process.kill(proc.pid, 'SIGHUP')
       expect(await proc.exited).toBe(129)

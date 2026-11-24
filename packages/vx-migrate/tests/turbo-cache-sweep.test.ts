@@ -325,10 +325,13 @@ describe('the signed download', () => {
       1024 * 1024,
     )
     try {
-      const got = await cache.get('aa').then(
-        () => 'resolved',
-        (e: Error) => e.message,
-      )
+      const got = await cache
+        .get('aa')
+        .then((r) => r!.body.bytes())
+        .then(
+          () => 'resolved',
+          (e: Error) => e.message,
+        )
       expect({ got, stopped: pulled < 8 * 1024 * 1024, left: await readdir(dir) }).toEqual({
         got: 'the signed artifact runs past 1048576 bytes — treated as a miss',
         stopped: true,
@@ -346,7 +349,9 @@ describe('the signed download', () => {
       () => new Response('x', { headers: { 'x-artifact-tag': good.slice(0, 8) } }),
     )
     await expect(
-      cacheWith(fetchImpl, { teamId: 'team_1', signatureKey: key }).get('aa'),
+      cacheWith(fetchImpl, { teamId: 'team_1', signatureKey: key })
+        .get('aa')
+        .then((r) => r!.body.bytes()),
     ).rejects.toThrow('the artifact signature did not verify — treated as a miss')
   })
 })

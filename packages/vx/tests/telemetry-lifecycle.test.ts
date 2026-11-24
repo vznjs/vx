@@ -225,7 +225,10 @@ describe('a hook that never settles', () => {
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
       path.join(root, 'pkg-a/vx.config.mjs'),
-      `export default { tasks: { boom: { exec: { command: 'exit 3' } } } }`,
+      `export default { tasks: {
+        boom: { exec: { command: 'exit 3' } },
+        ok: { exec: { command: 'echo hi > out.txt' }, inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['out.txt'] }, cache: true },
+      } }`,
     )
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
@@ -268,6 +271,94 @@ describe('a hook that never settles', () => {
     expect([r.exitCode, new TextDecoder().decode(r.stderr)]).toEqual([
       1,
       "vx: the run stopped before it finished: plugin 'org/hang' never settled its setup hook\n",
+    ])
+  }, 30_000)
+
+  it("in an executor's execute: the plugin is named", async () => {
+    const root = await fixture(
+      `{ executor() { return { name: 'pool', execute() { return new Promise(() => {}) } } } }`,
+    )
+    const r = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
+        'run',
+        'boom',
+        '--all',
+      ],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    expect([r.exitCode, new TextDecoder().decode(r.stderr)]).toEqual([
+      1,
+      "vx: the run stopped before it finished: plugin 'org/hang' never settled its execute hook\n",
+    ])
+  }, 30_000)
+
+  it("in a remote cache's get: a miss said by plugin, and the task runs here", async () => {
+    const root = await fixture(
+      `{ cache() { return { has: async () => null, get() { return new Promise(() => {}) }, put: async () => {} } } }`,
+    )
+    const r = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
+        'run',
+        'ok',
+        '--all',
+      ],
+      cwd: root,
+      env: {
+        ...process.env,
+        NO_COLOR: '1',
+        VX_CACHE_POLICY: 'local:rw,remote:r',
+        VX_RUN_PLUGIN_TIMEOUT: '200ms',
+      },
+    })
+    const err = new TextDecoder().decode(r.stderr) + new TextDecoder().decode(r.stdout)
+    expect([
+      r.exitCode,
+      /\[vx\] plugin 'org\/hang': download \S+ failed: get\(\) did not answer within 200 ms/.test(
+        err,
+      ),
+      await Bun.file(path.join(root, 'pkg-a/out.txt')).text(),
+    ]).toEqual([0, true, 'hi\n'])
+  }, 30_000)
+
+  // A `put` that never settles strands the run at its upload drain.
+  it("in a remote cache's put: the plugin is named", async () => {
+    const root = await fixture(
+      `{ cache() { return { has: async () => null, get: async () => null, put() { return new Promise(() => {}) } } } }`,
+    )
+    const r = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
+        'run',
+        'ok',
+        '--all',
+      ],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1', VX_CACHE_POLICY: 'local:rw,remote:rw' },
+    })
+    expect([r.exitCode, new TextDecoder().decode(r.stderr)]).toEqual([
+      1,
+      "vx: the run stopped before it finished: plugin 'org/hang' never settled its cache put hook\n",
+    ])
+  }, 30_000)
+
+  it('in a plugin verb: the plugin and its verb are named', async () => {
+    const root = await fixture(
+      `{ commands: { probe: { description: 'p', run() { return new Promise(() => {}) } } } }`,
+    )
+    const r = Bun.spawnSync({
+      cmd: [process.execPath, path.resolve(import.meta.dir, '../src/bin.ts'), 'probe'],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    expect([r.exitCode, new TextDecoder().decode(r.stderr)]).toEqual([
+      1,
+      "vx: the run stopped before it finished: plugin 'org/hang' never settled its command 'probe'\n",
     ])
   }, 30_000)
 

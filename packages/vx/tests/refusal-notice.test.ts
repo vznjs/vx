@@ -24,12 +24,38 @@ describe('messageParts', () => {
     })
   })
 
+  // `x. Did you mean y? More.` printed the headline as `x More`.
+  it('keeps a sentence after the hint its own', () => {
+    expect(
+      messageParts('no projects declare task(s): lnt. Did you mean lint? Only b declares it.'),
+    ).toEqual({
+      headline: 'no projects declare task(s): lnt',
+      what: ['Only b declares it'],
+      fix: 'lint',
+    })
+  })
+
   // `--filter a...` read `a..`: the hint's `. ` and then the full stop
   // `bare` drops each took a dot of the pattern's own.
   it("keeps a headline's trailing `...`", () => {
     expect(messageParts('no projects matched filter(s): apq.... Did you mean app...?')).toEqual({
       headline: 'no projects matched filter(s): apq...',
       fix: 'app...',
+    })
+  })
+
+  // `vx upgrade` quotes Bun's reason, `(ECONNREFUSED: Unable to connect. Is
+  // the computer able to access the url?)`: the break inside it printed the
+  // refusal as a headline with an open paren and a stray second line.
+  it('never breaks a sentence inside parentheses', () => {
+    expect(
+      messageParts(
+        'could not reach h to read the release (ECONNREFUSED: Unable to connect. Is the computer able to access the url?) — re-run. Then retry.',
+      ),
+    ).toEqual({
+      headline:
+        'could not reach h to read the release (ECONNREFUSED: Unable to connect. Is the computer able to access the url?) — re-run',
+      what: ['Then retry'],
     })
   })
 

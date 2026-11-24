@@ -64,6 +64,16 @@ export interface ResolvedSandboxConfig {
   }
 }
 
+/** What a disk shows about outputs that matched nothing: the reasons the refusal names. */
+export interface OutputsMissingFacts {
+  /** No positive output's top folder is there: the command wrote nowhere near them. */
+  readonly wroteNone?: true
+  /** Trailing-slash outputs that name a file, not the folder they declare. */
+  readonly folderAsFile?: readonly string[]
+  /** A `[` that starts a character class where that literal path exists (the hint text). */
+  readonly bracket?: string
+}
+
 export interface SandboxViolation {
   /** Raw log line from SRT. Format differs between macOS / Linux. */
   line: string
@@ -93,6 +103,12 @@ export interface SandboxViolation {
    * whose flags no record names, a read.
    */
   opened?: 'read' | 'write'
+  /**
+   * What `path` was when the task ended, on the machine it ran on: set by an
+   * executor that ran it elsewhere, whose disk this one does not show. The
+   * `fix:` grant reads it in place of a look at this machine's disk.
+   */
+  entry?: 'file' | 'dir' | 'missing'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 
@@ -356,11 +372,35 @@ export interface ExecuteResult extends RunResult {
    */
   readonly outputsMissing?: readonly string[]
   /**
+   * Why `outputsMissing` matched nothing, as the disk where the command ran
+   * shows it (`outputsMissingFacts`): this machine's disk lacks the files.
+   */
+  readonly outputsMissingFacts?: OutputsMissingFacts
+  /**
    * Which machine ran the command (a REAPI worker id, a pool member). Absent:
    * this host. Reaches telemetry, the row and frame (`<id>@<where>`) and
    * history.
    */
   readonly where?: string
+  /**
+   * How long it held the task before a machine took it: waiting for one to
+   * join (its warm-up) or to have room. Core adds it to the task's queue time
+   * (`OutcomeTiming.queuedMs`) and starts the task's span after it.
+   */
+  readonly queuedMs?: number
+  /**
+   * A `servers` executor's: each server of the request that failed where it
+   * ran, with its exit. `began` false: it died or never became ready before
+   * the command began, which then never ran, and core skips the task blocked
+   * by it, as a server here skips its dependants; true: the task's exit
+   * stands and core saves neither it nor what builds on it. Core fails each
+   * server's row either way: it was carried, so this machine never saw it end.
+   */
+  readonly deadServers?: readonly {
+    readonly taskId: string
+    readonly exitCode: number
+    readonly began: boolean
+  }[]
   /**
    * The cores and memory of the machine `where` names, as it reports them:
    * history keeps them, so a task that used all of one reads as wanting a
@@ -556,6 +596,8 @@ export interface MachineReport {
   memoryBytes: number
   done: number
   failed: number
+  /** Tasks the run's stop killed on it; absent when none. */
+  aborted?: number
   /** From when it joined to when it left or the run ended: warm-up not counted. */
   onlineMs: number
   /** Time with at least one task on it, from its send to its result. */
@@ -661,7 +703,7 @@ export function assertExecuteResult(
   const where = r['where']
   if (where !== undefined && (typeof where !== 'string' || where === ''))
     fail(`where is ${where === '' ? 'empty' : typeof where} (expected a non-empty string)`)
-  for (const key of ['cpuMs', 'peakRssBytes']) {
+  for (const key of ['cpuMs', 'peakRssBytes', 'queuedMs']) {
     const n = r[key]
     if (n !== undefined && !(typeof n === 'number' && Number.isFinite(n) && n >= 0))
       fail(`${key} is ${shown(n)} (expected a non-negative number)`)
@@ -711,6 +753,18 @@ export function assertExecuteResult(
     } else if (outputs.kind !== 'disk')
       fail(`outputs.kind is ${String(outputs.kind)} (expected disk, deferred or trailing)`)
   }
+  const dead = r['deadServers']
+  if (
+    dead !== undefined &&
+    (!Array.isArray(dead) ||
+      dead.some(
+        (d: { taskId?: unknown; exitCode?: unknown; began?: unknown } | null) =>
+          typeof d?.taskId !== 'string' ||
+          !Number.isInteger(d.exitCode) ||
+          typeof d.began !== 'boolean',
+      ))
+  )
+    fail('deadServers is not an array of { taskId, exitCode, began }')
   const changed = r['changed']
   if (
     changed !== undefined &&

@@ -19,7 +19,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 export default defineWorkspace({})
 ```
 
-That empty file is a whole workspace. vx runs every task on this machine and caches it here. `vx init` writes it for you.
+That empty file is a whole workspace. vx runs every task on this machine and caches it here. `vx init` writes it for you, with your lockfile's plugin in `plugins`.
 
 <Levels />
 
@@ -57,10 +57,19 @@ Coming from the [Quickstart](../../quickstart/)? Turn its one app into the two p
    mkdir -p packages/web && mv index.html src public package.json vx.config.ts vx.lock.json packages/web/
    ```
 
-2. Add a library beside it:
+2. Add a library beside it, built by `vite build` to `dist/index.js`:
 
    ```sh
    bun create vite packages/ui --template vanilla
+   echo 'export const greet = (name) => `Hello, ${name}`' > packages/ui/src/index.ts
+   ```
+
+   ```ts title="packages/ui/vite.config.ts"
+   import { defineConfig } from 'vite'
+
+   export default defineConfig({
+     build: { lib: { entry: 'src/index.ts', formats: ['es'], fileName: 'index' } },
+   })
    ```
 
 3. Make the root a Bun workspace, and name the two projects:
@@ -207,7 +216,8 @@ Resolve the `vx.config.ts` files, then run `vx lock`. It writes both locks from 
 </Aside>
 
 <Quiz q="You edit packages/web/vx.config.ts and run vx run build. Which config does the run use?">
-  The old one, from `.vx/projects.lock`. Run `vx lock` first: runs read only the lock.
+  Neither: the run refuses, `packages/web/vx.config.ts changed since the last vx lock`. Runs read
+  only the lock, so run `vx lock` first.
 </Quiz>
 
 <Takeaway>keep the lock in step with your configs, and fix a conflicted one in one command.</Takeaway>
@@ -244,14 +254,14 @@ run: { timeout: '10m' },
 <TabItem label="Variable">
 
 ```sh
-VX_RUN_TIMEOUT=10m vx run build
+VX_RUN_TIMEOUT=10m vx run build --all
 ```
 
 </TabItem>
 <TabItem label="Flag">
 
 ```sh
-vx run build --timeout 10m
+vx run build --all --timeout 10m
 ```
 
 </TabItem>
@@ -396,7 +406,7 @@ By default a failed task skips only the tasks that wait on it. Everything else f
 run: { failFast: true },
 ```
 
-Or for one run: `vx run build --fail-fast`.
+Or for one run: `vx run build --all --fail-fast`.
 
 <Takeaway>pick between "see every failure" and "stop at the first".</Takeaway>
 
@@ -491,7 +501,7 @@ Each field, its default, and what it does. "Also" lists its variable and flag.
 
 ### Every pipeline key
 
-Each key but `tasks` and `env` is a `vx run` flag in camelCase: `cachePolicy` is `--cache-policy`. A flag typed with `vx pipeline` beats its key.
+Each key but `tasks` and `env` is a `vx run` flag in camelCase: `cachePolicy` is `--cache-policy`. A flag typed with `vx pipeline` beats its key, but no typed flag turns off a saved `true`: see [Who wins](../ci/#pipeline-keys).
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
@@ -594,6 +604,8 @@ Look at the second line: the old command, then the new one. Run `vx lock` to tak
 - **`no .vx/workspace.ts in …`.** Run `vx init` at the workspace root. It writes `.vx/workspace.ts`, which marks the root. A file above your git checkout does not count.
 - **`… belongs to another user, so vx does not take its directory as your workspace`.** Outside git, vx ignores a `.vx/workspace.ts` another user owns. Run vx in a checkout you own.
 - **`two projects are named "…": …`.** Two folders have the same name: set another `name` in one's `vx.config.ts`, then run `vx lock`.
+- **`plugin '…' adds project …, but … makes … a workspace of its own`.** A glob reaches a folder with its own `.vx/workspace.ts`. Drop it from the glob or delete its `.vx`, then run `vx lock`.
+- **`plugin '…' named project … at …: outside the workspace root`.** A package-manager glob such as `../shared/*` names a folder above the root. Move it under the root, or take it out of the glob.
 - **`… locks …, but its … is gone`.** A `vx.config.ts` was deleted or renamed: run `vx lock`.
 - **`… holds a line … never writes`.** A merge left a conflict in the lock: see [Fix a merge conflict in the lock](../ci/#fix-a-merge-conflict-in-the-lock).
 - **`… evaluates differently from the lock here`.** A config changed without `vx lock`: run `vx lock` and commit the lock.

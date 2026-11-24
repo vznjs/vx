@@ -391,23 +391,23 @@ describe('vx migrate (turbo)', () => {
     // readiness note is no TODO (item 602). Each package's `deploy` (no
     // script anywhere) is an empty group, clean.
     expect(result.out).toContain('  tasks     2 clean · 7 todo\n')
-    // The report shows five ids per reason, so app#seed is one of "2 more".
+    // The report shows five ids per reason, so packages/app#seed is one of "2 more".
     const todos = todosOf(result.out)
     expect([...todos.keys()].sort()).toEqual([
-      'app#build',
-      'app#codegen',
-      'app#dev',
-      'app#lint',
-      'app#test',
-      'lib#build',
+      'packages/app#build',
+      'packages/app#codegen',
+      'packages/app#dev',
+      'packages/app#lint',
+      'packages/app#test',
+      'packages/lib#build',
     ])
-    expect(todos.get('app#build')!.map((r) => r.split(' ')[0])).toEqual([
+    expect(todos.get('packages/app#build')!.map((r) => r.split(' ')[0])).toEqual([
       'dependsOn',
       'env',
       "turbo.json's",
     ])
-    expect(todos.get('app#build')![0]).toContain('$TURBO_ROOT$')
-    expect(todos.get('lib#build')).toHaveLength(2) // and the global one, among "2 more"
+    expect(todos.get('packages/app#build')![0]).toContain('$TURBO_ROOT$')
+    expect(todos.get('packages/lib#build')).toHaveLength(2) // and the global one, among "2 more"
     expect(result.out).toContain(
       `turbo.json's global block (globalDependencies ["tsconfig.base.json"], globalEnv ` +
         '["GLOBAL_MODE"], globalPassThroughEnv ["AWS_PROFILE"]) is carried onto no task',
@@ -601,6 +601,34 @@ async function makeNxWorkspace(aDeps?: Record<string, string>): Promise<string> 
   await addPackage(root, 'pkg-b', {})
   return root
 }
+
+// Nx 24 leaves .nx/workspace-data/project-graph.json behind as a cache of
+// its last graph. Read as is, a target edited since (a configuration added)
+// was migrated as it had been, and nothing said so: with nx installed, the
+// graph is exported fresh, as nx() does.
+describe('vx migrate (nx) with a graph Nx left behind', () => {
+  it(
+    'exports a fresh one with the workspace’s own nx, not the stale one',
+    async () => {
+      const root = await makeNxWorkspace()
+      try {
+        const fresh = structuredClone(NX_GRAPH) as typeof NX_GRAPH
+        const targets = fresh.graph.nodes['pkg-b']!.data.targets as Record<string, unknown>
+        targets['fresh'] = { executor: 'nx:run-script', options: { script: 'fresh' } }
+        await writeFile(path.join(root, 'graph.json'), JSON.stringify(fresh))
+        await addPackage(root, 'pkg-b', { fresh: 'echo fresh' })
+        await fakeNxCli(root)
+        const r = await vx(root, ['--dry'])
+        expect([r.code, r.err, await nxCalls(root)]).toEqual([0, '', 1])
+        expect(r.out).toContain('  from      nx graph\n')
+        expect(r.out).toContain('fresh: {')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
 
 describe('vx migrate (nx) with no exported graph', () => {
   it(
@@ -923,16 +951,16 @@ describe('vx migrate (nx)', () => {
     expect(result.out).not.toMatch(/\^production/)
     // {workspaceRoot}/<path> entries map to workspaceFiles — no TODO.
     const todos = todosOf(result.out)
-    const aBuild = todos.get('pkg-a#build')!.join('\n')
+    const aBuild = todos.get('packages/pkg-a#build')!.join('\n')
     expect(aBuild).not.toMatch(/workspaceRoot/)
     expect(aBuild).toMatch(/externalDependencies/)
     expect(aBuild).toMatch(/params/)
     // An executor is its nx-exec line, no gap to report. Nothing depends on
     // serve: no readiness note to report (item 602).
-    expect(todos.get('pkg-a#serve')).toBeUndefined()
+    expect(todos.get('packages/pkg-a#serve')).toBeUndefined()
     // No `inputs` is Nx's own default set, not a gap (item 591).
     expect(result.out).not.toMatch(/cache enabled with no declared inputs/)
-    expect(todos.get('pkg-b#build')?.join() ?? '').not.toMatch(/cwd/)
+    expect(todos.get('packages/pkg-b#build')?.join() ?? '').not.toMatch(/cwd/)
   })
 
   it(
@@ -1486,20 +1514,21 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 
 describe('the writer: what the sweep found unheld', () => {
   const USAGE =
-    'usage: vx-migrate [--from turbo|nx|vite-task|scripts] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
+    'usage: vx-migrate [--from turbo|nx|vite-task|scripts] [--native|--keep]\n' +
+    '                  [--no-install] [--dry [--format json]] [--force] [--mjs]'
 
   // `--help` printed the synopsis alone: what each flag does was in the README only.
   const HELP = [
     USAGE,
     '',
     'Write vx config from turbo.json, an Nx graph, Vite Task or package.json scripts.',
-    '  --from <source>  turbo | nx | vite-task | scripts, when several are checked in.',
+    '  --from <source>  turbo | nx | vite-task | scripts, if several are checked in.',
     '  --native         Write a vx.config.ts per package (no question).',
-    '  --keep           Turbo or Nx: only .vx/workspace.ts, declaring turbo() or nx().',
+    '  --keep           Turbo or Nx: only .vx/workspace.ts, with turbo() or nx().',
     '  --no-install     Install nothing and skip vx lock.',
     '  --dry            Print the files instead of writing them.',
     '  --format json    With --dry: the plan as one JSON document.',
-    '  --force          Overwrite existing vx.config.* files.',
+    '  --force          Overwrite an existing .vx/workspace.* and vx.config.*.',
     '  --mjs            Write .mjs files (no type import) instead of .ts.',
   ].join('\n')
 
@@ -1522,6 +1551,8 @@ describe('the writer: what the sweep found unheld', () => {
     try {
       for (const flag of ['--help', '-h'])
         expect(await vx(root, [flag])).toEqual({ code: 0, out: `${HELP}\n`, err: '' })
+      // Core help is written at 80 columns; the usage line ran to 128.
+      expect(HELP.split('\n').filter((l) => l.length > 80)).toEqual([])
       expect(await vx(root, ['--nope'])).toEqual({
         code: 1,
         out: '',

@@ -36,6 +36,10 @@ const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
 interface Verdict {
   readonly mismatch?: string | undefined
   readonly dirs?: readonly string[]
+  /** What could not be compared and is said, not refused; a run that says one keeps no match. */
+  readonly warnings?: readonly string[]
+  /** The install that fixes a mismatch, when not the manager's plain one. */
+  readonly fix?: string
 }
 
 interface InstallCheck {
@@ -137,6 +141,9 @@ function npmStore(root: string): (p: string, version: string) => boolean {
   }
 }
 
+/** A workspace's dependency in a message; the root's dir is `.`. */
+const whose = (dir: string): string => (dir === '.' || dir === '' ? "the root's" : `${dir}'s`)
+
 /**
  * pnpm's current lockfile (`node_modules/.pnpm/lock.yaml`): what each
  * importer it installed links, and every package it installed. A filtered
@@ -151,8 +158,8 @@ function pnpmCompare(want: import('./pnpm.js').Lockfile, markerText: string): st
     for (const [name, version] of deps) {
       const w = wanted.get(name)
       if (w === undefined)
-        return `${importer}'s ${name} is installed, and the lockfile does not list it`
-      if (w !== version) return `${importer}'s ${name} is ${version}, the lockfile names ${w}`
+        return `${whose(importer)} ${name} is installed, and the lockfile does not list it`
+      if (w !== version) return `${whose(importer)} ${name} is ${version}, the lockfile names ${w}`
     }
     const prod = new Set(
       (want.sections.get(importer) ?? '')
@@ -161,7 +168,7 @@ function pnpmCompare(want: import('./pnpm.js').Lockfile, markerText: string): st
         .map((l) => l.slice('dependencies\0'.length)),
     )
     for (const name of prod) {
-      if (!deps.has(name)) return `${importer}'s ${name} ${wanted.get(name)} is not installed`
+      if (!deps.has(name)) return `${whose(importer)} ${name} ${wanted.get(name)} is not installed`
     }
   }
   // Only what an importer reaches: `pnpm add`, `update` and `remove` keep
@@ -229,14 +236,25 @@ function yarnBerryCompare(
   root: string,
 ): Verdict {
   const listed = new Set<string>()
+  /** Each location the state lists → the locator installed there. */
+  const at = new Map<string, string>()
+  let current: string | undefined
   for (const line of markerText.split('\n')) {
+    const loc = /^ {4}- "?(.*?)"?$/.exec(line)
+    if (loc !== null) {
+      if (current !== undefined) at.set(loc[1]!, current)
+      continue
+    }
     const m = /^"?([^\s"].*?)"?:$/.exec(line)
-    if (m === null || m[1] === '__metadata') continue
+    if (m === null) continue
+    current = undefined
+    if (m[1] === '__metadata') continue
     // A virtual locator is its package's, per peer set.
     const locator = m[1]!.replace(/@virtual:[^#]+#/, '@')
     if (!lock.entries.has(locator))
       return { mismatch: `${locator} is installed, and the lockfile does not list it` }
     listed.add(locator)
+    current = locator
   }
   let rc: string | undefined
   try {
@@ -249,7 +267,26 @@ function yarnBerryCompare(
   // what Node finds above them is another package's copy (probed on babel,
   // Yarn 4.19). Only a full install, listing every workspace, is checked.
   for (const id of lock.workspaces.values()) if (!listed.has(id)) return { dirs: [] }
-  const direct = yarnLock().directVersions(lock, yarnLock().catalogsOf(rc))
+  const catalogs = yarnLock().catalogsOf(rc)
+  const direct = yarnLock().directVersions(lock, catalogs)
+  // A pull that adds a patch: the unpatched copy, at the version the patch
+  // names, sits where Yarn installs the patched one, and the lockfile lists
+  // both, so neither the version nor an extra locator tells them apart.
+  for (const [dir, patched] of yarnLock().directPatches(lock, catalogs)) {
+    for (const [name, locator] of patched) {
+      for (let d = dir; ; d = path.posix.dirname(d)) {
+        const installed = at.get(d === '.' ? `node_modules/${name}` : `${d}/node_modules/${name}`)
+        if (installed !== undefined) {
+          if (installed !== locator)
+            return {
+              mismatch: `${whose(dir)} ${name} is ${installed}, the lockfile names ${locator}`,
+            }
+          break
+        }
+        if (d === '.') break
+      }
+    }
+  }
   for (const [dir] of lock.workspaces) {
     for (const [name, version] of direct.get(dir)!) {
       for (let d = dir; ; d = path.posix.dirname(d)) {
@@ -259,7 +296,9 @@ function yarnBerryCompare(
         )
         if (installed !== undefined) {
           if (installed !== version)
-            return { mismatch: `${dir}'s ${name} is ${installed}, the lockfile names ${version}` }
+            return {
+              mismatch: `${whose(dir)} ${name} is ${installed}, the lockfile names ${version}`,
+            }
           break
         }
         if (d === '.') break
@@ -352,7 +391,7 @@ function bunCompare(lock: import('./bun.js').Lockfile, root: string): Verdict {
         if (installed === undefined) continue
         if (installed !== version) {
           return {
-            mismatch: `${importer}'s ${name} is ${String(installed)}, the lockfile names ${version}`,
+            mismatch: `${whose(importer)} ${name} is ${String(installed)}, the lockfile names ${version}`,
           }
         }
         break
@@ -361,20 +400,141 @@ function bunCompare(lock: import('./bun.js').Lockfile, root: string): Verdict {
   }
   // Only the isolated linker leaves a store; the hoisted one removes it.
   const store = path.join(root, 'node_modules', '.bun')
-  if (statSync(store, { throwIfNoEntry: false }) !== undefined) {
-    return { mismatch: storeCompare(lock, root, store), dirs }
-  }
-  for (const [dir, version] of bunLock().hoistedVersions(lock)) {
-    const installed = at(dir)
-    // Absent: an optional package of another platform, or a `--production` install.
-    if (installed !== undefined && installed !== version) {
-      return {
-        mismatch: `${dir.replaceAll('node_modules/', '')} is ${String(installed)}, the lockfile names ${version}`,
+  const isolated = statSync(store, { throwIfNoEntry: false }) !== undefined
+  if (isolated) {
+    const mismatch = storeCompare(lock, root, store)
+    if (mismatch !== undefined) return { mismatch }
+  } else {
+    for (const [dir, version] of bunLock().hoistedVersions(lock)) {
+      const installed = at(dir)
+      // Absent: an optional package of another platform, or a `--production` install.
+      if (installed !== undefined && installed !== version) {
+        return {
+          mismatch: `${dir.replaceAll('node_modules/', '')} is ${String(installed)}, the lockfile names ${version}`,
+        }
       }
     }
   }
-  return { dirs }
+  // A patch edit moves no byte of bun.lock (it names the file by path): the
+  // tree compared above was the old patch's, and its output was saved under
+  // the new patch's key. The patch files join what a kept match stats.
+  const patched = bunPatchCompare(lock, root, isolated ? store : undefined)
+  return { ...patched, dirs: [...dirs, ...lock.patches.values()] }
 }
+
+/**
+ * The tag Bun leaves in a copy it patched, `.bun-tag-<hash>`: the patch
+ * file's SHA-1, its first 8 bytes as a little-endian u64, in hex (bun 1.4.4,
+ * either linker; earlier Buns hashed it otherwise, oven-sh/bun#32749).
+ */
+export const bunPatchTag = (patch: Uint8Array): bigint =>
+  Buffer.from(new Bun.CryptoHasher('sha1').update(patch).digest()).readBigUInt64LE(0)
+
+const TAG = /^\.bun-tag-([0-9a-f]{1,16})$/
+
+/**
+ * Each installed copy of a package bun.lock lists against the patch it
+ * names for it: a copy with no tag, or one tagged for another patch, is the
+ * stale install (a pull that adds or edits a patch); a copy tagged where
+ * bun.lock names no patch is one `bun install` left patched after the patch
+ * was removed (bun 1.4.4 checks it unchanged), which only a reinstall
+ * replaces. A copy whose directory cannot be listed is said, not refused.
+ */
+function bunPatchCompare(
+  lock: import('./bun.js').Lockfile,
+  root: string,
+  store: string | undefined,
+): Verdict {
+  const listed = new Set<string>()
+  // A `file:` tarball or other non-registry copy counts once bun.lock
+  // patches it: its edited patch built against the old copy too. Its store
+  // entry spells the id's slashes `+` (`x@..+..+vendor+x.tgz`).
+  const byEntry = new Map<string, string>()
+  for (const e of lock.packages.values()) {
+    if (REGISTRY_ID.test(e.id)) listed.add(e.id)
+    else if (lock.patches.has(e.id)) {
+      listed.add(e.id)
+      byEntry.set(e.id.replaceAll('/', '+'), e.id)
+    }
+  }
+  // Each copy's root-relative dir by its package id (`name@version`).
+  const copies: [id: string, dir: string][] = []
+  if (store !== undefined) {
+    let entries: string[] = []
+    try {
+      entries = readdirSync(store)
+    } catch {
+      // No store to read: nothing installed to compare.
+    }
+    for (const entry of entries) {
+      const id = byEntry.get(entry.replace(/\+[0-9a-f]{16}$/, '')) ?? storeId(entry)
+      copies.push([
+        id,
+        `node_modules/.bun/${entry}/node_modules/${id.slice(0, id.indexOf('@', 1))}`,
+      ])
+    }
+  } else {
+    for (const [dir, version] of bunLock().hoistedVersions(lock, (id) => lock.patches.has(id))) {
+      const at = dir.lastIndexOf('node_modules/')
+      copies.push([`${dir.slice(at + 'node_modules/'.length)}@${version}`, dir])
+    }
+  }
+  /** The patch file bun.lock names for `id` (by `name@version`, else `name`), read once. */
+  const wanted = new Map<string, { file: string; tag: bigint | undefined }>()
+  const patchOf = (id: string): { file: string; tag: bigint | undefined } | undefined => {
+    const key = lock.patches.has(id) ? id : id.slice(0, id.lastIndexOf('@'))
+    const file = lock.patches.get(key)
+    if (file === undefined) return undefined
+    let got = wanted.get(file)
+    if (got === undefined) {
+      let tag: bigint | undefined
+      try {
+        tag = bunPatchTag(readFileSync(path.join(root, file)))
+      } catch {
+        // No patch file: `bun install` refuses it; nothing to compare with.
+      }
+      wanted.set(file, (got = { file, tag }))
+    }
+    return got
+  }
+  const warnings: string[] = []
+  for (const [id, dir] of copies) {
+    if (!listed.has(id)) continue
+    let names: string[]
+    try {
+      names = readdirSync(path.join(root, dir))
+    } catch (err) {
+      // Not installed here (another platform, `--production`).
+      if ((err as { code?: string }).code === 'ENOENT') continue
+      warnings.push(
+        `[vx] bun(): ${id} at ${dir} cannot be listed, so its patch is not checked: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      continue
+    }
+    const tags = names.flatMap((n) => {
+      const m = TAG.exec(n)
+      return m === null ? [] : [BigInt(`0x${m[1]!}`)]
+    })
+    const patch = patchOf(id)
+    if (patch === undefined) {
+      if (tags.length > 0)
+        return {
+          mismatch: `${id} at ${dir} carries a patch bun.lock does not name`,
+          fix: 'bun install --force',
+        }
+      continue
+    }
+    if (patch.tag === undefined) continue
+    if (tags.length === 0)
+      return { mismatch: `${id} carries no patch, bun.lock names ${patch.file}` }
+    if (!tags.includes(patch.tag))
+      return { mismatch: `${id} carries another patch than ${patch.file}` }
+  }
+  return { warnings }
+}
+
+/** A registry package's id, `name@1.2.3…`: the copies Bun patches. */
+const REGISTRY_ID = /^.+@\d+\.\d+\.\d+/
 
 /** A store entry's package id: `@s+x@1.0.0+<peer hash>` → `@s/x@1.0.0`. */
 const storeId = (entry: string): string =>
@@ -498,11 +658,11 @@ export function checkInstalled(
   lockFile: string,
   version: number,
   parse: (text: string) => unknown,
-): void {
+): readonly string[] {
   const check = INSTALL_CHECKS[manager]!
-  if (statSync(path.join(root, 'node_modules'), { throwIfNoEntry: false }) === undefined) return
+  if (statSync(path.join(root, 'node_modules'), { throwIfNoEntry: false }) === undefined) return []
   const marker = check.markers?.find((m) => statSync(path.join(root, m), { throwIfNoEntry: false }))
-  if (check.markers !== undefined && marker === undefined) return
+  if (check.markers !== undefined && marker === undefined) return []
   // Beside cache.db, as vx-migrate keeps its Nx graph: machine-local, and
   // per root, since a cache dir may be shared.
   const stampFile = path.join(
@@ -524,7 +684,7 @@ export function checkInstalled(
   } catch {
     // None kept yet, or unreadable: compare.
   }
-  if (Array.isArray(stamp?.dirs) && sigOf(stamp.dirs).sig === stamp.sig) return
+  if (Array.isArray(stamp?.dirs) && sigOf(stamp.dirs).sig === stamp.sig) return []
   const started = Date.now()
   let verdict: Verdict
   try {
@@ -548,14 +708,17 @@ export function checkInstalled(
   }
   if (verdict.mismatch !== undefined) {
     throw new UserError(
-      `node_modules was installed from a different ${lockFile} (${verdict.mismatch}) — run \`${manager} install\``,
+      `node_modules was installed from a different ${lockFile} (${verdict.mismatch}) — run \`${verdict.fix ?? `${manager} install`}\``,
     )
   }
+  const warnings = verdict.warnings ?? []
+  // Kept, a warning would be said once and never again.
+  if (warnings.length > 0) return warnings
   const dirs = [...(verdict.dirs ?? [])]
   const { sig, newest } = sigOf(dirs)
   // A file written within the timestamp's granularity of the compare may
   // have changed after it under the same identity (racy git): not kept.
-  if (newest > started - 1000) return
+  if (newest > started - 1000) return []
   try {
     const tmp = `${stampFile}.${process.pid}`
     writeFileSync(tmp, JSON.stringify({ sig, dirs }))
@@ -563,4 +726,5 @@ export function checkInstalled(
   } catch {
     // Not kept: the next run compares again.
   }
+  return []
 }

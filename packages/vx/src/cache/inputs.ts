@@ -1928,20 +1928,25 @@ async function pruneEmptiedDirs(
 }
 
 interface PruneScope {
+  base: string
   /** Wildcard globs' roots (`dist` for `dist/**`): prune strictly below. */
   below: string[]
   /** Literal outputs (`out` as a tree): prune the path itself and below. */
   atOrBelow: string[]
+  /** Globs with no static directory (`**\/dist/**`): prune what they match. */
+  matched: string[]
 }
 
 /**
  * Where a clean may prune: only the trees the task declared. A directory above
  * a glob's root or holding a literal output stays: a sibling task may have just
  * made it. A glob's root stays: the task writes under it. A literal's own path
- * goes. A glob rooted at the project prunes nothing.
+ * goes. A glob rooted at the project (`**\/dist/**`, `{dist,types}/**`) prunes
+ * the directories it matches, as the walk lists them: pruning none left an
+ * emptied `dist/old` to be saved, and a stray one made every hit restore.
  */
 function pruneScope(base: string, outputs: readonly string[]): PruneScope {
-  const scope: PruneScope = { below: [], atOrBelow: [] }
+  const scope: PruneScope = { base, below: [], atOrBelow: [], matched: [] }
   for (const g of outputs) {
     if (g.startsWith('!')) continue
     // `literalPath`, as `asTrees` reads it: an escaped `out/\[x\]` is one path.
@@ -1952,6 +1957,7 @@ function pruneScope(base: string, outputs: readonly string[]): PruneScope {
     }
     const prefix = staticPrefix(g)
     if (prefix !== '.') scope.below.push(path.resolve(base, prefix))
+    else scope.matched.push(g)
   }
   return scope
 }
@@ -1959,7 +1965,8 @@ function pruneScope(base: string, outputs: readonly string[]): PruneScope {
 function inScope(dir: string, scope: PruneScope): boolean {
   return (
     scope.below.some((r) => dir.startsWith(r + path.sep)) ||
-    scope.atOrBelow.some((r) => dir === r || dir.startsWith(r + path.sep))
+    scope.atOrBelow.some((r) => dir === r || dir.startsWith(r + path.sep)) ||
+    (scope.matched.length > 0 && anyTaskGlob(scope.matched)(relPosix(scope.base, dir)))
   )
 }
 

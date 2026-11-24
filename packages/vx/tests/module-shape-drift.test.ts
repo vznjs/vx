@@ -185,7 +185,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
     const arr = /export const CREDENTIAL_STORES = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     const constant = [...arr![1]!.replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1]!)
-    const list = /shares \(L-41\): ([\s\S]*?)\.\nWhat it grants/.exec(read('docs/schema.md'))
+    const list = /The credential stores:\n\n([\s\S]*?)\n\n/.exec(read('docs/schema.md'))
     expect(list).not.toBeNull()
     expect([...list![1]!.matchAll(/`~\/([^`]+)`/g)].map((m) => m[1]!)).toEqual(constant)
   })
@@ -199,9 +199,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
   })
 
   it("run-context.md's CI matrix is CI_PROVIDERS, in order", () => {
-    const arr = /const CI_PROVIDERS[^=]*= \[([\s\S]*?)\n\]/.exec(
-      read('src/orchestrator/run-context.ts'),
-    )
+    const arr = /const CI_PROVIDERS[^=]*= \[([\s\S]*?)\n\]/.exec(read('src/util/env-flag.ts'))
     expect(arr).not.toBeNull()
     const providers = [...arr![1]!.matchAll(/\['\w+', '(\w+)'\]/g)].map((m) => m[1]!)
     const doc = moduleSection('orchestrator/run-context.ts')

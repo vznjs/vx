@@ -5,18 +5,15 @@
 // vx-lockfile does, and links each sibling a manifest names, as an install
 // would, a peer as reach only.
 
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 
 const ORDER = ['dependencies', 'devDependencies', 'optionalDependencies'] as const
 
+// Its name's package.json, committed: one written to TMPDIR per process was
+// one per `vx` a test spawned, never removed.
 function origin(): { dir: string } {
-  const dir = path.join(tmpdir(), `vx-migrate-test-edges-${process.pid}`)
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'vx-test-manifest-edges' }))
-  return { dir }
+  return { dir: path.join(import.meta.dir, 'origins', 'manifest-edges') }
 }
 
 export function manifestEdges(): VxPlugin {

@@ -5,7 +5,7 @@
   "description": "A remote cache server for vx that you host: on Bun or Docker with an S3-compatible bucket, or on Cloudflare Workers with R2.",
   "keywords": [
     "vx",
-    "monorepo",
+    "task-orchestrator",
     "remote-cache",
     "cache-server"
   ],

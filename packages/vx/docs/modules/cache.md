@@ -34,7 +34,13 @@ the `history` module's (history.md), and the tables `index-db`'s
   directory (caching.md § key). `filesBehind(dir)` lists what a linked
   directory keys; `vx watch` judges a change to one by the same list.
   `behindLink(link, hashFile)` is the digest the key folds for one; the
-  inputs re-check follows each linked input again with it.
+  inputs re-check follows each linked input again with it. Given the task,
+  an `inputs.files` link into another project keys nothing behind it when
+  a task its `dependsOn` reaches there declares the target in its
+  `inputs.files` or `outputs` (a file a glob matches, a directory a
+  `dir/**` holds whole), and is refused (`VX_E_NESTED_INPUT`) when not, by
+  what `setLinkBounds` names. Any task of the project was enough: a link
+  to files only an undeclared one read replayed a stale hit.
 - `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
   (`checkpointOffThread`), the index's WAL checkpoints run PASSIVE on a
   thread of their own every 100 ms, through a second connection, and the
@@ -197,13 +203,22 @@ export function historyRetentionMs(): number
 export function filesBehind(dir: string): string[]
 
 // The content behind a symlinked input as the key folds it: a file's
-// identity, or a digest of every file `filesBehind` lists. The run's
-// re-check compares it again before a miss is saved.
+// identity, or a digest of every file `filesBehind` lists, none in another
+// project. The run's re-check compares it again before a miss is saved.
 export function behindLink(
   link: string,
   hashFile: (file: string) => Promise<string>,
-  seen?: ReadonlySet<string>,
+  taskId?: string,
 ): Promise<string>
+
+// Set as a run builds its graph: each project, and each task's projectDir
+// and deps, so `behindLink` knows a link's task and the projects its
+// `dependsOn` reaches.
+export function setLinkBounds(
+  workspaceRoot: string,
+  projects: readonly { name: string; dir: string }[],
+  task: (id: string) => { projectDir: string; deps: readonly string[] } | undefined,
+): void
 
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
@@ -322,7 +337,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache clean`.
-export const CACHE_VERSION = 'vx-cache-v48' // key-fold.ts
+export const CACHE_VERSION = 'vx-cache-v56' // key-fold.ts
 // An input gone between its listing and its hash folds as this, never an
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
@@ -788,7 +803,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ### `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v56'`; `SCHEMA_VERSION` is
-`'v58'`. Bump `CACHE_VERSION` when:
+`'v59'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
@@ -1123,9 +1138,14 @@ local concerns.
   timeouts all live inside the `RemoteCacheLayer` implementation
   (e.g. `@vzn/vx-reapi`'s CAS client).
 - No write-batching or retry on transient errors. Fire-and-forget.
-- No deadline of its own. Every call is awaited: a `get` that never
-  settles holds its task, and a `put` holds `drainUploads()`, which the
-  run awaits before it closes, unless the run was stopped. The layer bounds its own requests: the
+- One bound, on waiting, never on working: a `get` that has not
+  answered within `run.pluginTimeout` (3 s), or a body that sends no
+  bytes for as long (`endsOnStop`), is a miss, warned by plugin, and the
+  task runs here; a body that keeps streaming is never cut. `'0ms'`
+  bounds no download. Every other call is awaited: a `put` holds `drainUploads()`, which the
+  run awaits before it closes, unless the run was stopped; a plugin's
+  call that never settles is marked as its hook (`cache <method>`), so a
+  run it strands names the plugin. The layer bounds its own requests: the
   first-party layers do, and the plugin guide's example shows how
   (item 856).
 

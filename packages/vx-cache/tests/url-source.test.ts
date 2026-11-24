@@ -33,3 +33,18 @@ it('prints a refused URL without its credentials', () => {
     resolveVxCacheConfig(NAMED, { VX_CACHE_URL: 'https://u:s3cret@c.example/v1' }),
   ).toThrow("vxCache(): VX_CACHE_URL is the server's base, without /v1: https://***@c.example")
 })
+
+// A blank around the URL was taken: ` https://c.example` was named with its
+// blank in every warning, and `https://c.example/ ` sent each route to
+// `https://c.example/ /v1/…`. Refused, as VX_DTE_RELAY refuses one.
+it('refuses a URL with blanks around it', () => {
+  expect(() => resolveVxCacheConfig(NAMED, { VX_CACHE_URL: ' https://c.example' })).toThrow(
+    'vxCache(): VX_CACHE_URL has blanks around it: " https://c.example"',
+  )
+  expect(() => resolveVxCacheConfig(NAMED, { VX_CACHE_URL: 'https://c.example/\n' })).toThrow(
+    'vxCache(): VX_CACHE_URL has blanks around it: "https://c.example/\\n"',
+  )
+  expect(() => resolveVxCacheConfig({ ...NAMED, url: 'https://c.example\t' }, {})).toThrow(
+    'vxCache(): url has blanks around it: "https://c.example\\t"',
+  )
+})

@@ -28,6 +28,7 @@ import {
   type PluginOptionKinds,
   type ProjectMeta,
   definePlugin,
+  jsonErrorAt,
   lockfileClaim,
   reachDigests,
   type VxPlugin,
@@ -529,16 +530,17 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         // while node_modules holds another (installed.ts).
         let installed = installedPerRun.get(ctx)
         if (installed === undefined) {
-          installed = Promise.resolve().then(() =>
-            installCheck().checkInstalled(
+          installed = Promise.resolve().then(() => {
+            for (const warning of installCheck().checkInstalled(
               manager.name,
               ctx.workspaceRoot,
               ctx.cacheDir,
               file,
               digestVersion(),
               PARSE[manager.name]!,
-            ),
-          )
+            ))
+              ctx.warn(warning)
+          })
           installedPerRun.set(ctx, installed)
         }
         await installed
@@ -791,8 +793,10 @@ async function manifestOf(
   try {
     pkg = parse(text)
   } catch (err) {
+    // Bun's parsers name what they met, never where.
+    const at = kind === 'JSON' ? jsonErrorAt(text, jsonc) : undefined
     throw new UserError(
-      `${name}: not ${kind} (${err instanceof Error ? err.message : String(err)})`,
+      `${name}${at === undefined ? '' : `:${at}`}: not ${kind} (${err instanceof Error ? err.message : String(err)})`,
     )
   }
   if (pkg === null || typeof pkg !== 'object' || Array.isArray(pkg)) {
@@ -1012,7 +1016,7 @@ async function staleness(
         if (linksUnrecorded && typeof spec === 'string' && spec.startsWith('link:')) continue
         if (unrecorded?.(name, pkg) === true) continue
         if (name !== own && names.has(name) && !deps.has(name)) {
-          missing.push(`${importer}'s dependency on ${name}`)
+          missing.push(`${importer === '.' ? 'the root' : importer}'s dependency on ${name}`)
         }
       }
     }

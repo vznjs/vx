@@ -292,6 +292,110 @@ describe('computeTaskHash — what the config contributes', () => {
     expect(moved).toEqual(want)
   })
 
+  // The top-level row above holds a whole `sandbox: {}` or `inputs` to one
+  // value: a projection that dropped a grant or `inputs.runtime` passed it.
+  it('every nested field of exec, inputs, outputs and the sandbox moves the key', async () => {
+    const schema = readFileSync(
+      path.resolve(import.meta.dir, '..', 'src', 'workspace', 'config-schema.ts'),
+      'utf8',
+    )
+    const fieldsOf = (name: string): string[] => {
+      const body = new RegExp(`const ${name} = new Set(?:<string>)?\\(\\[([^\\]]*)\\]`).exec(
+        schema,
+      )?.[1]
+      const spread = [...(body ?? '').matchAll(/\.\.\.(\w+)/g)].flatMap((m) =>
+        [
+          ...(new RegExp(`const ${m[1]} = \\[([^\\]]*)\\]`).exec(schema)?.[1] ?? '').matchAll(
+            /'([^']+)'/g,
+          ),
+        ].map((q) => q[1]!),
+      )
+      return [...[...(body ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]!), ...spread].sort()
+    }
+    const nested: Record<string, [section: string, values: Record<string, unknown>]> = {
+      ENV_FIELDS: ['exec.env', { passThrough: ['FOO'], define: { FOO: '1' }, secret: ['FOO'] }],
+      PERSISTENT_FIELDS: ['exec.persistent', { readyWhen: 'up' }],
+      INPUT_FIELDS: [
+        'inputs',
+        {
+          files: ['nope/**'],
+          workspaceFiles: ['nope/**'],
+          env: ['FOO'],
+          tasks: ['^build'],
+          runtime: ['echo a'],
+          workspaceRuntime: ['echo a'],
+          stability: { severity: 'error' },
+        },
+      ],
+      INPUT_STABILITY_FIELDS: ['inputs.stability', { strategy: 'mutable', severity: 'error' }],
+      OUTPUT_FIELDS: ['outputs', { files: ['dist/**'], workspaceFiles: ['out/**'], clean: false }],
+      SANDBOX_FIELDS: [
+        'exec.sandbox',
+        {
+          allow: { pty: true },
+          deny: { network: ['example.com'] },
+          ignore: { read: ['/x'] },
+          weakerWhenNested: true,
+          weakerNetworkIsolation: true,
+          hermetic: true,
+        },
+      ],
+      GRANT_FIELDS: [
+        'exec.sandbox.allow',
+        {
+          read: ['/x'],
+          write: ['/x'],
+          systemInfo: ['hw.ncpu'],
+          machLookup: ['com.x'],
+          pty: true,
+          gitConfig: true,
+          localBinding: true,
+          network: true,
+          unixSockets: true,
+        },
+      ],
+      DENY_FIELDS: ['exec.sandbox.deny', { network: ['example.com'] }],
+      IGNORE_FIELDS: [
+        'exec.sandbox.ignore',
+        { read: ['/x'], write: ['/x'], systemInfo: ['hw.ncpu'], network: ['example.com'] },
+      ],
+    }
+    for (const [set, [, values]] of Object.entries(nested)) {
+      expect([set, Object.keys(values).sort()]).toEqual([set, fieldsOf(set)])
+    }
+
+    const set = (obj: Record<string, unknown>, at: string, value: unknown): void => {
+      const parts = at.split('.')
+      let o = obj
+      for (const p of parts.slice(0, -1)) o = (o[p] ??= {}) as Record<string, unknown>
+      o[parts.at(-1)!] = value
+    }
+    const moved: Record<string, boolean> = {}
+    for (const remote of [undefined, false] as const) {
+      const base = (): Record<string, unknown> => ({
+        exec: { command: 'build', ...(remote === undefined ? {} : { remote }) },
+        inputs: { files: [] },
+        outputs: { files: [] },
+      })
+      for (const [section, values] of Object.values(nested)) {
+        // The section is there, empty, on both sides: only the field differs.
+        const bare = base()
+        const held = section
+          .split('.')
+          .reduce<unknown>((o, p) => (o as Record<string, unknown> | undefined)?.[p], bare)
+        set(bare, section, held ?? {})
+        const armBase = await key({ node: node({}, bare as Partial<TaskConfig>) })
+        for (const [field, value] of Object.entries(values)) {
+          const cfg = structuredClone(bare)
+          set(cfg, `${section}.${field}`, value)
+          const k = await key({ node: node({}, cfg as Partial<TaskConfig>) })
+          moved[`${remote === undefined ? 'plain' : 'remote'}:${section}.${field}`] = k !== armBase
+        }
+      }
+    }
+    expect(Object.entries(moved).filter(([, m]) => !m)).toEqual([])
+  })
+
   it('SENSITIVITY: exec.timeout DOES move the key — distinct by design', async () => {
     // The anti-drift pin for the neighbouring decision. `timeout` and
     // `retries` sit right beside `remote` in the same object and are NOT
@@ -449,6 +553,32 @@ describe('computeTaskHash — forwardArgs are scoped to REQUESTED tasks', () => 
     const none = await key({ node: node({ requested: true }) })
     const empty = await key({ node: node({ requested: true }), forwardArgs: [] })
     expect(empty).toBe(none)
+  })
+})
+
+describe('computeTaskHash — the host values a key sees', () => {
+  it('the platform a task declaring exec.platforms runs on folds in', async () => {
+    const cfg = { exec: { command: 'build', platforms: ['linux-x64', 'darwin-arm64'] } }
+    const on = (platform?: string) =>
+      key({ node: node(platform === undefined ? {} : { platform }, cfg as Partial<TaskConfig>) })
+    const keys = new Set([await on(), await on('linux-x64'), await on('darwin-arm64')])
+    expect(keys.size).toBe(3)
+  })
+
+  it('an inputs.env value moves the key; a passThrough value alone does not', async () => {
+    const name = 'VX_DERIVE_PROBE_' + process.pid
+    const at = async (value: string, cfg: Partial<TaskConfig>) => {
+      process.env[name] = value
+      try {
+        return await key({ node: node({}, cfg) })
+      } finally {
+        delete process.env[name]
+      }
+    }
+    const pass = { exec: { command: 'build', env: { passThrough: [name] } } }
+    expect(await at('a', pass)).toBe(await at('b', pass))
+    const keyed = { ...pass, inputs: { files: [], env: [name] } }
+    expect(await at('a', keyed)).not.toBe(await at('b', keyed))
   })
 })
 

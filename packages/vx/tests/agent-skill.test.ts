@@ -37,6 +37,18 @@ describe('the agent skill', () => {
     expect(wrong).toEqual([])
   })
 
+  // `vx show app` refused ("did you mean @acme/app?") two lines after the
+  // skill said a project's name is its package.json name.
+  it('names each project by its package name, as it tells the agent to', () => {
+    const bare = [...shell.matchAll(/^vx (?:show|why|run)\b([^\n#]*)/gm)]
+      .flatMap((m) => m[1]!.trim().split(/\s+/))
+      .filter((w) => w !== '' && !w.startsWith('-') && !w.startsWith('@'))
+      .filter(
+        (w) => !['build', 'test', 'lint', 'pr', '--'].includes(w) && !/^(json|pretty)$/.test(w),
+      )
+    expect(bare).toEqual([])
+  })
+
   // It listed five of the six kinds: `workspace` was missing.
   it('names every affected kind the plan prints, and no other', () => {
     const sentence = /where `kind` is ([^.]*?), and\n?\s*`via`/s.exec(SKILL)?.[1]

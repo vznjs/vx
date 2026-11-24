@@ -27,7 +27,7 @@ export interface Allowed {
   readonly issuer: string
   /** `owner/repo` (a GitLab project's full path), matched without case. */
   readonly repository: string
-  /** The workflow file its jobs are defined in (`ci.yml`, GitLab's `.gitlab-ci.yml`), matched without case. */
+  /** The workflow file its jobs are defined in (`ci.yml`, GitLab's `.gitlab-ci.yml`), matched in its case, as git keeps file names. */
   readonly workflow: string
 }
 
@@ -98,11 +98,22 @@ export function parseAllow(list: string): Allowed[] {
     })
 }
 
-/** What `workflowClaimOf(iss)` says, up to the `@` before its ref, for a job of `workflow` in `repository`. */
-function workflowPath(iss: string, repository: string, workflow: string): string {
-  return iss === GITHUB
-    ? `${repository}/.github/workflows/${workflow}`
-    : `${iss.replace(/^https?:\/\//, '').replace(/\/$/, '')}/${repository}//${workflow}`
+/**
+ * Whether `ran`, what `workflowClaimOf(iss)` says up to the `@` before its
+ * ref, is a job of `workflow` in `repository`: the repository in any case,
+ * the file in its own, as git keeps it (`CI.yml` is another workflow than
+ * `ci.yml`, and passed as it).
+ */
+function ranIn(iss: string, ran: string, repository: string, workflow: string): boolean {
+  const dir =
+    iss === GITHUB
+      ? `${repository}/.github/workflows/`
+      : `${iss.replace(/^https?:\/\//, '').replace(/\/$/, '')}/${repository}//`
+  return (
+    ran.length === dir.length + workflow.length &&
+    same(ran.slice(0, dir.length), dir) &&
+    ran.slice(dir.length) === workflow
+  )
 }
 
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
@@ -345,7 +356,9 @@ export function oidcClaims(opts: {
   // once KEYS_MAX_AGE_MS old, and for a kid they lack once KEYS_COOLDOWN_MS
   // after the last read. A local set, so the first token pays no timer and
   // no Response round trip.
-  const keys = new Map<string, { at: number; set: Promise<KeySet> }>()
+  // `cached`: the read may have come from a cache (a Worker's shared one, up
+  // to KEYS_TTL_S old), so a kid it lacks is no reason to wait the cooldown.
+  const keys = new Map<string, { at: number; set: Promise<KeySet>; cached: boolean }>()
   const discovered = new Map<string, Promise<string>>()
   // The key set each URL last answered: one slow answer from the issuer
   // failed a request. Keys rotate rarely: the last set answers until the
@@ -369,12 +382,14 @@ export function oidcClaims(opts: {
     }
     return uri
   }
-  const read = (iss: string): { at: number; set: Promise<KeySet> } => {
-    const set = (async () => {
+  const read = (iss: string): { at: number; set: Promise<KeySet>; cached: boolean } => {
+    const entry = { at: Date.now(), set: undefined as unknown as Promise<KeySet>, cached: false }
+    entry.set = (async () => {
       const url = await jwksUri(iss)
       let json: unknown
+      entry.cached = !lastRead.has(url)
       try {
-        json = await fetchJson(url, lastRead.has(url))
+        json = await fetchJson(url, !entry.cached)
         lastRead.set(url, json)
         stale.delete(iss)
       } catch (err) {
@@ -384,10 +399,9 @@ export function oidcClaims(opts: {
       }
       return createLocalJWKSet(json as JSONWebKeySet)
     })()
-    const entry = { at: Date.now(), set }
     keys.set(iss, entry)
     // quiet: the awaited set rethrows it; this only forgets it
-    set.catch(() => keys.get(iss) === entry && keys.delete(iss))
+    entry.set.catch(() => keys.get(iss) === entry && keys.delete(iss))
     return entry
   }
   // The issuer's outage, not the token's fault: a client gives up on a
@@ -412,8 +426,12 @@ export function oidcClaims(opts: {
       try {
         return await set(header, token)
       } catch (err) {
-        if (!(err instanceof errors.JWKSNoMatchingKey) || Date.now() - entry.at < KEYS_COOLDOWN_MS)
-          throw err
+        if (!(err instanceof errors.JWKSNoMatchingKey)) throw err
+        // Another request read them again since: share that read, so a flood
+        // of unknown kids reads the issuer once, not once a request.
+        const now = keys.get(iss)
+        if (now !== undefined && now !== entry) return (await usable(iss, now.set))(header, token)
+        if (!entry.cached && Date.now() - entry.at < KEYS_COOLDOWN_MS) throw err
         return (await usable(iss, reading(iss, raw).set))(header, token)
       }
     }
@@ -442,7 +460,9 @@ export function oidcClaims(opts: {
       claims = (
         await jwtVerify(token, keyOf(iss, token), {
           algorithms: ['RS256'],
-          audience,
+          // A trailing slash names the same URL: a GitLab id_token's aud is
+          // written by hand, and vx-dte asks for its relay's URL without one.
+          audience: [audience.replace(/\/+$/, ''), `${audience.replace(/\/+$/, '')}/`],
           clockTolerance: LEEWAY_S,
           currentDate: new Date(now() * 1000),
           requiredClaims: ['exp'],
@@ -472,7 +492,7 @@ export function oidcClaims(opts: {
       const at = ran.lastIndexOf('@')
       const workflow = at < 0 ? ran : ran.slice(0, at)
       const repo = String(named)
-      if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!))))
+      if (!ofRepo.some((a) => ranIn(iss, workflow, a.repository ?? repo, a.workflow!)))
         throw new Refusal(403, notIn(`${wclaim} ${workflow}`))
     }
     return { iss, claims }

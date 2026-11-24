@@ -44,11 +44,25 @@ function fixture(name: string, links: string[]): string {
     symlinkSync(path.join(PACKAGES, dir), path.join(root, 'node_modules', '@vzn', dir))
   }
   writeFileSync(path.join(root, 'bun.lock'), JSON.stringify(bunWorkspaceLock(root), null, 2))
+  const shipped = lockFiles(root)
   const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: root, stderr: 'pipe' })
   if (lock.exitCode !== 0) throw new Error(`vx lock: ${lock.stderr.toString()}`)
+  if (shipped.length > 0) committedLocks.set(name, { root, files: shipped })
   commit(root)
   return root
 }
+
+/** The lock files and review copies `root` holds, root-relative. */
+function lockFiles(root: string): string[] {
+  // Bun.Glob's braces miss a dot directory, so two globs.
+  return ['.vx/*.lock', '**/vx.lock.json']
+    .flatMap((g) => [...new Bun.Glob(g).scanSync({ cwd: root, dot: true })])
+    .filter((f) => !f.includes('node_modules'))
+    .sort()
+}
+
+/** Each starter that commits its locks: the fixture they were copied into. */
+const committedLocks = new Map<string, { root: string; files: string[] }>()
 
 /** The workspace half of the bun.lock Bun writes for `root`'s `packages/*` members. */
 function bunWorkspaceLock(root: string): unknown {
@@ -302,10 +316,10 @@ describe('examples/ci', () => {
   })
 })
 
-// The README's and the landing's terminal demo is this starter's real
-// output; the script re-runs it and compares all but timings and cores.
+// The README's terminal demo is a real run of the docs' ui/web workspace;
+// the script re-runs it and compares all but timings and cores.
 describe('the terminal demo', () => {
-  it('matches a real run of examples/basic', () => {
+  it("matches a real run of the docs' ui/web workspace", () => {
     const r = Bun.spawnSync({
       cmd: [
         process.execPath,
@@ -317,8 +331,8 @@ describe('the terminal demo', () => {
     })
     expect(r.stderr.toString()).toBe('')
     expect(r.exitCode).toBe(0)
-    // A whole vx run of the starter: a loaded gate took it past bun's
-    // 5 s default (5,006 ms) though it passes alone.
+    // Three vx runs of two real vite builds: a loaded gate took the old,
+    // lighter demo past bun's 5 s default (5,006 ms) though it passed alone.
   }, 30_000)
 })
 
@@ -336,6 +350,24 @@ describe('the starters install with the package manager their README names', () 
       expect(workspace).toContain("import { bun } from '@vzn/vx-lockfile'")
     }
   })
+})
+
+// A starter's committed locks are what a reader copies: a lock an older
+// vx wrote refuses their first run. Each must be what `vx lock` writes
+// now (VX_UPDATE_CONTRACT=1 rewrites them).
+it('each starter that commits its locks commits the ones vx lock writes', () => {
+  const stale: string[] = []
+  for (const [name, { root, files }] of committedLocks)
+    for (const f of files) {
+      const now = readFileSync(path.join(root, f), 'utf8')
+      const shippedAt = path.join(EXAMPLES, name, f)
+      if (now === readFileSync(shippedAt, 'utf8')) continue
+      if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true')
+        writeFileSync(shippedAt, now)
+      else stale.push(`examples/${name}/${f}`)
+    }
+  expect(committedLocks.size).toBeGreaterThan(0)
+  expect(stale).toEqual([])
 })
 
 /** Every directory under examples/: what a README can point a reader at. */

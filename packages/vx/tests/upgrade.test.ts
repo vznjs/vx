@@ -873,6 +873,20 @@ describe('managedInstall', () => {
     }
   })
 
+  // 2026-11-24, against a local registry: `npm install @vzn/vx@0.5.0` wrote
+  // "^0.5.0" over an exact "0.4.0" pin; pnpm, bun and yarn 1 keep it exact.
+  it('keeps an exact pin exact under npm, and a range a range', async () => {
+    const argv = async (spec: string): Promise<string> => {
+      const root = await tree({
+        'package.json': JSON.stringify({ devDependencies: { '@vzn/vx': spec } }),
+        'package-lock.json': '{}',
+      })
+      return upgradeArgv(managedInstall(path.join(root, BIN), root)!, '1.2.3').join(' ')
+    }
+    expect(await argv('0.4.0')).toBe('npm install @vzn/vx@1.2.3 --save-dev --save-exact')
+    expect(await argv('^0.4.0')).toBe('npm install @vzn/vx@1.2.3 --save-dev')
+  })
+
   it('a package.json that is not JSON is one refusal naming it, not "no package.json lists vx"', async () => {
     const root = await tree({ 'package.json': '{ "devDependencies": { "@vzn/vx": "^1" }, }' })
     const file = path.join(root, 'package.json')
@@ -1528,6 +1542,27 @@ describe('vx upgrade (CLI)', () => {
     expect(err).toBe(
       noticed(
         'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull\n',
+      ),
+    )
+  })
+
+  // A global vx in the vx source checkout handed `vx upgrade` to source, whose
+  // refusal named only git pull: the global the user ran never moved, and
+  // nothing said how to move it (2026-11-24).
+  it('from source a global handed over, names the way to move that global', async () => {
+    const runtime = path.join(dir, 'bun-copy-global')
+    await copyFile(process.execPath, runtime)
+    await chmod(runtime, 0o755)
+    const proc = Bun.spawn({
+      cmd: [runtime, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'upgrade'],
+      env: { ...process.env, VX_HANDED_OFF: '/opt/vx/bin/vx' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(await proc.exited).toBe(1)
+    expect(await new Response(proc.stderr).text()).toBe(
+      noticed(
+        'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull; `vx upgrade -g` moves the global vx that handed over (/opt/vx/bin/vx)\n',
       ),
     )
   })

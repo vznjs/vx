@@ -200,10 +200,16 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
           const shown = await vx(['show'], null)
           expect(`${shown.code}\n${shown.err}`).toStartWith('0\n')
           expect(shown.out).toContain('app')
-          // A config edited since `vx lock` is refused by name, not a store crash.
+          // A config edited since `vx lock` is refused by name, not a store
+          // crash. The edit changes what it evaluates to: one that evaluates
+          // as the lock holds (a comment) runs, as `vx lock --check` passes it.
+          // Bare vx, not the helper, which locks the edit first.
           const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
-          await Bun.write(config, `${await Bun.file(config).text()}\n// changed\n`)
-          const edited = await vx(['show'], null)
+          await Bun.write(
+            config,
+            (await Bun.file(config).text()).replace("'echo built'", "'echo changed'"),
+          )
+          const edited = await vx(['show'], null, VX)
           expect(`${edited.code}\n${edited.err}`).toBe(
             '1\n✗ vx show  packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`\n',
           )
@@ -227,7 +233,9 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         await chmod(ro, 0o555)
         const pruned = await vx(['cache', 'clean', '--max-size', '1K'])
         expect(pruned.code).toBe(1)
-        expect(pruned.err).toMatch(/^✗ vx cache  cache directory .* is not writable \(EACCES: /)
+        expect(pruned.err).toMatch(
+          /^✗ vx cache clean  cache directory .* is not writable \(EACCES: /,
+        )
         expect(pruned.err).not.toContain('\n    at ')
         const dry = await vx(['cache', 'clean', '--max-size', '1K', '--dry'])
         expect(`${dry.code}\n${dry.err}`).toStartWith('0\n')
@@ -369,6 +377,58 @@ describe('two checkouts of one commit sharing --cache-dir', () => {
         await rm(first, { recursive: true, force: true })
         await rm(parent, { recursive: true, force: true })
         await rm(shared, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// No workspace edit makes a --cache-dir usable, so watching on after the
+// first cycle refused it idled forever under a "watching" line.
+describe('a cache dir that cannot be made', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-cache-dir-file-' })
+    await addProject(root, 'app', { config: CONFIG, files: { 'src/index.js': 'export {}\n' } })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    await Bun.write(path.join(root, 'blocked'), '')
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'vx watch refuses it as vx run does, and exits',
+    async () => {
+      for (const verb of ['run', 'watch']) {
+        const proc = Bun.spawn(
+          [
+            process.execPath,
+            BIN,
+            verb,
+            'build',
+            '--all',
+            '--cache-dir',
+            path.join(root, 'blocked'),
+          ],
+          {
+            cwd: root,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { ...process.env, NO_COLOR: '1' },
+            timeout: 15_000,
+          },
+        )
+        const [out, err, code] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ])
+        expect({ verb, signal: proc.signalCode, code }).toEqual({ verb, signal: null, code: 1 })
+        expect(err).toContain('is a file, not a directory')
+        expect(out + err).not.toContain('watching')
       }
     },
     TIMEOUT,

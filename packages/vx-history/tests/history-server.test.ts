@@ -666,6 +666,61 @@ describe('HistoryServer', () => {
     )
   })
 
+  // With no local history, the server's numbers are what order the run.
+  it("ranks a run's tasks by the timings the server answers", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-history-rank-'))
+    const cache = new Cache(dir)
+    const nodeOf = (p: string) =>
+      ({
+        id: `${p}#build`,
+        projectName: p,
+        projectDir: dir,
+        taskName: 'build',
+        config: { exec: { command: `echo ${p}` } },
+        deps: [],
+        requested: true,
+      }) as unknown as TaskNode
+    const nodes = new Map(['fast', 'slow'].map((p) => [`${p}#build`, nodeOf(p)]))
+    const defs = taskDefinitions([...nodes.values()])
+    const up = await fetch(`${url}/v1/timings/upload`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${await iss.sign('main', new URL(url).origin)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...NAMED,
+        timings: [
+          { hash: defs.get('fast#build'), durationMs: 50 },
+          { hash: defs.get('slow#build'), durationMs: 9000 },
+        ],
+      }),
+    })
+    expect(up.status).toBe(204)
+    const token = Bun.env.VX_HISTORY_TOKEN
+    Bun.env.VX_HISTORY_TOKEN = await iss.sign('main', new URL(url).origin)
+    try {
+      const refined: Promise<unknown>[] = []
+      const local = (await vxHistory({ url, ...NAMED }).schedule!(nodes, {
+        warn: () => {},
+        workspaceRoot: dir,
+        localCache: cache,
+        branch: 'main',
+        refs: ['refs/heads/main'],
+        refine: (p: Promise<unknown>) => refined.push(p),
+      } as never)) as Map<string, number>
+      // No local history: the two tie until the server answers.
+      expect(local.get('slow#build')).toBe(local.get('fast#build'))
+      const ranks = (await refined[0]) as Map<string, number>
+      expect(ranks.get('slow#build')! > ranks.get('fast#build')!).toBe(true)
+    } finally {
+      if (token === undefined) delete Bun.env.VX_HISTORY_TOKEN
+      else Bun.env.VX_HISTORY_TOKEN = token
+      cache.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   // The ordering was computed twice, on the local history and again when
   // the server's numbers landed, and each pass named the bad assumption.
   it('names an assumption it drops once a run, with the server re-ranking', async () => {
@@ -703,7 +758,7 @@ describe('HistoryServer', () => {
       expect(refined).toHaveLength(1)
       expect(await refined[0]).toBeInstanceOf(Map)
       expect(warned).toEqual([
-        '[vx] vx-history: assume ignores "a#build" — each must be a number of ms from 0 to 2^53',
+        '[vx] vx-history: assume ignores "a#build" — each must be a number of ms from 0 to 2^53−1',
       ])
     } finally {
       fake.mockRestore()
@@ -733,6 +788,27 @@ describe('HistoryServer', () => {
       expect(warned).toEqual([
         '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
       ])
+    } finally {
+      if (saved === undefined) delete Bun.env.VX_HISTORY_URL
+      else Bun.env.VX_HISTORY_URL = saved
+    }
+  })
+
+  // A blank around the URL was taken: a trailing one kept the slash before
+  // it, and each route went to `https://h.example/ /v1/…` (hardening,
+  // 2026-11-23). Refused, as vxCache() refuses one.
+  it('refuses a url or VX_HISTORY_URL with blanks around it', async () => {
+    const saved = Bun.env.VX_HISTORY_URL
+    const setup = (o: Parameters<typeof vxHistory>[0]) =>
+      vxHistory(o).setup!({ ci: false, warn: () => undefined } as never)
+    try {
+      Bun.env.VX_HISTORY_URL = 'https://h.example/ '
+      await expect(setup({ ...NAMED }) as Promise<unknown>).rejects.toThrow(
+        'vxHistory(): VX_HISTORY_URL has blanks around it: "https://h.example/ "',
+      )
+      expect(() => vxHistory({ ...NAMED, url: ' https://h.example' })).toThrow(
+        'vxHistory(): url has blanks around it: " https://h.example"',
+      )
     } finally {
       if (saved === undefined) delete Bun.env.VX_HISTORY_URL
       else Bun.env.VX_HISTORY_URL = saved
@@ -857,6 +933,21 @@ describe('vx run with vxHistory({ url })', () => {
       refs: ['refs/heads/main'],
       hashes: [sent[0]!.hash],
     })
+  })
+
+  // A token in a shell off CI (a copied VX_HISTORY_TOKEN) wrote that
+  // machine's timings into CI's ref: a local run only reads.
+  it('sends nothing from a run off CI, whatever token it holds', async () => {
+    const ci = Bun.env.CI
+    delete Bun.env.CI
+    try {
+      const before = seen.length
+      const r = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      expect(r.outcomes.map((o) => o.status)).toEqual(['success'])
+      expect(seen.slice(before).map((q) => q.path)).toEqual(['/v1/timings/query'])
+    } finally {
+      Bun.env.CI = ci
+    }
   })
 
   // A plugin's measure (vx-dte's worker warm-up) is timed as a task is:
@@ -1015,6 +1106,76 @@ describe('vx run with vxHistory({ url })', () => {
       delete (globalThis as { __vxHistoryBefore?: unknown }).__vxHistoryBefore
       await rm(other, { recursive: true, force: true })
       await rm(plugin, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  // A never-fail plugin still warns (CLAUDE.md): a query that failed after
+  // the run's last task was dropped unsaid, the run ordered on less.
+  it('says a query that fails after the run has ended', async () => {
+    const late = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        if (new URL(req.url).pathname === '/v1/timings/query') {
+          await Bun.sleep(700)
+          return new Response('{"message":"busy"}', { status: 500 })
+        }
+        return new Response(null, { status: 204 })
+      },
+    })
+    const at = `http://127.0.0.1:${late.port}`
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-late-'))
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ url: ${JSON.stringify(at)}, retries: 0, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      Bun.spawnSync({
+        cmd: [
+          'git',
+          '-c',
+          'user.name=t',
+          '-c',
+          'user.email=t@t',
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          'x',
+        ],
+        cwd: other,
+      })
+      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
+      const cli = Bun.spawn({
+        cmd: [process.execPath, bin, 'run', 'build', '--all'],
+        cwd: other,
+        env: { ...Bun.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [out, err, code] = await Promise.all([
+        new Response(cli.stdout).text(),
+        new Response(cli.stderr).text(),
+        cli.exited,
+      ])
+      const said = `${out}${err}`.split('\n').filter((l) => l.startsWith('[vx] vx-history:'))
+      expect([code, said]).toEqual([
+        0,
+        [
+          `[vx] vx-history: the timings of the history server at ${at} were not applied: HTTP 500: busy`,
+        ],
+      ])
+    } finally {
+      await late.stop(true)
+      await rm(other, { recursive: true, force: true })
     }
   }, 30_000)
 

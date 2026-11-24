@@ -7,7 +7,6 @@ import { defineCase, type Case, type TaskSpec } from '../src/spec.ts'
 import { chainProject, one } from './shapes.ts'
 
 const A = 'packages/a'
-const OUT = `${A}/dist/out.txt`
 
 const task = (command: string, extra: Partial<TaskSpec> = {}): TaskSpec => ({
   command,

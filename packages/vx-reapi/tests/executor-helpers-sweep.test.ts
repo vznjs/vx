@@ -392,16 +392,20 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
 
   // A server's Tree may name one subtree under many names. Its match's Tree
   // carried every PATH's directory, 2^depth children from a Tree of depth+1.
+  // Six levels, each two links to the one below: six distinct
+  // directories, 126 if each link were carried apart. Twelve wrote 4 096
+  // directories to disk, and their removal outran the 5 s hook bound on a
+  // loaded runner.
   it("a match's Tree carries each distinct descendant once", async () => {
     const levels = [dir(['x'])]
-    for (let i = 1; i <= 12; i++) levels.push(dir([], { a: levels[i - 1]!, b: levels[i - 1]! }))
+    for (let i = 1; i <= 6; i++) levels.push(dir([], { a: levels[i - 1]!, b: levels[i - 1]! }))
     const top = levels.at(-1)!
     executeReturning('mods', fake.put(encodeTree(dir([], { top }), [...levels].reverse())))
     await refusal(run('k-dag', ['mods/*']))
     const recorded = recordOf('k-dag')
     expect(recorded.map((d) => d.path)).toEqual(['pkg/mods/top'])
     const tree = decodeTreeWithBytes(fake.blobs.get(recorded[0]!.tree_digest.hash)!)
-    expect(tree.children.length).toBe(12)
+    expect(tree.children.length).toBe(6)
   })
 
   it("the matches' Trees go up in one probe and one batch, not one round trip each", async () => {
