@@ -381,3 +381,64 @@ describe('a mapped-from file one project reads otherwise since vx lock', () => {
     })
   }
 })
+
+// A plugin's options live in `.vx/workspace.*` (turbo({ root }), nx({
+// executors })): an edit there changed what the `project` stage maps, and
+// the run kept the locked commands, green, until a `vx lock`. Only
+// `vx lock --check` said so. An edit that maps the same (a concurrency)
+// still runs.
+describe('a workspace file edited since vx lock', () => {
+  const mapper = (word: string) =>
+    pluginSource(
+      'org/opts',
+      `{ project(config) {
+          config.tasks = { ...config.tasks, say: { exec: { command: 'echo ${word}' } } }
+        } }`,
+    )
+  let root: string
+  const workspace = (word: string, fields?: string) =>
+    writeFile(
+      path.join(root, '.vx', 'workspace.mjs'),
+      localWorkspaceSource([mapper(word)], '', undefined, fields),
+    )
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-lock-workspace-' })
+    await addProject(root, 'core')
+    await workspace('one')
+    expect((await vx(root, ['lock'])).code).toBe(0)
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  for (const stamped of [true, false]) {
+    it(`refuses a plugin option edited with no \`vx lock\` ${stamped ? 'beside stamps' : 'with no stamps'}`, async () => {
+      if (!stamped) await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
+      await workspace('two')
+      const { code, out } = await vx(root, ['run', 'core#say'])
+      // With no stamps every mapping is evaluated, and the project it moved is named.
+      const named = stamped ? '.vx/workspace.mjs changed' : 'packages/core changed'
+      expect([code, out]).toEqual([
+        1,
+        expect.stringContaining(`${named} since the last \`vx lock\` — run \`vx lock\``),
+      ])
+      expect(await readFile(path.join(root, '.vx', 'projects.lock'), 'utf8')).toContain('echo one')
+    })
+  }
+
+  it('runs an edit that maps as the lock holds, and stamps it', async () => {
+    await workspace('one', 'run: { concurrency: 3 }')
+    const first = await vx(root, ['run', 'core#say'])
+    expect([first.code, first.out]).toEqual([0, expect.stringContaining('one')])
+    await workspace('two', 'run: { concurrency: 3 }')
+    const { code, out } = await vx(root, ['run', 'core#say'])
+    expect([code, out]).toEqual([1, expect.stringContaining('changed since the last `vx lock`')])
+  })
+
+  it('runs once `vx lock` read the edit', async () => {
+    await workspace('two')
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    const { code, out } = await vx(root, ['run', 'core#say'])
+    expect([code, out]).toEqual([0, expect.stringContaining('two')])
+  })
+})

@@ -56,7 +56,7 @@ import {
   type ConfigStat,
 } from '../memo/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
-import { workspaceFile } from '../handoff.js'
+import { workspaceFile, workspaceRootOf } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
 import { freezeDeep, readOnly } from './read-only.js'
@@ -505,6 +505,10 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // The stamps beside the lock, read once a load; each file stat'd once a load.
   let stamped: ReturnType<typeof stampsBesideLock> | undefined
   const statted = new Set<string>()
+  // The workspace file holds the plugins' options (turbo({ root }), nx({
+  // executors })): an edit there mapped otherwise, and the run kept the
+  // locked commands, green. Stat'd once a load, beside the configs.
+  let workspaceAsked = false
   // `moved`: gone, or there when the lock found it absent: edited either way.
   const pluginReads = async (
     digest: string,
@@ -623,9 +627,12 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       stamped = stampsBesideLock(workspaceRoot, args.cacheDir, digest)
     } else if (digest !== undefined && got !== undefined) {
       const mappedFrom = await pluginReads(digest, unstaged)
+      const workspace = workspaceAsked ? null : await workspaceStat(workspaceRoot)
+      workspaceAsked = true
       edited = [
         ...mappedFrom.moved,
         ...(await got.edited([
+          ...(workspace === null ? [] : [workspace]),
           ...withFile.flatMap((m, i) =>
             recordedOf(m) === undefined
               ? [
@@ -660,6 +667,16 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
               still.has(rel) ||
               ![...asked].some((m) => path.relative(workspaceRoot, m.configPath) === rel),
           )
+        }
+        // An edit that maps and discovers as the lock holds (a concurrency,
+        // a cache plugin) runs, as `vx lock --check` passes it, and is stamped.
+        const rel = workspace === null ? null : path.relative(workspaceRoot, workspace.file)
+        if (rel !== null && edited.includes(rel)) {
+          const taken = await takeConfigStamps(workspaceRoot, [workspace!.file])
+          if (await workspaceHolds(args, digest, await lock())) {
+            edited = edited.filter((f) => f !== rel)
+            await restampConfigs(workspaceRoot, args.cacheDir, digest, taken)
+          }
         }
       }
     }
@@ -847,6 +864,55 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
         release()
       }
     }))
+}
+
+/** The workspace file as `LockStamps.edited` takes it; null when none marks this root. */
+async function workspaceStat(root: string): Promise<ConfigStat | null> {
+  const file = await workspaceFile(path.resolve(root))
+  if (file === null || workspaceRootOf(file) !== path.resolve(root)) return null
+  const st = await stat(file).catch(() => null)
+  if (st === null) return null
+  return { file, size: st.size, mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, ino: st.ino }
+}
+
+/**
+ * Whether the plugins as the workspace file declares them now discover and
+ * map every project as the lock holds, as `vx lock --check` compares them:
+ * the names, the plugin that added each, the edges, then each config after
+ * the `project` stage. Asked only once the file moved since its stamp.
+ */
+async function workspaceHolds(
+  args: LoadProjectsArgs,
+  digest: string,
+  held: Lockfile,
+): Promise<boolean> {
+  const root = args.workspaceRoot
+  // The discovery `vx lock` runs: from the config files alone, so a project
+  // a plugin no longer adds is missed.
+  const files: Lockfile = {
+    ...held,
+    projects: Object.fromEntries(
+      Object.entries(held.projects).filter(([, p]) => p.file !== undefined),
+    ),
+  }
+  const fresh = await lockDiscovery(root, async () => files, args.plugins, args.cacheDir, args.warn)
+  const shape = (metas: readonly ProjectMeta[]): unknown => ({
+    source: metas.some((m) => m.deps !== undefined),
+    projects: Object.fromEntries(
+      metas.map((m) => [
+        lockKey(root, m.dir),
+        [m.name, addedByPlugin(m) ?? null, [...(m.deps ?? [])].sort(), [...(m.reach ?? [])].sort()],
+      ]),
+    ),
+  })
+  if (!Bun.deepEquals(shape(fresh), shape(args.projectMetas), true)) return false
+  const drifted = await asLockHolds(
+    args,
+    digest,
+    held,
+    (m) => m.configPath !== null || Object.hasOwn(held.projects, lockKey(root, m.dir)),
+  )
+  return drifted.length === 0
 }
 
 /**

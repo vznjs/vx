@@ -59,6 +59,7 @@ import {
 } from '../util/index.js'
 import { answerRuntime, makeIgnoredCacheDir } from '../cache/index.js'
 import { type ConfigStamps, takeConfigStamps, writeConfigStamps } from '../memo/index.js'
+import { workspaceFile, workspaceRootOf } from '../handoff.js'
 import * as ui from '../ui/index.js'
 import { refusalNotice, sayNotice } from '../ui/index.js'
 import {
@@ -252,12 +253,14 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     }
     out.strayReviews = strayReviews
     out.shadowed = shadowed
+    // The workspace file too: the plugins' options there map the projects.
+    const workspace = await workspaceFile(root)
     out.stamps = {
       cacheDir,
-      taken: await takeConfigStamps(
-        root,
-        found.map((f) => f.configPath),
-      ),
+      taken: await takeConfigStamps(root, [
+        ...found.map((f) => f.configPath),
+        ...(workspace !== null && workspaceRootOf(workspace) === root ? [workspace] : []),
+      ]),
     }
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(

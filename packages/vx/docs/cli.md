@@ -3270,6 +3270,8 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 - A file a `project` plugin made a config from is stamped then only when every mapping that read it holds: a refused one stays refused, in every project that read it.
 - A config edit committed without relocking is refused like an uncommitted one.
 - A file a config imports is not checked.
+- `.vx/workspace.*` is stamped too. Once it moved, its plugins discover and map every project again, as `vx lock --check` does.
+- An edited plugin option that maps otherwise refuses the run. A `run.concurrency` edit runs.
 - A file a `project` plugin made a config from is otherwise checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`.
 - A named file that appears or goes counts as an edit. The plugin names it (`ProjectHookContext.read`).
 - In a pipeline, `vx lock --check` first re-evaluates every config and checks the rules.
@@ -3525,8 +3527,9 @@ For review, it also writes each project's resolved config, pretty, to
 - `--check` names a project the plugins now map otherwise, a plugin added
   or dropped since included:
   `packages/ui: the plugins map it differently from the lock here`.
-- A run follows the record blindly, whatever plugins the workspace
-  declares now.
+- An edited `.vx/workspace.*` is evaluated: when its plugins now map or
+  discover otherwise (an option, a plugin added or dropped), a run
+  refuses, naming the file. An edit that changes neither runs.
 - When a plugin fails before the stage ran (a `discover` refusal),
   `--check` names that failure alone: no config is compared with what
   the stage recorded.

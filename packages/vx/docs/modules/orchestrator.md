@@ -3159,13 +3159,16 @@ records what they left in the lock (each `LockedProject.config` is the
 config after the stage), and every
 other load reads that record and calls no hook, so a run reads nothing
 a mapping reads (turbo.json, a manifest, git, the environment). It
-follows the record blindly, whatever plugins the workspace declares now:
-a project loads its recorded config, or `{ tasks: {} }` when the lock
+follows the record: a project loads its recorded config, or `{ tasks: {} }` when the lock
 holds none (2026-11-11: "we
 never relock during runs ... it should always follow the lock blindly").
-`vx lock --check` names the drift. Two exceptions: a file a hook named
+`vx lock --check` names the drift. Three exceptions: a file a hook named
 with `ctx.read` is stat'ed, and once it changed, appeared or went the run refuses, naming
-`vx lock`, as for an edited `vx.config`. And a run with no stamps beside
+`vx lock`, as for an edited `vx.config`. The workspace file is stamped
+too: once it moved, `workspaceHolds` runs `discover` and the `project`
+stage with its plugins as `vx lock --check` does, and refuses it when a
+name, an edge or a mapping differs (a plugin's options edited ran the
+locked commands, green); one that holds is stamped. And a run with no stamps beside
 its lock (a fresh clone, CI, a new `--cache-dir`) evaluates every config
 and runs the stage once, as `vx lock --check` does, to verify the lock
 and stamp what matches; it still runs what the lock records.

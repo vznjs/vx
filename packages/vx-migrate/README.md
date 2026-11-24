@@ -114,7 +114,7 @@ vx lock --check  # name each package the mapping now says otherwise for
 - Until then a run on this machine refuses: `turbo.json changed since the last \`vx lock\` — run \`vx lock\``, as for an edited `vx.config`.
 - A package `turbo.json` added since counts as an edit too.
 - A package added since has no tasks until `vx lock`.
-- Adding or dropping `turbo()` changes nothing until then either.
+- Adding or dropping `turbo()`, or editing its options, is refused the same way, naming `.vx/workspace.ts`.
 
 ### What it does not do
 
