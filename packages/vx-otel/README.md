@@ -60,6 +60,8 @@ With no signal left to export (each one `none`, `false` or without a URL), the p
 
 Spans and log records go at most 1 000 and 4 MiB to a request, so a large run stays under a collector's body limit.
 
+A collector whose limit is lower answers 413: that request goes again in halves until each fits, and only a single record it still refuses is lost.
+
 <details><summary>Details</summary>
 
 Header names are case-insensitive: a signal's own `Authorization` replaces the shared `authorization`.
