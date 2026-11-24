@@ -1193,7 +1193,8 @@ describe('the caching guide lists what the cache never reads', () => {
       .join('\n')
     const names = [...entries.matchAll(/'([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
     expect(names.length).toBe(11)
-    const excluded = /^- \*\*Always excluded:\*\*.*$/m.exec(page)
+    // The bullet and the two after it, which split its list of vx's files.
+    const excluded = /^- \*\*Always excluded:\*\*.*(\n- .*){2}$/m.exec(page)
     expect(excluded).not.toBeNull()
     for (const name of names) expect(excluded![0]).toContain(name)
   })
@@ -1985,7 +1986,7 @@ describe('the sandbox post judges a violation against the grants', () => {
     // The Troubleshooting page (#2470) said the sandbox refuses a read you
     // did not declare, of a file missing from the inputs (J2-37); the row is Caching's now.
     const trouble = readFileSync(path.join(GUIDES, 'caching.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(trouble).toContain('with reads granted no wider than the inputs, refuses that read')
+    expect(trouble).toContain('with reads granted no wider than the inputs: it refuses that read')
   })
 })
 
