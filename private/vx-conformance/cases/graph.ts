@@ -261,6 +261,7 @@ export default [
     title: 'A task named `test:unit` runs as its own task',
     why: 'A colon is a common part of task names such as `test:unit`, not a separator the runner may reinterpret. Reading it as project and task, or as a prefix of `test`, runs the wrong command. The user asked for unit tests and gets the whole suite, or nothing, under the same green exit.',
     from: ['parity-nx', 'cli-task-names'],
+    needs: ['colon-task-name'],
     workspace: {
       projects: {
         a: {

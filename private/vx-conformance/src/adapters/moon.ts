@@ -1,14 +1,14 @@
 // moon (moonrepo): `.moon/workspace.yml` maps each project to its
 // directory, and each project's `moon.yml` declares its tasks: `script` (a
 // shell line), `deps` as targets (`^:build`, `~:lint`, `lib:build`),
-// `inputs`, `outputs` and `options`. No toolchain is configured: every task
-// runs on the system toolchain, so moon downloads nothing. Project edges are
+// `inputs`, `outputs` and `options`. Its JavaScript and Bun toolchains load from
+// files fetched once before the cases (fetchMoonPlugins). Project edges are
 // `dependsOn` in moon.yml, moon's explicit form. The report is the run
 // report moon writes after each run, `.moon/cache/runReport.json`.
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { optionalAsOutputs, type Adapter } from '../adapter.ts'
+import type { Adapter } from '../adapter.ts'
 import { harnessNotes } from '../report.ts'
 import { modulesOf, pkgDir } from '../tools.ts'
 import { projectDir, type Selector, type TaskReport } from '../spec.ts'
@@ -161,6 +161,14 @@ export const moon: Adapter = {
   lacks: {
     'folder-output':
       'moon’s `outputs` take files and folders alike; its docs give a trailing slash no meaning of its own, so `dist/` is not declared a folder.',
+    // The next four from moon's maintainer (moonrepo/moon#2818).
+    'env-hidden':
+      'By design, moon passes its whole environment to every task: an env input keys the task but hides nothing from it.',
+    'env-any-name':
+      'By design, moon’s env inputs are upper case: `$__proto__` names a file, not a variable.',
+    'timeout-fraction':
+      'moon’s `timeout` is a whole number of seconds: a fraction fails to load the config.',
+    'colon-task-name': 'A moon target is `project:task`, so a task named with a `:` cannot be run.',
     'idle-timeout': 'moon has no limit on how long a task may print nothing.',
     'output-checksum': 'moon has no way to pin an output’s bytes to a checksum.',
     'determinism-check': 'No moon run rebuilds a cached task to compare its bytes.',
@@ -181,8 +189,7 @@ export const moon: Adapter = {
     'report-output-bytes': 'moon’s run report gives no size of a task’s outputs.',
   },
   env: { NO_COLOR: '1', DO_NOT_TRACK: '1' },
-  async configure(dir, given, command) {
-    const ws = optionalAsOutputs(given)
+  async configure(dir, ws, command) {
     const persistent = new Set(
       Object.entries(ws.projects).flatMap(([n, p]) =>
         Object.entries(p.tasks ?? {})
@@ -245,7 +252,14 @@ export const moon: Adapter = {
             : extra.length > 0
               ? ['**/*', ...extra]
               : undefined
-          const outputs = [...(spec.outputs ?? []), ...(spec.rootOutputs ?? []).map(fromRoot)]
+          const outputs: (string | object)[] = [
+            ...(spec.outputs ?? []),
+            ...(spec.rootOutputs ?? []).map(fromRoot),
+            // moon requires every output a task declares; an object marks one optional.
+            ...(spec.optionalOutputs ?? []).map((o) =>
+              /[*?[{]/.test(o) ? { glob: o, optional: true } : { file: o, optional: true },
+            ),
+          ]
           const deps = (spec.dependsOn ?? []).map((d) => {
             const t = target(d)
             const resolved = t.startsWith('~:') ? `${name}:${t.slice(2)}` : t
@@ -312,8 +326,14 @@ export const moon: Adapter = {
   },
   run: (task, projects, opts = {}) => {
     const tasks = [task, ...(opts.also ?? [])]
+    // `docs:test` names a task docs must declare. Where a named project
+    // lacks one of the tasks, moon's way is a query over `:test`, which runs it where declared.
+    const lacking = projects?.some((p) =>
+      tasks.some((t) => opts.workspace?.projects[p]?.tasks?.[t] === undefined),
+    )
+    const only = projects && !opts.select && lacking ? `project=[${projects.join(',')}]` : undefined
     const targets =
-      projects && !opts.select
+      projects && !opts.select && !lacking
         ? projects.flatMap((p) => tasks.map((t) => `${p}:${t}`))
         : tasks.map((t) => `:${t}`)
     return [
@@ -321,7 +341,7 @@ export const moon: Adapter = {
       // `moon run` is `moon exec` bailing on the first failure; going on is exec's `--on-failure continue`.
       ...(opts.continue ? ['exec', '--on-failure', 'continue', '--upstream', 'deep'] : ['run']),
       ...targets,
-      ...(opts.select ? ['--query', query(opts.select)] : []),
+      ...(opts.select ? ['--query', query(opts.select)] : only ? ['--query', only] : []),
       ...(opts.only ? ['--upstream', 'none'] : []),
       ...(opts.concurrency !== undefined ? ['--concurrency', String(opts.concurrency)] : []),
       ...(opts.force ? ['--force'] : []),

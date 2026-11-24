@@ -25,6 +25,7 @@ export default [
     title: 'A variable the task does not declare never reaches it',
     why: 'A variable that reaches the command but not its key can change the output while the key stays the same. A later run with another value then replays the wrong result. Keeping undeclared variables out of the task makes that mistake fail loudly now instead of silently later.',
     from: ['env', 'sandbox-parent-env.unsafe', 'parity-turbo-hashing-env'],
+    needs: ['env-hidden'],
     workspace: one({
       command: 'mkdir -p dist && printf %s "${API_SECRET-unset}" > dist/out.txt',
       inputs: ['src/**'],

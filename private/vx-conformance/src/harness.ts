@@ -517,6 +517,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
             ...(step.dry ? { dry: true } : {}),
             ...(step.verify ? { verify: true } : {}),
             ...(rootProject !== undefined ? { root: rootProject } : {}),
+            workspace: ws,
           })
         : adapter.affected(step.affected, step.base)
     )

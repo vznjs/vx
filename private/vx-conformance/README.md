@@ -170,8 +170,12 @@ mean the same thing, the adapter uses the one its docs teach:
   no toolchain and the results' `notes` say why. Selectors are a `--query` over project fields,
   `--continue` is `moon exec --on-failure continue`, affected is
   `--affected --base --downstream deep --include-relations`. The report is
-  `.moon/cache/runReport.json`. It lacks project-graph walks in a selection, task patterns, a ready line, a
-  sandbox, watch and dry runs.
+  `.moon/cache/runReport.json`. Named projects are `project:task` targets, or
+  `:task --query 'project=[…]'` when one lacks the task; an optional output is
+  `{ glob | file, optional: true }`. It lacks project-graph walks in a selection, task patterns, a ready line, a
+  sandbox, watch, dry runs, fractional timeouts and `:` in task names. moon's
+  maintainer marked two cases N/A by design (moonrepo/moon#2818): every task
+  sees moon's whole environment, and env inputs are upper case.
 - **vx**: a vx.config.mjs per project that has a task, `bun()` for the
   edges, `vx lock` (again after each install and each package.json a case
   edits: a run follows the lock, so a broken manifest is refused there),

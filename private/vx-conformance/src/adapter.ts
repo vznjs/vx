@@ -81,6 +81,8 @@ export interface RunOptions {
   root?: string
   /** Plan only. */
   dry?: boolean
+  /** The workspace as configured: a tool whose CLI must be told where a task is declared reads it. */
+  workspace?: WorkspaceSpec
   /** Rebuild cached tasks and fail when their bytes differ. */
   verify?: boolean
 }

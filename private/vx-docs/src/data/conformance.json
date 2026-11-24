@@ -1403,13 +1403,13 @@
     },
     "moon": {
       "all": {
-        "pass": 1283,
-        "can": 1745,
+        "pass": 1282,
+        "can": 1737,
         "of": 2214
       },
       "correctness": {
-        "pass": 1012,
-        "can": 1426,
+        "pass": 1011,
+        "can": 1418,
         "of": 1791
       },
       "efficiency": {
@@ -1424,12 +1424,12 @@
       },
       "graph": {
         "pass": 187,
-        "can": 243,
+        "can": 240,
         "of": 321
       },
       "config": {
-        "pass": 59,
-        "can": 85,
+        "pass": 58,
+        "can": 82,
         "of": 88
       },
       "failure": {
@@ -1459,7 +1459,7 @@
       },
       "env": {
         "pass": 138,
-        "can": 146,
+        "can": 145,
         "of": 149
       },
       "report": {
@@ -1469,7 +1469,7 @@
       },
       "sandbox": {
         "pass": 0,
-        "can": 1,
+        "can": 0,
         "of": 141
       },
       "watch": {
@@ -1807,9 +1807,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 2, expected success"
+          "status": "n/a",
+          "detail": "A moon target is `project:task`, so a task named with a `:` cannot be run."
         }
       }
     },
@@ -28098,9 +28097,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 2, expected success"
+          "status": "n/a",
+          "detail": "A moon target is `project:task`, so a task named with a `:` cannot be run."
         }
       }
     },
@@ -28131,9 +28129,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 2, expected success"
+          "status": "n/a",
+          "detail": "A moon target is `project:task`, so a task named with a `:` cannot be run."
         }
       }
     },
@@ -33923,9 +33920,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "packages/a/dist/out.txt is \"leaked\", expected \"unset\""
+          "status": "n/a",
+          "detail": "By design, moon passes its whole environment to every task: an env input keys the task but hides nothing from it."
         }
       }
     },
@@ -37135,9 +37131,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 2,
-          "detail": "did not run a#build"
+          "status": "n/a",
+          "detail": "By design, moon’s env inputs are upper case: `$__proto__` names a file, not a variable."
         }
       }
     },
@@ -51463,7 +51458,8 @@
           "detail": "Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
         },
         "moon": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "moon’s `timeout` is a whole number of seconds: a fraction fails to load the config."
         }
       }
     },
@@ -51499,9 +51495,8 @@
           "detail": "Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "n/a",
+          "detail": "moon’s `timeout` is a whole number of seconds: a fraction fails to load the config."
         }
       }
     },
@@ -51536,9 +51531,8 @@
           "detail": "Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "n/a",
+          "detail": "moon’s `timeout` is a whole number of seconds: a fraction fails to load the config."
         }
       }
     },

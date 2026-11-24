@@ -660,6 +660,7 @@ export default [
     title: '`^build:prod` runs the dependency’s `build:prod` first and reruns on its change',
     why: 'Names with colons, like `build:prod`, are common for task variants and must work in `^` edges. The dependency’s `build:prod` runs first, and a change to its inputs reaches the dependant’s cache key. Otherwise the dependant could replay output built from the old dependency.',
     from: ['cli-task-names'],
+    needs: ['colon-task-name'],
     workspace: {
       projects: {
         b: {
@@ -710,6 +711,7 @@ export default [
     title: 'A task named `a:b:c` runs as one name, not as `a` with more after it',
     why: 'Some runners read a colon as a separator, such as between project and target. A task named `a:b:c` must still be one name, run as declared. Splitting it would run a different task, here `a`, and report a result for work nobody asked for.',
     from: ['cli-task-names'],
+    needs: ['colon-task-name'],
     workspace: app({
       'a:b:c': { command: 'echo abc > abc.txt', inputs: ['src/**'] },
       a: { command: 'echo a > a.txt', inputs: ['src/**'] },
