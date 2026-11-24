@@ -51,6 +51,12 @@ function main(argv: string[]): void {
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
+  // A token names an http(s) URL: any other refused every token.
+  const aud = audience === '' ? null : URL.parse(audience)
+  if (audience !== '' && (aud === null || !/^https?:$/.test(aud.protocol)))
+    fail(
+      `AUDIENCE: the URL clients reach this relay at (https://relay.example.com), not ${audience}`,
+    )
   // Digits only, as the cache and history servers read it: Number('') is
   // 0, a random port for `--port "$PORT"` with PORT unset, and Number read
   // 0x50 as 80 and 1e1 as 10.

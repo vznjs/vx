@@ -1012,6 +1012,26 @@ it('reads ALLOW and AUDIENCE from the environment, as the other servers do, and 
   ])
 })
 
+// An AUDIENCE no token can name (`not a url`, `ftp://x`) started a relay
+// that refused every token, as the cache and history servers refuse to.
+it('refuses to start with an AUDIENCE that is no http(s) URL', () => {
+  const ALLOW = 'https://token.actions.githubusercontent.com:acme/app:ci.yml'
+  for (const audience of ['not a url', 'ftp://relay.example.com']) {
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0'],
+      {
+        env: { PATH: process.env.PATH ?? '', ALLOW, AUDIENCE: audience },
+        stderr: 'pipe',
+        timeout: 10_000,
+      },
+    )
+    expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString()).split('\n')[0]]).toEqual([
+      2,
+      `✗ vx-dte-server  AUDIENCE: the URL clients reach this relay at (https://relay.example.com), not ${audience}`,
+    ])
+  }
+}, 30_000)
+
 it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {
     stderr: 'pipe',
