@@ -507,8 +507,10 @@ describe('the release graph', () => {
 describe('the release scripts', () => {
   // A Mac sandbox may not list the workspace root (seatbelt.ts,
   // darwinAncestorRules), so Bun there never finds the root's
-  // node_modules: a package only the root declares was "Cannot find
-  // module" on the darwin attest of v0.0.661.
+  // node_modules by name: a package only the root declares was "Cannot
+  // find module" on the darwin attest of v0.0.661. @vzn/vx takes no
+  // dependency for a script, so one the root declares is imported by its
+  // path under the root's node_modules, which the task reads.
   it('import only packages @vzn/vx itself declares', async () => {
     const dir = path.join(import.meta.dir, '..')
     const pkg = (await Bun.file(path.join(dir, 'package.json')).json()) as {
