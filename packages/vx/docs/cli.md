@@ -7318,6 +7318,9 @@ names the path, never a stack.
 vx: EACCES: permission denied, open '…/.vx/projects.lock' — a path vx must write is not writable by this user
 ```
 
+On a read-only file system the line says so instead: `the file system that
+path is on is read-only; mount a writable one there`.
+
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">

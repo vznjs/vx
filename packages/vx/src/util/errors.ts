@@ -230,9 +230,12 @@ const READ_SYSCALLS = new Set(['scandir', 'stat', 'lstat', 'readlink', 'read', '
 
 /** The one-line hint after a refusal's path. */
 export function fsRefusalHint(err: NodeJS.ErrnoException): string {
-  const { syscall } = err
+  const { syscall, code } = err
   if (isDiskFull(err)) return DISK_FULL_HINT
   if (isNameTooLong(err)) return 'that path is longer than the file system allows; shorten it'
+  // No user can write a read-only mount: "by this user" sent them to chmod.
+  if (code === 'EROFS')
+    return 'the file system that path is on is read-only; mount a writable one there'
   // A listing told to be a write sent the user to chmod the wrong thing.
   return READ_SYSCALLS.has(syscall ?? '') ? READ_PERMISSION_HINT : PERMISSION_HINT
 }
