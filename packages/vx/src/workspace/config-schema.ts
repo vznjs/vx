@@ -418,7 +418,18 @@ function validateSettingsExtra(config: WorkspaceConfig, configPath: string): voi
 function shown(v: unknown): string {
   if (typeof v === 'bigint') return `${v}n`
   if (typeof v === 'number' && !Number.isFinite(v)) return String(v)
-  return JSON.stringify(v) ?? String(v)
+  // A proxy whose trap throws threw out of the quote: vx's own stack.
+  try {
+    return JSON.stringify(v) ?? String(v)
+  } catch (err) {
+    let why = 'a throw'
+    try {
+      why = err instanceof Error ? err.message : String(err)
+    } catch {
+      // A thrown value whose own conversion throws: named generically.
+    }
+    return `a value that threw when read (${why})`
+  }
 }
 
 /** A `plugins` entry that stands for no plugin: `undefined`, `null` or `false`. */

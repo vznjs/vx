@@ -255,6 +255,18 @@ describe('setting refusals the sweep found unheld (item 653)', () => {
     expect(refusal({ cache: { store: { embeddings: Symbol('s') } } })).toBe(
       `${WS}: \`cache.store.embeddings\` must be false, or a size like '32KiB' (got Symbol(s))`,
     )
+    // A proxy whose trap throws: quoting it was vx's own stack and "bug in vx".
+    const trap = new Proxy(
+      {},
+      {
+        ownKeys: () => {
+          throw new Error('k')
+        },
+      },
+    )
+    expect(refusal({ run: { concurrency: [trap] } })).toMatch(
+      /`run\.concurrency` .*\(got a value that threw when read \(k\)\)$/,
+    )
     const p = testPlugin('fz-fp-bigint', {
       fingerprint: { files: [1n], affected: () => new Set<string>() } as never,
     })
