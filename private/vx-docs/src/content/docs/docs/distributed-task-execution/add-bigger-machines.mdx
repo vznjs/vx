@@ -61,7 +61,7 @@ Read the new size as: up to **2** machines of **16** cores and **64GB**, on the 
 
 ## Send each size to its runner
 
-Run `vx dte init` again. `vx-worker.yml` now maps each size to its runner:
+Run `vx dte init --force`: it writes both workflows again. `vx-worker.yml` now maps each size to its runner:
 
 ```yaml title=".github/workflows/vx-worker.yml"
     runs-on: ${{ fromJSON('{"linux.cpu4":"ubuntu-latest","linux.cpu16":"ubuntu-latest-16-cores"}')[inputs.size] }}
