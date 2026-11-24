@@ -84,6 +84,9 @@ ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' AUDIENCE=htt
   too.
 - The first upload of each day sweeps, whichever node or Workers isolate
   takes it.
+- An upload the file cannot take fails `500` with SQLite's reason, and
+  reads go on: a full or read-only disk, or a write lock another process
+  holds past 1 s. vx warns and the run goes on.
 
 ## With Docker
 

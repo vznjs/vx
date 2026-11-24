@@ -1,6 +1,7 @@
 // The Bun server: one SQLite file.
 
-import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -675,3 +676,48 @@ it('starts with the variables each docker run the Dockerfile and README show set
   }
   expect(await Promise.all(runs.map(said))).toEqual(runs.map(() => '✓ vx-history-server '))
 }, 30_000)
+
+// bun:sqlite waits for a lock on the server's one thread: while another
+// process held the file (a second node, a sqlite3 shell), each upload
+// stalled every request, reads too, for the 5 s busy timeout, past half a
+// client's 10 s deadline. A lock held longer than a fold takes fails the
+// upload soon, and the reads go on.
+it('fails an upload soon while another process holds the database, and goes on reading', async () => {
+  const file = path.join(dir, 'locked.sqlite')
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(file)),
+    authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
+  })
+  const ask = async (route: string, body: unknown) =>
+    handle(
+      new Request(`http://x.test/v1/timings/${route}`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${await iss.sign('main', 'http://x.test')}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }),
+    )
+  expect((await ask('upload', { timings: [{ hash: 'a', durationMs: 5 }] })).status).toBe(204)
+  const other = new Database(file)
+  other.run('BEGIN IMMEDIATE')
+  other.run('DELETE FROM sweeps')
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const t = performance.now()
+    const upload = await ask('upload', { timings: [{ hash: 'a', durationMs: 50 }] })
+    const took = performance.now() - t
+    const query = await ask('query', {
+      issuer: GITHUB,
+      repository: REPO,
+      refs: ['refs/heads/main'],
+      hashes: ['a'],
+    })
+    expect([upload.status, took < 2_500, query.status]).toEqual([500, true, 200])
+  } finally {
+    logged.mockRestore()
+    other.run('ROLLBACK')
+    other.close()
+  }
+})

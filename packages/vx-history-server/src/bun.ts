@@ -20,7 +20,9 @@ const USAGE = `usage: vx-history-server [--db vx-history.sqlite] [--port 8080] [
 export function sqliteDb(path: string): Db {
   const db = new Database(path, { create: true, strict: true })
   db.run('PRAGMA journal_mode = WAL')
-  db.run('PRAGMA busy_timeout = 5000')
+  // bun:sqlite waits for a lock on the server's one thread, stalling every
+  // request: a fold takes ms, so a lock held past this is no other fold's.
+  db.run('PRAGMA busy_timeout = 1000')
   return {
     all: async <T>(sql: string, params: readonly unknown[]) =>
       db.query(sql).all(...(params as never[])) as T[],
