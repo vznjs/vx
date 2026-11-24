@@ -321,8 +321,8 @@ export interface CommandContext extends BaseContext {
    */
   readonly concurrency: number
   /**
-   * The argv that runs this vx again: the binary when compiled, runtime and
-   * entry from source. Spawn `[...vx, 'run', …]` rather than guess at PATH.
+   * The argv that runs this vx again: the binary when compiled, from source
+   * Bun with the `bin.ts` shebang's flags and the entry. Spawn `[...vx, 'run', …]` rather than guess at PATH.
    */
   readonly vx: readonly string[]
   /**

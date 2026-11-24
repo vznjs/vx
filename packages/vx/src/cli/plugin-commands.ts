@@ -127,7 +127,9 @@ export async function resolvePluginCommand(
         concurrency: ws.concurrency,
         vx: (await import('./upgrade.js')).isCompiledBinary()
           ? [process.execPath]
-          : [process.execPath, Bun.main],
+          : // The bin.ts shebang's flags: `bun <entry>` alone loaded the cwd's
+            // `.env` and bunfig preload into the vx it started.
+            [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', Bun.main],
         warn,
         cache: lazyCache(() => verbCache(ws, plugin.name)),
         artifacts: lazyArtifacts(() => verbArtifacts(ws)),
