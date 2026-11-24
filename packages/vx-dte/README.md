@@ -1218,6 +1218,9 @@ part comes from one `ps` as it starts and one as it leaves:
 cpu over 61.2s: machine 2.80 cores · tasks 2.00 cores · this worker 0.15 cores · its other children 0.05 cores · most besides: Runner.Worker 0.30 cores
 ```
 
+- A Linux kernel worker is named by its thread (`kworker/0:1`), not the work
+  queue it serves at the moment.
+
 The run's lines:
 
 - `probe`: when core's cache probe answered, and how many tasks it left to
