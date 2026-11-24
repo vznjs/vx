@@ -1318,6 +1318,12 @@ Paths start at the project folder. vx always leaves out what git ignores, its ow
 - `src\**`, `src\*.ts`, `C:\src\**` and `C:/src/**` are refused, naming the forward-slash glob to write.
 - `' src/**'` (spaces around it) and `'src/\n'` (a control character) are refused: either is read as part of a name and matches nothing.
 
+**What may be missing**
+
+- Unlike an output, an input need not exist. `nope.txt` that is not there is keyed as absent, and the task runs again once the file appears.
+- `gen/**` matching nothing keys nothing, and the next file in `gen/` moves the key.
+- A list where nothing matched at all is said on every miss: `inputs matched no files (lib/**)`. So is one whose every wildcard matched nothing beside a literal file that did.
+
 **Wildcards**
 
 - `*`, `**`, `?`, `[ab]`, `[a-z]`, `[!a]` and `{a,b}` are the wildcards.
