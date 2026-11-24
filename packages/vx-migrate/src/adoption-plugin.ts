@@ -50,6 +50,11 @@ export interface AdoptionRun {
    * file under one is taken back (`tracked-outputs.ts`).
    */
   readonly spareTracked?: boolean
+  /**
+   * Further files a project's mapping was made from (Nx's inferred targets'
+   * `vite.config.ts`), named to core as `own` is.
+   */
+  readonly madeFrom?: (dir: string) => readonly string[]
 }
 
 /**
@@ -76,6 +81,7 @@ export function adoptionPlugin(
   // command. `ctx.projects` is one array per pass, so its identity is the
   // pass's.
   let mappedFor: ProjectHookContext['projects'] | undefined
+  let run: Promise<AdoptionRun> | undefined
   let mapping: Promise<AdoptionMapping> | undefined
   let warned = false
   const plugin = definePlugin(meta, {
@@ -89,7 +95,8 @@ export function adoptionPlugin(
         // The key's other reads overlap the plugin's own.
         void codeId()
         const stamp = headStamp(ctx.workspaceRoot)
-        mapping = mapRun(ctx).then(async (r) =>
+        run = mapRun(ctx)
+        mapping = run.then(async (r) =>
           r.spareTracked === true
             ? cachedMapping(ctx.cacheDir, r.name, [...r.reads, await stamp], async () => {
                 let read: Promise<readonly string[] | null> | undefined
@@ -103,6 +110,7 @@ export function adoptionPlugin(
         warned = false
       }
       const mapped = await mapping!
+      for (const f of (await run!).madeFrom?.(ctx.dir) ?? []) ctx.read(f)
       if (!warned) {
         warned = true
         warnGaps(ctx.warn, plugin.name, mapped.gaps, ctx.lock)

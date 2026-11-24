@@ -98,6 +98,18 @@ describe('nx(): a file the lock was mapped from, edited since', () => {
       },
     }
     await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
+    // What Nx records beside its graph: the file each target was inferred from.
+    await writeFile(path.join(dir, 'vite.config.ts'), 'export default {}\n')
+    await mkdir(path.join(root, '.nx', 'workspace-data'), { recursive: true })
+    await writeFile(
+      path.join(root, '.nx', 'workspace-data', 'source-maps.json'),
+      JSON.stringify({
+        'packages/lib': {
+          root: ['packages/lib/project.json', 'nx/core/project-json'],
+          'targets.lint': ['packages/lib/vite.config.ts', '@nx/vite/plugin'],
+        },
+      }),
+    )
     await fakeNx(root)
     await fakeNxCli(root)
     await Bun.write(
@@ -136,6 +148,21 @@ describe('nx(): a file the lock was mapped from, edited since', () => {
       expect((await plan()).tasks.length).toBe(1)
       await writeFile(project, JSON.stringify({ name: 'lib' }))
       await expect(plan()).rejects.toThrow(said('packages/lib/project.json'))
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'refuses the run for an edit to the file a target was inferred from',
+    async () => {
+      await lock(root)
+      const plan = () => planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect((await plan()).tasks.length).toBe(1)
+      await writeFile(
+        path.join(root, 'packages', 'lib', 'vite.config.ts'),
+        'export default { build: {} }\n',
+      )
+      await expect(plan()).rejects.toThrow(said('packages/lib/vite.config.ts'))
     },
     TIMEOUT,
   )
