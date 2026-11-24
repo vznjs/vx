@@ -2986,12 +2986,12 @@ interface CacheSettings {
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">What the cache reads and writes: `cache.*`</span></summary>
 <div class="vx-deeper-body">
 
-- `cache: { policy: 'local:rw,remote:r' }`: which layers a run reads and writes. A layer the spec leaves out stays on (`cli.md` § Cache control).
+- `cache: { policy: 'local:rw,remote:r' }`: which layers a run reads and writes. A layer the spec leaves out stays on, but off CI a remote it does not name is read only (`cli.md` § Cache control).
 - `cache.policy` unset on CI: every layer reads and writes.
 - `cache.policy` unset off CI: `vx run` reads the remote and does not write it. A key holds only declared inputs, so a laptop's write could replay on CI.
 - Off CI means no CI variable is on: `CI`, or a provider's own such as `GITHUB_ACTIONS` or `JENKINS_URL` (`cli.md` § Output format › Colors lists them).
 - `'remote:rw'` names the remote, so it writes it, off CI too.
-- `--cache-policy` beats `VX_CACHE_POLICY`, which beats `cache.policy`. `--no-cache` and `--force` still apply on top.
+- `--cache-policy` beats `VX_CACHE_POLICY`, which beats `cache.policy`: the one that wins is the whole spec, and the others add nothing. `--no-cache` and `--force` still apply on top.
 - `'remote:x'` is refused before any task, naming `cache.policy`.
 - The policy alone decides whether a layer is written; the cache scope never does.
 - Whatever the policy, a lookup asks the local cache first, then each remote in the order the plugins declare them.
