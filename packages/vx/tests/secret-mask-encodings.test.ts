@@ -38,8 +38,8 @@ describe('a secret in its encoded spellings', () => {
   it('masks the URL-encoded value with its hex in lower or mixed case', () => {
     const enc = encodeURIComponent(TOKEN)
     const lower = enc.replace(/%[0-9A-F]{2}/g, (e) => e.toLowerCase())
-    let flip = false
-    const mixed = enc.replace(/%[0-9A-F]{2}/g, (e) => ((flip = !flip) ? e.toLowerCase() : e))
+    let n = 0
+    const mixed = enc.replace(/%[0-9A-F]{2}/g, (e) => (n++ % 2 === 0 ? e.toLowerCase() : e))
     expect([lower, mixed].every((v) => v !== enc)).toBe(true)
     for (const v of [lower, mixed])
       expect(mask.mask(`?token=${v}&a=1`)).toBe(`?token=${MASKED}&a=1`)
