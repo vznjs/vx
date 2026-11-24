@@ -430,10 +430,13 @@ export async function acquireRunLock(
           ? ''
           : await readFile(path.join(lockDir, h.entry), 'utf8').catch(() => '')
       // Spelled out: the Troubleshooting page quotes the run's line as printed.
+      const holder = HOLDER_PHRASE[kind]
       ;(opts.wait ?? opts.log)(
         opts.of === 'lock'
           ? `[vx] waiting for another vx lock (pid ${h.pid}) on this workspace to finish…`
-          : `[vx] waiting for ${HOLDER_PHRASE[kind] ?? 'another vx run'} (pid ${h.pid}) on this workspace to finish…`,
+          : holder === undefined
+            ? `[vx] waiting for another vx run (pid ${h.pid}) on this workspace to finish…`
+            : `[vx] waiting for ${holder} (pid ${h.pid}) on this workspace to finish…`,
       )
     }
     await Bun.sleep(POLL_MS)
