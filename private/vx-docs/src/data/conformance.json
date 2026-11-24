@@ -1095,12 +1095,12 @@
     },
     "turbo": {
       "all": {
-        "pass": 1394,
+        "pass": 1395,
         "can": 1811,
         "of": 2210
       },
       "correctness": {
-        "pass": 1120,
+        "pass": 1121,
         "can": 1464,
         "of": 1787
       },
@@ -1145,7 +1145,7 @@
         "of": 493
       },
       "outputs": {
-        "pass": 235,
+        "pass": 236,
         "can": 305,
         "of": 318
       },
@@ -1172,12 +1172,12 @@
     },
     "nx": {
       "all": {
-        "pass": 1392,
+        "pass": 1393,
         "can": 1846,
         "of": 2210
       },
       "correctness": {
-        "pass": 1079,
+        "pass": 1080,
         "can": 1489,
         "of": 1787
       },
@@ -1222,7 +1222,7 @@
         "of": 493
       },
       "outputs": {
-        "pass": 224,
+        "pass": 225,
         "can": 305,
         "of": 318
       },
@@ -1249,12 +1249,12 @@
     },
     "vite-task": {
       "all": {
-        "pass": 1027,
+        "pass": 1028,
         "can": 1395,
         "of": 2210
       },
       "correctness": {
-        "pass": 862,
+        "pass": 863,
         "can": 1174,
         "of": 1787
       },
@@ -1299,7 +1299,7 @@
         "of": 493
       },
       "outputs": {
-        "pass": 207,
+        "pass": 208,
         "can": 305,
         "of": 318
       },
@@ -1326,12 +1326,12 @@
     },
     "nix": {
       "all": {
-        "pass": 1101,
+        "pass": 1102,
         "can": 1390,
         "of": 2210
       },
       "correctness": {
-        "pass": 944,
+        "pass": 945,
         "can": 1194,
         "of": 1787
       },
@@ -1376,7 +1376,7 @@
         "of": 493
       },
       "outputs": {
-        "pass": 236,
+        "pass": 237,
         "can": 312,
         "of": 318
       },
@@ -1403,12 +1403,12 @@
     },
     "moon": {
       "all": {
-        "pass": 1279,
+        "pass": 1280,
         "can": 1742,
         "of": 2210
       },
       "correctness": {
-        "pass": 1008,
+        "pass": 1009,
         "can": 1423,
         "of": 1787
       },
@@ -1453,7 +1453,7 @@
         "of": 493
       },
       "outputs": {
-        "pass": 192,
+        "pass": 193,
         "can": 308,
         "of": 318
       },
@@ -5236,6 +5236,21 @@
       ],
       "outcomes": {
         "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
           "status": "pass"
         }
       }

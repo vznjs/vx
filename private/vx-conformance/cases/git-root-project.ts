@@ -145,7 +145,7 @@ export default [
           tasks: {
             build: {
               command:
-                'mkdir -p out && cat tools/gen.txt > out/gen.txt && cat tools/gen.txt > packages/a/gen.log',
+                'mkdir -p out packages/a && cat tools/gen.txt > out/gen.txt && cat tools/gen.txt > packages/a/gen.log',
               inputs: ['tools/**'],
               outputs: ['out/**', 'packages/**/*.log'],
             },
