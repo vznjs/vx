@@ -35,7 +35,17 @@ describe('terminalOutput', () => {
     log.taskStderr(A, '1my\x1b[0m\x1b[5')
     log.taskStderr(A, 'Bz\n')
     log.taskStdout(A, '10%\x1b[2K\x1b[1G100%\n')
-    expect(said).toEqual([KEPT, 'x', '\x1b[31my\x1b[0m', 'z\n', '10%\x1b[2K\x1b[1G100%\n'])
+    // A spinner's `\r` then erase to the line's end: dropped, a shorter
+    // frame left the longer one's tail on screen (`oknking a long name`).
+    log.taskStdout(A, '\rlinking a long name\x1b[K\rok\x1b[0K\n')
+    expect(said).toEqual([
+      KEPT,
+      'x',
+      '\x1b[31my\x1b[0m',
+      'z\n',
+      '10%\x1b[2K\x1b[1G100%\n',
+      '\rlinking a long name\x1b[K\rok\x1b[0K\n',
+    ])
   })
 })
 

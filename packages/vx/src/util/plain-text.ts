@@ -26,11 +26,11 @@ const ANY_ESCAPE =
   // eslint-disable-next-line no-control-regex -- ESC is the point
   /\x1b(?:\[[0-?]*[ -/]*[@-~]|[\]P_^X][^\x07\x1b\x9c\n]*(?:\x07|\x1b\\|\x9c)?|[ -/]*[0-~]?)/g
 // eslint-disable-next-line no-control-regex -- ESC is the point
-const KEPT_ESCAPE = /^\x1b(?:\[[0-9;:]*m|\[[12]K|\[[01]?G|\]8;)/
+const KEPT_ESCAPE = /^\x1b(?:\[[0-9;:]*m|\[[012]?K|\[[01]?G|\]8;)/
 
 /**
  * `text` with only its colours (SGR), links (OSC 8) and redraws of its own
- * line (erase line, column 1: `lastRedraw` plays them) left: what a task may
+ * line (erase line or its end, column 1: `lastRedraw` plays them) left: what a task may
  * show on vx's terminal. A cursor move or screen erase rewrote vx's own
  * lines, and a mode, title or clipboard escape outlived the task.
  */
