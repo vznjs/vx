@@ -25,6 +25,8 @@ export function replay(
   tasks: readonly PlanTask[],
   sizes: readonly Size[],
   warm: (platform: string | undefined) => number,
+  /** `Date.now()` past which it stops as one that cannot finish (`endMs` Infinity). */
+  deadline = Infinity,
 ): Replayed {
   const n = tasks.length
   const ix = new Map(tasks.map((t, i) => [t.id, i]))
@@ -100,8 +102,8 @@ export function replay(
       const s = Math.max(1, load(w) / w.cores)
       for (const j of w.run) next = Math.min(next, t + (ms[j]! - progress[j]!) * s)
     }
-    // Nothing can run it (no size of a task's platform): as far as it got.
-    if (next === Infinity) break
+    // Nothing can run it (no size of a task's platform), or out of time: as far as it got.
+    if (next === Infinity || Date.now() > deadline) break
     const dt = next - t
     for (const w of ws) {
       if (w.leftAt !== undefined) continue

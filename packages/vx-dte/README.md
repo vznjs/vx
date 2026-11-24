@@ -1328,6 +1328,8 @@ next time (`TaskExecutor.advice`).
 - Raise a size's `max`, or change its `cpu` and `memory`, by them.
 - They are in the footer and the run summary, and `@vzn/vx-ci` prints them
   under "Workers to declare".
+- The replays get 2 s at the run's end. A line whose replay is not done
+  by then is left out, so a big run ends without it.
 
 <details><summary>Details</summary>
 

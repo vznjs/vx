@@ -12,6 +12,8 @@ export interface ReplayJob {
   readonly fleets: readonly (readonly Size[])[]
   /** Each platform's warm-up, by name ('' for none). */
   readonly warm: Readonly<Record<string, number>>
+  /** `Date.now()` past which a replay stops, unfinished. */
+  readonly deadline: number
   /** Int32: [next fleet to take, then per fleet 0 open, 1 played, 2 failed]. */
   readonly state: SharedArrayBuffer
   /** Float64 per fleet: [endMs, heldMs, asked per size]. */
@@ -32,7 +34,7 @@ export function takeFleets(job: ReplayJob): void {
     if (z >= job.fleets.length) return
     let done = FAILED
     try {
-      const r = replay(job.tasks, job.fleets[z]!, (p) => job.warm[p ?? ''] ?? 0)
+      const r = replay(job.tasks, job.fleets[z]!, (p) => job.warm[p ?? ''] ?? 0, job.deadline)
       out[z * width] = r.endMs
       out[z * width + 1] = r.heldMs
       out.set(r.asked, z * width + 2)
@@ -48,6 +50,7 @@ export function takeFleets(job: ReplayJob): void {
 export function playAside(
   tasks: readonly PlanTask[],
   warm: (platform: string | undefined) => number,
+  deadline = Infinity,
 ): Play {
   return (fleets) => {
     const platforms = new Set(fleets.flatMap((f) => f.map((s) => s.platform)))
@@ -55,6 +58,7 @@ export function playAside(
       tasks,
       fleets,
       warm: Object.fromEntries([...platforms].map((p) => [p ?? '', warm(p)])),
+      deadline,
       state: new SharedArrayBuffer(4 * (1 + fleets.length)),
       out: new SharedArrayBuffer(
         8 * fleets.length * (2 + Math.max(0, ...fleets.map((f) => f.length))),
@@ -78,7 +82,7 @@ export function playAside(
       return fleets.map((f, z): Replayed => {
         Atomics.wait(state, 1 + z, OPEN)
         // a thread's failure, played here: the error is this thread's to throw
-        if (state[1 + z] !== PLAYED) return replay(tasks, f, warm)
+        if (state[1 + z] !== PLAYED) return replay(tasks, f, warm, deadline)
         return {
           endMs: out[z * width]!,
           heldMs: out[z * width + 1]!,

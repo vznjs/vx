@@ -57,6 +57,8 @@ export interface RecordedWorker {
 const FEW = 2
 /** The unmeasured tasks the summary names; the rest it counts. */
 const NAMED = 40
+/** How long the advice's replays may hold the run's end, ms. */
+const ADVICE_MS = 2_000
 /** The footer's label of each `WorkerAdvice`. */
 const ADVICE: Record<WorkerAdvice['of'], readonly [label: string, note: string]> = {
   declared: ['best', 'the fewest of its sizes'],
@@ -489,7 +491,9 @@ export class RunReport<W extends RecordedWorker> {
               }, new Map<string, Size>())
               .values(),
           ]
-    const a = advise(r.tasks, shapes, r.warm, playAside(r.tasks, r.warm))
+    // Bounded: the replays grow faster than the run, and a 2,000-task run's
+    // held its end for good. Past the budget, the advice is left out.
+    const a = advise(r.tasks, shapes, r.warm, playAside(r.tasks, r.warm, Date.now() + ADVICE_MS))
     const wire = (of: WorkerAdvice['of'], f: Fleets | undefined): WorkerAdvice[] =>
       f === undefined
         ? []

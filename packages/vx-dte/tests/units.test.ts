@@ -2285,6 +2285,29 @@ it('advises the same from replays played side by side', () => {
   expect(advise(tasks, sizes, warm, playAside(tasks, warm))).toEqual(one)
 })
 
+// A 1,000-project run (2,000 tasks) printed every task and then never
+// exited: the footer's replays grow faster than the run, and held its end
+// for good (12 min, killed). Past its deadline a replay ends as one that
+// cannot finish: the advice it would give is left out.
+it('advises nothing past its deadline, rather than hold the run’s end', () => {
+  const tasks: PlanTask[] = Array.from({ length: 24 }, (_, i) => ({
+    id: `t${i}`,
+    ms: 1000 + 137 * i,
+    cores: 1,
+    memory: 1e9,
+    deps: i < 4 ? [] : [`t${i % 4}`],
+    platform: 'linux-x64',
+  }))
+  const sizes: Size[] = [{ name: 'small', max: 3, cpu: 4, memory: 16e9, platform: 'linux-x64' }]
+  const warm = (): number => 500
+  expect(advise(tasks, sizes, warm, playAside(tasks, warm)).declared).toBeDefined()
+  expect(advise(tasks, sizes, warm, playAside(tasks, warm, Date.now() - 1))).toEqual({
+    declared: undefined,
+    more: undefined,
+    any: undefined,
+  })
+})
+
 // Main 5c2463f: the least held read 14.9 core-min, its tasks and one
 // warm-up, where ending by the ideal took 4 smalls and a Mac, each warming
 // up: 26 at least. As many workers as end the work by then, each warmed.
