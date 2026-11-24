@@ -204,8 +204,9 @@ workspace's place in it:
 - A detached shell waits up to 5 s for the workers to leave, kills any still
   running, removes the worktrees and prunes git's records.
 - A run whose vx was killed (`kill -9`) removes none.
-- The next `local()` run on the machine removes them, once their run's
-  process is gone.
+- The next `local()` run on the machine that starts a worker removes them,
+  once their run's process is gone. A run of cache hits starts none and
+  leaves them.
 
 </details>
 

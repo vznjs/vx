@@ -458,3 +458,60 @@ export default { name: 'ad', tasks: {
 }, 60_000)
 
 /** Project `dir` of `config`, its other `files` and a `.gitignore` of `dist`, committed. */
+
+// A run whose vx was killed never closed: its worktrees stay until the next
+// `local()` run that starts a worker removes them, once their owner is gone.
+// One whose owner still runs is another run's, and stays.
+it('local() reclaims the worktrees of a run whose vx was killed, not a live one’s', async () => {
+  const dead = Bun.spawn(['true'])
+  await dead.exited
+  const leftover = async (owner: number): Promise<string> => {
+    const base = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-'))
+    await writeFile(path.join(base, 'owner'), String(owner))
+    const add = Bun.spawnSync(['git', 'worktree', 'add', '-q', '--detach', path.join(base, '1')], {
+      cwd: root,
+    })
+    expect(add.exitCode).toBe(0)
+    return base
+  }
+  const killed = await leftover(dead.pid)
+  const live = await leftover(process.pid)
+  const trees = (): string[] =>
+    Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+      .stdout.toString()
+      .split('\n')
+      .filter((l) => l.startsWith('worktree '))
+      .map((l) => path.dirname(l.slice('worktree '.length)))
+  const exists = async (d: string) => (await readdir(d).catch(() => null)) !== null
+  try {
+    const a = local()
+    await a.relay!()
+    await a.spawn({
+      run: crypto.randomUUID(),
+      relay: '',
+      size: 'small',
+      max: 1,
+      cpu: 1,
+      memory: 1e9,
+      index: 1,
+      id: 'linux.small#1',
+      workspaceRoot: root,
+      commit: (await snapshot(root)).commit,
+      env: {},
+      exited: () => {},
+    })
+    await a.close!()
+    for (let i = 0; i < 200 && (await exists(killed)); i++) await Bun.sleep(50)
+    for (let i = 0; i < 200 && trees().includes(killed); i++) await Bun.sleep(50)
+    expect({
+      killed: await exists(killed),
+      killedListed: trees().includes(killed),
+      live: await exists(live),
+      liveListed: trees().includes(live),
+    }).toEqual({ killed: false, killedListed: false, live: true, liveListed: true })
+  } finally {
+    await rm(killed, { recursive: true, force: true })
+    await rm(live, { recursive: true, force: true })
+    Bun.spawnSync(['git', 'worktree', 'prune'], { cwd: root })
+  }
+}, 60_000)
