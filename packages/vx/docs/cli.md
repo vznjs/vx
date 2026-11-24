@@ -913,6 +913,7 @@ Who gets them:
 - Only `vx run` and `vx watch` forward, and only to one task in one project.
 - With `--affected` or several tasks the run is refused
   (`forwarded args (after --) go to one task in one project`, `VX_E_USAGE`).
+- A task named twice (`vx run test test -- -t adds`) is one task.
 - A `--all` or `--filter` run that asks for the task in more than one
   project is refused once planned, naming them.
 - That is because nothing says which command the args were meant for.

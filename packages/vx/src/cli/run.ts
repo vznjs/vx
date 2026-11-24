@@ -387,12 +387,10 @@ function parse(
   // tasks, or of whatever a change reaches, cannot say which. A --all or
   // --filter run is refused once planned, if it asks for more than one.
   if (out.forwardArgs.length > 0) {
+    // A name given twice is one task, as the run takes it.
+    const names = new Set(out.tasks).size
     const many =
-      out.affected !== undefined
-        ? '--affected'
-        : out.tasks.length > 1
-          ? `${out.tasks.length} tasks`
-          : undefined
+      out.affected !== undefined ? '--affected' : names > 1 ? `${names} tasks` : undefined
     if (many !== undefined)
       return {
         ...out,
