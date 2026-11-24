@@ -393,7 +393,7 @@ function renderList(
     }
   })
   if (format === 'json') {
-    return `${JSON.stringify(rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })))}\n`
+    return `${JSON.stringify(rows.map(({ name, dir, tags, tasks, hasDefault }) => ({ name, dir, tags, tasks, defaultBuild: hasDefault })))}\n`
   }
   if (rows.length === 0) return []
   const anyTags = rows.some((r) => r.tags.length > 0)
@@ -443,7 +443,8 @@ function renderProject(
     // Round-trip so the printed object is exactly the JSON form of the
     // resolved config (drops `undefined` fields).
     const shown = shownConfig(config)
-    return `${JSON.stringify({ name, dir, config: shown })}\n`
+    const defaultBuild = Object.values(config?.tasks ?? {}).some((t) => isDefaultBuild(t))
+    return `${JSON.stringify({ name, dir, defaultBuild, config: shown })}\n`
   }
   const tags = config?.tags ?? []
   const tasks = Object.entries(config?.tasks ?? {})

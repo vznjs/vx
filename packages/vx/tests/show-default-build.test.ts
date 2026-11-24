@@ -62,11 +62,13 @@ describe('vx show and the default build of a dependency', () => {
       const json = JSON.parse((await vx(root, ['show', '--format', 'json'])).out) as {
         name: string
         tasks: string[]
+        defaultBuild: boolean
       }[]
-      expect(json.map((p) => [p.name, p.tasks])).toEqual([
-        ['app', ['test', 'build']],
-        ['lib', ['build']],
-        ['lone', []],
+      // JSON marks the default build as the text does.
+      expect(json.map((p) => [p.name, p.tasks, p.defaultBuild])).toEqual([
+        ['app', ['test', 'build'], true],
+        ['lib', ['build'], true],
+        ['lone', [], false],
       ])
     },
     TIMEOUT,
@@ -104,6 +106,10 @@ describe('vx show and the default build of a dependency', () => {
       expect((await vx(root, ['show', 'lib#build'])).code).toBe(0)
       // The project view marks it, as the list does.
       expect((await vx(root, ['show', 'app'])).out).toContain('\n  app#build  default\n')
+      const app = JSON.parse((await vx(root, ['show', 'app', '--format', 'json'])).out) as {
+        defaultBuild: boolean
+      }
+      expect(app.defaultBuild).toBe(true)
       expect((await vx(root, ['run', 'lib#build'])).code).toBe(0)
     },
     TIMEOUT,

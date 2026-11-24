@@ -303,7 +303,7 @@ Every shape is a JSON Schema (draft 2020-12) in `node_modules/@vzn/vx/schemas/`,
 
 | Command | Prints | Schema |
 | --- | --- | --- |
-| `vx show --format json` | every project: `name`, `dir`, `tags`, `tasks` | `show.json` |
+| `vx show --format json` | every project: `name`, `dir`, `tags`, `tasks`, `defaultBuild` | `show.json` |
 | `vx show <project> --format json` | one project's `config`, as a run reads it | `show.json` |
 | `vx run … --dry --format json` | the plan: `tasks`, `predicted`, `affectedBase` | `plan.json` |
 | `vx pipeline <name> --dry --format json` | the same plan, for that pipeline's run | `plan.json` |

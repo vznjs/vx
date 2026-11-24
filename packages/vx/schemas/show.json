@@ -17,7 +17,7 @@
     "listRow": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "dir", "tags", "tasks"],
+      "required": ["name", "dir", "tags", "tasks", "defaultBuild"],
       "properties": {
         "name": { "type": "string", "description": "the project name" },
         "dir": {
@@ -29,18 +29,26 @@
           "type": "array",
           "description": "the task names it declares",
           "items": { "type": "string" }
+        },
+        "defaultBuild": {
+          "type": "boolean",
+          "description": "its `build` is the default one, declared by no config or plugin"
         }
       }
     },
     "project": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "dir", "config"],
+      "required": ["name", "dir", "defaultBuild", "config"],
       "properties": {
         "name": { "type": "string", "description": "the project name" },
         "dir": {
           "type": "string",
           "description": "relative to the workspace root, POSIX separators"
+        },
+        "defaultBuild": {
+          "type": "boolean",
+          "description": "its `build` is the default one, declared by no config or plugin"
         },
         "config": {
           "type": ["object", "null"],

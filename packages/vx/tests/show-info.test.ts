@@ -140,7 +140,7 @@ describe('vx show (e2e)', () => {
   )
 
   it(
-    'no target with --format=json emits {name, dir, tags[], tasks[]} per project',
+    'no target with --format=json emits {name, dir, tags[], tasks[], defaultBuild} per project',
     async () => {
       const r = await vx(root, ['show', '--format=json'])
       expect(r.code).toBe(0)
@@ -149,6 +149,7 @@ describe('vx show (e2e)', () => {
         dir: string
         tags: string[]
         tasks: string[]
+        defaultBuild: boolean
       }[]
       const app = list.find((p) => p.name === 'app')
       expect(app).toEqual({
@@ -156,9 +157,16 @@ describe('vx show (e2e)', () => {
         dir: 'packages/app',
         tags: [],
         tasks: ['build', 'ci', 'dev', 'lint'],
+        defaultBuild: false,
       })
       const bare = list.find((p) => p.name === 'bare')
-      expect(bare).toEqual({ name: 'bare', dir: 'packages/bare', tags: [], tasks: [] })
+      expect(bare).toEqual({
+        name: 'bare',
+        dir: 'packages/bare',
+        tags: [],
+        tasks: [],
+        defaultBuild: false,
+      })
     },
     TIMEOUT,
   )

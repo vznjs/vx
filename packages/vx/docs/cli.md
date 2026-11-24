@@ -5054,7 +5054,7 @@ A `tags` column appears when any project has tags.
   `vx run bare#build` refuses it.
 - `vx.config.ts not locked — run vx lock`: a config written after the
   lock. It shows in the list and in `vx show <project>`'s `config` row.
-- `--format json`: an array of `{ name, dir, tags: string[], tasks: string[] }`.
+- `--format json`: an array of `{ name, dir, tags: string[], tasks: string[], defaultBuild: boolean }`. `defaultBuild` is true where the text says `default build`.
 
 </div>
 </details>
@@ -5087,7 +5087,7 @@ Fields the task does not set are left out. An empty list prints `none`.
   (`yes` / `no`) and `inputs.stability.strategy` / `.severity`.
 - `cache  yes`: the last row of a cached task.
 - A multi-line value, such as a command, continues under its first line.
-- `vx show <project> --format json`: `{ name, dir, config }`, the config
+- `vx show <project> --format json`: `{ name, dir, defaultBuild, config }`, the config
   exactly as resolved.
 - `vx show <pkg>#<task> --format json`: `{ name, dir, task, config }`.
 - `vx show build`: a bare name that is no project is a task. JSON: an
