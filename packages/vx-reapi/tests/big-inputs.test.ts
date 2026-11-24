@@ -2,7 +2,7 @@
 // the input tree of a remote action held every input whole until the upload
 // ended (600 MiB of inputs, ~625 MiB of RSS, per action in flight). The
 // upload reads it again and refuses bytes that no longer carry the digest.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -21,8 +21,10 @@ afterAll(() => fake.stop())
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-reapi-big-'))
   fake.caps.maxBatchBytes = 4 * MIB
-  return () => rm(root, { recursive: true, force: true })
 })
+// Not a function beforeEach returns: Bun ignores it, and each test left
+// 600 MiB in TMPDIR.
+afterEach(() => rm(root, { recursive: true, force: true }))
 
 const sha = (b: Uint8Array) => createHash('sha256').update(b).digest('hex')
 const oid = (b: Uint8Array) =>
