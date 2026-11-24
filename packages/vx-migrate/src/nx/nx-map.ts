@@ -1101,6 +1101,18 @@ function buildTask(
     todos.push(orphanReaderTodo(inputs.dependentOutputs, target.dependsOn))
   }
   const cacheEnabled = !persistent && cacheWanted && wild === undefined && !orphanReader
+  // Nx caches whichever outputs exist; vx fails a task that wrote none.
+  // @nx/vitest's inferred coverage dir is written only with coverage on, so
+  // `vtest` failed every run of a real Nx 24 workspace (2026-11-24). Once,
+  // as the plan is written; the run's failure line says it too.
+  if (opts.migration === true && cacheEnabled) {
+    for (const o of [...outFiles, ...wsOutFiles])
+      if (!o.startsWith('!') && o.split('/').includes('coverage'))
+        todos.push(
+          'Nx treats outputs as optional; vx fails a task that writes none of its declared outputs: ' +
+            `drop \`${o}\` from ${variant.name}'s outputs or run it with coverage`,
+        )
+  }
   if (persistent && cacheWanted) {
     todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
   }

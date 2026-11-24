@@ -600,6 +600,7 @@ With this file, `vx run build --all` maps every project's `build` target the way
 - No `inputs` means Nx's `default` and `^default`.
 - Named inputs resolve per project: nx.json's, under the project's own.
 - `{workspaceRoot}`, `{projectRoot}` and `{projectName}` are interpolated anywhere in a path, as Nx does (`{workspaceRoot}/coverage/{projectRoot}`).
+- Nx caches whichever outputs exist; vx fails a task that writes none. A `coverage` output is written only with coverage on, so the migration names it as a todo: drop it, or run the task with coverage.
 
 <details><summary>Details</summary>
 
