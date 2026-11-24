@@ -55,6 +55,8 @@ it('a failed task of a stopped run keeps its output for `vx last --log`', async 
     source: 'failure',
     output: 'boom\n',
   })
+  // Not a run `vx last` lists: the docs' "no runs yet" but `--log`.
+  expect(vx('last').err).toContain('no runs yet')
 }, 30_000)
 
 // The footer hid a stopped run's id, though every reader opens it: an

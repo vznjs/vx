@@ -5761,7 +5761,8 @@ vx last --failed         # the latest run that failed
 - Its id is printed by its footer, `vx why` and `vx last --log`, and works
   wherever a run id does.
 - `vx last RUNID --log <task>` prints a task's output; `vx why <task>
---run RUNID` explains it.
+--run RUNID` explains it. With no id, `--log` reads it when it is the
+  latest run that recorded the task.
 - `vx last RUNID` says the run was stopped.
 - A run stopped before any task ended keeps nothing. Its footer names no
   id.
@@ -5984,7 +5985,8 @@ re-run what failed: vx run @demo/web#test -- …
 </div>
 </details>
 
-**No runs yet.** Before any run, every form says so.
+**No runs yet.** Before any run that was not stopped, every form says so
+but `--log`, which reads a stopped run's tasks.
 
 | Command                                    | Prints                                  | Exit |
 | ------------------------------------------ | --------------------------------------- | ---- |
