@@ -145,6 +145,7 @@
           "Dockerfile",
           "src/**",
           "tests/docker/**",
+          "tests/conformance.ts",
           "package.json"
         ],
         "workspaceFiles": [

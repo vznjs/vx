@@ -94,7 +94,7 @@ export default defineProject({
       exec: { command: 'sh tests/docker/smoke.sh' },
       dependsOn: ['install'],
       inputs: {
-        files: ['Dockerfile', 'src/**', 'tests/docker/**'],
+        files: ['Dockerfile', 'src/**', 'tests/docker/**', 'tests/conformance.ts'],
         workspaceFiles: ['packages/vx-devtools/package.json', 'packages/vx-devtools/src/**'],
       },
       outputs: { files: [] },
