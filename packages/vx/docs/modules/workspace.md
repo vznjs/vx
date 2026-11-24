@@ -1996,9 +1996,9 @@ then merges (2026-11-23): a header line, `{"version":10}` (with
 order, `<name>⇥{"path", "file" | "by", "config"}` (`file` left out for
 `vx.config.ts`, `null` for a project with neither file nor plugin;
 `config` without its tasks, left out when it held only tasks), and per
-task, in name order, a `⇥<task>` line and its pointer line (`#` and 7
-base-36 characters); the first task line holding a pointer has its JSON
-(keys sorted) on the next line. A pointer is
+task, in name order, its pointer line (`#` and 7 base-36 characters), its
+JSON (keys sorted) when no task above holds that pointer, then a
+`⇥<task>` line. A pointer is
 7 base-36 characters of the xxh3 of its JSON (salted in JSON order on a
 clash), so tasks with the same JSON share one entry and the same projects
 lock to the same text whatever lock was there (M, 2026-11-23: a pointer
@@ -2011,7 +2011,9 @@ edits to neighbouring projects and git merges both; hashed order keeps two
 new projects apart. Version 9 kept every JSON in one pool above the
 projects, so two branches editing different projects edited neighbouring
 pool lines and conflicted (`lock-merge-conflict.test.ts`); version 10 keeps
-each JSON under its project. Of 1,080 two-branch merges (4, 25 and 500 projects)
+each JSON under its project, with its task's name line below it, so each edit
+sits between two name lines and a project added or removed beside it is
+a hunk of its own. Of 1,080 two-branch merges (4, 25 and 500 projects)
 80% conflicted in version 8 and 18% in version 9; a clean merge can still
 lose a pointer's JSON (one branch dropped or moved the task line that held
 a JSON the other kept), which a run refuses until `vx lock` rewrites the
@@ -2021,7 +2023,7 @@ merge reads a task a branch did not write.
 `readLockfile` checks the shape only: the header an object of this
 `LOCKFILE_VERSION`, each project line a key, a tab and a JSON object of
 `{ path, file?, by?, config? }` (no other key; `by` only without `file`,
-`file` only with `config`), its task names in name order each before a
+`file` only with `config`), its task names in name order each after a
 pointer line of 8 characters (and its JSON line, if any; a pointer
 defined twice must hold the same JSON), each name once, each `path` a directory
 under the root as `lockKey` spells it (`.`, or a relative POSIX path

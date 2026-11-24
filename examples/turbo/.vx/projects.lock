@@ -1,12 +1,12 @@
 {"version":10}
 app	{"path":"packages/app"}
-	build
 #13b0fdw
 {"cache":true,"dependsOn":["^build"],"exec":{"command":"mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
-	test
+	build
 #3ijd5ej
 {"cache":true,"dependsOn":["build"],"exec":{"command":"grep -q \"greet('vx')\" dist/app.js"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":[]}}
+	test
 lib	{"path":"packages/lib"}
-	build
 #295rbtx
 {"cache":true,"dependsOn":["^build"],"exec":{"command":"mkdir -p dist && cp src/*.js dist/"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
+	build

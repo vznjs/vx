@@ -1,12 +1,12 @@
 {"version":10}
 app	{"path":"packages/app","file":"vx.config.mjs"}
-	build
 #90xcnrz
 {"cache":true,"dependsOn":["^build"],"exec":{"command":"echo app ci"},"inputs":{"files":["src/**"]},"outputs":{"files":[]}}
-	dev
+	build
 #2esbp1t
 {"exec":{"command":"echo dev","persistent":{}}}
+	dev
 lib	{"path":"packages/lib","file":"vx.config.mjs"}
-	build
 #2cwqogy
 {"cache":true,"description":"compile","exec":{"command":"mkdir -p dist && echo lib > dist/lib.txt","env":{"passThrough":["HOME"]},"retries":1,"timeout":"1m"},"inputs":{"env":["LOCK_FIXTURE_MODE"],"files":["src/**"]},"outputs":{"files":["dist/**"]}}
+	build

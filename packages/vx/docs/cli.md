@@ -3393,13 +3393,13 @@ For review, it also writes each project's resolved config, pretty, to
   `<name>⇥{"path","file"|"by","config"}`.
 - `file` is left out for `vx.config.ts`, and the tasks are left out of
   `config`.
-- Then, per task in name order, a `⇥<task>` line and its pointer line
-  (`#k2x0a1b`). The first task to hold a pointer has its JSON on the next
-  line.
+- Then, per task in name order, its pointer line (`#k2x0a1b`), its JSON
+  line if no task above holds that pointer, and its `⇥<task>` line.
 - A pointer is a hash of its task's JSON, so the same configs always lock
   to the same text.
-- Each project's tasks sit under its own line, so two branches that edit
-  different projects merge cleanly.
+- Each edit sits between two name lines, so two branches that edit
+  different projects merge cleanly, as does an edit beside a project
+  another branch added or removed.
 - A merge that lost a pointer's entry is refused until `vx lock` rewrites
   the lock.
 - `vx show` lists a project's tasks in name order.

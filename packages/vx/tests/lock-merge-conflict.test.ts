@@ -163,26 +163,28 @@ it('merges two branches that edit different tasks of the same project', async ()
   expect([text.includes('echo b2'), text.includes('echo t2')]).toEqual([true, true])
 })
 
-it('merges a new project on one branch with an edit to its neighbour on the other', async () => {
-  // The new project's name hashes right after the edited one: its lines
-  // land next to the edit.
-  const h = (n: string) => Bun.hash.xxHash3(n)
-  const base = ['a', 'b', 'c', 'd']
-  const edited = 'a'
-  const added = Array.from({ length: 200 }, (_, i) => `p${i}`).find(
-    (n) => h(n) > h(edited) && !base.some((o) => h(o) > h(edited) && h(o) < h(n)),
-  )!
-  const outcome = await merged(
-    async (r) => {
-      for (const n of base) await addProject(r, n, config(`echo ${n}`))
-    },
-    (r) => Bun.write(configOf(r, edited), config(`echo ${edited}2`)),
-    (r) => addProject(r, added, config('echo added')),
-  )
-  expect(outcome).toBe('relocked')
-  const text = await lockText()
-  expect([text.includes(`echo ${edited}2`), text.includes('echo added')]).toEqual([true, true])
-})
+// The commonest merge in a busy workspace: one branch adds a project, the
+// other edits the project its lines land next to, before or after it.
+const h = (n: string) => Bun.hash.xxHash3(n)
+// In name-hash order: d, b, c, a.
+const fourProjects = ['a', 'b', 'c', 'd']
+// A name that hashes between b and c.
+const between = Array.from({ length: 500 }, (_, i) => `p${i}`).find(
+  (n) => h(n) > h('b') && h(n) < h('c'),
+)!
+for (const edited of ['b', 'c'])
+  it(`merges a new project on one branch with an edit to its neighbour ${edited}`, async () => {
+    const outcome = await merged(
+      async (r) => {
+        for (const n of fourProjects) await addProject(r, n, config(`echo ${n}`))
+      },
+      (r) => Bun.write(configOf(r, edited), config(`echo ${edited}2`)),
+      (r) => addProject(r, between, config('echo added')),
+    )
+    expect(outcome).toBe('clean')
+    const text = await lockText()
+    expect([text.includes(`echo ${edited}2`), text.includes('echo added')]).toEqual([true, true])
+  })
 
 it('merges two branches that each rename a task', async () => {
   const tasks = { build: 'echo b', lint: 'echo l', test: 'echo t' }
@@ -214,24 +216,19 @@ it('merges two branches that each rename a task', async () => {
   expect(Object.keys(a).sort()).toEqual(['atest', 'lint', 'zbuild'])
 })
 
-// In name-hash order: d, b, c, a. A project's last line touches the next
-// project's name line, so removing a while c changes is one hunk and
-// conflicts; b's edit is a line apart from it.
-for (const [edited, expected] of [
-  ['b', 'clean'],
-  ['c', 'relocked'],
-] as const)
-  it(`merges a project removed on one branch with an edit to ${edited}: ${expected}`, async () => {
+// c is removed; b sits right before it and a right after.
+for (const edited of ['b', 'a'])
+  it(`merges a project removed on one branch with an edit to its neighbour ${edited}`, async () => {
     const outcome = await merged(
       async (r) => {
-        for (const n of ['a', 'b', 'c', 'd']) await addProject(r, n, config(`echo ${n}`))
+        for (const n of fourProjects) await addProject(r, n, config(`echo ${n}`))
       },
-      (r) => rm(path.join(r, 'packages/a'), { recursive: true }),
+      (r) => rm(path.join(r, 'packages/c'), { recursive: true }),
       (r) => Bun.write(configOf(r, edited), config(`echo ${edited}2`)),
     )
-    expect(outcome).toBe(expected)
+    expect(outcome).toBe('clean')
     const projects = await readLock()
-    expect(Object.keys(projects).sort()).toEqual(['packages/b', 'packages/c', 'packages/d'])
+    expect(Object.keys(projects).sort()).toEqual(['packages/a', 'packages/b', 'packages/d'])
     expect(JSON.stringify(projects[`packages/${edited}`])).toContain(`echo ${edited}2`)
   })
 

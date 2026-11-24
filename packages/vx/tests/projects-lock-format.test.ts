@@ -232,11 +232,12 @@ it('refuses a task line with no pointer, and a pointer no line defines', async (
   const text = write(base())
   const p = path.join(root, '.vx/projects.lock')
   const lines = text.trimEnd().split('\n')
-  // The last task's pointer line: a JSON line under it, if any, goes too.
-  const last = lines.findLastIndex((l) => l.startsWith('\t')) + 1
-  writeFileSync(p, `${lines.slice(0, last).join('\n')}\n`)
+  // The last task's name line, and its pointer line above it (and the JSON under that, if any).
+  const t = lines.length - 1
+  const ptr = lines[t - 1]!.startsWith('{') ? t - 2 : t - 1
+  writeFileSync(p, `${[...lines.slice(0, ptr), lines[t]].join('\n')}\n`)
   expect(readLockfile(root)).rejects.toThrow('run `vx lock`')
-  writeFileSync(p, `${[...lines.slice(0, last), '#zzzzzzz'].join('\n')}\n`)
+  writeFileSync(p, `${[...lines.slice(0, ptr), '#zzzzzzz', lines[t]].join('\n')}\n`)
   expect(readLockfile(root)).rejects.toThrow('#zzzzzzz')
   expect(readFileSync(p, 'utf8')).toContain('#zzzzzzz')
 })
@@ -290,18 +291,18 @@ it('never merges a task added on one branch onto a body the other branch dropped
 it('refuses a pointer cut short, or one defined twice with different JSON, so a reader sees the body a task gets', async () => {
   const p = path.join(root, '.vx/projects.lock')
   const head = `{"version":${LOCKFILE_VERSION}}`
-  const lines = [head, 'app\t{"path":"app"}', '\tbuild', '#abc', '{"x":1}']
+  const lines = [head, 'app\t{"path":"app"}', '#abc', '{"x":1}', '\tbuild']
   writeFileSync(p, `${lines.join('\n')}\n`)
   expect(readLockfile(root)).rejects.toThrow('run `vx lock`')
   const twice = [
     head,
     'app\t{"path":"app"}',
-    '\tbuild',
     '#aaaaaaa',
     JSON.stringify(build),
-    '\tlint',
+    '\tbuild',
     '#aaaaaaa',
     JSON.stringify(lint),
+    '\tlint',
   ]
   writeFileSync(p, `${twice.join('\n')}\n`)
   expect(readLockfile(root)).rejects.toThrow('run `vx lock`')

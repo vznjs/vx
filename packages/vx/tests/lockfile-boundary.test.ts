@@ -232,12 +232,12 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
   })
 
   it('a string dependsOn is refused, not walked per character ("dependsOn b#a")', async () => {
-    await writeRaw(jsonl('pkg\t{"path":"pkg"}', '\tb', '#ttttttt', '{"dependsOn":"a#build"}'))
+    await writeRaw(jsonl('pkg\t{"path":"pkg"}', '#ttttttt', '{"dependsOn":"a#build"}', '\tb'))
     await expect(readLockfile(root)).rejects.toThrow('entry for "pkg" is malformed')
   })
 
   it('a task line no entry has refuses, naming it', async () => {
-    await writeRaw(jsonl('pkg\t{"path":"pkg"}', '\tb', '#goneaaa'))
+    await writeRaw(jsonl('pkg\t{"path":"pkg"}', '#goneaaa', '\tb'))
     await expect(readLockfile(root)).rejects.toThrow('no task #goneaaa')
     // What a crash path reads to tell "re-run `vx lock`" from a vx bug.
     expect(lockEntryBroken(root)).toBe(true)
@@ -293,15 +293,15 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     })
     const id = `#${Bun.hash.xxHash3(JSON.stringify(build)).toString(36).padStart(7, '0').slice(0, 7)}`
     const lines: Record<string, string> = {
-      api: `api\t{"path":"api","config":{"name":"api"}}\n\tbuild\n${id}\n`,
+      api: `api\t{"path":"api","config":{"name":"api"}}\n${id}\n\tbuild\n`,
       docs: 'docs\t{"path":"docs","by":"@vzn/vx-migrate"}\n',
-      web: `web\t{"path":"web"}\n\tbuild\n${id}\n`,
+      web: `web\t{"path":"web"}\n${id}\n\tbuild\n`,
     }
     const order = Object.keys(lines).sort((a, b) =>
       Bun.hash.xxHash3(a) < Bun.hash.xxHash3(b) ? -1 : 1,
     )
     const first = order.find((n) => n !== 'docs')!
-    lines[first] += '{"exec":{"command":"echo hi"}}\n'
+    lines[first] = lines[first]!.replace(`${id}\n`, `${id}\n{"exec":{"command":"echo hi"}}\n`)
     expect(await Bun.file(lockfilePath(root)).text()).toBe(
       `{"version":${LOCKFILE_VERSION}}\n` + order.map((n) => lines[n]).join(''),
     )

@@ -486,7 +486,7 @@ describe('affectedProjects', () => {
         ].map(([n, c]) => {
           const e = JSON.stringify({ path: `packages/${n}`, file: 'vx.config.mjs' })
           const t = JSON.stringify({ exec: { command: c } })
-          return `${n}\t${spaced ? e.replaceAll(',', ', ') : e}\n\tt\n#${n!.repeat(7)}\n${t}`
+          return `${n}\t${spaced ? e.replaceAll(',', ', ') : e}\n#${n!.repeat(7)}\n${t}\n\tt`
         }),
       ].join('\n')
     const all = () =>

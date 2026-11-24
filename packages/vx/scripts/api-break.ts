@@ -103,18 +103,22 @@ function lockObject(text: string): unknown {
   const [head = '{}', ...rest] = text.split('\n').filter((l) => l !== '')
   const tasks = new Map<string, unknown>()
   const projects: Record<string, unknown> = {}
-  if ((JSON.parse(head) as { version?: number }).version! >= 9) {
+  const version = (JSON.parse(head) as { version?: number }).version!
+  if (version >= 9) {
     // A pointer line then its JSON line defines a task: a pool ahead of the
     // projects in version 9, the task's first holder from version 10. Then
-    // `name⇥{meta}` and per task `⇥task`, `#pointer`.
+    // `name⇥{meta}` and per task `⇥task`, `#pointer` (version 9) or
+    // `#pointer`, `⇥task` (version 10).
     for (let i = 0; i + 1 < rest.length; i++)
       if (rest[i]!.startsWith('#') && rest[i + 1]!.startsWith('{'))
         tasks.set(rest[i]!, JSON.parse(rest[i + 1]!))
     let own: Record<string, unknown> = {}
+    let pointer = ''
     for (let i = 0; i < rest.length; i++) {
       const l = rest[i]!
+      if (l.startsWith('#')) pointer = l
       if (l.startsWith('#') || l.startsWith('{')) continue
-      if (l.startsWith('\t')) own[l.slice(1)] = tasks.get(rest[++i]!)
+      if (l.startsWith('\t')) own[l.slice(1)] = tasks.get(version >= 10 ? pointer : rest[++i]!)
       else {
         const tab = l.indexOf('\t')
         const entry = JSON.parse(l.slice(tab + 1)) as { config?: Record<string, unknown> }

@@ -16,15 +16,16 @@
 //   then     each project, in xxh3-of-name order: `<name>⇥{"path":…}`
 //            ("file" left out for vx.config.ts, `null` for none and no
 //            plugin; its config without the tasks), then each task in name
-//            order: `⇥<task>`, its `#<pointer>`, and, under the first task
-//            line that holds it, its JSON (keys sorted). The pointer is 7
+//            order: its `#<pointer>`, its JSON (keys sorted) if no task
+//            above holds that pointer, then `⇥<task>`. The pointer is 7
 //            base-36 chars of the xxh3 of that JSON, so the same projects
 //            lock to the same text whatever lock was there, and a merge
 //            cannot point a task at JSON another branch changed
-// A name line seldom changes, so it sits between two branches' edits to
-// different projects and git merges both (a shared pool of JSON above the
-// projects, version 9, put them side by side); hashed order keeps two new
-// projects apart. A name a tab could break, or one starting with `#`, `"`
+// A name line seldom changes, and each edit sits between two of them (the
+// project's or a task's above, its task's below), so git merges edits to
+// different projects, or a project added or removed beside one (a shared
+// pool of JSON above the projects, version 9, put them side by side);
+// hashed order keeps two new projects apart. A name a tab could break, or one starting with `#`, `"`
 // or `{`, is written as a JSON string.
 
 import { readFileSync, statSync } from 'node:fs'
@@ -353,32 +354,18 @@ function decoded(text: string): Decoded {
       (config !== undefined && !configShaped(config))
     )
       throw malformed(dir)
-    // Its tasks: a name line, then a pointer line, each. A config of tasks alone is left out.
-    if (text.charCodeAt(a) === 9) {
+    // Its tasks: a pointer line, the JSON under its first holder, then the
+    // task's name line. A config of tasks alone is left out.
+    if (text.charCodeAt(a) === 35) {
       config ??= {}
       if (!isObj(config) || config['tasks'] !== undefined) throw malformed(dir)
       const own: Obj = {}
       let last = ''
-      while (text.charCodeAt(a) === 9) {
-        let ne = text.indexOf('\n', a)
-        if (ne < 0) ne = text.length
-        const t =
-          text.charCodeAt(a + 1) === 34
-            ? (JSON.parse(text.slice(a + 1, ne)) as unknown)
-            : text.slice(a + 1, ne)
+      while (text.charCodeAt(a) === 35) {
         // A pointer is `#` and 7 characters, a line of its own.
-        const pe = ne + 9
-        // In name order, as `vx lock` writes them: a name twice is a merge that kept both.
-        if (
-          typeof t !== 'string' ||
-          t <= last ||
-          text.charCodeAt(ne + 1) !== 35 ||
-          (pe < text.length && text.charCodeAt(pe) !== 10)
-        )
-          throw lineBroken(text)
-        last = t
-        const ref = text.slice(ne + 1, pe)
-        refs.push([own, t, ref])
+        const pe = a + 8
+        const ref = text.slice(a, pe)
+        if (text.charCodeAt(pe) !== 10 || ref.includes('\n')) throw lineBroken(text)
         a = pe + 1
         if (text.charCodeAt(a) === 123) {
           // A merge may keep one JSON under two holders: the same pointer is the same text.
@@ -388,6 +375,17 @@ function decoded(text: string): Decoded {
           bodyAt.set(ref, a)
           a = end(a) + 1
         }
+        if (text.charCodeAt(a) !== 9) throw lineBroken(text)
+        const ne = end(a)
+        const t =
+          text.charCodeAt(a + 1) === 34
+            ? (JSON.parse(text.slice(a + 1, ne)) as unknown)
+            : text.slice(a + 1, ne)
+        // In name order, as `vx lock` writes them: a name twice is a merge that kept both.
+        if (typeof t !== 'string' || t <= last) throw lineBroken(text)
+        last = t
+        refs.push([own, t, ref])
+        a = ne + 1
       }
       config['tasks'] = own
     }
@@ -521,13 +519,16 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
     lines.push(r.line)
     for (const [t, json] of r.tasks) {
       const ref = refOf.get(json)!
-      lines.push(`\t${taskKey(t)}`, ref)
+      lines.push(ref)
       // Its JSON under its first holder: in a pool of its own, two branches'
       // edits to different projects sat side by side and clashed.
       if (!written.has(ref)) {
         written.add(ref)
         lines.push(json)
       }
+      // The name last: an edit's lines sit between two that seldom change,
+      // so a project added or removed beside it is a hunk of its own.
+      lines.push(`\t${taskKey(t)}`)
     }
   }
   return { file: lockfilePath(root), text: `${lines.join('\n')}\n`, shown: LOCKFILE_NAME }
