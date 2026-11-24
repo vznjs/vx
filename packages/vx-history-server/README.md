@@ -125,7 +125,8 @@ names it.
   connection lost", an object reset) is sent up to three times, as the
   cache server asks R2 again.
 - A write retried that had landed counts once: a row already written at
-  that write's time is left.
+  that write's time is left. Each upload a server takes gets its own
+  time, so two in one millisecond each count.
 - A database whose `timings`, `outcomes` or `sweeps` table another tool
   made fails each request 500, saying so, and is left as it was.
 

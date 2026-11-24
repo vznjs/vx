@@ -100,6 +100,36 @@ it('keeps a row reported within TIMING_DAYS, though that report was not written'
   })
 })
 
+// b3433c1bb leaves a row already written at a fold's time, so a D1 retry
+// folds once: two runs' uploads in one millisecond (a Worker's clock stands
+// still between I/O) folded as one, the second run's time dropped.
+it('folds two uploads made in the same millisecond as two runs', async () => {
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(path.join(dir, 'same-ms.sqlite'))),
+    authorize: async () => ({ issuer: GITHUB, repository: REPO, write: 'refs/heads/main' }),
+    now: () => 5_000,
+  })
+  const post = (route: string, body: unknown) =>
+    handle(
+      new Request(`http://127.0.0.1/v1/timings/${route}`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  await Promise.all([
+    post('upload', { timings: [{ hash: 'h', durationMs: 1000 }] }),
+    post('upload', { timings: [{ hash: 'h', durationMs: 2000 }] }),
+  ])
+  const res = await post('query', {
+    issuer: GITHUB,
+    repository: REPO,
+    refs: ['refs/heads/main'],
+    hashes: ['h'],
+  })
+  expect(((await res.json()) as { timings: { h: { runs: number } } }).timings.h.runs).toBe(2)
+})
+
 it("folds and reads within D1's 2 MB a bound string may be", async () => {
   const sqlite = sqliteDb(path.join(dir, 'd1-limits.sqlite'))
   // D1's limit (developers.cloudflare.com/d1/platform/limits): a string past it fails the statement.

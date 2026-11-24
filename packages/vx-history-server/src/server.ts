@@ -45,6 +45,8 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     maxQueryRefs: MAX_QUERY_REFS,
   }
 
+  /** The last upload's fold time. */
+  let folded = 0
   // The fold is one upsert, a few ms for a thousand tasks: done inline.
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
@@ -56,7 +58,10 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     const reports = parseReports(body)
     const outcomes = parseOutcomes(body)
     await schema()
-    const t = now()
+    // One time per upload: the fold leaves a row already written at its
+    // time, so a D1 retry folds once, and two uploads in one millisecond (a
+    // Worker's clock stands still between I/O) each fold.
+    const t = (folded = Math.max(now(), folded + 1))
     await store.fold(access, access.write, t, reports)
     if (outcomes.length > 0) await store.record(access, t, outcomes)
     return new Response(null, { status: 204 })
