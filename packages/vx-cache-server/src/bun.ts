@@ -19,6 +19,14 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
   MAX_UPLOAD_BYTES  the largest upload, one artifact (default ${DEFAULT_LIMITS.maxUploadBytes})`
 
 /**
+ * S3's answers that ask to be sent again (500 InternalError, 503 SlowDown):
+ * a read is asked up to three times, 50 then 100 ms apart, as the Worker
+ * asks R2 again. On the first, a check or a download failed 502.
+ */
+const AGAIN_STATUS = new Set([500, 503])
+const S3_TRIES = 3
+
+/**
  * An S3-compatible bucket through Bun's S3 client. Reads go through a
  * presigned URL: one request answers a GET's bytes and size, or its 404,
  * and Bun answers `new Response(s3File)` with a redirect a client may not
@@ -26,12 +34,18 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
  */
 export function s3Blobs(client: Bun.S3Client): Blobs {
   const ask = async (name: string, method: 'GET' | 'HEAD'): Promise<Response | null> => {
-    // Identity: Bun's fetch asks for gzip and inflates it, and a
-    // compressed answer's Content-Length is not the artifact's size.
-    const res = await fetch(client.presign(name, { method }), {
-      method,
-      headers: { 'accept-encoding': 'identity' },
-    })
+    let res: Response
+    for (let attempt = 1; ; attempt++) {
+      // Identity: Bun's fetch asks for gzip and inflates it, and a
+      // compressed answer's Content-Length is not the artifact's size.
+      res = await fetch(client.presign(name, { method }), {
+        method,
+        headers: { 'accept-encoding': 'identity' },
+      })
+      if (attempt === S3_TRIES || !AGAIN_STATUS.has(res.status)) break
+      await res.body?.cancel()
+      await Bun.sleep(50 * attempt)
+    }
     if (res.status === 404) {
       await res.body?.cancel()
       return null

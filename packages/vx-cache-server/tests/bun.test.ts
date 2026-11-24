@@ -720,6 +720,38 @@ it("names the bucket's reason for a refused read: a skewed clock is not a wrong 
   }
 })
 
+// R2's "ask again" answers are retried on Workers (src/worker.ts); S3's
+// own (503 SlowDown, 500 InternalError) failed a Bun server's check or
+// download 502 on the first, so the client lost a hit Workers kept.
+it('asks a read again while S3 says to, as Workers does R2', async () => {
+  const refused = new Set<string>()
+  const flaky = fakeS3(0, (req) => {
+    // Each read's first ask: a HEAD throttled, a GET's internal error.
+    if (req.method === 'PUT' || refused.has(req.method)) return undefined
+    refused.add(req.method)
+    return req.method === 'HEAD'
+      ? new Response(null, { status: 503 })
+      : new Response('<Error><Code>InternalError</Code></Error>', { status: 500 })
+  })
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({
+        endpoint: flaky.url,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    )
+    await blobs.put('k', new Blob(['abc']).stream(), 3)
+    expect(await blobs.size('k')).toBe(3)
+    const got = await blobs.get('k')
+    expect(got === null ? null : await new Response(got.body).text()).toBe('abc')
+    expect([...refused]).toEqual(['HEAD', 'GET'])
+  } finally {
+    await flaky.stop()
+  }
+})
+
 // A throttled part (S3's 503 SlowDown) is retried, then the upload is
 // aborted: no object, no part left behind, and the client told 502.
 it('stores nothing of a multipart upload whose part the bucket keeps throttling', async () => {
