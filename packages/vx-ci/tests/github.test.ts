@@ -733,6 +733,20 @@ describe('every output the vx-ci sweep found unheld', () => {
     expect(written).not.toContain('�')
   })
 
+  it('a cut ends on a whole line: no row is left half drawn', async () => {
+    // A 2,000-task page after 1 MB of another step's writes ended
+    // `| packages/p5#t36 | ` and the note: a row with no status read as a task
+    // with none, and a cut inside the <sub> footer put the note in it.
+    const { clampJobSummary } = await import('../src/summary.js')
+    const rows = Array.from({ length: 30 }, (_, i) => `| a#t${i} | ✅ ran | 1ms |`)
+    const page = `| Task | Status | Duration |\n| --- | --- | --- |\n${rows.join('\n')}\n`
+    const room = Buffer.byteLength(page) - 40
+    const written = clampJobSummary(page, room)
+    const kept = written.slice(0, written.indexOf('\n\n…truncated'))
+    expect(kept.split('\n').every((l) => page.split('\n').includes(l))).toBe(true)
+    expect(Buffer.byteLength(written)).toBeLessThanOrEqual(room)
+  })
+
   it('a cut that lands inside a character backs off to its start, whichever parity', async () => {
     // 2-byte letters behind an optional 1-byte prefix: one of the two puts
     // the cut mid-character, where decoding the half left a U+FFFD that

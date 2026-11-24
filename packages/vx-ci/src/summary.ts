@@ -116,7 +116,7 @@ export function clampJobSummary(markdown: string, room = MAX_JOB_SUMMARY_BYTES):
   )
 }
 
-/** Cuts `text` to `maxBytes` of UTF-8, `suffix` included, never splitting a character. */
+/** Cuts `text` to `maxBytes` of UTF-8, `suffix` included, at a line's end, never splitting a character. */
 function truncateUtf8(text: string, maxBytes: number, suffix: string): string {
   // The cap is BYTES, and the page is not ASCII: every status label is an emoji
   // (4 bytes, 2 UTF-16 units) and every separator a `·` or a `—` (2 and 3
@@ -130,6 +130,10 @@ function truncateUtf8(text: string, maxBytes: number, suffix: string): string {
   if (end <= 0) return ''
   // Back up off a continuation byte, so the cut never splits a character.
   while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--
+  // On a whole line: a half row read as a task with no status, and a cut in
+  // the <sub> footer put the note inside it.
+  const line = bytes.lastIndexOf(0x0a, end - 1)
+  if (line > 0) end = line
   return new TextDecoder().decode(bytes.subarray(0, end)) + suffix
 }
 

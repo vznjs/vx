@@ -334,7 +334,7 @@ loses the whole page rather than its tail.
 
 - The limit is 1 MiB counted in bytes: about 19 000 task rows, fewer
   when task names are not ASCII.
-- The summary is cut on a character boundary.
+- The summary is cut at the end of a line, so no table row is left half drawn.
 - GitHub's cap is the step's whole summary file. So the page fits in
   what earlier writers in the step left.
 - With no room, the summary is skipped with a warning.
