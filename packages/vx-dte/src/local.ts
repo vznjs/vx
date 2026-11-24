@@ -140,7 +140,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
         if (closed) return
         // Every end reported, a start that threw too: one lost left the run
         // waiting for good on a worker that never joined.
-        void run([...vx(), 'dte', 'worker'], at, env, false)
+        void run([...vxArgv(), 'dte', 'worker'], at, env, false)
           // After close, the stop ended it: no reason is reported, so none is
           // written (a stopped run left a `vx-dte-logs-*` dir in TMPDIR).
           .then(
@@ -418,7 +418,11 @@ export function repoEnv(cwd: string): Record<string, string | undefined> {
 const rediscovered = new Map<string, boolean>()
 
 /** The argv that runs this vx: the binary when compiled, else Bun and its entry. */
-function vx(): string[] {
+export function vxArgv(): string[] {
   const compiled = Bun.main.startsWith('/$bunfs/') || Bun.main.startsWith('B:/~BUN/')
-  return compiled ? [process.execPath] : [process.execPath, Bun.main]
+  // The bin.ts shebang's flags: `bun <entry>` alone loaded the worktree's
+  // `.env` and bunfig preload into the worker's vx.
+  return compiled
+    ? [process.execPath]
+    : [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', Bun.main]
 }

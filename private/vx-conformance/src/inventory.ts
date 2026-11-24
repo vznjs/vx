@@ -649,6 +649,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-dte/init',
     'vx-dte/jsdoc',
     'vx-dte/live-run',
+    'vx-dte/local-argv',
     'vx-dte/local-close',
     'vx-dte/local-e2e',
     'vx-dte/local-e2e-artifacts',
