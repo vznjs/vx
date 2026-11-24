@@ -200,10 +200,16 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
           const shown = await vx(['show'], null)
           expect(`${shown.code}\n${shown.err}`).toStartWith('0\n')
           expect(shown.out).toContain('app')
-          // A config edited since `vx lock` is refused by name, not a store crash.
+          // A config edited since `vx lock` is refused by name, not a store
+          // crash. The edit changes what it evaluates to: one that evaluates
+          // as the lock holds (a comment) runs, as `vx lock --check` passes it.
+          // Bare vx, not the helper, which locks the edit first.
           const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
-          await Bun.write(config, `${await Bun.file(config).text()}\n// changed\n`)
-          const edited = await vx(['show'], null)
+          await Bun.write(
+            config,
+            (await Bun.file(config).text()).replace("'echo built'", "'echo changed'"),
+          )
+          const edited = await vx(['show'], null, VX)
           expect(`${edited.code}\n${edited.err}`).toBe(
             '1\n✗ vx show  packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`\n',
           )
@@ -227,7 +233,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         await chmod(ro, 0o555)
         const pruned = await vx(['cache', 'clean', '--max-size', '1K'])
         expect(pruned.code).toBe(1)
-        expect(pruned.err).toMatch(/^✗ vx cache  cache directory .* is not writable \(EACCES: /)
+        expect(pruned.err).toMatch(/^✗ vx cache clean  cache directory .* is not writable \(EACCES: /)
         expect(pruned.err).not.toContain('\n    at ')
         const dry = await vx(['cache', 'clean', '--max-size', '1K', '--dry'])
         expect(`${dry.code}\n${dry.err}`).toStartWith('0\n')
