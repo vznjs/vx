@@ -7,8 +7,12 @@
 <p align="center">
   <strong>Task orchestration you own.</strong><br>
   vx is a task orchestrator. It runs your tasks in the right order, many at once,<br>
-  and never does the same work twice. JavaScript support comes from plugins,<br>
-  and any other system can hook in the same way. No cloud, no account, no paywall.
+  and never does the same work twice.
+</p>
+
+<p align="center">
+  JavaScript support comes from plugins, and any other system can hook in the same way.<br>
+  No cloud, no account, no paywall.
 </p>
 
 <p align="center">
