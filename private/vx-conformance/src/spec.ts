@@ -192,6 +192,8 @@ export type Step =
       stop?: Stop
       /** The runner's input stream is a pipe left open and never written, as a terminal nobody types in is. */
       openStdin?: true
+      /** The runner's output stream is a full disk (`/dev/full`): every write it makes fails. */
+      fullStdout?: true
       expect: Expect
     }
   /** Write files (workspace-relative); `null` deletes. */

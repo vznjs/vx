@@ -1049,4 +1049,28 @@ export default [
       },
     ],
   }),
+
+  defineCase({
+    id: 'failure/output-to-full-disk-fails-the-run',
+    category: 'failure',
+    kind: 'correctness',
+    title: 'A run whose own output cannot be written fails, after the task ran',
+    why: 'When the runner’s output goes to a full disk, every line it prints is lost. Exiting 0 then tells a CI log or a pipe that all went well while nothing of the run reached it. A run that cannot write its output must say so on stderr and fail, as `cat` and other core tools do.',
+    from: ['disk-full.unsafe'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: { build: { command: 'printf b > out.txt', inputs: ['src/**'] } },
+          files: { 'src/a.txt': 'a\n' },
+        },
+      },
+    },
+    steps: [
+      {
+        run: 'build',
+        fullStdout: true,
+        expect: { exit: 'fail', ran: ['a#build'], files: { 'packages/a/out.txt': 'b' } },
+      },
+    ],
+  }),
 ]

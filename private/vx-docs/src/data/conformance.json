@@ -1018,14 +1018,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2143,
-        "can": 2143,
-        "of": 2213
+        "pass": 2144,
+        "can": 2144,
+        "of": 2214
       },
       "correctness": {
-        "pass": 1729,
-        "can": 1729,
-        "of": 1790
+        "pass": 1730,
+        "can": 1730,
+        "of": 1791
       },
       "efficiency": {
         "pass": 325,
@@ -1048,9 +1048,9 @@
         "of": 88
       },
       "failure": {
-        "pass": 156,
-        "can": 156,
-        "of": 168
+        "pass": 157,
+        "can": 157,
+        "of": 169
       },
       "affected": {
         "pass": 186,
@@ -1096,13 +1096,13 @@
     "turbo": {
       "all": {
         "pass": 1397,
-        "can": 1813,
-        "of": 2213
+        "can": 1814,
+        "of": 2214
       },
       "correctness": {
         "pass": 1123,
-        "can": 1466,
-        "of": 1790
+        "can": 1467,
+        "of": 1791
       },
       "efficiency": {
         "pass": 244,
@@ -1126,8 +1126,8 @@
       },
       "failure": {
         "pass": 61,
-        "can": 106,
-        "of": 168
+        "can": 107,
+        "of": 169
       },
       "affected": {
         "pass": 144,
@@ -1172,14 +1172,14 @@
     },
     "nx": {
       "all": {
-        "pass": 1394,
-        "can": 1848,
-        "of": 2213
+        "pass": 1395,
+        "can": 1849,
+        "of": 2214
       },
       "correctness": {
-        "pass": 1081,
-        "can": 1491,
-        "of": 1790
+        "pass": 1082,
+        "can": 1492,
+        "of": 1791
       },
       "efficiency": {
         "pass": 283,
@@ -1202,9 +1202,9 @@
         "of": 88
       },
       "failure": {
-        "pass": 83,
-        "can": 116,
-        "of": 168
+        "pass": 84,
+        "can": 117,
+        "of": 169
       },
       "affected": {
         "pass": 124,
@@ -1250,13 +1250,13 @@
     "vite-task": {
       "all": {
         "pass": 1028,
-        "can": 1396,
-        "of": 2213
+        "can": 1397,
+        "of": 2214
       },
       "correctness": {
         "pass": 863,
-        "can": 1175,
-        "of": 1790
+        "can": 1176,
+        "of": 1791
       },
       "efficiency": {
         "pass": 156,
@@ -1280,8 +1280,8 @@
       },
       "failure": {
         "pass": 62,
-        "can": 84,
-        "of": 168
+        "can": 85,
+        "of": 169
       },
       "affected": {
         "pass": 0,
@@ -1327,13 +1327,13 @@
     "nix": {
       "all": {
         "pass": 1100,
-        "can": 1392,
-        "of": 2213
+        "can": 1393,
+        "of": 2214
       },
       "correctness": {
         "pass": 943,
-        "can": 1196,
-        "of": 1790
+        "can": 1197,
+        "of": 1791
       },
       "efficiency": {
         "pass": 147,
@@ -1357,8 +1357,8 @@
       },
       "failure": {
         "pass": 62,
-        "can": 94,
-        "of": 168
+        "can": 95,
+        "of": 169
       },
       "affected": {
         "pass": 0,
@@ -1403,14 +1403,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1282,
-        "can": 1744,
-        "of": 2213
+        "pass": 1283,
+        "can": 1745,
+        "of": 2214
       },
       "correctness": {
-        "pass": 1011,
-        "can": 1425,
-        "of": 1790
+        "pass": 1012,
+        "can": 1426,
+        "of": 1791
       },
       "efficiency": {
         "pass": 236,
@@ -1433,9 +1433,9 @@
         "of": 88
       },
       "failure": {
-        "pass": 92,
-        "can": 144,
-        "of": 168
+        "pass": 93,
+        "can": 145,
+        "of": 169
       },
       "affected": {
         "pass": 144,
@@ -28540,6 +28540,43 @@
         "nix": {
           "status": "n/a",
           "detail": "Evaluation reads files and variables, never a command’s output."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "failure/output-to-full-disk-fails-the-run",
+      "ref": "7qhll6",
+      "category": "failure",
+      "kind": "correctness",
+      "title": "A run whose own output cannot be written fails, after the task ran",
+      "why": "When the runner’s output goes to a full disk, every line it prints is lost. Exiting 0 then tells a CI log or a pipe that all went well while nothing of the run reached it. A run that cannot write its output must say so on stderr and fail, as `cat` and other core tools do.",
+      "from": [
+        "disk-full.unsafe"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
         },
         "moon": {
           "status": "pass"
