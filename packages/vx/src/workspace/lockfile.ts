@@ -212,6 +212,9 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       'VX_E_LOCK',
     )
   }
+  // As an entry's: a key `vx lock` never writes passed a run and `--check`.
+  if (Object.keys(lock).some((k) => k !== 'version' && k !== 'nestedWorkspaces'))
+    throw lineBroken(text!)
   const nested = lock.nestedWorkspaces
   if (
     nested !== undefined &&

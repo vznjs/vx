@@ -3656,6 +3656,8 @@ lock yet`, where it ran the locked project around it.
   unresolved, while a selected project holds such a config.
 - An entry edited by hand into a shape `vx lock` could not write fails the
   run: ``.vx/projects.lock is invalid, run `vx lock` ``.
+- So does a key `vx lock` never writes, in an entry or the first line:
+  ``.vx/projects.lock holds a line `vx lock` never writes — re-run `vx lock` ``.
 - That is checked only once something has crashed, so a normal run pays
   nothing for it.
 - The shapes a run walks are checked as it reads the lock: a `name` that

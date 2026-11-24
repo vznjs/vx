@@ -197,6 +197,17 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     await expect(readLockfile(root)).rejects.toThrow(/unsupported version/)
   })
 
+  // An entry's unknown key is refused; the header's passed a run and
+  // `vx lock --check` alike, a record `vx lock` never writes.
+  it('rejects a header key `vx lock` never writes', async () => {
+    await writeRaw(
+      `${JSON.stringify({ version: LOCKFILE_VERSION, x: 1 })}\npkg\t{"path":"pkg","file":null}\n`,
+    )
+    await expect(readLockfile(root)).rejects.toThrow(
+      '.vx/projects.lock holds a line `vx lock` never writes — re-run `vx lock`',
+    )
+  })
+
   // A merge that kept both sides, or a hand edit that lost a tab: a line
   // `vx lock` never writes says so, never a raw crash at a lookup.
   it.each([
