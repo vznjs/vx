@@ -198,6 +198,8 @@ function urlPasswords(value: string): string[] {
   return found
 }
 
+const UNRESERVED = /^[\w.-]*$/
+
 /**
  * A value as URL encoders spell it. Each escapes its own set:
  * encodeURIComponent keeps `!'()*`, curl and Python's quote() escape them,
@@ -205,6 +207,8 @@ function urlPasswords(value: string): string[] {
  * URLSearchParams also escapes `~` and keeps `*`.
  */
 function urlSpellings(value: string): string[] {
+  // No encoder escapes these: the common token (hex, a UUID) has one spelling.
+  if (UNRESERVED.test(value)) return []
   const js = encodeURIComponent(value)
   const strict = js.replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
   const plus = strict.replaceAll('%20', '+')
@@ -225,14 +229,17 @@ function urlSpellings(value: string): string[] {
  * neighbour's bits are left out.
  */
 function base64Spellings(value: string): string[] {
-  const bytes = Buffer.from(value)
+  // One buffer, two zero bytes ahead of the value: each offset encodes from
+  // its own start, with no copy per offset.
+  const n = Buffer.byteLength(value)
+  const buf = Buffer.alloc(n + 2)
+  buf.write(value, 2)
   const out: string[] = []
-  for (const shift of [0, 1, 2]) {
-    const enc = Buffer.concat([Buffer.alloc(shift), bytes])
-      .toString('base64')
-      .replace(/=+$/, '')
-    const end = (shift + bytes.length) % 3 === 0 ? enc.length : enc.length - 1
-    const run = enc.slice([0, 2, 3][shift], end)
+  for (let shift = 0; shift < 3; shift++) {
+    const total = n + shift
+    const chars = Math.ceil((total * 4) / 3)
+    const end = total % 3 === 0 ? chars : chars - 1
+    const run = buf.toString('base64', 2 - shift).slice([0, 2, 3][shift], end)
     out.push(run, run.replaceAll('+', '-').replaceAll('/', '_'))
   }
   return out
