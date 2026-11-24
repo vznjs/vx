@@ -396,7 +396,7 @@ For a server that ignores that header (Vercel), `turboCache({ scope: 'key' })` a
 vx says what went wrong once, then runs on without the remote:
 
 ```ansi
-[1m[38;2;234;179;8m[vx][0m plugin '@vzn/vx-cache': download e04649970f18ba23 from https://vx-cache-server.acme.workers.dev failed: HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run
+[1m[38;2;234;179;8m[vx][0m[2m plugin '@vzn/vx-cache': probe of 2 artifacts at http://127.0.0.1:28461 failed: HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run[0m
 ```
 
 | Message | Cause | Fix |
