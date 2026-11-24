@@ -589,7 +589,8 @@ Refused before git sees it:
 Errors from git:
 
 - A ref that does not exist is `git ref "<ref>" did not resolve`, with
-  git's reason when it gives one.
+  git's reason when it gives one. In a full clone it names up to six
+  local branches to pass instead.
 - `main@{9}` adds `log for 'main' only has 2
 entries`.
 - In a shallow clone it adds how to fetch it: `git fetch --depth=1 origin <base>`.
@@ -3244,7 +3245,8 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 - It checks only while the lock is the one written then. So a pull that brings a new lock, or a fresh clone, is never refused.
 - A config edit committed without relocking is refused like an uncommitted one.
 - A file a config imports is not checked.
-- A file a `project` plugin made a config from is checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`. A named file that appears or goes counts as an edit. The plugin names it (`ProjectHookContext.read`).
+- A file a `project` plugin made a config from is checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`.
+- A named file that appears or goes counts as an edit. The plugin names it (`ProjectHookContext.read`).
 - In a pipeline, `vx lock --check` first re-evaluates every config and checks the rules.
 
 </div>

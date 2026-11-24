@@ -1890,6 +1890,20 @@ const fetchFailures = new Map<string, string>()
 /** Deepening stops here (2,047 commits on each side): past it, the base is the user's to fetch. */
 const MAX_DEEPEN = 1024
 
+/** This clone's local branches, up to six, for a refusal to name: '' for none. */
+function localBranches(workspaceRoot: string): string {
+  const proc = spawnGitSync(
+    ['for-each-ref', '--format=%(refname:short)', 'refs/heads'],
+    workspaceRoot,
+    'ignore',
+  )
+  if (proc.exitCode !== 0) return ''
+  const names = new TextDecoder().decode(proc.stdout).split('\n').filter(Boolean).sort()
+  return names.length > 6
+    ? `${names.slice(0, 6).join(', ')} and ${names.length - 6} more`
+    : names.join(', ')
+}
+
 function isShallow(workspaceRoot: string): boolean {
   const proc = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'ignore')
   return new TextDecoder().decode(proc.stdout).trim() === 'true'
@@ -2073,9 +2087,11 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
   // A base origin could not give (`reachMergeBase`): no origin, no
   // network, a name only another clone has.
   const failed = fetchFailures.get(workspaceRoot)
+  const shallow = isShallow(workspaceRoot)
+  const have = shallow ? '' : localBranches(workspaceRoot)
   throw new UserError(
-    `git ref "${ref}" did not resolve. Pass a branch or commit you have locally.` +
-      (!isShallow(workspaceRoot)
+    `git ref "${ref}" did not resolve. Pass a branch or commit you have locally${have === '' ? '' : `: ${have}`}.` +
+      (!shallow
         ? failed === undefined
           ? ''
           : ` Fetching it from origin failed: ${failed.replace(/\.?$/, '.')}`

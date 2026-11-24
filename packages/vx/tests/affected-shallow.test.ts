@@ -204,7 +204,7 @@ describe('a shallow clone', () => {
     )
     // CONTROL: the same missing ref in a full clone keeps the bare message.
     expect(await changed(origin, 'HEAD~99').catch((err: Error) => err.message)).toBe(
-      'git ref "HEAD~99" did not resolve. Pass a branch or commit you have locally.',
+      'git ref "HEAD~99" did not resolve. Pass a branch or commit you have locally: feat, main, pr.',
     )
   })
 })
