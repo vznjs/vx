@@ -1904,6 +1904,19 @@ function localBranches(workspaceRoot: string): string {
     : names.join(', ')
 }
 
+/** `origin/<name>` (else another remote's) when a remote-tracking ref of that branch is here. */
+function trackingRef(workspaceRoot: string, name: string): string | undefined {
+  if (!/^[^\s~^:?*[\\@{]+$/.test(name) || name.startsWith('refs/')) return undefined
+  const proc = spawnGitSync(
+    ['for-each-ref', '--format=%(refname:short)', `refs/remotes/*/${name}`],
+    workspaceRoot,
+    'ignore',
+  )
+  if (proc.exitCode !== 0) return undefined
+  const refs = new TextDecoder().decode(proc.stdout).split('\n').filter(Boolean)
+  return refs.find((r) => r === `origin/${name}`) ?? refs[0]
+}
+
 function isShallow(workspaceRoot: string): boolean {
   const proc = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'ignore')
   return new TextDecoder().decode(proc.stdout).trim() === 'true'
@@ -2084,6 +2097,14 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
       'VX_E_GIT',
     )
   }
+  // `main` where CI's checkout made only `origin/main`: "pass a branch you
+  // have locally" left it out, and the fetch asked origin for a tag.
+  const tracking = trackingRef(workspaceRoot, ref)
+  if (tracking !== undefined)
+    throw new UserError(
+      `git ref "${ref}" did not resolve: did you mean ${tracking}?`,
+      'VX_E_AFFECTED_BASE',
+    )
   // A base origin could not give (`reachMergeBase`): no origin, no
   // network, a name only another clone has.
   const failed = fetchFailures.get(workspaceRoot)

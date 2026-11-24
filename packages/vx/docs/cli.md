@@ -594,6 +594,8 @@ Errors from git:
 - A ref that does not exist is `git ref "<ref>" did not resolve`, with
   git's reason when it gives one. In a full clone it names up to six
   local branches to pass instead.
+- A branch name only a remote has here (`main` beside `origin/main`)
+  says `did you mean origin/main?`.
 - `main@{9}` adds `log for 'main' only has 2
 entries`.
 - In a shallow clone it adds how to fetch it: `git fetch --depth=1 origin <base>`.

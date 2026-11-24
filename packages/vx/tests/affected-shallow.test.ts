@@ -246,6 +246,20 @@ describe('a full clone that fetched one branch', () => {
     expect(await changed(root, 'origin/main')).toEqual(['b.txt', 'c.txt'])
   })
 
+  it('names the tracking ref a bare branch name has here', async () => {
+    // `--affected=main` where only origin/main exists said "Pass a branch or
+    // commit you have locally" and that origin has no tag main.
+    const root = await single('feat')
+    gitIn(root)('fetch', '-q', 'origin', '+refs/heads/main:refs/remotes/origin/main')
+    expect(await changed(root, 'main').catch((err: Error) => err.message)).toBe(
+      'git ref "main" did not resolve: did you mean origin/main?',
+    )
+    // CONTROL: a name no remote has keeps the plain message.
+    expect(await changed(root, 'nosuch').catch((err: Error) => err.message)).toStartWith(
+      'git ref "nosuch" did not resolve. Pass a branch or commit you have locally.',
+    )
+  })
+
   it('says the fetch from origin failed, and why', async () => {
     const root = await single('feat')
     gitIn(root)('remote', 'set-url', 'origin', `file://${dir}/nowhere`)
