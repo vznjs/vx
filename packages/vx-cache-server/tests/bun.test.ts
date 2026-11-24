@@ -357,6 +357,37 @@ it('refuses to start with no S3 credentials', () => {
   ]).toEqual([2, '', expect.stringMatching(/^✗ vx-cache-server {2}S3: Missing S3 credentials\./)])
 })
 
+// Bun's S3 client takes any S3_ENDPOINT: `ftp://x` signed for https://x,
+// `::not a url::` for a host no request reaches. The server listened and
+// answered every request 502.
+it('refuses to start with an S3 endpoint that is no http(s) URL or host', () => {
+  for (const [name, value] of [
+    ['S3_ENDPOINT', '::not a url::'],
+    ['S3_ENDPOINT', 'ftp://s3.example.com'],
+    ['AWS_ENDPOINT', 'https://'],
+  ] as const) {
+    const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+      env: {
+        ...process.env,
+        S3_BUCKET: 'b',
+        S3_ACCESS_KEY_ID: 'a',
+        S3_SECRET_ACCESS_KEY: 's',
+        ALLOW: ALLOW_VAR,
+        AUDIENCE: 'https://cache.example.com',
+        [name]: value,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 10_000,
+    })
+    expect([name, cli.exitCode, Bun.stripANSI(cli.stderr.toString()).split('\n')[0]]).toEqual([
+      name,
+      2,
+      `✗ vx-cache-server  ${name}: an http(s) URL or a host such as s3.example.com, not ${value}`,
+    ])
+  }
+}, 30_000)
+
 // Bun's fetch asks for gzip and inflates what it is sent, so a bucket (or
 // a proxy before it) that compressed an answer named the compressed
 // Content-Length as the artifact's size: a check and a download said

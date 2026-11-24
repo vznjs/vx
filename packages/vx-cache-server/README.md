@@ -93,7 +93,17 @@ bun packages/vx-cache-server/src/bun.ts --port 8080
 ```
 
 - `S3_BUCKET` is required: without it the server does not start.
-- S3 settings are those Bun's S3 client reads (`S3_REGION` too).
+- Bun's S3 client reads the rest, each also as `AWS_…`:
+
+  | Variable                                   | What it is                                                                            |
+  | ------------------------------------------ | ------------------------------------------------------------------------------------- |
+  | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | the key; without both the server does not start                                       |
+  | `S3_ENDPOINT`                              | an http(s) URL or a host (`s3.example.com`); unset, AWS. Anything else does not start |
+  | `S3_REGION`                                | the region it signs for; unset, `us-east-1` on AWS, `auto` elsewhere                  |
+  | `S3_SESSION_TOKEN`                         | a temporary key's token                                                               |
+
+  `AWS_BUCKET` is not read: name the bucket in `S3_BUCKET`.
+
 - A node keeps no state of its own, so any number of them serve one
   bucket behind a balancer.
 - A read the bucket answers `500` or `503` (`SlowDown`) is asked up to

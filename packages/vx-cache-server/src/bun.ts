@@ -13,8 +13,9 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
                   (README.md § CI tokens); only their jobs' OIDC tokens are taken
   AUDIENCE        the aud a CI token names: the origin clients reach this server at
   READ_ACCESS     public: a request with no token reads a repository ALLOW names
-  S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
-                  S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
+  S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID,
+                  S3_SECRET_ACCESS_KEY and S3_SESSION_TOKEN (or AWS_…) as Bun's
+                  S3 client reads them
   MAX_CHECK_HASHES  lookups one check makes, hashes × scopes (default ${DEFAULT_LIMITS.maxCheckHashes})
   MAX_UPLOAD_BYTES  the largest upload, one artifact (default ${DEFAULT_LIMITS.maxUploadBytes})`
 
@@ -172,6 +173,15 @@ function main(argv: string[]): void {
     limits = { ...DEFAULT_LIMITS, ...limitsFrom(env) }
   } catch (err) {
     fail((err as Error).message)
+  }
+  // Bun's client signs for any endpoint: `ftp://x` as https://x, and one no
+  // URL can hold for a host no request reaches, each request then a 502.
+  for (const name of ['S3_ENDPOINT', 'AWS_ENDPOINT']) {
+    const said = env[name]?.trim() ?? ''
+    if (said === '') continue
+    const url = URL.parse(said.includes('://') ? said : `https://${said}`)
+    if (url === null || !/^https?:$/.test(url.protocol) || url.hostname === '')
+      fail(`${name}: an http(s) URL or a host such as s3.example.com, not ${env[name]}`)
   }
   const client = new Bun.S3Client({ bucket: env['S3_BUCKET'] })
   try {
