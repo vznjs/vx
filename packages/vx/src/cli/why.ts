@@ -373,7 +373,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       blocks.push(whatChangedSection(diff))
       if (roots.length > 0) blocks.push(rootCauseSection(roots))
       if (writers.length > 0) blocks.push(writersSection(writers))
-      const todo = whatToDoRows(taskId, diff, roots, writers, unrecorded)
+      const pluginMoved = [...diff.entries, ...roots.flatMap((r) => r.entries)].some(
+        (e) => e.kind === 'plugin',
+      )
+      const claims = pluginMoved ? await fingerprintFiles(at) : new Map<string, string[]>()
+      const todo = whatToDoRows(taskId, diff, roots, writers, unrecorded, claims)
       if (todo.length > 0) blocks.push(ui.section('What to do', ui.fields(todo)))
     }
     ui.print('out', ...blocks)
@@ -559,6 +563,7 @@ function whatToDoRows(
   roots: readonly RootCause[],
   writers: readonly InputWriter[],
   unrecorded: readonly DiffEntry[],
+  claims: ReadonlyMap<string, readonly string[]> = new Map(),
 ): ui.FieldRow[] {
   const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
   // An upstream row names the task to ask next: the command, not a
@@ -590,6 +595,10 @@ function whatToDoRows(
       todo.push([k, envTodo([...diff.entries, ...roots.flatMap((r) => r.entries)])])
       continue
     }
+    if (k === 'plugin') {
+      todo.push([k, pluginTodo([...diff.entries, ...roots.flatMap((r) => r.entries)], claims)])
+      continue
+    }
     todo.push([
       k,
       k === 'config'
@@ -607,6 +616,42 @@ function whatToDoRows(
   // the miss is right, and only moving the write ends it.
   if (writers.length > 0) todo.push(['written', WRITTEN_TODO])
   return todo
+}
+
+/**
+ * The plugin row. A part is named `<plugin>/<part>`; a plugin that claims
+ * fingerprint files (a lockfile plugin) is named with them: "a key plugin's
+ * material changed" left the user to find the lockfile whose edit moved it.
+ */
+function pluginTodo(
+  entries: readonly { kind: string; name: string }[],
+  claims: ReadonlyMap<string, readonly string[]>,
+): string {
+  const named = new Map<string, readonly string[]>()
+  for (const e of entries) {
+    if (e.kind !== 'plugin') continue
+    for (const [plugin, files] of claims)
+      if (e.name.startsWith(`${plugin}/`)) named.set(plugin, files)
+  }
+  if (named.size === 0) return WHAT_TO_DO['plugin']!
+  const files = [...named.values()].flat()
+  return `${[...named].map(([plugin, f]) => `${plugin} keys on ${f.join(', ')}`).join('; ')}: what this task reads of ${files.length === 1 ? 'it' : 'them'} moved; that plugin decides what goes into the key`
+}
+
+/** Each loaded plugin's claimed fingerprint files, by plugin name; none when the workspace does not load. */
+async function fingerprintFiles(at: VerbWorkspace): Promise<Map<string, string[]>> {
+  try {
+    const { plugins } = await at.workspace()
+    return new Map(
+      plugins.flatMap((p) =>
+        p.fingerprint === undefined || p.fingerprint.files.length === 0
+          ? []
+          : [[p.name, [...p.fingerprint.files]] as [string, string[]]],
+      ),
+    )
+  } catch {
+    return new Map()
+  }
 }
 
 /** The env row: a value that moved, or a name that joined or left `inputs.env`. */
