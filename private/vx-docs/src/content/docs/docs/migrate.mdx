@@ -70,7 +70,8 @@ Find your starting point:
 
 <Steps>
 
-1. **Write the configs.** Run `bunx @vzn/vx init --native` at the workspace root.
+1. **Write the configs.** Run `bunx @vzn/vx init --native` at the workspace root,
+   or `bunx @vzn/vx-migrate` when you have only scripts.
    It never overwrites a file unless you add `--force`.
 2. **Fill the TODOs.** Search for `TODO(vx-migrate)`. Each one marks a
    choice vx could not make for you, such as which files a task reads.
@@ -140,6 +141,13 @@ bunx @vzn/vx-migrate --dry
 ```
 
 Read the `todo` row: both `build` tasks wait for you. `dev` runs `vite`, so it became a persistent task.
+
+Write the files, and put `vx` on your PATH, since only `vx init` does that:
+
+```sh
+bunx @vzn/vx-migrate
+bun add -g @vzn/vx
+```
 
 <Takeaway>see every script as a task before one file is written.</Takeaway>
 
