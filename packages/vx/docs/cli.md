@@ -2667,6 +2667,7 @@ VX_WATCH_POLL=1 vx watch build   # poll from the start
 - Where the watcher is known not to deliver (a macOS sandbox without FSEvents access, a network mount, a container bind), use `VX_WATCH_POLL=1`.
 - It polls from the start and skips the 2 s probe. The loop says so once: `vx watch: polling every 250 ms (watch.poll)`.
 - A watcher the OS refuses for its watch limit (`ENOSPC`, `EMFILE`) is polled too, with a notice naming the limit to raise.
+- So is one that meets the limit later, at a folder made during the watch: its whole project folder is polled from then on.
 - The poller walks the same tree the event filter keeps. It never samples the always-ignored segments or the run's output folders.
 - Unless a task's inputs can lie in one (`src/**/*.ts` beside an output `src/**/*.js`), or git tracks a file there.
 - It samples each file's later clock of mtime and ctime. A replacement that keeps the old mtime (`cp -p`, `rsync -a`, a `mv`) is an edit.

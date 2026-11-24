@@ -206,6 +206,8 @@ export function armWatcher(
   timeoutMs = WATCH_PROBE_TIMEOUT_MS,
   /** The poller's `skipDir`, asked on Linux of a directory under `node_modules` only. */
   skipDir: (rel: string) => boolean = (rel) => isIgnoredDir(rel.split('/')),
+  /** Linux recursive only: the OS watch limit refused a directory made after the arm. */
+  onLimit?: (code: string) => void,
 ): ArmedWatcher {
   let markReady: (ok: boolean) => void = () => {}
   let arrived = false
@@ -232,7 +234,7 @@ export function armWatcher(
   }
   const watcher: WatchHandle =
     recursive && process.platform === 'linux'
-      ? treeWatcher(dir, listener, skipDir)
+      ? treeWatcher(dir, listener, skipDir, onLimit)
       : fs.watch(dir, { recursive, persistent: true }, (_event, filename) => listener(filename))
   const probe = path.join(dir, WATCH_PROBE)
   const ready = (async (): Promise<boolean> => {
@@ -298,6 +300,7 @@ function treeWatcher(
   root: string,
   listener: (filename: string) => void,
   skipDir: (rel: string) => boolean,
+  onLimit?: (code: string) => void,
 ): WatchHandle {
   const skips = (rel: string): boolean => {
     const segments = rel.split('/')
@@ -384,6 +387,12 @@ function treeWatcher(
       if (rel === '' || (limit && !armed)) throw err
       if (limit && !warned) {
         warned = true
+        // The pool swaps the tree for its poller: a directory unwatched
+        // missed every edit in it until a restart.
+        if (onLimit !== undefined) {
+          onLimit(code!)
+          return
+        }
         ui.say(
           'warn',
           `vx watch: ${abs}: the OS watch limit is reached (${code}); directories made from here on are not watched — raise it (Linux: sysctl fs.inotify.max_user_watches)\n`,
@@ -493,10 +502,25 @@ export class WatcherPool {
       watchers.push(this.poll(dir, recursive, onEvent))
       return handle
     }
-    let armed: ArmedWatcher
+    let armed: ArmedWatcher | undefined
+    // The watch limit met by a directory made after the arm: the slot polls.
+    const atLimit = (code: string): void => {
+      if (this.closed || armed === undefined || watchers[at] !== armed.watcher) return
+      armed.watcher.close()
+      watchers[at] = this.poll(dir, recursive, onEvent)
+      ui.say(
+        'warn',
+        `vx watch: ${dir}: the OS watch limit is reached (${code}); polling every ${pollIntervalMs()} ms instead — raise it (Linux: sysctl fs.inotify.max_user_watches) to watch natively\n`,
+      )
+    }
     try {
-      armed = armWatcher(dir, recursive, onEvent, WATCH_PROBE_TIMEOUT_MS, (rel) =>
-        this.skip(dir, rel),
+      armed = armWatcher(
+        dir,
+        recursive,
+        onEvent,
+        WATCH_PROBE_TIMEOUT_MS,
+        (rel) => this.skip(dir, rel),
+        atLimit,
       )
     } catch (err) {
       // The OS's watch limit, not the directory: the loop said "watching"
