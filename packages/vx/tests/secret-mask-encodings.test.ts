@@ -52,6 +52,21 @@ describe('a secret in its encoded spellings', () => {
     ])
   })
 
+  // Each tool encodes its own set: Python's quote() keeps `/`, curl and
+  // quote_plus() write a space as `+` and escape `!'()*`, URLSearchParams
+  // escapes `~` and keeps `*`. Only encodeURIComponent's spelling was masked.
+  it("masks the value as Python's quote(), curl and URLSearchParams spell it", () => {
+    const value = "ab/cd+ef=gh-sekret!x*y(z)'~ s"
+    const tools = secretMask([{ API_TOKEN: value }])!
+    for (const spelled of [
+      'ab/cd%2Bef%3Dgh-sekret%21x%2Ay%28z%29%27~%20s', // quote()
+      'ab%2Fcd%2Bef%3Dgh-sekret%21x%2Ay%28z%29%27~%20s', // quote(safe='')
+      'ab%2fcd%2bef%3dgh-sekret%21x%2ay%28z%29%27~+s', // curl --data-urlencode, quote_plus()
+      'ab%2Fcd%2Bef%3Dgh-sekret%21x*y%28z%29%27%7E+s', // URLSearchParams
+    ])
+      expect(tools.mask(`?t=${spelled}&a=1`)).toBe(`?t=${MASKED}&a=1`)
+  })
+
   it('CONTROL: a value with nothing to encode is masked once, as before', () => {
     const plain = secretMask([{ API_TOKEN: 'plainsekretvalue1' }])!
     expect(plain.mask('x plainsekretvalue1 y')).toBe(`x ${MASKED} y`)

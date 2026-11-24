@@ -115,8 +115,7 @@ export function secretMask(
     if (value.includes("'")) values.add(value.replaceAll("'", `'\\''`))
     // As a tool encodes it: a token's `/+=` in a query string, a quote,
     // backslash or newline inside a JSON string. Either printed it whole.
-    const url = encodeURIComponent(value)
-    if (url !== value) values.add(url)
+    for (const url of urlSpellings(value)) if (url !== value) values.add(url)
     const json = JSON.stringify(value).slice(1, -1)
     if (json !== value) values.add(json)
     // A multi-line value (a PEM key) is also masked line by line, as GitHub
@@ -175,6 +174,25 @@ function urlPasswords(value: string): string[] {
     urlPasswordsOf.set(value, found)
   }
   return found
+}
+
+/**
+ * A value as URL encoders spell it. Each escapes its own set:
+ * encodeURIComponent keeps `!'()*`, curl and Python's quote() escape them,
+ * quote() keeps `/`, curl and quote_plus() write a space `+`, and
+ * URLSearchParams also escapes `~` and keeps `*`.
+ */
+function urlSpellings(value: string): string[] {
+  const js = encodeURIComponent(value)
+  const strict = js.replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  const plus = strict.replaceAll('%20', '+')
+  return [
+    js,
+    strict,
+    strict.replaceAll('%2F', '/'),
+    plus,
+    plus.replaceAll('%2A', '*').replaceAll('~', '%7E'),
+  ]
 }
 
 /**
