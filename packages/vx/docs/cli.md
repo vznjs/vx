@@ -6319,7 +6319,8 @@ reads why without the terminal.
 - `withheld`: the credential paths it denied and left out, a `.env` file
   or a store under home the sandbox denies (`security.md`).
 - `inputs`, cached tasks: the reads of its project no `inputs.files` glob
-  matches.
+  matches. A directory whose contents a glob keys, such as `public` under
+  `public/**`, is not named.
 - `workspaceFiles`: its reads elsewhere in the workspace no
   `inputs.workspaceFiles` glob matches.
 - Those two are the terminal's `and, if the output depends on them, …`

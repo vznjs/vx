@@ -141,6 +141,21 @@ describe('sandboxFix', () => {
     expect(sandboxFix(denials, dir, dir)?.inputs).toBeUndefined()
   })
 
+  // Vite probes `public` with `access`: with `public/**` already an input,
+  // the fix told the user to add `public` to inputs.files, which keys nothing
+  // more.
+  it('names no input for a directory whose contents the inputs already key', () => {
+    mkdirSync(path.join(dir, 'public'))
+    const denials = [v('access(public) = -1 ENOENT', ['read', 'write'], path.join(dir, 'public'))]
+    const fix = sandboxFix(denials, dir, dir, undefined, { files: ['src/**', 'public/**'] })
+    expect(fix?.read).toEqual(['public'])
+    expect(fix?.inputs).toBeUndefined()
+    // CONTROL: inputs that key only part of it still name the directory.
+    expect(sandboxFix(denials, dir, dir, undefined, { files: ['public/*.svg'] })?.inputs).toEqual([
+      'public',
+    ])
+  })
+
   // A read elsewhere in the workspace was granted by its absolute path,
   // which holds on no other machine, and never named for the key: the fix
   // applied as given turned an edit there into a stale hit.

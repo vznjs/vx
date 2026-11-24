@@ -150,6 +150,15 @@ function keyedBy(globs: readonly string[]): (rel: string) => boolean {
 }
 
 /**
+ * Whether directory `rel` is keyed whole by globs such as `public/**`: a
+ * probe of the directory itself (Vite's `access(public)`) matches no file
+ * glob, and the fix named `public` for an input already listed.
+ */
+function keysContents(keyed: (rel: string) => boolean, rel: string, abs: string): boolean {
+  return lstatSync(abs, { throwIfNoEntry: false })?.isDirectory() === true && keyed(`${rel}/_`)
+}
+
+/**
  * Whether a literal grant of the project file `abs` has vx make an empty
  * one before the run (`prepareOutputsForBind`): it is not there, or it is
  * a declared output, which the clean before the run takes. A task that
@@ -255,7 +264,8 @@ export function sandboxFix(
       // The repository is no input: git lists nothing in it, so no glob keys it.
       if (atOrUnder(v.path, path.join(dirs.root, '.git'))) continue
       if (inProject(rel) && !nested.some((d) => atOrUnder(v.path!, toRealPath(d)))) {
-        if (!keyed.files(rel)) fix.inputs.add(taskGlobOf(rel))
+        if (!keyed.files(rel) && !keysContents(keyed.files, rel, v.path))
+          fix.inputs.add(taskGlobOf(rel))
       } else if (atOrUnder(v.path, dirs.root)) {
         const wsRel = relPosix(dirs.root, v.path)
         if (!keyed.workspaceFiles(wsRel)) fix.workspaceFiles.add(taskGlobOf(wsRel))
