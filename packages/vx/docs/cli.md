@@ -1298,7 +1298,9 @@ The cache has four independent axes: **localRead**, **localWrite**,
    whatever the base / `--cache-policy` left them.
 6. Off CI (no CI variable is on, § Output format › Colors), force **remoteWrite off**, unless
    the spec in effect names the remote: `--cache-policy`, else `VX_CACHE_POLICY`, else
-   `cache.policy`. A `--cache-policy=local:r` over a `cache.policy` of `remote:rw`
+   `cache.policy`.
+
+   A `--cache-policy=local:r` over a `cache.policy` of `remote:rw`
    leaves the remote read only.
 
 - Remote writes are off off CI because a key holds only declared

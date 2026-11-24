@@ -769,7 +769,8 @@ a plugin changes where a command runs, never what it is.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first.
 - A worker that answers otherwise than this machine did is refused, as
-  one on another tree is: `[vx] dte: refused worker <id>: \`bun --version\`
+  one on another tree is.
+- Its line: `[vx] dte: refused worker <id>: \`bun --version\`
   answers "1.4.3" on this worker, "1.4.4" on the run's machine, …`.
 - It runs nothing more, and its tasks go to workers that answer alike.
 - One the run started counts as a failed start: with none left, the run

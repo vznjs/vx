@@ -98,7 +98,9 @@ A CI job's requests carry its own OIDC token. The server's `ALLOW` decides wheth
 
 Off CI a run reads only: core writes no remote there. With no token it reads from a server whose `READ_ACCESS` is `public`.
 
-A laptop whose cache policy names the remote (`cache.policy`, `--cache-policy`) is let write by core. It uploads only with a token the server takes, such as a CI job's `VX_CACHE_TOKEN`. With none it uploads nothing, said once a run.
+A laptop whose cache policy names the remote (`cache.policy`, `--cache-policy`) is let write by core.
+
+It uploads only with a token the server takes, such as a CI job's `VX_CACHE_TOKEN`. With none it uploads nothing, said once a run.
 
 Any other server refuses the first read, said once, and the run stays local.
 

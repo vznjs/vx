@@ -1738,7 +1738,8 @@ Below the environment, in Turbo's order, the plugin reads:
 - A signed download streams to vx as it arrives, and is copied to a temp file in vx's cache directory as it passes.
 - The sandbox walls that directory, unlike the shared temp dir a sandboxed task may read.
 - The tag covers the body's length, which a chunked response does not declare up front, so it is checked from the temp once the last byte is in.
-- A bad tag errors that last read. vx stages a download in its own temp and keeps it only once the last read succeeds, so a body that fails its tag (tampered, truncated, or under a wrong tag) leaves no cache entry and restores no output file: the task runs as a miss.
+- A bad tag errors that last read. vx stages a download in its own temp and keeps it only once the last read succeeds.
+- So a body that fails its tag (tampered, truncated, or under a wrong tag) leaves no cache entry and restores no output file: the task runs as a miss.
 - The temp goes once the body is read or cancelled.
 - A process that exits first deletes it on the way out (vx's Ctrl-C exit awaits no stream).
 
@@ -1847,7 +1848,8 @@ A remote error never fails a run: it degrades to a miss and a warning.
 - The batch `POST` carries at most 100 hashes, Vercel's limit. More go in parallel batches.
 - A batch refused with any status but 404, 405 or 501 (no batch query) is reported with its body. So is a 200 answer that is no JSON object.
 - How a server implements the header: [Branch caches a server enforces](https://vznjs.github.io/vx/blog/branch-caches-a-server-enforces/).
-- A hit that does not restore (bad bytes, a signature that does not verify) re-runs the task. vx keeps a download only once it reads back whole and checks out, so a bad one, altered or cut short, restores no output file and leaves no cache entry.
+- A hit that does not restore (bad bytes, a signature that does not verify) re-runs the task.
+- vx keeps a download only once it reads back whole and checks out, so a bad one, altered or cut short, restores no output file and leaves no cache entry.
 - `turboCache()` then uploads its save over the stored entry, skipping the `HEAD` it asks before other uploads.
 - It does so also when another machine of the run (a `@vzn/vx-dte` worker) read the bad copy.
 - Nx's records are immutable (`409`), so `nxCache()` cannot repair one. That `put` returns `false`, so the run does not count the copy fixed.

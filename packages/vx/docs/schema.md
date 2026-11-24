@@ -2369,11 +2369,11 @@ export default defineProject({
   raw socket) gets `Network is unreachable`: no grant lifts it.
 - A task resolves no names: Node's `fetch` and `https` look the host up
   themselves and fail `getaddrinfo EAI_AGAIN <host>`, granted or not.
-  They take the proxy with `NODE_USE_ENV_PROXY=1` (Node 22.21+, 24.5+):
-  `exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`. Node 22 then
-  prints an experimental warning at start; Node 24 does not. vx sets no
-  such variable itself. On Linux the failure names it, and the grant when
-  the host has none.
+- Node's own clients take the proxy with `NODE_USE_ENV_PROXY=1` (Node 22.21+, 24.5+):
+  `exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`.
+- Node 22 then prints an experimental warning at start; Node 24 does not.
+  vx sets no such variable itself. On Linux the failure names it, and the
+  grant when the host has none.
 - A host `deny.network` holds gets no `allow.network` entry in the
   `fix:` line: no allow lifts it.
 - `ignore: { network: ['example.com:443'] }` silences one refusal,
@@ -2482,8 +2482,8 @@ export default defineProject({
   its fix is a read grant.
 - `prettier --cache` with no write grant passes with its cache off: it
   checks that `node_modules` is writable, which writes nothing and is no
-  violation, then keeps its cache in the sandbox's temp folder. Name the
-  file and grant its folder:
+  violation, then keeps its cache in the sandbox's temp folder.
+- To keep prettier's cache, name the file and grant its folder:
   `prettier --cache --cache-location node_modules/.cache/prettier/.prettier-cache`
   with `write: ['node_modules/.cache/prettier/']`.
 - `mkdir ~/.cache` refused: a write outside the project is named on a
