@@ -552,7 +552,7 @@ it('reads GitHub’s keys again for a token signed by one it has not seen, once 
       true,
       ['sign', 'verify'],
     )) as CryptoKeyPair
-  const [k1, k2] = [await rsa(), await rsa()]
+  const [k1, k2, k3] = [await rsa(), await rsa(), await rsa()]
   const ISS = 'https://token.actions.githubusercontent.com'
   const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
   let signer = { kid: 'k1', key: k1 }
@@ -589,9 +589,14 @@ it('reads GitHub’s keys again for a token signed by one it has not seen, once 
     expect(reads).toBe(2)
     signer = { kid: 'k2', key: k2 }
     published = [{ ...(await crypto.subtle.exportKey('jwk', k2.publicKey)), kid: 'k2' }]
-    // Within 30 s of the last read: refused, and GitHub not asked.
+    // The first set may have come from a cache: read again at once.
+    expect(await proof.check!(await proof.sign!(parts), parts)).toBe(true)
+    expect(reads).toBe(3)
+    signer = { kid: 'k3', key: k3 }
+    published = [{ ...(await crypto.subtle.exportKey('jwk', k3.publicKey)), kid: 'k3' }]
+    // Within 30 s of that fresh read: refused, and GitHub not asked.
     expect(await proof.check!(await proof.sign!(parts), parts)).toBe(false)
-    expect(reads).toBe(2)
+    expect(reads).toBe(3)
     setSystemTime(new Date(Date.now() + 31_000))
     expect(await proof.check!(await proof.sign!(parts), parts)).toBe(true)
   } finally {
