@@ -6,7 +6,7 @@
 // upstream is a group: it records no run, so the graph names what it gathers.
 
 import type { Database } from 'bun:sqlite'
-import { indexDb, indexError, Cache } from '../cache/index.js'
+import { indexDb, indexError, Cache, taskEntryHashes } from '../cache/index.js'
 import { ambiguousTask, anchoredSpecError, flagHint, formatValue, seeHelp } from './help.js'
 import { buildTaskGraph, isDefaultBuild, isGroupTask } from '../graph/index.js'
 import {
@@ -159,6 +159,23 @@ function suggest(query: string, ids: readonly string[], invoked: boolean): strin
 }
 
 /**
+ * A task with no recorded run whose entry the store holds: it ran, and its
+ * runs were pruned or recorded by another worktree. "no runs yet" was false.
+ */
+function prunedRefusal(cache: Cache, id: string, target: string): UserError | undefined {
+  if (taskEntryHashes(cache, id).length === 0) return undefined
+  const why =
+    'its cache entry is stored: its runs were pruned (VX_HISTORY_RETENTION, 30 days by default) or ran in another worktree'
+  return refusal(
+    { tone: 'info', headline: `no runs of ${id} recorded`, why, fix: `vx run ${target}` },
+    {
+      code: 'VX_E_NO_HISTORY',
+      message: `vx why: no runs of ${id} recorded; ${why}; vx run ${target}`,
+    },
+  )
+}
+
+/**
  * Resolve a positional target to a full `project#task` id against the runs
  * table. A `pkg#task` form is used as-is; a bare task name matches every
  * project that ran it — unique → resolved, several → the project the cwd sits
@@ -182,6 +199,8 @@ async function resolveTarget(
       .get(project, task)
     if (hit !== null) return target
     if ((await declaresId(target)) === 'group') throw groupRefusal(target)
+    const gone = prunedRefusal(cache, target, target)
+    if (gone !== undefined) throw gone
   } else {
     // A bare name reads only its own task's rows: the DISTINCT over every
     // pair sorted the whole history (24 of 26 ms at 58k rows), and its list
@@ -204,9 +223,12 @@ async function resolveTarget(
       const kind = await declaresId(own)
       if (kind === 'group') throw groupRefusal(own)
       if (kind !== false) {
-        throw refusal(
-          { tone: 'info', headline: `no runs of ${own} yet`, fix: `vx run ${target}` },
-          { code: 'VX_E_NO_HISTORY', message: `vx why: no recorded runs for "${own}"` },
+        throw (
+          prunedRefusal(cache, own, target) ??
+          refusal(
+            { tone: 'info', headline: `no runs of ${own} yet`, fix: `vx run ${target}` },
+            { code: 'VX_E_NO_HISTORY', message: `vx why: no recorded runs for "${own}"` },
+          )
         )
       }
     }

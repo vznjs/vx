@@ -5560,6 +5560,9 @@ output and `--format json` keep them whole.
   `vx run` picks.
 - `no runs of <project>#<task> yet`: that task never ran, even when
   another project's did.
+- `no runs of <project>#<task> recorded`: no run is recorded but its
+  cache entry is stored. Its runs were pruned
+  (`VX_HISTORY_RETENTION`), or another worktree ran it.
 - `TASK` elsewhere resolves when exactly one project ran it. Several: an
   error listing the candidates.
 - An unknown `TASK`: names that contain it. With none near, a pointer to

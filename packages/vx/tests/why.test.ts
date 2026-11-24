@@ -892,6 +892,41 @@ describe('vx why in a workspace that never ran (E-39)', () => {
   }, 30_000)
 })
 
+// Its runs pruned, a task that ran read "no runs of app#build yet", and
+// --format json "nothing has run here yet": its entry said otherwise.
+describe('vx why of a task whose runs were pruned', () => {
+  it('says its runs are gone, not that it never ran', async () => {
+    const root = await makeWorkspace()
+    try {
+      expect((await vx(root, ['run', 'app#build'])).code).toBe(0)
+      const clean = await vx(root, ['cache', 'clean', '--max-size', '10G'], {
+        VX_HISTORY_RETENTION: '1ms',
+      })
+      expect(clean.code).toBe(0)
+      const why =
+        'its cache entry is stored: its runs were pruned (VX_HISTORY_RETENTION, 30 days by default) or ran in another worktree'
+      const app = path.join(root, 'packages', 'app')
+      for (const [cwd, target] of [
+        [root, 'app#build'],
+        [app, 'build'],
+      ] as const) {
+        const r = await vx(cwd, ['why', target])
+        expect({ code: r.code, err: r.err }).toEqual({
+          code: 1,
+          err: `› vx why  no runs of app#build recorded\n\n  ${why}\n\n  fix  vx run ${target}\n`,
+        })
+      }
+      const json = await vx(root, ['why', 'app#build', '--format', 'json'])
+      expect(JSON.parse(json.out).error).toMatchObject({
+        code: 'VX_E_NO_HISTORY',
+        message: `vx why: no runs of app#build recorded; ${why}; vx run app#build`,
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+})
+
 // Only another task had run: a bare name the cwd project declares but never
 // ran read "no recorded runs for task", the message for a name nobody ran,
 // and a group's id pointed at a task list it can never join.
