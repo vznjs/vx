@@ -41,17 +41,29 @@ export function vitest(): VxPlugin {
 
 ## Write one
 
-Follow the plugin above from a file to a task that runs. Take `test` out of `packages/ui` and `packages/web`; both keep their `vite.config.ts`.
+Follow the plugin above from a file to a task that runs. Take `test` out of `ui`, `admin` and `api`, which have a `vite.config.ts`. `web` has none and keeps its own `test`.
+
+Save the plugin as `plugins/vitest.ts`. A plugin's name is its package's, so give the folder a `package.json` with a name:
+
+```sh
+echo '{ "name": "vitest-plugin", "private": true }' > plugins/package.json
+```
 
 <Walkthrough title="From one file to a new task">
 <Frame title="1. List it in the workspace">
 
-```ts title=".vx/workspace.ts" ins={3,5}
-import type { WorkspaceConfig } from '@vzn/vx/config'
-import { bun } from '@vzn/vx-lockfile'
+```ts title=".vx/workspace.ts" ins={2,7}
+import { defineWorkspace } from '@vzn/vx/config'
 import { vitest } from '../plugins/vitest.ts'
+// …the imports you have
 
-export default { plugins: [bun(), vitest()] } satisfies WorkspaceConfig
+export default defineWorkspace({
+  plugins: [
+    vitest(),
+    // …the plugins you have
+  ],
+  // …the pipelines you have
+})
 ```
 
 </Frame>
@@ -62,7 +74,7 @@ vx lock
 ```
 
 ```ansi
-[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
+[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m4 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
 ```
 
 A `project` hook runs under `vx lock`. Every run reads the tasks it added from the lock, so it never pays for the hook.
@@ -71,12 +83,12 @@ A `project` hook runs under `vx lock`. Every run reads the tasks it added from t
 <Frame title="3. See the task it made">
 
 ```sh
-vx show @demo/web#test
+vx show @demo/admin#test
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250m@demo/web#test[0m[4m[58;2;110;118;129m[0m
-  [2mdir          [0m  [38;2;203;213;225mpackages/web[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250m@demo/admin#test[0m[4m[58;2;110;118;129m                                                                                  [0m
+  [2mdir          [0m  [38;2;203;213;225mpackages/admin[0m
   [2mcommand      [0m  [38;2;203;213;225mvitest run[0m
   [2minputs.files [0m  [38;2;203;213;225msrc/**, vite.config.ts[0m
   [2moutputs.files[0m  [38;2;203;213;225mnone[0m
@@ -93,23 +105,26 @@ vx run test --all --output-logs hash-only
 ```
 
 ```ansi
-[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mf5228f9ea784753f[0m
-[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m [2mcc50f28bab6377d4[0m
+[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m048c3a3df13acfff[0m
+[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m [2m1c09a5f4d994f153[0m
+[38;2;34;197;94msuccess[0m [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m [2m7c800308333aff09[0m
+[38;2;34;197;94msuccess[0m [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m [2mf2e3ed39aa51d4d8[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2m8102e204a87550a4[0m
 
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+            [38;2;234;179;8m4 in run[0m [2m·[0m [2m4 total[0m
   [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+            [38;2;34;197;94m5 success[0m [2m·[0m [2m5 total[0m
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [2mlocal[0m [38;2;56;189;248m2↑[0m
+            [2mlocal[0m [38;2;56;189;248m5↑[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20a09-4742-7001-8f91-73beaf210c39
-  [2mtime    [0m  601ms [2m·[0m [2mmax 568ms[0m [2m·[0m [2mavg 536ms[0m [2m·[0m [2mmin 504ms[0m
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20af3-3ce3-73c6-bbf3-84aaad6a3c6e
+  [2mtime    [0m  2.64s [2m·[0m [2mmax 1.75s[0m [2m·[0m [2mavg 1.48s[0m [2m·[0m [2mmin 773ms[0m
 ```
 
-Each line reads: status, task, cache key. Both projects ran `vitest run`, cached like a task you write by hand.
+Each line reads: status, task, cache key. `ui`, `admin` and `api` ran the plugin's `vitest run`, cached like a task you write by hand. `web` ran its own `test`, after the `ui#build` it waits on.
 
 </Frame>
 </Walkthrough>
