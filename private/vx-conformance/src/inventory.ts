@@ -419,6 +419,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lock-help',
     'lock-merge-conflict',
     'lock-nested-workspace-name',
+    'lock-project-moves',
     'lock-renamed-package',
     'lock-review-fds',
     'lock-review-files',
