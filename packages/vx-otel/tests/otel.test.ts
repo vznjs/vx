@@ -13,6 +13,7 @@ import type {
 } from '@vzn/vx'
 import {
   buildMetricsRequest,
+  buildTaskMetricsRequest,
   buildTraceRequest,
   runResource,
   runSpanAttributes,
@@ -451,6 +452,34 @@ describe('OTLP builders', () => {
       source({ status: 'failed' }),
       source({ status: 'success', cacheSource: 'miss' }),
     ]).toEqual([undefined, undefined, undefined, 'miss'])
+  })
+
+  // 08d905192 dropped `none` from the span; a failed restore's metrics
+  // (sent: only a skipped or aborted task sends none) still said it.
+  it("a failed restore's task metrics carry no cache source", () => {
+    const task: TaskTelemetry = {
+      taskId: 'b#build',
+      project: 'b',
+      task: 'build',
+      status: 'failed',
+      cacheSource: 'none',
+      exitCode: 1,
+      durationMs: 5,
+    }
+    const req = buildTaskMetricsRequest('vx', '0.0.0', [
+      { kind: 'end', task, startUnixNano: '1', endUnixNano: '2' },
+    ]) as {
+      resourceMetrics: {
+        scopeMetrics: {
+          metrics: { name: string; gauge: { dataPoints: { attributes: { key: string }[] }[] } }[]
+        }[]
+      }[]
+    }
+    const metrics = req.resourceMetrics[0]!.scopeMetrics[0]!.metrics
+    const duration = metrics.find((m) => m.name === 'vx.task.duration')!
+    expect(duration.gauge.dataPoints[0]!.attributes.map((a) => a.key)).not.toContain(
+      'vx.cache.source',
+    )
   })
 
   it('surfaces retry attempts on the task span', () => {

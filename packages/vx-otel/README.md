@@ -175,7 +175,7 @@ The counts are DELTA sums over the run's own interval (start to end). So a backe
 
 **Metrics per task** are gauges keyed by `cicd.pipeline.task.name`, `vx.task.project` and `vx.task.task`. At each task's end:
 
-- `vx.task.duration` (ms, with `vx.cache.source`);
+- `vx.task.duration` (ms, with `vx.cache.source`, none on a failed restore);
 - for a task the runner measured, `vx.task.cpu_time` (ms) and `vx.task.peak_memory` (bytes);
 - on a hit, `vx.task.time_saved` (ms);
 - `vx.task.admission_held` (ms) when an `admit` policy held it;
