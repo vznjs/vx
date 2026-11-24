@@ -304,13 +304,14 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     source = 'vite.config run.tasks'
     plan = await migrateViteTask(root, metas, format)
   } else if (runner === 'nx') {
-    if (hasGraph) {
+    // Nx 24 leaves its last graph in workspace-data as a cache: read with nx
+    // installed, a target edited since was migrated as it had been.
+    if (hasGraph && !hasNx(root)) {
       source = NX_GRAPH_REL
       plan = await migrateNx(root, metas, format, undefined, writesWorkspace, bare)
     } else {
-      // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
-      // when exported. The workspace's own nx exports it, as `nx()` does, into
-      // a temp file.
+      // The workspace's own nx exports the graph as it is now, as `nx()`
+      // does, into a temp file.
       // A fresh clone: the export's own reason names the plugin's `graph`
       // option, which the CLI does not take.
       if (!hasNx(root)) {

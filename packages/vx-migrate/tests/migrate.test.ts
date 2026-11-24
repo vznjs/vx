@@ -602,6 +602,34 @@ async function makeNxWorkspace(aDeps?: Record<string, string>): Promise<string> 
   return root
 }
 
+// Nx 24 leaves .nx/workspace-data/project-graph.json behind as a cache of
+// its last graph. Read as is, a target edited since (a configuration added)
+// was migrated as it had been, and nothing said so: with nx installed, the
+// graph is exported fresh, as nx() does.
+describe('vx migrate (nx) with a graph Nx left behind', () => {
+  it(
+    'exports a fresh one with the workspace’s own nx, not the stale one',
+    async () => {
+      const root = await makeNxWorkspace()
+      try {
+        const fresh = structuredClone(NX_GRAPH) as typeof NX_GRAPH
+        const targets = fresh.graph.nodes['pkg-b']!.data.targets as Record<string, unknown>
+        targets['fresh'] = { executor: 'nx:run-script', options: { script: 'fresh' } }
+        await writeFile(path.join(root, 'graph.json'), JSON.stringify(fresh))
+        await addPackage(root, 'pkg-b', { fresh: 'echo fresh' })
+        await fakeNxCli(root)
+        const r = await vx(root, ['--dry'])
+        expect([r.code, r.err, await nxCalls(root)]).toEqual([0, '', 1])
+        expect(r.out).toContain('  from      nx graph\n')
+        expect(r.out).toContain('fresh: {')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('vx migrate (nx) with no exported graph', () => {
   it(
     'exports one with the workspace’s own nx, as nx() does, and maps it',

@@ -1249,9 +1249,9 @@ It uses the same mapper `turbo()` runs at `vx lock`, so the written configs say 
 
 The CLI reads the **resolved** project graph only, through the same mapper `nx()` runs live, executors aside (below).
 
-- The graph is `.nx/workspace-data/project-graph.json` when exported.
-- Else it is the one the workspace's own `nx graph` exports into a temp file, as `nx()` does.
-- With no `node_modules/.bin/nx`, as in a fresh clone, it stops and names the repo manager's install.
+- The graph is the one the workspace's own `nx graph` exports into a temp file, as `nx()` does.
+- Nx leaves its last graph in `.nx/workspace-data/project-graph.json`, which may predate an edit. It is read only with no `node_modules/.bin/nx`.
+- With neither, as in a fresh clone, it stops and names the package manager's install.
 - Targets Nx plugins infer at runtime are frozen as the snapshot saw them.
 
 **How targets are written.**
