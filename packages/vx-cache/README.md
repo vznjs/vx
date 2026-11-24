@@ -118,7 +118,7 @@ An artifact is immutable on the server: one that did not read back (corrupt) is 
 
 Its re-run's upload is not sent and not counted as landed; a DTE worker is not told it did.
 
-The run says once that this machine's copy is not sent over it, so a task that needs it fails.
+The run says once that this machine's copy is not sent over it. A run that needs it runs its task again; in a distributed run, a task that needs it fails.
 
 The remote misses the key until the bucket's lifecycle rule expires it (`@vzn/vx-cache-server`'s Expiry).
 

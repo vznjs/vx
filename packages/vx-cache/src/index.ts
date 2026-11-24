@@ -991,7 +991,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (meta.replace === true) {
       if (!this.saidNoReplace)
         this.warn(
-          `[vx] vx-cache: ${hash} did not read back, and a vx-cache server never replaces an artifact it holds: this machine's copy is not sent over it, so a task that needs it fails`,
+          `[vx] vx-cache: ${hash} did not read back, and a vx-cache server never replaces an artifact it holds: this machine's copy is not sent over it: a run that needs it runs the task again, a distributed run fails`,
         )
       this.saidNoReplace = true
       return false

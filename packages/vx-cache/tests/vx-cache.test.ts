@@ -450,7 +450,7 @@ describe('VxCacheLayer', () => {
       expect(await c.put(hash, new Blob(['good']), { durationMs: 1, replace: true })).toBe(false)
     expect(srv.seen.length).toBe(before)
     expect(said).toEqual([
-      "[vx] vx-cache: c0de did not read back, and a vx-cache server never replaces an artifact it holds: this machine's copy is not sent over it, so a task that needs it fails",
+      "[vx] vx-cache: c0de did not read back, and a vx-cache server never replaces an artifact it holds: this machine's copy is not sent over it: a run that needs it runs the task again, a distributed run fails",
     ])
   })
 
@@ -2067,7 +2067,7 @@ describe('vx run with vxCache()', () => {
     expect(fx.log.filter((l) => l.startsWith('[vx]'))).toEqual([
       expect.stringMatching(/download [0-9a-f]+ from .* failed: cache: corrupt artifact for /),
       expect.stringMatching(
-        /^\[vx\] vx-cache: [0-9a-f]+ did not read back, and a vx-cache server never replaces an artifact it holds: this machine's copy is not sent over it, /,
+        /^\[vx\] vx-cache: [0-9a-f]+ did not read back, and a vx-cache server never replaces an artifact it holds: this machine's copy is not sent over it: a run that needs it runs the task again, a distributed run fails$/,
       ),
     ])
     expect(new TextDecoder().decode(srv.blobs.get(name!))).toBe('not an artifact')
