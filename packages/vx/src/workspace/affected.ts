@@ -359,9 +359,16 @@ async function diffBase(args: AffectedArgs) {
   // not resolve". `..` is illegal in ref names, so this refuses no ref.
   const range = since.indexOf('..')
   if (range >= 0) {
+    // Git reads `main..` as `main..HEAD`, which vx takes; the base alone is
+    // the merge base, another diff.
+    const left = since.slice(0, range)
+    const hint =
+      left !== '' && range === since.length - 2
+        ? `pass "${left}..HEAD", as git reads it`
+        : `pass the base alone ("${left || 'HEAD'}")`
     throw new UserError(
-      `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
-        `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+      `git ref "${since}" is a range: ranges are not supported — ${hint}; ` +
+        `vx diffs it against the working tree.`,
       'VX_E_AFFECTED_BASE',
     )
   }

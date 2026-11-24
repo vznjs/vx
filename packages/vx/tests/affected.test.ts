@@ -200,11 +200,14 @@ describe('affectedProjects', () => {
   // A range whose end is not a commit, or starts with "-", is refused
   // before git sees it: the non-repository root proves no spawn ran (git's
   // answer there would be "not a git repository").
+  // `HEAD~1..` is git's `HEAD~1..HEAD`, which vx takes: the hint names that,
+  // not the base alone (the merge base, another diff).
   it.each([
-    ['..HEAD', 'HEAD'],
-    ['HEAD~1..', 'HEAD~1'],
-    ['HEAD~1...--output=x', 'HEAD~1'],
-  ])('refuses the range %j before git sees it', async (since, shown) => {
+    ['..HEAD', 'pass the base alone ("HEAD")'],
+    ['HEAD~1..', 'pass "HEAD~1..HEAD", as git reads it'],
+    ['HEAD~1...', 'pass the base alone ("HEAD~1")'],
+    ['HEAD~1...--output=x', 'pass the base alone ("HEAD~1")'],
+  ])('refuses the range %j before git sees it', async (since, hint) => {
     const bare = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-range-'))
     try {
       for (const workspaceRoot of [root, bare]) {
@@ -214,8 +217,8 @@ describe('affectedProjects', () => {
         )
         expect(err).toBeInstanceOf(UserError)
         expect(err?.message).toBe(
-          `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
-            `("${shown}"); vx diffs it against the working tree.`,
+          `git ref "${since}" is a range: ranges are not supported — ${hint}; ` +
+            `vx diffs it against the working tree.`,
         )
       }
     } finally {

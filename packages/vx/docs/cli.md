@@ -586,6 +586,7 @@ Refused before git sees it:
 - A range not ending at HEAD (`HEAD~2..HEAD~1`, `main...feature`):
   `ranges are not supported — pass the base alone ("HEAD~2")`.
   The other end is always the working tree.
+- An open range (`main..`), naming `main..HEAD`, which git reads it as.
 - An exclusion (`^main`), naming `main`.
 - A path inside a commit (`main:packages`), naming the commit to pass.
 
