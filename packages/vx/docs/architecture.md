@@ -270,9 +270,9 @@ footer's live context) for anything crossing a process or socket.
 The cache is not a single file. It is composed:
 
 - **`cache.ts`** — local cache. `bun:sqlite` metadata index +
-  one `<cacheDir>/<hash>.tree/` artifact per entry (plain files, stdout in its row:
-  `outputs/<rel>` + `workspace-outputs/<rel>`; metadata lives in the
-  SQLite `entries` row).
+  one `<cacheDir>/<hash>.tree/` artifact per entry (plain files:
+  `<rel>` + `workspace-outputs/<rel>`; stdout and metadata live in the
+  SQLite rows).
   The constructor takes the local slice of the 4-axis `CachePolicy`
   (`{ read, write }`) and gates the task-artifact `get`/`save` and the
   file-hash memo's writes.
