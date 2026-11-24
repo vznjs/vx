@@ -82,11 +82,13 @@ export default { name: 'b', tasks: {
   },
   slow: { exec: { command: 'touch started && sleep 60' } },
   // Fails its first attempt and passes its retry, saying where each ran.
+  // The attempt fails once \`beside\` runs, so a second worker is there:
+  // one failing first, on a loaded machine, was retried where it failed.
   flake: { exec: {
-    command: 'pwd >> ' + ${JSON.stringify(path.join(root, 'flake.log'))} + ' && if [ ! -e ' + ${JSON.stringify(path.join(root, 'flaked'))} + ' ]; then touch ' + ${JSON.stringify(path.join(root, 'flaked'))} + '; sleep 1; exit 1; fi',
+    command: 'pwd >> ' + ${JSON.stringify(path.join(root, 'flake.log'))} + ' && if [ ! -e ' + ${JSON.stringify(path.join(root, 'flaked'))} + ' ]; then touch ' + ${JSON.stringify(path.join(root, 'flaked'))} + '; i=0; while [ ! -e ' + ${JSON.stringify(path.join(root, 'beside.started'))} + ' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done; exit 1; fi',
     retries: 1,
   } },
-  beside: { exec: { command: 'sleep 3' } },
+  beside: { exec: { command: 'touch ' + ${JSON.stringify(path.join(root, 'beside.started'))} + ' && sleep 3' } },
   once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
   env: { exec: {
     command: 'echo "shown=\${VX_E2E_SHOWN:-none} hidden=\${VX_E2E_HIDDEN:-none}"',
