@@ -434,3 +434,10 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
 - Never reset, check out, stash-pop or clean in another agent's worktree,
   even to "help": its uncommitted work is gone for good. Work in yours;
   ask its owner (2026-11-24).
+- Never `cp` a build over a file in `node_modules`: Bun hardlinks installs
+  from its global cache, so the write lands in the cache and every later
+  install on the machine gets it. A probe's `cp vx node_modules/.bin/vx`
+  target put a branch binary in @vzn/vx 0.0.661's cached `launcher.cjs`;
+  `bun add` then installed it as 0.0.661. Point at the build instead
+  (`VX_HANDED_OFF=1`, or run it by path), and purge the cache entry if it
+  happened (2026-11-24).
