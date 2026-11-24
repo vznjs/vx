@@ -4464,6 +4464,7 @@ edges.
 **Files already there, and flags**
 
 - A file already there is kept and named under `kept`.
+- A kept workspace file that declares no `@vzn/vx-lockfile` plugin, where a fresh one would, gets a `note` naming the plugin to add.
 - `--force` replaces it, and every file of another extension beside it,
   all named under `replaced`.
 - The JSON's `replaced` lists only the files deleted.

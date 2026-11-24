@@ -632,6 +632,7 @@ async function starter(
   const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `${migrateHint(args.mjs === true)} to make package.json scripts tasks, or ${declare}` : declare}`
   const notes = [
     ...unreadRunnerNotes(root),
+    ...keptWithoutPluginNotes(root, kept, plugin, pkgRoot),
     ...tscCompilesConfigNotes(
       root,
       files.map((f) => path.join(root, f.path)),
@@ -710,6 +711,35 @@ async function runNext(
   const run = `vx run ${root === process.cwd() ? tasks[0] : `//#${tasks[0]}`}`
   return noGit ? `${gitInit}, then ${run}` : run
 }
+
+/**
+ * A workspace file kept from before the install (no lockfile then) declares
+ * no lockfile plugin, which a fresh one would: `^build` has no edges.
+ */
+function keptWithoutPluginNotes(
+  root: string,
+  kept: readonly string[],
+  plugin: string | null,
+  pkgRoot: string | null,
+): string[] {
+  const file = kept.find((f) => f.startsWith('.vx/workspace.'))
+  if (file === undefined || plugin === null || pkgRoot === null) return []
+  if (readFileSync(path.join(root, file), 'utf8').includes('@vzn/vx-lockfile')) return []
+  const lockfile = LOCKFILES.find((f) => existsSync(path.join(pkgRoot, f)))
+  const where = lockfile === undefined ? `in a ${plugin} workspace` : `beside ${lockfile}`
+  return [
+    `${file} declares no @vzn/vx-lockfile plugin: ${where}, add ${plugin}() from '@vzn/vx-lockfile' so ^build has project edges, or run vx init --force`,
+  ]
+}
+
+const LOCKFILES = [
+  'pnpm-lock.yaml',
+  'bun.lock',
+  'bun.lockb',
+  'yarn.lock',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+]
 
 /**
  * A task runner whose config no migration reads: its tasks would vanish
