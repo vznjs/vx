@@ -78,10 +78,10 @@ You need vx running on [CI](../ci/) and a Cloudflare account. To host it on Bun 
 
 <Steps>
 
-1. **Deploy the server.** Install it in a folder of its own:
+1. **Deploy the server.** Install it in a folder of its own, outside your workspace. Inside it, `bun add` would add it to the workspace's `package.json`:
 
    ```sh
-   mkdir vx-cache-server && cd vx-cache-server
+   mkdir ~/vx-cache-server && cd ~/vx-cache-server
    bun add @vzn/vx-cache-server
    ```
 
