@@ -284,7 +284,8 @@ function printedPlain(fence: string): string {
  */
 function versionless(out: string): string {
   return out
-    .replace(/^  (vx-migrate|vx init) \S+$/m, '  $1')
+    // A coloured title row is padded to the report's width.
+    .replace(/^  (vx-migrate|vx init) \S+ *$/m, '  $1')
     .replace(/^  ran +npm uninstall @vzn\/vx-migrate\n/m, '')
     .replace(
       /^(  ran +npm install -D )(.*)$/gm,
