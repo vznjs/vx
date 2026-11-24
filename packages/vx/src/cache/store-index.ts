@@ -23,7 +23,14 @@ import {
   closeDb,
   SCHEMA_VERSION,
 } from '../index-db/index.js'
-import { UserError, isOutOfFds, OUT_OF_FDS_HINT, xxh3hex, decodeRaw } from '../util/index.js'
+import {
+  DISK_FULL_HINT,
+  UserError,
+  isOutOfFds,
+  OUT_OF_FDS_HINT,
+  xxh3hex,
+  decodeRaw,
+} from '../util/index.js'
 import {
   FileHashStore,
   OutputIndex,
@@ -72,6 +79,14 @@ const SQLITE_PATH_MAX = 512 - '-journal'.length
  * `CANTOPEN` is the path itself.
  */
 function cantOpenIndex(dbFile: string, err: unknown): UserError | undefined {
+  // Made on a full disk: SQLITE_FULL, not ENOSPC, so the top level took it
+  // for a bug and printed a stack.
+  if (isIndexFull(err)) {
+    return new UserError(
+      `the cache index ${dbFile} could not be opened (${(err as Error).message}) — ${DISK_FULL_HINT}`,
+      'VX_E_FS',
+    )
+  }
   const code = (err as { code?: unknown } | null)?.code
   if (typeof code !== 'string' || !code.startsWith('SQLITE_CANTOPEN')) return undefined
   try {

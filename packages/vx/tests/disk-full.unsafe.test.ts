@@ -7,7 +7,7 @@
 // 2026-09-16). Root is subject to ENOSPC like any user. Without bwrap the
 // suite skips, except where VX_REQUIRE_SANDBOX (CI) makes that a failure:
 // a skip is a silent pass on the machine whose result gates a merge.
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
@@ -87,7 +87,7 @@ describe.skipIf(
           proc.exited,
         ])
         expect(`${code}\n${out}${err}`).toStartWith('0\n')
-        expect(err).toMatch(/\b5 pass\b/)
+        expect(err).toMatch(/\b6 pass\b/)
         // The one skip is this wrapper, inside.
         expect(err).toMatch(/\b1 skip\b/)
       } finally {
@@ -232,6 +232,28 @@ describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
       expect(run.out + run.err).toContain('the disk that path is on is full')
       // An empty ignore file left behind would stand as written to every later run.
       expect(await readdir(cacheDir)).not.toContain('.gitignore')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cache index made on a full disk is refused naming the index and the disk',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-full-db-' })
+      made.push(root)
+      await project(root)
+      const cacheDir = path.join(small, 'cache')
+      await mkdir(cacheDir, { mode: 0o700 })
+      await writeFile(path.join(cacheDir, '.gitignore'), '*\n')
+      await fill(small)
+      await fill(small, 512)
+      const run = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      expect(run.code).toBe(1)
+      expect(run.out + run.err).toContain(
+        `the cache index ${path.join(cacheDir, 'cache.db')} could not be opened (database or disk is full) — the disk that path is on is full`,
+      )
+      expect(run.out + run.err).not.toContain('\n    at ')
+      expect(run.out + run.err).not.toContain('bug in vx')
     },
     TIMEOUT,
   )
