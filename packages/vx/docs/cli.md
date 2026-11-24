@@ -2835,7 +2835,7 @@ Each edit rebuilds only the libraries it reaches on the way to the app. The serv
 **Refusals and failures**
 
 - A task name no project declares exits rather than re-run the refusal on every change.
-- So does `vx requires git` when git is not on `PATH`: no edit installs it.
+- So do `vx requires git`, when git is not on `PATH`, and a cache dir vx cannot make: no edit the watch hears fixes them.
 - A cycle that throws (no `.vx/projects.lock`, or one that locks a config since removed) prints `vx watch: cycle failed: <reason>` once.
 - Watch keeps watching, the initial run included, so the `vx lock` that fixes it re-runs.
 - A cycle whose run fails (`{ ok: false }`) does not end the watch. It prints the framed FAILED block and waits for the next change.

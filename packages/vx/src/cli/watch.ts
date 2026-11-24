@@ -16,6 +16,7 @@ import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs, spacedHint } from './run.js'
 import { refuse, seeHelp } from './help.js'
 import { clockDir, fsClockNow } from '../memo/index.js'
+import { makeIgnoredCacheDir } from '../cache/index.js'
 import {
   commandWindows,
   fingerprintClaims,
@@ -212,6 +213,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // arms with the run as its cycle in flight. Unarmed, a server that never got
   // ready held the initial run for good, and the fix to it was never heard.
   let loop: Promise<void> | undefined
+  // Made here, as the run makes it: a cache dir it cannot make failed the
+  // first cycle, and no edit the watch hears fixes it.
+  makeIgnoredCacheDir(opts.cacheDir ?? opening.cacheDir)
   const initialRun: InitialRun = {
     from: fsClockNow(clockDir(opts.cacheDir ?? opening.cacheDir, workspaceRoot)),
     windows: commandWindows(),

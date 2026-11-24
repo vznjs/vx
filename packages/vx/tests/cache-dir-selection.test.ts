@@ -374,3 +374,55 @@ describe('two checkouts of one commit sharing --cache-dir', () => {
     TIMEOUT,
   )
 })
+
+// No workspace edit makes a --cache-dir usable, so watching on after the
+// first cycle refused it idled forever under a "watching" line.
+describe('a cache dir that cannot be made', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-cache-dir-file-' })
+    await addProject(root, 'app', { config: CONFIG, files: { 'src/index.js': 'export {}\n' } })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    await Bun.write(path.join(root, 'blocked'), '')
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'vx watch refuses it as vx run does, and exits',
+    async () => {
+      for (const verb of ['run', 'watch']) {
+        const proc = Bun.spawn(
+          [
+            process.execPath,
+            BIN,
+            verb,
+            'build',
+            '--all',
+            '--cache-dir',
+            path.join(root, 'blocked'),
+          ],
+          {
+            cwd: root,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { ...process.env, NO_COLOR: '1' },
+            timeout: 15_000,
+          },
+        )
+        const [out, err, code] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ])
+        expect({ verb, signal: proc.signalCode, code }).toEqual({ verb, signal: null, code: 1 })
+        expect(err).toContain('is a file, not a directory')
+        expect(out + err).not.toContain('watching')
+      }
+    },
+    TIMEOUT,
+  )
+})
