@@ -4452,6 +4452,7 @@ edges.
 **What it prints next**
 
 - Outside a git work tree, `next:` starts with `git init`.
+- Where a kept `vx.config` already declares tasks (a re-run), `next:` names one to run, such as `vx run hi`.
 - Where that `package.json` has scripts, or declares a workspace
   (`workspaces`, `pnpm-workspace.yaml`), `next:` first names
   `bunx @vzn/vx-migrate`.

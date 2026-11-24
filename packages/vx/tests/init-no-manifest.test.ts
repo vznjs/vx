@@ -146,6 +146,23 @@ describe('vx init with no package.json', () => {
     ]).toEqual([0, false, PROJECT])
   })
 
+  // A re-run over a config that already declares tasks still said
+  // `declare a task in vx.config.mjs`: the next step is to run one.
+  it('a re-run over a config with tasks names one to run, not one to declare', async () => {
+    const root = await tmp('vx-init-bare-rerun-')
+    expect((await vx(root, ['init', '--mjs'])).out).toContain(
+      '  next      declare a task in vx.config.mjs, then vx lock && vx run <task>\n',
+    )
+    await writeFile(
+      path.join(root, 'vx.config.mjs'),
+      'export default { tasks: { hi: { exec: { command: "echo hi" } } } }\n',
+    )
+    const again = await vx(root, ['init', '--mjs'])
+    expect([again.code, again.err]).toEqual([0, ''])
+    expect(again.out).toContain('  kept      .vx/workspace.mjs\n            vx.config.mjs\n')
+    expect(again.out).toContain('  next      vx run hi\n')
+  })
+
   // A root package.json that does not parse read as none: init wrote the
   // starter, locked, and said nothing of the file every manager refuses.
   it('a package.json that does not parse is refused, by file and position', async () => {

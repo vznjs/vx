@@ -41,6 +41,7 @@ import {
   findWorkspaceRoot,
   LOCKFILE_NAME,
   PROJECT_CONFIG_FILENAMES,
+  readLockfile,
   REVIEW_FILE,
   renderWorkspace,
   starterProject,
@@ -683,11 +684,31 @@ async function starter(
   const lock = await lockAfterMigration(root)
   rows.push(['lock', lock.code === 0 ? lock.said.replace(/^locked /, '') : 'not written'], null, [
     'next',
-    lock.code === 0 ? next : `fix the above, then vx lock and ${next}`,
+    lock.code === 0
+      ? await runNext(root, kept, noGit, gitInit, next)
+      : `fix the above, then vx lock and ${next}`,
   ])
   ui.print('out', ui.report(`vx init ${VERSION}`, rows))
   // A run reads only the lock: init without one is not done, as vx-migrate exits.
   return lock.code === 0 ? 0 : 1
+}
+
+/**
+ * A kept config that already declares tasks (a re-run): the next step is to
+ * run one, not to declare one.
+ */
+async function runNext(
+  root: string,
+  kept: readonly string[],
+  noGit: boolean,
+  gitInit: string,
+  next: string,
+): Promise<string> {
+  if (!kept.some((f) => f.startsWith('vx.config.'))) return next
+  const tasks = Object.keys((await readLockfile(root))?.projects['.']?.config?.tasks ?? {})
+  if (tasks.length === 0) return next
+  const run = `vx run ${root === process.cwd() ? tasks[0] : `//#${tasks[0]}`}`
+  return noGit ? `${gitInit}, then ${run}` : run
 }
 
 /**
