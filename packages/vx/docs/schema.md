@@ -2118,8 +2118,10 @@ interface SandboxIgnore {
 
 **Baseline: `sandbox: {}`**
 
-- `sandbox: {}` reads nothing in the workspace, writes only its own
-  `TMPDIR`, and reaches no host.
+- `sandbox: {}` reads nothing in the workspace and reaches no host. It
+  writes its own `TMPDIR`, and the runtime's own write paths: the
+  shared temp directory above it (`/tmp/claude`), `~/.npm/_logs` and
+  `~/.claude/debug`. A write there is not reported.
 - `allow: { read: ['.'] }` is the first line of almost every block: the
   baseline hides even the task's own project.
 - `cat ./README.md` under `sandbox: {}`: the task still starts in its

@@ -289,7 +289,7 @@ export interface SandboxedRunArgs {
   keyRoot?: string // a cached task's workspace root: a hidden read under it is named for inputs.workspaceFiles too
   keyNested?: readonly string[] // the projects nested in its own: a hidden read in one is named for inputs.workspaceFiles, never inputs.files
   upstreamOutputs?: readonly string[] // the dependencies' outputs: a write refused there gets a note to run their task, no grant
-  config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
+  config: ResolvedSandboxConfig // its allowWrite is the task's whole write set; SRT adds its own (§ A task's temp directory)
 }
 
 export interface SandboxedRunResult extends RunResult {
@@ -893,7 +893,8 @@ owner's pid is gone was tried and refused: a nested vx (this repo's own
 test shards) sees another pid namespace, where the outer vx's pid reads as
 dead, and the sweep removed the outer task's `TMPDIR` mid-run. The shared
 directory itself stays writable (SRT's policy grants it): a command that
-names it outright still reaches it. `vx-tasks` is walled from every
+names it outright still reaches it. So do `~/.npm/_logs` and `~/.claude/debug`, SRT's
+home write paths: a write there is not reported. `vx-tasks` is walled from every
 sandboxed task, each granted its own directory inside (L-10): under the
 shared directory a task listed a concurrent task's `TMPDIR`, read what it
 kept there, and could replace its port bridge's socket, which lives in the
