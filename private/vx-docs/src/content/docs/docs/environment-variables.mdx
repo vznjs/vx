@@ -15,10 +15,35 @@ API_URL=https://api.demo.dev vx run test
 
 <Levels />
 
+Give `@demo/web` a test that reads `API_URL`, and a `test` task that runs it:
+
+```ts title="packages/web/src/index.test.ts"
+import { expect, test } from 'vitest'
+
+test('API_URL is https', () => {
+  expect(process.env.API_URL, 'API_URL').toMatch(/^https:/)
+})
+```
+
+```ts title="packages/web/vx.config.ts"
+test: {
+  exec: { command: 'vitest run' },
+  inputs: { files: ['src/**'] },
+  outputs: { files: [] },
+  cache: true,
+},
+```
+
+Install vitest, lock, and run the rest of this page from `packages/web`:
+
+```sh
+cd packages/web
+bun add -d vitest
+vx lock
+```
+
 <Walkthrough title="One variable, four runs">
 <Frame title="1. The shell has API_URL. The test never sees it">
-
-`@demo/web` has a `vitest run` task. Its test reads `process.env.API_URL`.
 
 ```ansi title="no exec.env yet"
 [2m$[0m API_URL=https://api.demo.dev vx run test
