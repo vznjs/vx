@@ -38,7 +38,7 @@ the `history` module's (history.md), and the tables `index-db`'s
   an `inputs.files` link into another project keys nothing behind it when
   a task its `dependsOn` reaches there declares the target in its
   `inputs.files` or `outputs` (a file a glob matches, a directory a
-  `dir/**` holds whole), and is refused (`VX_E_NESTED_INPUT`) when not, by
+  `dir/**` or `dir/**/*` holds whole, as `**` and `**/*` do), and is refused (`VX_E_NESTED_INPUT`) when not, by
   what `setLinkBounds` names. Any task of the project was enough: a link
   to files only an undeclared one read replayed a stale hit.
 - `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits

@@ -501,6 +501,22 @@ describe('a link into another project keys as the link', () => {
     TIMEOUT,
   )
 
+  // `**/*` and `assets/**/*` hold the directory whole as `assets/**` does
+  // (every file under it), and were refused as undeclared: a task keying its
+  // whole project, the commonest broad glob, refused every link into it.
+  for (const declared of [`'**/*'`, `'assets/**/*'`])
+    it(
+      `takes ${declared} as declaring the linked directory`,
+      async () => {
+        const b = await assets(declared)
+        expect((await all())['b#build'], said.join('')).toBe('success')
+        await writeFile(path.join(root, 'packages', 'a', 'assets', 'logo.svg'), 'L2\n')
+        expect((await all())['b#build'], said.join('')).toBe('success')
+        expect(await readFile(path.join(b, 'out.txt'), 'utf8')).toBe('L2\n')
+      },
+      TIMEOUT,
+    )
+
   async function siblings(): Promise<string> {
     await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\ndist/\n')
     await addProject(root, 'a', {
