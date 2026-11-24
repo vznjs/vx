@@ -176,7 +176,6 @@ export {
   secretMask,
   secretNamed,
   type SecretMask,
-  type TaskEnvSecrets,
 } from './secret-mask.js'
 export {
   isSecretUnavailable,

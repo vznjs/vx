@@ -24,11 +24,8 @@ import {
   type TaskStatus,
 } from '../graph/index.js'
 import {
-  heldSecrets,
   maskedCommand,
-  secretMask,
   type SecretMask,
-  type TaskEnvSecrets,
   settleWithin,
   stageTimes,
   teardownTimeoutMs,
@@ -540,6 +537,8 @@ export function createTelemetrySource(args: {
   const wantsLog = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.log'))
   // A summary-only sink (vx-ci's) wants no start: building one masked the
   // command against the whole env per task, ~0.3 s at 10k tasks for nothing.
+  // The mask itself is built per task (a task's env.secret, and an env a
+  // plugin changed mid-run): never memoized.
   const wantsStart = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.start'))
   const wantsSample = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.sample'))
 
@@ -618,17 +617,6 @@ export function createTelemetrySource(args: {
     }
   }
 
-  // The env's mask, built once a run (and again when a plugin holds a new
-  // secret): `maskedCommand` read every variable of the env per task, 1.0 s
-  // of a warm 10k-task run. A task's own `define`/`secret` still gets its own.
-  let envMask: { held: number; mask: SecretMask | null } | undefined
-  const commandShown = (command: string, env: TaskEnvSecrets | undefined): string => {
-    if (env?.define !== undefined || env?.secret !== undefined) return maskedCommand(command, env)
-    if (envMask?.held !== heldSecrets())
-      envMask = { held: heldSecrets(), mask: secretMask([process.env]) }
-    return envMask.mask?.mask(command) ?? command
-  }
-
   function deliver(record: TelemetryRecord): void {
     // Once, for every sink: a `task.end` holds the outcome's own arrays, and
     // a sink that cleared `failedAttempts` crashed the run's failure log.
@@ -703,7 +691,7 @@ export function createTelemetrySource(args: {
           ts,
         }
         if (node.config.exec.command !== undefined)
-          rec.command = commandShown(node.config.exec.command, node.config.exec.env)
+          rec.command = maskedCommand(node.config.exec.command, node.config.exec.env)
         const deps = commandDeps(node, args.nodes)
         if (deps.length > 0) rec.dependsOn = deps
         deliver(rec)
