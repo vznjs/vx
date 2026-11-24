@@ -702,6 +702,11 @@ bounds a run's.
   `download: 'trailing'`).
 - A dependant starts at once, its own files land after its upstream's, and
   the run ends with every file here.
+- They land as the worker made them, through its entry: bytes, modes,
+  symlinks and empty directories. A dependant on another worker gets them
+  the same way.
+- Two runs that make one key at once each land their own; the cache keeps
+  one whole entry, and a later hit lands that one.
 - A cached one is saved here once its files land.
 - An output over 256 KB is read from the entry first.
 - A task that declares no output (a test, a lint) is done here once its
