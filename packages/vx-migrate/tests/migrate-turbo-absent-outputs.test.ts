@@ -10,6 +10,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { absentOutputTodo, migrateTurbo, unbuiltOutputsNote } from '../src/migrate-turbo.js'
 
+const COVERAGE =
+  "Turbo treats outputs as optional; vx fails a task that writes none of its declared outputs: drop `coverage/**` from test's outputs or run it with coverage"
+
 let root: string
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'vx-migrate-absent-'))
@@ -79,13 +82,14 @@ describe('migrateTurbo: outputs that match nothing now', () => {
     }).toEqual({
       todos: [
         ['a#build', []],
-        ['a#test', []],
+        ['a#test', [COVERAGE]],
         ['a#dev', []],
         ['b#build', [absentOutputTodo(['dist/**'])]],
-        ['b#test', []],
+        ['b#test', [COVERAGE]],
         ['b#dev', []],
       ],
-      notes: [unbuiltOutputsNote(new Map([['test', ['.cache/.eslintcache', 'coverage/**']]]))],
+      // A coverage output is named on each task, not again in the note.
+      notes: [unbuiltOutputsNote(new Map([['test', ['.cache/.eslintcache']]]))],
     })
   })
 
