@@ -430,6 +430,29 @@ describe('OTLP builders', () => {
     expect([exit('skipped'), exit('failed')]).toEqual([undefined, '1'])
   })
 
+  // The README says a skipped task, an aborted one and a failed restore carry
+  // no vx.cache.source; their spans said `none`, a value the attribute lists
+  // nowhere (miss, local or remote).
+  it('a task that never engaged the cache carries no cache source', () => {
+    const t: TaskTelemetry = {
+      taskId: 'b#build',
+      project: 'b',
+      task: 'build',
+      status: 'skipped',
+      cacheSource: 'none',
+      exitCode: 1,
+      durationMs: 0,
+    }
+    const source = (over: Partial<TaskTelemetry>): unknown =>
+      attrMap(taskSpanAttributes({ ...t, ...over }, TASK_RUN))['vx.cache.source']
+    expect([
+      source({}),
+      source({ status: 'aborted' as TaskTelemetry['status'] }),
+      source({ status: 'failed' }),
+      source({ status: 'success', cacheSource: 'miss' }),
+    ]).toEqual([undefined, undefined, undefined, 'miss'])
+  })
+
   it('surfaces retry attempts on the task span', () => {
     const t: TaskTelemetry = {
       taskId: 'a#flaky',

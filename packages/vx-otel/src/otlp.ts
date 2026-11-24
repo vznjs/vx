@@ -522,9 +522,11 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
     intAttr(VX_ATTR.taskRunStartedAt, run.startedAt),
     strAttr(VX_ATTR.taskProject, t.project),
     strAttr(VX_ATTR.taskTask, t.task),
-    strAttr(VX_ATTR.cacheSource, t.cacheSource),
     intAttr(VX_ATTR.taskDurationMs, t.durationMs),
   ]
+  // `none` is core's word for a task that never engaged the cache (skipped,
+  // aborted, a restore that threw): no source, as the README says.
+  if (t.cacheSource !== 'none') attrs.push(strAttr(VX_ATTR.cacheSource, t.cacheSource))
   // A skipped task never ran: core's 1 (blocked) or 0 (other platform) is
   // no process's exit.
   if (t.status !== 'skipped') attrs.push(intAttr(VX_ATTR.taskExitCode, t.exitCode))
