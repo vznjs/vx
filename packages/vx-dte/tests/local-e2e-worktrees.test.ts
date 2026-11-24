@@ -515,3 +515,33 @@ it('local() reclaims the worktrees of a run whose vx was killed, not a live oneâ
     Bun.spawnSync(['git', 'worktree', 'prune'], { cwd: root })
   }
 }, 60_000)
+
+// Two workers' worktrees added at once: git read the first's half-written
+// record while adding the second, refused it ("failed to read
+// .git/worktrees/1/commondir: Success"), and that worker never joined
+// (2026-11-24). A `git` that refuses the first add the same way stands in.
+it('adds a worktree again that git refused over another one being added', async () => {
+  const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-git-'))
+  try {
+    const marker = path.join(bin, 'refused')
+    await writeFile(
+      path.join(bin, 'git'),
+      `#!/bin/sh
+if [ "$1 $2" = "worktree add" ] && [ ! -e ${marker} ]; then
+  : > ${marker}
+  echo 'fatal: failed to read .git/worktrees/1/commondir: Success' >&2
+  exit 128
+fi
+exec ${Bun.which('git')} "$@"
+`,
+      { mode: 0o755 },
+    )
+    const r = vx(['run', 'a#gen'], 'refused-add', { PATH: `${bin}:${process.env['PATH']}` })
+    const out = r.stdout.toString() + r.stderr.toString()
+    expect([r.exitCode, await Bun.file(marker).exists(), out.includes('git worktree add')]).toEqual(
+      [0, true, false],
+    )
+  } finally {
+    await rm(bin, { recursive: true, force: true })
+  }
+}, 60_000)
