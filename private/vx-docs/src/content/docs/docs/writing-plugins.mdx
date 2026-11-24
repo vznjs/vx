@@ -361,17 +361,21 @@ export function toolVersions(): VxPlugin {
 Bump Node in `.tool-versions`, build again, and ask why it ran:
 
 ```ansi title="vx why @demo/web#build"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m[0m
-  [2mrun     [0m  [38;2;203;213;225m01a20a06-2475-7075-a986-2a057eccef34[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-23T20:08:24.461Z · success · executed · key 17c6bdc3ca86253d[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-23T20:08:24.258Z · cache-hit · up-to-date · key d0a028d591da6448[0m
-  [2mverdict [0m  [38;2;234;179;8mcache key changed: plugin demo/.tool-versions[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20ae3-738a-743f-b053-7cd1fb12c5e7[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-24T00:10:08.430Z · success · executed · key bad37b0158a1c092[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-24T00:10:07.764Z · cache-hit · up-to-date · key b030c1fda30fa573[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: plugin demo/.tool-versions, upstream @demo/ui#build[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 10[0m[4m[58;2;110;118;129m[0m
-  [2mchange   kind    name                 before → after[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mplugin[0m  [1mdemo/.tool-versions[0m  [38;2;203;213;225mf9ef645a651460f2 → d2f66ea3a8f3a14d[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m2 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind      name                 before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mplugin[0m    [1mdemo/.tool-versions[0m  [38;2;203;213;225m847216d73acfcd07 → 2556dc31bae7dc73[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m       [38;2;203;213;225mac0ae9aed514ad77 → a93fbe2ede60cdb2[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mplugin demo/.tool-versions[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
   [2mplugin  [0m  [38;2;203;213;225ma key plugin's material changed; that plugin decides what goes into the key[0m
 ```
 
