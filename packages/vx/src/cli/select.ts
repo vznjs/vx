@@ -51,6 +51,7 @@ import {
   fingerprintClaims,
   hashExtra,
   hasHook,
+  renamedSinceLock,
   unlockedDir,
   withExtraHashes,
 } from '../orchestrator/index.js'
@@ -663,7 +664,7 @@ export async function resolveFilters(
     const unlocked = await unlockedFilter(root, parsed, unmatched, projects)
     if (unlocked !== undefined) {
       return {
-        error: `filter "${unlocked.filter}": ${relPosix(root, unlocked.config)} is not in the lock yet — run \`vx lock\``,
+        error: `filter "${unlocked.filter}": ${unlocked.line}`,
         code: 'VX_E_LOCK',
       }
     }
@@ -842,6 +843,7 @@ export async function pickTask(
 /**
  * The first unmatched include naming (by path, dir name or package name) a
  * config `vx lock` would make a project: written after the lock it is none yet.
+ * Or a locked project's new package.json name, which it takes at `vx lock`.
  * No-match path only.
  */
 async function unlockedFilter(
@@ -849,7 +851,7 @@ async function unlockedFilter(
   parsed: readonly ReturnType<typeof parseFilter>[],
   unmatched: readonly string[],
   projects: readonly ProjectMeta[],
-): Promise<{ filter: string; config: string } | undefined> {
+): Promise<{ filter: string; line: string } | undefined> {
   for (const f of parsed) {
     if (f.negate || f.tag === true || !unmatched.includes(f.raw)) continue
     if (
@@ -859,7 +861,14 @@ async function unlockedFilter(
     )
       continue
     const config = await unlockedDir(f.matcher, projects, root)
-    if (config !== undefined) return { filter: f.raw, config }
+    if (config !== undefined)
+      return {
+        filter: f.raw,
+        line: `${relPosix(root, config)} is not in the lock yet — run \`vx lock\``,
+      }
+    if (f.isPath) continue
+    const renamed = await renamedSinceLock(f.matcher, projects, root)
+    if (renamed !== undefined) return { filter: f.raw, line: renamed }
   }
   return undefined
 }

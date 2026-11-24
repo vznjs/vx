@@ -11,7 +11,12 @@ import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { isDefaultBuild } from '../graph/index.js'
-import { affectedTaskProjects, projectAtDir, unlockedDir } from '../orchestrator/index.js'
+import {
+  affectedTaskProjects,
+  projectAtDir,
+  renamedSinceLock,
+  unlockedDir,
+} from '../orchestrator/index.js'
 import { AFFECTED_EMPTY, flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   listed,
@@ -118,15 +123,17 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     const name = projectAtDir(typed, root, metas)
     return name === undefined ? undefined : ` — did you mean ${name}${suffix}?`
   }
-  // A directory whose config came after the lock: the line `vx run` gives,
+  // A directory whose config came after the lock, or a package renamed since:
+  // the line `vx run` gives,
   // not "unknown project" and a guess.
   const refuseUnlocked = async (typed: string): Promise<void> => {
     const config = await unlockedDir(typed, metas, root)
-    if (config === undefined) return
-    throw new UserError(
-      `${parsed.target}: ${relPosix(root, config)} is not in the lock yet — run \`vx lock\``,
-      'VX_E_LOCK',
-    )
+    const line =
+      config === undefined
+        ? await renamedSinceLock(typed, metas, root)
+        : `${relPosix(root, config)} is not in the lock yet — run \`vx lock\``
+    if (line === undefined) return
+    throw new UserError(`${parsed.target}: ${line}`, 'VX_E_LOCK')
   }
   const hashAt = parsed.target?.indexOf('#') ?? -1
   const projectName =

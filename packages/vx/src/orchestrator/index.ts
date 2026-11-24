@@ -15,6 +15,7 @@ export {
   namesRemote,
   openRemotes,
   prepareRun,
+  renamedSinceLock,
   unlockedDir,
   workspaceCachePolicy,
   type PreparedRun,

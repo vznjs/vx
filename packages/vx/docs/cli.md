@@ -3625,6 +3625,11 @@ So a config that reads the environment keeps its lock-time values.
 lock yet`, where it ran the locked project around it.
 - So do `--filter ./packages/web`, `--filter web`, `vx show web` and
   `vx show web#build`, `web` its directory or its `package.json` name.
+- A project keeps its locked name until `vx lock`. Naming it by the name
+  its `package.json` took since says so:
+  ``web2#build: packages/web/package.json names it "web2", the lock "web" — run `vx lock` ``
+- So do `--filter web2`, `vx show web2` and `vx show web2#build`. A
+  project named by its path is never hinted this way.
 - So does `--all`, for any config git lists (tracked or not) in a
   directory the lock holds no config for.
 - `--all` leaves out ignored configs and ones under a nested workspace.

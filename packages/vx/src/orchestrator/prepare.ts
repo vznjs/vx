@@ -1314,8 +1314,14 @@ async function refuseUnlockedConfig(
       (metas.some((m) => m.name === name)
         ? undefined
         : await unlockedDir(name, metas, workspaceRoot))
-    if (config === undefined) continue
-    throw new UserError(`${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`, 'VX_E_LOCK')
+    if (config !== undefined)
+      throw new UserError(
+        `${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`,
+        'VX_E_LOCK',
+      )
+    if (entry !== undefined || metas.some((m) => m.name === name)) continue
+    const renamed = await renamedSinceLock(name, metas, workspaceRoot)
+    if (renamed !== undefined) throw new UserError(`${spec}: ${renamed}`, 'VX_E_LOCK')
   }
 }
 
@@ -1367,6 +1373,37 @@ function unlockedConfig(
   if (typeof meta.configPath === 'string' && meta.configPath !== '') return undefined
   const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(meta.dir, n)))
   return config === undefined ? undefined : path.join(meta.dir, config)
+}
+
+/**
+ * The locked project whose package.json took `name` since the lock: the
+ * `discover` stage is locked, so it keeps its old name until `vx lock`.
+ * A project named by its path took no name from its package.json. Asked only
+ * on a refusal.
+ */
+export async function renamedSinceLock(
+  name: string,
+  metas: ReadonlyArray<{ name: string; dir: string }>,
+  workspaceRoot: string,
+): Promise<string | undefined> {
+  const named = metas.filter(
+    (m) => m.name !== name && m.name !== relPosix(workspaceRoot, m.dir) && m.dir !== workspaceRoot,
+  )
+  const found = await Promise.all(
+    named.map(async (m) => {
+      try {
+        const pkg = (await Bun.file(path.join(m.dir, 'package.json')).json()) as { name?: unknown }
+        return pkg.name === name ? m : undefined
+      } catch {
+        // No package.json, or not JSON: no package name to match.
+        return undefined
+      }
+    }),
+  )
+  const m = found.find((x) => x !== undefined)
+  if (m === undefined) return undefined
+  const file = relPosix(workspaceRoot, path.join(m.dir, 'package.json'))
+  return `${file} names it "${name}", the lock "${m.name}" — run \`vx lock\``
 }
 
 /**
