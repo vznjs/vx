@@ -494,7 +494,7 @@ So the loader refuses two cached tasks whose outputs provably overlap. Example: 
 - A task's `description` (Turbo 2.11.5's schema) is the vx task's `description`.
 - `outputLogs: "new-only"` maps to nothing. Frames for the tasks that ran, and a one-liner per cache hit, is vx's default flow already.
 - The other `outputLogs` values are per-run in vx, so they are a todo naming the flag (`vx run … --output-logs hash-only`).
-- `interruptible` maps to nothing. `vx watch` keeps a persistent task up across cycles.
+- `interruptible` maps to nothing. `vx watch` keeps a persistent task up across cycles. `bunx @vzn/vx-migrate` names each `interruptible: true` task in a note.
 - It restarts it only when its config changes or it dies.
 - A package's own turbo.json `tags` (Turbo 2.11.6) are its vx project `tags`.
 - So `vx run build --filter tag:ci` selects what `turbo run build --filter=tag:ci` does through package tags.

@@ -1076,6 +1076,9 @@ export async function mapTurboWorkspace(
   // the var re-keyed nothing.
   const globalDeps = rootCfg.globalDependencies ?? []
   const notes: string[] = []
+  // `interruptible: true` maps to nothing (KNOWN_TASK_KEYS): a written
+  // config names it; `turbo()` at `vx lock` stays quiet, as it acts the same.
+  const interruptible: string[] = []
   // Loose mode hands every task the whole environment; vx's is isolated,
   // so a task that reads an undeclared variable ran without it, and said
   // nothing (a build baking a URL from the env built without one).
@@ -1648,6 +1651,7 @@ export async function mapTurboWorkspace(
           pnp,
           runsScriptHooks(meta.dir, hookMemo) !== null,
         )
+      if (defFor(name)!['interruptible'] === true) interruptible.push(`${meta.name}#${name}`)
       const mapped = buildTask(
         literals,
         name,
@@ -1794,6 +1798,11 @@ export async function mapTurboWorkspace(
       `env ${JSON.stringify(entry)}: the configs list the names the files of each task's ` +
         `package and its workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add ` +
         'any other a task reads to inputs.env and exec.env.passThrough',
+    )
+  if (opts.ownOnly && interruptible.length > 0)
+    notes.push(
+      `interruptible (${interruptible.join(', ')}): maps to nothing; \`vx watch\` keeps a ` +
+        'persistent task up across cycles and restarts it only when its config changes or it dies',
     )
   literalEnvGapsOnce(projects, notes)
   nestedOutputs(root, projects)
