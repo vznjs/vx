@@ -562,7 +562,10 @@ vx:
   run only and passed as a trigger variable.
 - A GitLab ID token cannot bind the handshake as GitHub's does: its
   audience is fixed when its job starts.
-- Set `VX_DTE_SECRET` to use your own secret instead.
+- To use your own secret, set `VX_DTE_SECRET` as a masked variable in
+  Settings > CI/CD > Variables. Both the vx job and the workers read it.
+- The run never passes a secret you set as a trigger variable: anyone who
+  sees the pipeline could read it.
 
 ## What runs where
 
