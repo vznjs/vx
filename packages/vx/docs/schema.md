@@ -2362,6 +2362,8 @@ export default defineProject({
 - A refused request is a violation on both platforms,
   `deny network-outbound <host>:<port> (<reason>)`, and fails the task
   even when the task survived it.
+- A client that skips the proxy and dials an address itself (socat, a
+  raw socket) gets `Network is unreachable`: no grant lifts it.
 - A host `deny.network` holds gets no `allow.network` entry in the
   `fix:` line: no allow lifts it.
 - `ignore: { network: ['example.com:443'] }` silences one refusal,
@@ -2390,10 +2392,9 @@ export default defineProject({
   unix socket) lifts the `socket(AF_UNIX)` block for that task only,
   never for the run's other sandboxed tasks.
 - `socket(1, 1, 0): Operation not permitted` from a Docker, ssh-agent
-  or database client: on Linux no violation names the block. A failed
-  task whose output pairs that refusal with a socket gets the grant,
-  `allow: { unixSockets: ['/var/run/docker.sock'] }` when the client
-  names the path, else `unixSockets: true`.
+  or database client: on Linux no violation names the block.
+- A failed task whose output says so gets the grant: the path the
+  client names (`unixSockets: ['/var/run/docker.sock']`), else `true`.
 - A socket outside the project is hidden as any path is: the next run
   names its read grant.
 
