@@ -2473,6 +2473,12 @@ export default defineProject({
   having written nothing.
 - On a path it may not read, that `openat2` is reported as an open, and
   its fix is a read grant.
+- `prettier --cache` with no write grant passes with its cache off: it
+  checks that `node_modules` is writable, which writes nothing and is no
+  violation, then keeps its cache in the sandbox's temp folder. Name the
+  file and grant its folder:
+  `prettier --cache --cache-location node_modules/.cache/prettier/.prettier-cache`
+  with `write: ['node_modules/.cache/prettier/']`.
 - `mkdir ~/.cache` refused: a write outside the project is named on a
   failed task, never counted, with a grant per write (`'~/.cache/'`,
   never home itself).
