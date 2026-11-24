@@ -634,6 +634,7 @@ With this file, `vx run build --all` maps every project's `build` target the way
 - This project's own target wins over a project name.
 - `{ target, projects }` becomes each matched project's task.
 - `projects: "self"` and `projects: "dependencies"` are read as older Nx read them (own target, `^target`), with a todo: Nx 24 refuses both at run and names `nx repair`.
+- vx also keys a task on each task it depends on; Nx keys only its own inputs. So an input only the upstream task reads (a spec file under `gen`'s `default`) re-runs the dependant here where Nx replays it. The migration says so once. `inputs.tasks: []` decouples a task as Nx does, at the risk of replaying output built from an older upstream.
 
 <details><summary>Details</summary>
 

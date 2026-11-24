@@ -720,8 +720,36 @@ export async function mapNxWorkspace(
   // and the run names each task whose pattern matched nothing.
   const optional = opts.migration === true ? optionalOutputsNote(projects) : undefined
   if (optional !== undefined) notes.push(optional)
+  const folded = opts.migration === true ? upstreamFoldNote(projects) : undefined
+  if (folded !== undefined) notes.push(folded)
   refuseTaskNames(projects, 'target')
   return { projects, notes }
+}
+
+/**
+ * Nx hashes a task's own inputs and not the tasks it depends on; vx folds
+ * each one's key (principle 5), so a file only an upstream task reads (a
+ * spec under `gen`'s `default`) re-ran `build`, which Nx 24 replayed
+ * (2026-11-24). Kept, and said once.
+ */
+function upstreamFoldNote(projects: readonly GeneratedProject[]): string | undefined {
+  const ids: string[] = []
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const deps = t.task?.['dependsOn']
+      const tasks = (t.task?.['inputs'] as { tasks?: unknown } | undefined)?.tasks
+      if (t.task?.['cache'] !== true || !Array.isArray(deps) || deps.length === 0) continue
+      if (Array.isArray(tasks) && tasks.length === 0) continue
+      ids.push(`${p.name}#${t.name}`)
+    }
+  if (ids.length === 0) return undefined
+  return (
+    'Nx keys a task on its own inputs only; vx also keys it on each task it depends on, ' +
+    'so an input only that task reads (a spec file under `default`) re-runs it here, where Nx replays it: ' +
+    `${ids.length} task${ids.length === 1 ? '' : 's'} (${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''}) — ` +
+    '`inputs.tasks: []` in its vx.config decouples it as Nx does, ' +
+    'and a hit may then replay output built from an older upstream'
+  )
 }
 
 /**

@@ -149,7 +149,7 @@ A key a new upstream release adds fails vx's tests until it has a row here.
 | `targets.*.defaultConfiguration` | supported | The base task carries the default configuration's options, as `nx run` does. |
 | `targets.*.configurations` | mapped, with a note | One task per configuration (`build:ci`); own, named and `^` edges take the configuration where declared, else the default (a `^` edge becomes one edge per dependency Nx links). |
 | `targets.*.inputs` | mapped, with a note | Expanded into `inputs`; none means `default` and `^default`; forms without an equivalent get TODOs. |
-| `targets.*.dependsOn` | mapped, with a note | `project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does, a same-project one over its own; `params: forward` gets a TODO. |
+| `targets.*.dependsOn` | mapped, with a note | `project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does, a same-project one over its own; `params: forward` gets a TODO. vx also keys a task on each task it depends on, as Nx does not, so an input only the upstream reads re-runs the dependant; the migration says so once. |
 | `targets.*.command` | mapped, with a note | Run as the `run-commands` shorthand: one POSIX sh line. |
 | `targets.*.cache` | supported | `cache: true` (or `cacheableOperations`) stays `cache: true`; persistent tasks stay uncached. |
 | `targets.*.continuous` | supported | An uncached `exec.persistent` task, ready on spawn: Nx starts its dependents once it has started, and so does vx. A run-commands `readyWhen` becomes `exec.persistent.readyWhen`. |
