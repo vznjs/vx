@@ -1902,9 +1902,11 @@ staging in `.vx/tmp/` (output bytes), and the probes a run writes and
 removes at once (`.vx-clock-<pid>`, the watch stamps). A hit needs
 `.vx/tmp/` writable even where `--cache-dir` points elsewhere: a
 read-only checkout mounts one over it. A failed run's
-task output is `failures` rows (one per task: `output` plain text, ANSI
-stripped, secrets masked, the first 8 KiB and last 56 KiB; `dir`, the
-task's project directory; `locations` and `sandbox_fix` JSON), written at run end only when a task failed with
+task output is `failures` rows in `cache.db`, not files (one per task: `output` plain text, ANSI
+stripped, secrets masked, the first 8 KiB and last 56 KiB; `dir`, its
+project's directory from the root, `.` for the root; `input_moved`, the
+input that changed while it ran; `locations` and `sandbox_fix` JSON),
+written at run end only when a task failed with
 output or a moved input; the newest 50 failed runs are kept. A refused
 write (a full disk) costs only that output, never the run's verdict.
 
