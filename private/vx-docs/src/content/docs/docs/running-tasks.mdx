@@ -988,10 +988,11 @@ task is never cached.
 | --- | --- | --- |
 | a task | `exec: { timeout: '10m' }` | that task |
 | command line | `--timeout 10m` | this run |
+| environment | `VX_RUN_TIMEOUT=10m` | runs in that shell |
 | `.vx/workspace.ts` | `run: { timeout: '30m' }` | every run |
 
-The most specific wins: `exec.timeout` beats `--timeout`, which beats
-`run.timeout`. A duration has its unit: `'500ms'`, `'30s'`, `'10m'`, `'1h'`, `'1d'`.
+The most specific wins: `exec.timeout` beats `--timeout`, then
+`VX_RUN_TIMEOUT`, then `run.timeout`. A duration has its unit: `'500ms'`, `'30s'`, `'10m'`, `'1h'`, `'1d'`.
 
 A process still alive after `SIGTERM` gets `SIGKILL` once `run.killGrace`
 (default `'2s'`) passes.
