@@ -1502,6 +1502,29 @@ const cases: Case[] = [
     changes: [[{ 'elsewhere/linked.txt': 'O2\n' }, 'O2\n']],
   }),
 
+  defineCase({
+    id: 'inputs/file-link-into-unrelated-project',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'An edit behind an input link into a project the task does not depend on reruns, or the link is refused',
+    why: 'A link in the inputs can point into another project the task has no dependency on. The task still reads that project’s file, so an edit there must rerun it. A tool that keys the link by the path it names, trusting the other project to key its own files, replays the build made from the old contents. Refusing the link up front, and asking for the dependency, is as good as keying it.',
+    from: ['linked-inputs'],
+    workspace: {
+      projects: {
+        a: { tasks: { build: linkedRead('src/x.txt') }, files: { '.gitignore': 'out.txt\n' } },
+        b: { files: { 'data.txt': 'B1\n' } },
+      },
+    },
+    steps: [
+      { link: { 'packages/a/src/x.txt': '../../b/data.txt' } },
+      { commit: 'links' },
+      { run: 'build', expect: { exit: 0, files: { [OUT_TXT]: 'B1\n' }, orRefused: true } },
+      { write: { 'packages/b/data.txt': 'B2\n' } },
+      { run: 'build', expect: { exit: 0, files: { [OUT_TXT]: 'B2\n' }, orRefused: true } },
+    ],
+  }),
+
   linkCase({
     id: 'inputs/file-link-to-ignored-file',
     title: 'An edit to a gitignored file an input link points at reruns',

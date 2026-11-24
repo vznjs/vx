@@ -1018,14 +1018,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2142,
-        "can": 2142,
-        "of": 2212
+        "pass": 2143,
+        "can": 2143,
+        "of": 2213
       },
       "correctness": {
-        "pass": 1728,
-        "can": 1728,
-        "of": 1789
+        "pass": 1729,
+        "can": 1729,
+        "of": 1790
       },
       "efficiency": {
         "pass": 325,
@@ -1063,9 +1063,9 @@
         "of": 128
       },
       "inputs": {
-        "pass": 480,
-        "can": 480,
-        "of": 493
+        "pass": 481,
+        "can": 481,
+        "of": 494
       },
       "outputs": {
         "pass": 308,
@@ -1095,14 +1095,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 1396,
-        "can": 1812,
-        "of": 2212
+        "pass": 1397,
+        "can": 1813,
+        "of": 2213
       },
       "correctness": {
-        "pass": 1122,
-        "can": 1465,
-        "of": 1789
+        "pass": 1123,
+        "can": 1466,
+        "of": 1790
       },
       "efficiency": {
         "pass": 244,
@@ -1140,9 +1140,9 @@
         "of": 128
       },
       "inputs": {
-        "pass": 341,
-        "can": 477,
-        "of": 493
+        "pass": 342,
+        "can": 478,
+        "of": 494
       },
       "outputs": {
         "pass": 236,
@@ -1173,13 +1173,13 @@
     "nx": {
       "all": {
         "pass": 1394,
-        "can": 1847,
-        "of": 2212
+        "can": 1848,
+        "of": 2213
       },
       "correctness": {
         "pass": 1081,
-        "can": 1490,
-        "of": 1789
+        "can": 1491,
+        "of": 1790
       },
       "efficiency": {
         "pass": 283,
@@ -1218,8 +1218,8 @@
       },
       "inputs": {
         "pass": 346,
-        "can": 493,
-        "of": 493
+        "can": 494,
+        "of": 494
       },
       "outputs": {
         "pass": 225,
@@ -1250,13 +1250,13 @@
     "vite-task": {
       "all": {
         "pass": 1028,
-        "can": 1395,
-        "of": 2212
+        "can": 1396,
+        "of": 2213
       },
       "correctness": {
         "pass": 863,
-        "can": 1174,
-        "of": 1789
+        "can": 1175,
+        "of": 1790
       },
       "efficiency": {
         "pass": 156,
@@ -1295,8 +1295,8 @@
       },
       "inputs": {
         "pass": 314,
-        "can": 478,
-        "of": 493
+        "can": 479,
+        "of": 494
       },
       "outputs": {
         "pass": 208,
@@ -1327,13 +1327,13 @@
     "nix": {
       "all": {
         "pass": 1100,
-        "can": 1391,
-        "of": 2212
+        "can": 1392,
+        "of": 2213
       },
       "correctness": {
         "pass": 943,
-        "can": 1195,
-        "of": 1789
+        "can": 1196,
+        "of": 1790
       },
       "efficiency": {
         "pass": 147,
@@ -1372,8 +1372,8 @@
       },
       "inputs": {
         "pass": 346,
-        "can": 434,
-        "of": 493
+        "can": 435,
+        "of": 494
       },
       "outputs": {
         "pass": 234,
@@ -1403,14 +1403,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1281,
-        "can": 1743,
-        "of": 2212
+        "pass": 1282,
+        "can": 1744,
+        "of": 2213
       },
       "correctness": {
-        "pass": 1010,
-        "can": 1424,
-        "of": 1789
+        "pass": 1011,
+        "can": 1425,
+        "of": 1790
       },
       "efficiency": {
         "pass": 236,
@@ -1448,9 +1448,9 @@
         "of": 128
       },
       "inputs": {
-        "pass": 349,
-        "can": 493,
-        "of": 493
+        "pass": 350,
+        "can": 494,
+        "of": 494
       },
       "outputs": {
         "pass": 193,
@@ -11061,6 +11061,43 @@
           "status": "fail",
           "step": 5,
           "detail": "packages/a/out.txt is \"O1\\n\", expected \"O2\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 3,
+          "detail": "exited 100, expected success"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/file-link-into-unrelated-project",
+      "ref": "hjh4u6",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "An edit behind an input link into a project the task does not depend on reruns, or the link is refused",
+      "why": "A link in the inputs can point into another project the task has no dependency on. The task still reads that project’s file, so an edit there must rerun it. A tool that keys the link by the path it names, trusting the other project to key its own files, replays the build made from the old contents. Refusing the link up front, and asking for the dependency, is as good as keying it.",
+      "from": [
+        "linked-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/out.txt is \"B1\\n\", expected \"B2\\n\""
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 5,
+          "detail": "packages/a/out.txt is \"B1\\n\", expected \"B2\\n\""
         },
         "nix": {
           "status": "fail",
