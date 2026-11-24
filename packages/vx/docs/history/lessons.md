@@ -447,3 +447,9 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   `afterAll` (`test-hook-cleanup.unsafe.test.ts`). Bun's test runner fires
   no `process.on('exit')` either. To find a leak, run each file alone
   under an empty TMPDIR and list what is left (2026-11-24).
+- In the sandbox, oxlint misses the workspace `.gitignore` and lints all
+  node_modules links to; config `ignorePatterns` does not prune. Use
+  `--ignore-pattern node_modules` (2026-11-24).
+- A config edit runs the old command until `vx lock`; a fresh cache dir
+  does not notice the edit. Relock before timing a config change
+  (2026-11-24).

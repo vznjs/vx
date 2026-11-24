@@ -716,7 +716,7 @@ export default defineProject({
       description: 'oxlint with tsgolint-backed type-aware checks',
       dependsOn: ['install'],
       exec: {
-        command: 'oxlint --type-aware --type-check',
+        command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: {
           allow: {
             systemInfo: ['vfs.disk-space'],

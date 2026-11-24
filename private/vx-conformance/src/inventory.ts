@@ -1420,6 +1420,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'no-old-names.unsafe',
     'npm-pack.unsafe',
     'output-doc-drift',
+    'oxlint-skips-node-modules.unsafe',
     'package-boundaries.unsafe',
     'patterns-doc-drift',
     'plugin-env-documented.unsafe',
