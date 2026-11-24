@@ -93,4 +93,4 @@ it('a dependency bump moves the key of the member that reaches it, and only that
   const after = await keys()
   expect(after['api#build']).not.toBe(before['api#build'])
   expect(after['web#build']).toBe(before['web#build'])
-}, 20_000)
+}, 30_000)

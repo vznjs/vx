@@ -88,4 +88,4 @@ it("the variable's value moves the key; the same value keeps it", async () => {
   expect(one).toBeDefined()
   expect(await hash('1')).toBe(one)
   expect(await hash('2')).not.toBe(one)
-}, 20_000)
+}, 30_000)

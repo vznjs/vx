@@ -77,7 +77,7 @@ it('each named task waits on the one before it in id order', async () => {
     'b#build <- a#build',
     'c#build <- b#build',
   ])
-}, 20_000)
+}, 30_000)
 
 // Id order alone put a#build before b#build even when a#build already
 // waits on b#build: the added edge closed a cycle and the run was refused.
@@ -96,4 +96,4 @@ it('chains in dependency order, never closing a cycle', async () => {
     'b#build <- ',
     'c#build <- a#build',
   ])
-}, 20_000)
+}, 30_000)

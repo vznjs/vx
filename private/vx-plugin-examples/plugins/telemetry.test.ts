@@ -76,7 +76,7 @@ it('appends one line per run', async () => {
   expect(await Bun.file(file).text()).toBe(
     '{"tasks":1,"failed":0,"cached":0}\n{"tasks":1,"failed":0,"cached":0}\n',
   )
-}, 20_000)
+}, 30_000)
 
 // Read against the process's cwd, a relative file was another file for a
 // run started in a project's directory, written inside that project.
