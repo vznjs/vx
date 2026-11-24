@@ -226,3 +226,58 @@ describe.skipIf(!available || Bun.which('curl') === null)(
     )
   },
 )
+
+// The task's proxy dials a loopback host itself, never through the run's.
+// A portless `localhost`, `127.0.0.1` or `0.0.0.0` entry let a client that
+// sent loopback through the proxy reach every port this machine listens on,
+// though `localhost` is documented to reach none.
+describe.skipIf(!available || Bun.which('curl') === null)(
+  'a loopback host through the proxy',
+  () => {
+    let fixture: Fixture
+    let host: ReturnType<typeof Bun.serve>
+    beforeEach(async () => {
+      fixture = await makeWorkspace()
+      host = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('host-only') })
+    })
+    afterEach(async () => {
+      await host.stop(true)
+      await rm(fixture.root, { recursive: true, force: true })
+    })
+    const reach = async (entry: string, target: string) => {
+      await addProject(fixture.root, 'app', {
+        config: `export default { tasks: { t: { exec: {
+          command: 'curl -sS --max-time 10 --noproxy "" -x "$HTTP_PROXY" http://${target}:${host.port}/',
+          sandbox: { allow: { read: ['.'], network: ['${entry}'] } },
+        } } } }\n`,
+      })
+      return run({ cwd: fixture.root, tasks: ['t'], log: collectingLogger(fixture) })
+    }
+
+    for (const host_ of ['localhost', '127.0.0.1', '0.0.0.0'])
+      it(
+        `reaches no port of this machine through \`network: ['${host_}']\``,
+        async () => {
+          const r = await reach(host_, host_)
+          expect(fixture.log.join('\n')).not.toContain('host-only')
+          expect([r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines]).toEqual([
+            'failed',
+            [
+              `deny network-outbound ${host_}:${host.port} (a loopback host is reached only on a port the list names)`,
+            ],
+          ])
+        },
+        TIMEOUT,
+      )
+
+    it(
+      'CONTROL: reaches the port its entry names',
+      async () => {
+        const r = await reach(`localhost:${host.port}`, 'localhost')
+        expectOk(r, fixture)
+        expect(fixture.log.join('\n')).toContain('host-only')
+      },
+      TIMEOUT,
+    )
+  },
+)

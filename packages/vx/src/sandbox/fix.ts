@@ -191,6 +191,8 @@ function readsWhole(g: string, dir: string): boolean {
 
 /** The task proxy's refusals an `allow.network` entry cannot lift (task-proxy.ts). */
 const REFUSED_ANYWAY = /\((?:host is on the deny list|malformed host)\)$/
+/** The task proxy's refusal of a loopback host on a port no entry names. */
+const LOOPBACK_REFUSED = /\(a loopback host is reached only on a port the list names\)$/
 
 function kindOf(v: SandboxViolation): Kind | undefined {
   const can = v.ignorable ?? []
@@ -260,7 +262,11 @@ export function sandboxFix(
     if (kind === undefined) continue
     // A host the deny list holds, or a malformed one, no allow grant admits.
     if (kind === 'network' && REFUSED_ANYWAY.test(v.line)) continue
-    if (kind === 'network') fix.network.add(v.target.replace(/:\d+$/, ''))
+    // A loopback host passes only an entry naming its port (task-proxy.ts),
+    // reached as `localhost`; `0.0.0.0` or `::ffff:7f00:1` alone, a lock refused.
+    if (kind === 'network' && LOOPBACK_REFUSED.test(v.line))
+      fix.network.add(`localhost:${/:(\d+)$/.exec(v.target)?.[1]}`)
+    else if (kind === 'network') fix.network.add(v.target.replace(/:\d+$/, ''))
     else if (kind === 'systemInfo') fix.systemInfo.add(v.target)
     else if (v.path === undefined) continue
     else if (isCredential(v.path)) fix.withheld.add(grantPath(v.path, dirs))

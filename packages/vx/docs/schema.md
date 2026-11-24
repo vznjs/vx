@@ -2401,6 +2401,10 @@ export default defineProject({
 - `network: ['localhost']` reaches no port: a client dials loopback
   directly, never through the proxy that serves the rest of the list.
   Nothing else on loopback is reachable.
+- Through the proxy too, a loopback host (`localhost`, `127.0.0.1`,
+  `::1`, `0.0.0.0`) passes only an entry that names its port, and is
+  refused `(a loopback host is reached only on a port the list names)`.
+  The `fix:` line names `localhost:<port>`.
 - `localBinding: [4173]`: a sandboxed server lists its port, so it is
   reachable from outside its own sandbox.
 - On Linux, a failed task refused on a loopback port that a process on

@@ -11,14 +11,15 @@ import { BlockList } from 'node:net'
 /** The deep modules of the runtime the front is built from: its own proxy code, not a copy. */
 async function loadProxyParts() {
   // Literal specifiers: `bun build --compile` embeds only what it can see.
-  const [http, socks, mux, pattern, parent] = await Promise.all([
+  const [http, socks, mux, pattern, parent, address] = await Promise.all([
     import('@anthropic-ai/sandbox-runtime/dist/sandbox/http-proxy.js'),
     import('@anthropic-ai/sandbox-runtime/dist/sandbox/socks-proxy.js'),
     import('@anthropic-ai/sandbox-runtime/dist/sandbox/mux-proxy.js'),
     import('@anthropic-ai/sandbox-runtime/dist/sandbox/domain-pattern.js'),
     import('@anthropic-ai/sandbox-runtime/dist/sandbox/parent-proxy.js'),
+    import('@anthropic-ai/sandbox-runtime/dist/sandbox/address.js'),
   ])
-  return { http, socks, mux, pattern, parent }
+  return { http, socks, mux, pattern, parent, address }
 }
 
 export interface TaskProxy {
@@ -41,7 +42,12 @@ export async function startTaskProxy(opts: {
   /** A refusal this front made, in the runtime's own record form. */
   refused(line: string): void
 }): Promise<TaskProxy & { port: number | undefined }> {
-  const { http, socks, mux, pattern, parent } = await loadProxyParts()
+  const { http, socks, mux, pattern, parent, address } = await loadProxyParts()
+  /** A host this front dials on this machine itself: loopback, or the unspecified address, which reaches it too. */
+  const local = (h: string): boolean =>
+    address.isLoopbackName(h) ||
+    address.isLoopbackAddress(h) ||
+    /^(?:0\.\d+\.\d+\.\d+|::|::ffff:0:[\da-f]{1,4})$/i.test(h)
   const filter = (port: number, host: string): boolean => {
     const deny = (reason: string) => {
       opts.refused(`deny network-outbound ${host}:${port} (${reason})`)
@@ -51,8 +57,11 @@ export async function startTaskProxy(opts: {
     const canonical: string = parent.canonicalizeHost(host) ?? host
     if (opts.denied.some((d) => pattern.matchesDomainPatternWithPort(canonical, port, d)))
       return deny('host is on the deny list')
-    if (opts.allowed.some((a) => pattern.matchesDomainPatternWithPort(canonical, port, a)))
-      return true
+    // A portless `localhost` reached every port this machine listens on:
+    // a loopback host passes only an entry that names its port.
+    const named = local(canonical) ? opts.allowed.filter((a) => /:\d+$/.test(a)) : opts.allowed
+    if (named.some((a) => pattern.matchesDomainPatternWithPort(canonical, port, a))) return true
+    if (local(canonical)) return deny('a loopback host is reached only on a port the list names')
     return deny('host is not on the allow list')
   }
   const user = encodeURIComponent(`srt.${opts.encodedCommand}`)
