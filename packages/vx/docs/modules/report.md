@@ -421,6 +421,10 @@ export function formatTaskBlock(
   links?: boolean, // the terminal opens OSC 8: a failed task's file paths link to the file
 ): string
 
+// The `$` line's command: a requested task's gets the args after `--`, as
+// the run appends them, secrets masked (the frame and the `--dry` plan)
+export function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string
+
 // `success local … <id>` — quiet cache hit
 export function formatTaskHitLine(node, outcome, colors?, onPath?, blocks?): string
 
