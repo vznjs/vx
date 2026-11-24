@@ -460,7 +460,8 @@ Default: no limit, unless the run sets one (`--timeout`, `run.timeout`).
   instead.
 - A persistent task: `timeout` bounds the readiness wait instead. If
   `readyWhen` has not matched in time, the child is SIGTERMed and the task
-  fails (see `persistent` below).
+  fails (see `persistent` below). Its `not ready` line names whose limit
+  it was too.
 - A persistent task with no `readyWhen` is ready on spawn, before the timer
   can fire, so its timeout does nothing.
 - A plugin executor: the timeout aborts the request's `signal`. Core

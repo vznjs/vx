@@ -170,3 +170,13 @@ export function inputStabilityOf(
     severity: layers?.run.severity ?? task?.severity ?? layers?.workspace?.severity ?? 'warn',
   }
 }
+
+/**
+ * Whose limit a timeout was and how to raise it, after the line that says it
+ * fired: "after 120000ms" alone sent the user looking for where it came from.
+ */
+export function timeoutOwner(fromTask: boolean): string {
+  return fromTask
+    ? "; the task's exec.timeout; raise it to give it longer"
+    : "; the run's timeout (--timeout, VX_RUN_TIMEOUT or run.timeout); raise it, or set the task's exec.timeout"
+}

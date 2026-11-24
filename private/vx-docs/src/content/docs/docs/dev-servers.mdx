@@ -130,7 +130,7 @@ What if the line never comes? `exec.timeout` caps the wait. Here `readyWhen` loo
 
   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
 [2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
-[1m[38;2;234;179;8m[vx][0m[2m @demo/web#dev: not ready: no line matched readyWhen /Listening on/ within 3s; killed[0m
+[1m[38;2;234;179;8m[vx][0m[2m @demo/web#dev: not ready: no line matched readyWhen /Listening on/ within 3s; killed; the task's exec.timeout; raise it to give it longer[0m
 
 [2m└─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m──[0m [2m(3.01s)[0m [1m[38;2;239;68;68mfailed (never ready: timed out, exit 143)[0m
 ```
@@ -403,8 +403,9 @@ All of watch mode: [`vx watch`](../../cli/watch/).
   server has not printed its `readyWhen` line yet. Fix the pattern, or
   set `exec.timeout` to stop waiting.
 - **`not ready: no line matched readyWhen /…/ within 3s; killed`.** The
-  wait passed `exec.timeout`. Fix the pattern to match a line the
-  server prints, or raise the timeout.
+  wait passed the timeout the line names: the task's `exec.timeout`, or
+  the run's (`--timeout`). Fix the pattern to match a line the server
+  prints, or raise that timeout.
 - **A server outlives a `kill -9` of vx.** Nothing runs after `kill -9`,
   except a server that exits when its stdin closes (esbuild `--watch`).
 - **A daemon outlives Ctrl-C.** A daemon a task starts with `setsid` and an empty environment

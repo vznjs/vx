@@ -38,6 +38,7 @@ import {
 import { sandboxFix } from '../sandbox/index.js'
 import { shellVerdict, unpassedEnv } from './shell-verdict.js'
 import { forgetUndeclaredWrites, taskBinDirs } from './task-process.js'
+import { timeoutOwner } from './task-policy.js'
 import { failServer } from './persistent.js'
 import type { OutcomeTiming, TaskOutcome } from '../graph/index.js'
 import { failedOutputLog } from './output-log.js'
@@ -524,14 +525,7 @@ async function classifyExit(
           ? 'its executor was aborted'
           : 'as its executor reported'
     const after = policy.timeout === undefined ? '' : ` after ${policy.timeout}ms`
-    // Whose limit it was and how to raise it: "after 120000ms" alone sent
-    // the user looking for where it came from.
-    const whose =
-      policy.timeout === undefined
-        ? ''
-        : policy.timeoutFromTask
-          ? "; the task's exec.timeout; raise it to give it longer"
-          : "; the run's timeout (--timeout, VX_RUN_TIMEOUT or run.timeout); raise it, or set the task's exec.timeout"
+    const whose = policy.timeout === undefined ? '' : timeoutOwner(policy.timeoutFromTask)
     log.taskStderr(node, `${stream.nl()}${vxLine(m, `[vx] timed out${after} — ${how}${whose}`)}\n`)
     // Non-zero even if the child TRAPPED SIGTERM and exited 0 (`trap 'exit
     // 0' TERM`): classified a success, its PARTIAL outputs were cached and
