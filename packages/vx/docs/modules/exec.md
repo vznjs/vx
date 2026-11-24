@@ -548,7 +548,7 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
   and at the end (a bad shape shows none); `ExecuteResult.where`
   is shown on the task's row and frame after its id, as `<id>@<where>`
   — `machines()` returns a `MachineReport` per machine it ran tasks on
-  (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
+  (`{ name; status; cores; memoryBytes; done; failed; aborted?; onlineMs; busyMs;
 cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   once at the end for the run summary when a telemetry sink is on;
   `ExecuteResult.machine` (`{ cores; memoryBytes; cpuShare? }`) is the size of the
