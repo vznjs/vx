@@ -195,7 +195,12 @@ describe('vx watch loop (e2e)', () => {
     const before = await readFile(config, 'utf8')
     await writeFile(config, before.replace('cat src/*.txt', 'cat src/*.txt src/*.txt'))
     await until(() => w.cycles() === 1, 'the cycle the config edit starts')
-    await Bun.sleep(SETTLE_MS)
+    // Past the cycle's refusal, not a sleep: a loaded host had printed the
+    // hint and not yet the refusal (load 40, 2026-11-24).
+    await until(
+      () => w.err().includes('changed since the last `vx lock` — run `vx lock`'),
+      "the cycle's refusal",
+    )
     expect(await executions(f.log)).toBe(1)
     // Said, or the cycle read as the edit applied: it printed `changed` and
     // no row, the same as an edit that changed nothing.
