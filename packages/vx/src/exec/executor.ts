@@ -362,6 +362,12 @@ export interface ExecuteResult extends RunResult {
    */
   readonly where?: string
   /**
+   * How long it held the task before a machine took it: waiting for one to
+   * join (its warm-up) or to have room. Core adds it to the task's queue time
+   * (`OutcomeTiming.queuedMs`) and starts the task's span after it.
+   */
+  readonly queuedMs?: number
+  /**
    * A `servers` executor's: each server of the request that failed where it
    * ran, with its exit. `began` false: it died or never became ready before
    * the command began, which then never ran, and core skips the task blocked
@@ -676,7 +682,7 @@ export function assertExecuteResult(
   const where = r['where']
   if (where !== undefined && (typeof where !== 'string' || where === ''))
     fail(`where is ${where === '' ? 'empty' : typeof where} (expected a non-empty string)`)
-  for (const key of ['cpuMs', 'peakRssBytes']) {
+  for (const key of ['cpuMs', 'peakRssBytes', 'queuedMs']) {
     const n = r[key]
     if (n !== undefined && !(typeof n === 'number' && Number.isFinite(n) && n >= 0))
       fail(`${key} is ${shown(n)} (expected a non-negative number)`)

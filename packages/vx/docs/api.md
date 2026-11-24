@@ -762,6 +762,7 @@ export interface ExecuteResult extends RunResult {
   readonly changed?: readonly string[]
   readonly outputsMissing?: readonly string[]
   readonly where?: string
+  readonly queuedMs?: number
   readonly deadServers?: readonly {
     readonly taskId: string
     readonly exitCode: number

@@ -507,8 +507,20 @@ export class OtelSink implements TelemetrySink {
           return depSpan === undefined ? [] : [dependencyLink(this.traceId, depSpan, dep)]
         })
         const events = taskSpanEvents(record, nanos(record.ts))
-        const startNano =
+        let startNano =
           this.taskStartNano.get(record.taskId) ?? nanos(record.ts - record.durationMs)
+        // An executor that held it waiting for a machine (a worker's warm-up)
+        // started its window after that wait: queue time, not the span's.
+        if (
+          record.queuedMs !== undefined &&
+          record.wallclockStartNs !== undefined &&
+          record.wallclockEndNs !== undefined
+        ) {
+          const window =
+            Number(BigInt(record.wallclockEndNs) - BigInt(record.wallclockStartNs)) / 1e6
+          const after = nanos(record.ts - window)
+          if (BigInt(after) > BigInt(startNano)) startNano = after
+        }
         const t: TaskTelemetry = record
         this.spans.push({
           traceId: this.traceId,

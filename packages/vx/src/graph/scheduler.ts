@@ -783,7 +783,8 @@ class GraphRun {
             timing: {
               ...o.timing,
               ...(heldMs > 0 ? { admissionHeldMs: heldMs } : {}),
-              ...(queuedMs > 0 ? { queuedMs } : {}),
+              // An executor's own wait for a machine is queue time too.
+              ...(queuedMs > 0 ? { queuedMs: queuedMs + (o.timing?.queuedMs ?? 0) } : {}),
             },
           }
     const free = (): void => {

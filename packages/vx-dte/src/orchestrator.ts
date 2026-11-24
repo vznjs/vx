@@ -62,6 +62,8 @@ interface Job {
   worker?: string
   /** When it last joined the run's queue. */
   queuedAt?: number
+  /** When core handed it over (`execute`): until its standing send, it waited for a worker. */
+  calledAt?: number
   /** The cores its worker booked for it. */
   booked?: number
   /** The workers that failed it after beginning it, with why: two fail it. */
@@ -370,6 +372,7 @@ export class Orchestrator extends RunReport<Worker> {
   }
 
   private async take(req: ExecuteRequest): Promise<ExecuteResult> {
+    const calledAt = performance.now()
     // Walked once here, for every later read: walked again on the way in,
     // sharing, placing and sending, a run of 8000 tasks spent 17 s of this
     // machine's CPU on it (2026-11-05).
@@ -449,6 +452,7 @@ export class Orchestrator extends RunReport<Worker> {
         ...(nodes?.has(req.taskId) === true ? { up } : {}),
         need: { ...need, platform: req.platform ?? this.o.home },
         queuedAt: performance.now(),
+        calledAt,
         // Failed or stopped, it hands over none of its dependants: the plan
         // asked a worker for them, idle on arrival.
         resolve: (r) => {
@@ -1680,6 +1684,11 @@ export class Orchestrator extends RunReport<Worker> {
       Promise.all((node?.deps ?? []).map((d) => this.homing.get(d)))
     const where = {
       where: a.label,
+      // Waiting for a worker to join or have room is its queue time: its
+      // span read 1.7 s for a 0.4 s task behind a warm-up, queued 1 ms.
+      ...(job.calledAt === undefined
+        ? {}
+        : { queuedMs: Math.max(0, Math.round(sent - job.calledAt)) }),
       machine: {
         cores: a.reported.cores,
         memoryBytes: a.reported.memory,

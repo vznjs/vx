@@ -105,7 +105,7 @@ The root `vx.run` span carries:
 - the stop's counts: `vx.run.aborted_count`, the tasks it cut short, and `vx.run.not_run_count`, the ones it reached first;
 - the remote uploads once they settled: `vx.cache.upload.count`, `.bytes`, `.ms` summed, and `.failed`.
 
-A child `vx.task` span is sent per task, none for one the stop reached before it started. Every task span carries:
+A child `vx.task` span is sent per task, none for one the stop reached before it started. It starts after any wait for a machine a remote executor reports (a worker's warm-up), which is queue time. Every task span carries:
 
 - `cicd.pipeline.task.name`, and vx's own status as `vx.task.status`;
 - `cicd.pipeline.task.run.result`, the convention's enum: `success` for a run or a hit, `failure`, `timeout`, `skip`, `cancellation`;
@@ -130,7 +130,7 @@ A child `vx.task` span is sent per task, none for one the stop reached before it
 - On a flaky one, its record (`vx.task.flaky.passes`, `vx.task.flaky.failures`).
 - On a hit, what the stored run took: `vx.cache.stored_duration_ms`, `vx.cache.stored_cpu_ms`, `vx.cache.stored_peak_rss_bytes`.
 - How long an `admit` policy held it (`vx.task.admission_held_ms`).
-- How long it waited ready for a worker (`vx.task.queued_ms`), the hold included.
+- How long it waited ready for a worker (`vx.task.queued_ms`), the hold and a remote executor's wait for a machine included.
 - On a cacheable task that ran, how many files its key read (`vx.task.input_files`).
 - On a cacheable task that ran, what its key changed since the last entry the cache saved for it: `vx.cache.miss.change_count`, and `vx.cache.miss.changes`.
 - `vx.cache.miss.changes` holds the first ten, as `changed file packages/a/src/x.ts`.

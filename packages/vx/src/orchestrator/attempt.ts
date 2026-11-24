@@ -54,11 +54,34 @@ export interface Attempts {
   readonly attempts: number
   /** What THIS run spent on the task, every attempt. */
   readonly spentMs: number
+  /** What the executor held it before a machine took it, every attempt (`ExecuteResult.queuedMs`). */
+  readonly queuedMs: number
+  /** Of `queuedMs`, the first attempt's: the span starts after it. */
+  readonly firstQueuedMs: number
   readonly failedAttempts: FailedAttempt[]
   /** Each failed attempt's output, beside `failedAttempts`: kept for `vx last --log`. */
   readonly attemptOutputs: string[]
   /** Any attempt's shell left a process running, not only the last one's. */
   readonly leftRunning: boolean
+}
+
+/**
+ * A task's span and queue time once an executor said how long it held the
+ * task before a machine took it: the span starts after its first wait, and
+ * every wait is queue time, not run time.
+ */
+export function queuedTiming(
+  wallclock: { startNs: bigint; endNs: bigint },
+  firstMs: number,
+  totalMs: number,
+): OutcomeTiming {
+  if (totalMs <= 0) return { startNs: wallclock.startNs, endNs: wallclock.endNs }
+  const shifted = wallclock.startNs + BigInt(Math.round(firstMs * 1e6))
+  return {
+    startNs: shifted < wallclock.endNs ? shifted : wallclock.endNs,
+    endNs: wallclock.endNs,
+    queuedMs: Math.round(totalMs),
+  }
 }
 
 /** The attempts that ran, or the outcome when the task ends without one standing. */
@@ -80,13 +103,17 @@ export async function runAttempts(
   let maxAttempts = policy.maxAttempts
   let prior: { result: ExecuteResult; exitCode: number } | undefined
   let spentMs = 0
+  let queuedMs = 0
+  let firstQueuedMs: number | undefined
   let leftRunning = false
   const failedAttempts: FailedAttempt[] = []
   const attemptOutputs: string[] = []
-  const timing = (): OutcomeTiming => ({
-    startNs: wallclockStartNs,
-    endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
-  })
+  const timing = (): OutcomeTiming =>
+    queuedTiming(
+      { startNs: wallclockStartNs, endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs },
+      firstQueuedMs ?? 0,
+      queuedMs,
+    )
   for (;;) {
     m.attempt++
     const a = await runAttempt(m, prior, spentMs)
@@ -146,6 +173,8 @@ export async function runAttempts(
     forgetUndeclaredWrites(args.node, args.run.gitFilesCache, writeReach)
     if (writesFingerprint) args.run.fingerprintWatch?.wrote()
     spentMs += result.durationMs
+    queuedMs += result.queuedMs ?? 0
+    firstQueuedMs ??= result.queuedMs ?? 0
 
     // An attempt that ended in a shutdown never finished on its own terms:
     // it is aborted, so it is neither cached, counted, shown, nor RETRIED.
@@ -243,6 +272,8 @@ export async function runAttempts(
     exitCode: prior.exitCode,
     attempts: m.attempt,
     spentMs,
+    queuedMs,
+    firstQueuedMs: firstQueuedMs ?? 0,
     failedAttempts,
     attemptOutputs,
     leftRunning,

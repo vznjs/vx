@@ -10,7 +10,7 @@ import type {
   TaskOutcome,
 } from '../graph/index.js'
 import { warnOf } from '../report/index.js'
-import type { Attempts } from './attempt.js'
+import { type Attempts, queuedTiming } from './attempt.js'
 import type { KeyCheck } from './input-recheck.js'
 import type { MissRun } from './miss-run.js'
 import { failedOutputLog } from './output-log.js'
@@ -78,7 +78,7 @@ export function missOutcome(
             ? { outputsMissing: m.outputsMissing }
             : {}),
         }
-  outcome.timing = { startNs: wallclock.startNs, endNs: wallclock.endNs }
+  outcome.timing = queuedTiming(wallclock, ran.firstQueuedMs, ran.queuedMs)
   if (ran.attempts > 1 || ran.failedAttempts.length > 0) {
     const attempts: OutcomeAttempts = {}
     if (ran.attempts > 1) attempts.count = ran.attempts

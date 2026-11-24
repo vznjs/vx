@@ -3793,7 +3793,7 @@ interface TaskTelemetry {
   storedCpuMs?: number // on a hit: the stored run's CPU and peak memory
   storedPeakRssBytes?: number
   admissionHeldMs?: number // how long an `admit` policy held it once ready
-  queuedMs?: number // how long it waited ready for a worker, any admission hold included
+  queuedMs?: number // how long it waited ready for a worker, any admission hold and an executor's wait for a machine included
   inputFiles?: number // on a cacheable task that ran: the files its key read
   inputChanges?: InputChanges // and what its key changed since the last saved entry, ten named
   artifactBytes?: number // the artifact's compressed size: a hit's entry, or a miss's save

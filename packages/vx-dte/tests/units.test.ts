@@ -2162,6 +2162,26 @@ it("a worker's report counts the task the stop killed as aborted", async () => {
   }
 })
 
+// Its span read 1.7 s for a 0.4 s task behind a worker's warm-up, queued
+// 1 ms: the wait for a worker is the task's queue time.
+it('says how long a task waited for a worker to join', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const at = performance.now()
+    const run = h.o.execute(h.req('t1'))
+    await Bun.sleep(300)
+    const w = await h.worker(1)
+    await w.batches()
+    const sent = performance.now() - at
+    await w.finish('t1')
+    const r = await run
+    expect(r.queuedMs).toBeGreaterThanOrEqual(300)
+    expect(r.queuedMs).toBeLessThanOrEqual(Math.ceil(sent))
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-10-23: "we need the ideal time possible taking into account actual run numbers".
 it('the perfect end is the longest chain of what each task took', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))

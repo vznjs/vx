@@ -553,7 +553,10 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   once at the end for the run summary when a telemetry sink is on;
   `ExecuteResult.machine` (`{ cores; memoryBytes; cpuShare? }`) is the size of the
   machine `where` names, which the run history keeps, and the share of a
-  core the task's threads got there (history divides its CPU by it)
+  core the task's threads got there (history divides its CPU by it);
+  `ExecuteResult.queuedMs` is how long it held the task before a machine
+  took it (a worker's warm-up, or room on one): core adds it to the task's
+  `queuedMs` and starts the task's span after it, so the wait is not run time
   — `idealMs()` is the end no run of these tasks could beat with the
   workers it may start: its longest chain, each task as long as it took,
   or later where a platform's work fills all the cores it may start (the
@@ -653,7 +656,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations; outputs?; changed?; outputsMissing?; deadServers?; where? }` —
+- `ExecuteResult extends RunResult { violations; outputs?; changed?; outputsMissing?; deadServers?; where?; queuedMs? }` —
   `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
   (outputs left remote, fetched only if a local consumer needs them), or,
   to a `trailing` request alone, `{ kind: 'trailing'; landed }`: on their

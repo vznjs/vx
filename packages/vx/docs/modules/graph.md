@@ -473,7 +473,7 @@ export interface InputChanges {
 }
 
 export interface OutcomeTiming { // on the run's clock
-  queuedMs?: number // how long it waited ready for a worker, any admission hold included
+  queuedMs?: number // how long it waited ready for a worker, any admission hold and an executor's wait for a machine included
   admissionHeldMs?: number // how long an `admit` policy held a ready task with a free worker
   startNs?: bigint // hrtime span relative to run t=0
   endNs?: bigint

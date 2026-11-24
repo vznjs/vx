@@ -622,6 +622,57 @@ describe('OtelSink end-to-end', () => {
     expect([point.startTimeUnixNano, point.timeUnixNano]).toEqual(['0', '100000000'])
   })
 
+  // A vx-dte task waited 3 s for a worker after it started here: its span
+  // read 3.4 s for a 0.3 s task. The wait is its queue time.
+  it("starts a task's span after an executor's wait for a machine", async () => {
+    const { cfg, calls } = mkConfig()
+    const sink = new OtelSink(cfg)
+    const rec = (r: Record<string, unknown>) =>
+      sink.onRecord({ v: 3, runId: 'r', ...r } as TelemetryRecord)
+    rec({ kind: 'run.start', run: RUN, total: 2, ts: 0, startedAt: 0 })
+    for (const id of ['a#build', 'a#lint'])
+      rec({ kind: 'task.start', taskId: id, project: 'a', task: id.slice(2), ts: 1000 })
+    const end = (taskId: string, extra: Partial<TaskTelemetry>) => ({
+      kind: 'task.end',
+      taskId,
+      project: 'a',
+      task: taskId.slice(2),
+      cacheSource: 'miss',
+      exitCode: 0,
+      status: 'success',
+      ts: 4500,
+      durationMs: 300,
+      ...extra,
+    })
+    rec(
+      end('a#build', {
+        queuedMs: 3000,
+        wallclockStartNs: '4000000000',
+        wallclockEndNs: '4500000000',
+      }),
+    )
+    // CONTROL: one that waited for no machine keeps its start.
+    rec(end('a#lint', { wallclockStartNs: '1000000000', wallclockEndNs: '4500000000' }))
+    sink.onRunSummary(summaryFor(RUN, []))
+    await sink.flush()
+    const spans = (
+      calls.find((c) => c.url.endsWith('/v1/traces'))!.body as {
+        resourceSpans: {
+          scopeSpans: {
+            spans: {
+              name: string
+              startTimeUnixNano: string
+              attributes: { key: string; value: { stringValue?: string } }[]
+            }[]
+          }[]
+        }[]
+      }
+    ).resourceSpans[0]!.scopeSpans[0]!.spans.filter((s) => s.name === 'vx.task')
+    const startOf = (id: string) =>
+      spans.find((s) => s.attributes.some((a) => a.value.stringValue === id))!.startTimeUnixNano
+    expect([startOf('a#build'), startOf('a#lint')]).toEqual(['4000000000', '1000000000'])
+  })
+
   it("charts each task: its totals at the end, and its tree's CPU usage and memory as it ran", async () => {
     const { cfg, calls } = mkConfig()
     const sink = new OtelSink(cfg)
