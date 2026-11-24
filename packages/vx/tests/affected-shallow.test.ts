@@ -147,6 +147,23 @@ describe('a shallow clone', () => {
     expect(commits(root)).toBe(before)
   })
 
+  // An origin that takes no filter warns first and refuses after: the reason
+  // shown was the warning, `filtering not recognized by server, ignoring`.
+  it("names git's refusal, not a warning before it, as why the fetch failed", async () => {
+    const root = await clone('feat')
+    og('config', 'uploadpack.allowFilter', 'false')
+    try {
+      const refusal = await changed(root, 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef').then(
+        () => 'resolved',
+        (err: Error) => err.message,
+      )
+      expect(refusal).toContain('fetching it from origin failed (')
+      expect(refusal).not.toContain('filtering not recognized')
+    } finally {
+      og('config', 'uploadpack.allowFilter', 'true')
+    }
+  })
+
   it('with no origin to fetch from, says the clone is shallow', async () => {
     const root = await clone('feat')
     gitIn(root)('remote', 'remove', 'origin')

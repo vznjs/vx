@@ -2008,11 +2008,17 @@ async function fetchOrigin(workspaceRoot: string, args: string[]): Promise<boole
 }
 
 function noteFetchFailure(workspaceRoot: string, stderr: string): void {
-  const line = stderr
+  const lines = stderr
     .split('\n')
-    .find((l) => l.trim().length > 0)
-    ?.trim()
-    .replace(/^(fatal|error): /, '')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+  // git's refusal, not a warning before it: an origin that takes no filter
+  // warns `filtering not recognized by server, ignoring`, then refuses.
+  const line = (
+    lines.find((l) => /^(fatal|error): /.test(l)) ??
+    lines.find((l) => !l.startsWith('warning: ')) ??
+    lines[0]
+  )?.replace(/^(fatal|error): /, '')
   fetchFailures.set(workspaceRoot, line ?? 'git gave no reason')
 }
 
