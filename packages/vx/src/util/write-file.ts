@@ -3,6 +3,7 @@ import { lstatSync, readlinkSync, realpathSync, unlinkSync, writeFileSync } from
 import { lstat, mkdir, open, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError } from './errors.js'
+import { startedIgnoring } from './hangup.js'
 import { claimExitForSignal, dieOf } from './settle.js'
 
 /** Temps a write has made and not yet renamed or removed. */
@@ -31,7 +32,9 @@ const STOP_CODES = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } as const
  * `work`, with a stop signal ending vx through its exit hooks: the default
  * action skipped them, so a Ctrl-C in `vx lock` left a temp beside every
  * review copy it was writing, and `git status` offered them for commit.
- * vx still dies of the signal, as a script running it expects.
+ * vx still dies of the signal, as a script running it expects. One vx was
+ * started deaf to stays ignored (`nohup vx lock`, a script's `vx lock &`), as
+ * a run leaves it: the handler took it, and the lock died of a hangup.
  */
 export async function exitOnStop<T>(work: () => Promise<T>): Promise<T> {
   const stop = (signal: keyof typeof STOP_CODES) => (): void => {
@@ -39,9 +42,9 @@ export async function exitOnStop<T>(work: () => Promise<T>): Promise<T> {
     process.once('exit', () => dieOf(signal))
     process.exit(STOP_CODES[signal])
   }
-  const handlers = (Object.keys(STOP_CODES) as (keyof typeof STOP_CODES)[]).map(
-    (s) => [s, stop(s)] as const,
-  )
+  const handlers = (Object.keys(STOP_CODES) as (keyof typeof STOP_CODES)[])
+    .filter((s) => s === 'SIGTERM' || !startedIgnoring(s))
+    .map((s) => [s, stop(s)] as const)
   for (const [s, h] of handlers) process.on(s, h)
   try {
     return await work()

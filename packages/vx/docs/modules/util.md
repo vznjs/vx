@@ -1958,13 +1958,14 @@ export const IGNORED_SIGNALS_ENV = 'VX_IGNORED_SIGNALS' // a hand-off names the 
   default), and the local vx reads them from there, removes the variable
   and installs a listener that does nothing: that is the ignore.
 - Read once per process, before the first handler: `signals.ts` and
-  `vx watch` ask it before they install theirs, and a removed handler
+  `vx watch` ask it before they install theirs, as does `vx lock`'s
+  `exitOnStop` (a `nohup vx lock` died of the hang-up), and a removed handler
   does not bring the ignore back.
 
 ### Tests
 
 `tests/signal-ignored.test.ts` (both answers for both signals, each from a fresh
-process, and a `vx run` started with SIGINT ignored running on through one); `tests/task-tree-kill.test.ts` and
+process, and a `vx run` and a `vx lock` started with SIGINT ignored running on through one); `tests/task-tree-kill.test.ts` and
 `tests/watch-signals.test.ts` (a nohup'd `vx run` and `vx watch` run on
 through a hang-up; each fails with the handler installed regardless).
 

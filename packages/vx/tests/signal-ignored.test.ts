@@ -61,3 +61,31 @@ it('a SIGINT vx was started deaf to leaves the run going', async () => {
 it('CONTROL: a SIGINT stops a run started with it on', async () => {
   expect(await runUnder('')).toBe(130)
 }, 30_000)
+
+// `vx lock` ends through its exit hooks on a stop (`exitOnStop`), and its
+// handlers took a signal vx was started deaf to: `nohup vx lock` died of
+// the terminal's hangup, a script's `vx lock &` of its Ctrl-C.
+const lockUnder = async (trap: string): Promise<number> => {
+  const marker = path.join(root, 'evaluating')
+  await Bun.write(
+    path.join(root, 'packages', 'app', 'vx.config.mjs'),
+    `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, '')\nawait new Promise((r) => setTimeout(r, 1500))\nexport default { tasks: { t: { exec: { command: 'true' } } } }\n`,
+  )
+  const proc = Bun.spawn(['sh', '-c', `${trap}exec "$0" "$1" lock`, process.execPath, BIN], {
+    cwd: root,
+    stdout: 'ignore',
+    stderr: 'ignore',
+    env: { ...process.env, CI: '', VX_LOCK_REVIEW_FILES: 'false' },
+  })
+  for (let i = 0; i < 500 && !(await Bun.file(marker).exists()); i++) await Bun.sleep(20)
+  proc.kill('SIGINT')
+  return proc.exited
+}
+
+it('a SIGINT vx lock was started deaf to leaves the lock going', async () => {
+  expect(await lockUnder(`trap '' INT; `)).toBe(0)
+}, 30_000)
+
+it('CONTROL: a SIGINT stops a vx lock started with it on', async () => {
+  expect(await lockUnder('')).toBe(130)
+}, 30_000)
