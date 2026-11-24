@@ -1,12 +1,12 @@
 ---
-title: 'One test suite, six task runners, the same 993 cases'
+title: 'One test suite, six tools, the same 993 cases'
 date: 2026-11-07T22:00:00Z
 authors:
   - vzn
 tags:
   - correctness
   - comparison
-excerpt: '993 task-runner cases, compiled from the test suites of Nx, Turborepo, Vite Task, moon, Nix and vx, run sandboxed against all six. Every result is on one page.'
+excerpt: '993 task orchestration cases, compiled from the test suites of Nx, Turborepo, Vite Task, moon, Nix and vx, run sandboxed against all six. Every result is on one page.'
 ---
 
 Each case is a small workspace and the outcome a user would see. All six
