@@ -84,6 +84,7 @@ import {
   sameRecord,
   parseDependenciesLock,
   dependenciesLockWrite,
+  evaluatedWorkspace,
   type DependenciesLock,
   type LockedProject,
   type Lockfile,
@@ -255,13 +256,16 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     out.shadowed = shadowed
     // The workspace file too: the plugins' options there map the projects.
     const workspace = await workspaceFile(root)
-    out.stamps = {
-      cacheDir,
-      taken: await takeConfigStamps(root, [
-        ...found.map((f) => f.configPath),
-        ...(workspace !== null && workspaceRootOf(workspace) === root ? [workspace] : []),
-      ]),
-    }
+    const taken = await takeConfigStamps(root, [
+      ...found.map((f) => f.configPath),
+      ...(workspace !== null && workspaceRootOf(workspace) === root ? [workspace] : []),
+    ])
+    // Only the bytes the plugins came from: an edit since the load is
+    // asked of the next run.
+    const rel = workspace === null ? null : path.relative(root, workspace)
+    const read = rel === null ? undefined : taken.configs[rel]
+    if (read !== undefined && !evaluatedWorkspace(workspace!, read[2])) delete taken.configs[rel!]
+    out.stamps = { cacheDir, taken }
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(
       found.map((f) => f.configPath),

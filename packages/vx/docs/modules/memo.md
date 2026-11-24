@@ -297,9 +297,10 @@ export class IndexRemoteHits implements RemoteHits {}
 
 ### Purpose
 
-`vx lock` and a passing `vx lock --check` stamp each config file and the
-workspace file (size,
-mtime, xxh3 of its bytes, ctime, inode) before evaluating it, and keep the stamps with
+`vx lock` and a passing `vx lock --check` stamp each config file (size,
+mtime, xxh3 of its bytes, ctime, inode) before evaluating it, and the
+workspace file only when its bytes are those its plugins loaded from (a later
+edit stays unstamped), and keep the stamps with
 the lock's digest in the cache dir's `config-stamps.json`, one entry per
 workspace and lock, the last 8 used. A run reads its configs from the lock,
 so `stampsBesideLock(…).edited` names the in-scope config files whose bytes

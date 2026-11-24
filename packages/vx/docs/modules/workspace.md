@@ -306,6 +306,9 @@ Two paths, chosen by whether this process has loaded that path before:
 ```ts
 export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 export async function loadWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig | null>
+// Whether `hash` is of the bytes this process last evaluated as that workspace
+// file: a stamp taken after a later edit holds plugins no run checked.
+export function evaluatedWorkspace(file: string, hash: string): boolean
 export function stdoutToStderr(): () => void // JS routes to stdout → stderr until the release; ui.data still writes out (a core verb's --format json)
 
 // The batch form: one staged evaluation round for many configs. Every

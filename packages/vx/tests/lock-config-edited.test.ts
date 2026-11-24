@@ -442,3 +442,57 @@ describe('a workspace file edited since vx lock', () => {
     expect([code, out]).toEqual([0, expect.stringContaining('two')])
   })
 })
+
+// The plugins are evaluated from the workspace file's bytes at the run's
+// start; the stamp was taken later. An edit between the two was stamped as
+// checked, and every later run kept the locked commands under the new
+// options, green.
+describe('a workspace file edited after the run loaded it', () => {
+  const mapper = (word: string) =>
+    pluginSource(
+      'org/opts',
+      `{ project(config) {
+          config.tasks = { ...config.tasks, say: { exec: { command: 'echo ${word}' } } }
+        } }`,
+    )
+  let root: string
+  const file = () => path.join(root, '.vx', 'workspace.mjs')
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-lock-workspace-race-' })
+    await addProject(root, 'core')
+    await writeFile(file(), localWorkspaceSource([mapper('one')]))
+    expect((await vx(root, ['lock'])).code).toBe(0)
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  const later = () => localWorkspaceSource([mapper('two')])
+  // Its `config` hook runs after the load and before the stamp: the edit, once.
+  const editor = () =>
+    pluginSource(
+      'org/editor',
+      `{ async config(_workspace, ctx) {
+          const marker = ctx.workspaceRoot + '/.edit-once'
+          if (await Bun.file(marker).exists()) {
+            await Bun.write(ctx.workspaceRoot + '/.vx/workspace.mjs', ${JSON.stringify(later())})
+            await (await import('node:fs/promises')).rm(marker)
+          }
+        } }`,
+    )
+
+  for (const verb of [['run', 'core#say'], ['lock']]) {
+    it(`is not stamped by \`vx ${verb[0]}\` as the bytes it checked`, async () => {
+      await writeFile(file(), localWorkspaceSource([mapper('one'), editor()]))
+      await writeFile(path.join(root, '.edit-once'), '')
+      const first = await vx(root, verb)
+      expect(first.code).toBe(0)
+      expect(await readFile(file(), 'utf8')).toBe(later())
+      const { code, out } = await vx(root, ['run', 'core#say'])
+      expect([code, out]).toEqual([
+        1,
+        expect.stringContaining('.vx/workspace.mjs changed since the last `vx lock`'),
+      ])
+    })
+  }
+})

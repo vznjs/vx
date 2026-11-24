@@ -42,6 +42,7 @@ import {
 } from '../util/index.js'
 import {
   cacheScopeError,
+  evaluatedWorkspace,
   isCacheScope,
   loadWorkspaceConfig,
   discoveredProject,
@@ -675,7 +676,11 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
           const taken = await takeConfigStamps(workspaceRoot, [workspace!.file])
           if (await workspaceHolds(args, digest, await lock())) {
             edited = edited.filter((f) => f !== rel)
-            await restampConfigs(workspaceRoot, args.cacheDir, digest, taken)
+            // Only the bytes this run's plugins came from: an edit since
+            // the load is asked of the next run.
+            const read = taken.configs[rel]
+            if (read !== undefined && evaluatedWorkspace(workspace!.file, read[2]))
+              await restampConfigs(workspaceRoot, args.cacheDir, digest, taken)
           }
         }
       }
