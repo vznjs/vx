@@ -61,6 +61,19 @@ it('an edit that leaves every locked task the same selects none', async () => {
   expect(kept()).toEqual({})
 })
 
+// The lock keeps each task's JSON as the config wrote it: reordered tasks
+// or keys move every line of the project's lock entry and no locked value.
+it('tasks or keys reordered in the config select none', async () => {
+  await edit(`export default {
+  tasks: {
+    test: { cache: true, outputs: { files: [] }, inputs: { files: ['src/**'] }, exec: { command: 'true' } },
+    build: { inputs: { files: ['src/**'] }, exec: { command: 'true' }, cache: true, outputs: { files: [] } },
+  },
+}
+`)
+  expect(kept()).toEqual({})
+})
+
 it('a task added still reaches the whole project', async () => {
   await edit(config('true', "\n    lint: { exec: { command: 'true' } },"))
   expect(Object.keys(kept()).sort()).toEqual(['app#build', 'app#test'])

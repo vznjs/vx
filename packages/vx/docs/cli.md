@@ -632,7 +632,8 @@ What a change marks:
   (`files`, `workspaceFiles`).
 - A cached task, when a changed path is a submodule or embedded
   repository its `workspaceFiles` may reach into.
-- Every task of a project when its `vx.config.*` changed.
+- A task whose locked config moved when its project's `vx.config.*`
+  changed, and every task without `inputs` there (below).
 - Every task of a project that holds a changed path no task of its
   declares: vx cannot prove that path changes no key.
 - An untracked file under a task's `outputs`, `files` or
