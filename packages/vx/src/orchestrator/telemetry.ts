@@ -24,8 +24,11 @@ import {
   type TaskStatus,
 } from '../graph/index.js'
 import {
+  heldSecrets,
   maskedCommand,
+  secretMask,
   type SecretMask,
+  type TaskEnvSecrets,
   settleWithin,
   stageTimes,
   teardownTimeoutMs,
@@ -535,6 +538,9 @@ export function createTelemetrySource(args: {
   // Precompute which sinks want each kind, so per-event fan-out is a plain
   // array walk with no per-record `wants` scanning.
   const wantsLog = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.log'))
+  // A summary-only sink (vx-ci's) wants no start: building one masked the
+  // command against the whole env per task, ~0.3 s at 10k tasks for nothing.
+  const wantsStart = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.start'))
   const wantsSample = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.sample'))
 
   // taskId → its running root and what the looks at it saw. One timer for
@@ -612,6 +618,17 @@ export function createTelemetrySource(args: {
     }
   }
 
+  // The env's mask, built once a run (and again when a plugin holds a new
+  // secret): `maskedCommand` read every variable of the env per task, 1.0 s
+  // of a warm 10k-task run. A task's own `define`/`secret` still gets its own.
+  let envMask: { held: number; mask: SecretMask | null } | undefined
+  const commandShown = (command: string, env: TaskEnvSecrets | undefined): string => {
+    if (env?.define !== undefined || env?.secret !== undefined) return maskedCommand(command, env)
+    if (envMask?.held !== heldSecrets())
+      envMask = { held: heldSecrets(), mask: secretMask([process.env]) }
+    return envMask.mask?.mask(command) ?? command
+  }
+
   function deliver(record: TelemetryRecord): void {
     // Once, for every sink: a `task.end` holds the outcome's own arrays, and
     // a sink that cleared `failedAttempts` crashed the run's failure log.
@@ -675,7 +692,7 @@ export function createTelemetrySource(args: {
         return
       case 'task:start': {
         const node = event.node
-        if (node.config.exec === undefined) return // group task — no command, skip
+        if (node.config.exec === undefined || !wantsStart) return // group task — no command, skip
         const rec: TelemetryRecord = {
           v: TELEMETRY_SCHEMA_VERSION,
           kind: 'task.start',
@@ -686,7 +703,7 @@ export function createTelemetrySource(args: {
           ts,
         }
         if (node.config.exec.command !== undefined)
-          rec.command = maskedCommand(node.config.exec.command, node.config.exec.env)
+          rec.command = commandShown(node.config.exec.command, node.config.exec.env)
         const deps = commandDeps(node, args.nodes)
         if (deps.length > 0) rec.dependsOn = deps
         deliver(rec)
