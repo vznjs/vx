@@ -262,19 +262,34 @@ it('leaves a remote-only task’s files on the workers', async () => {
 
 // A remote-only task this machine's store held counted as a hit to restore:
 // the run asked no worker for it, and it waited on one forever (2026-11-11).
-it('runs a remote-only task on a worker when this machine’s store holds it', () => {
+// Spawned, not spawnSync: the test's own timeout ends a run that waits for
+// good, so both runs share its budget (a 20 s cap each passed under load).
+it('runs a remote-only task on a worker when this machine’s store holds it', async () => {
   const { VX_DTE_RUN: _, ...env } = process.env
-  const run = () =>
-    Bun.spawnSync([process.execPath, CORE_BIN, 'run', 'a#ro'], {
+  const live = new Set<Bun.Subprocess>()
+  const run = async () => {
+    const p = Bun.spawn([process.execPath, CORE_BIN, 'run', 'a#ro'], {
       cwd: root,
       env: { ...env, VX_DTE_RUN: crypto.randomUUID(), NO_COLOR: '1' },
       stdout: 'pipe',
       stderr: 'pipe',
-      timeout: 20_000,
     })
-  expect(run().exitCode).toBe(0)
-  const again = run()
-  expect([again.exitCode, again.stdout.toString().includes('far')]).toEqual([0, true])
+    live.add(p)
+    const [out, , code] = await Promise.all([
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+      p.exited,
+    ])
+    live.delete(p)
+    return { exitCode: code, out }
+  }
+  try {
+    expect((await run()).exitCode).toBe(0)
+    const again = await run()
+    expect([again.exitCode, again.out.includes('far')]).toEqual([0, true])
+  } finally {
+    for (const p of live) p.kill('SIGKILL')
+  }
 }, 60_000)
 
 // `--cache-download` holds for a worker's task: under `none` every file of
