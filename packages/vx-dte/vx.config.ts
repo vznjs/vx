@@ -13,6 +13,7 @@ const HEAVY = [
   'local-e2e-saves',
   'local-e2e-worktrees',
   'local-e2e-artifacts',
+  'local-e2e-lifecycle',
   'units',
   'gitlab',
   'github',
