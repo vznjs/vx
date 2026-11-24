@@ -16,7 +16,7 @@ import {
   grantAlternatives,
   isMountableLiteral,
   loopbackPorts,
-  replacedBySandbox,
+  unmountable,
   toRealPath,
   nameDir,
 } from './paths.js'
@@ -239,38 +239,9 @@ export async function sandboxRequestFor(
   // reading the project's as a pattern, and SRT is handed it literal).
   if (process.platform === 'linux') {
     for (const d of [node.projectDir, home, workspaceRoot, toRealPath(workspaceRoot)]) nameDir(d)
-  } else if (/[[\]*?]/.test(home)) {
-    throw new UserError(
-      `exec.sandbox: ${home} holds [, ], * or ?, which the macOS sandbox reads as a ` +
-        `pattern, not a name — rename the directory, or run the task without exec.sandbox`,
-    )
   }
-  // The runtime reports a refused touch one line per record: a path holding
-  // a line break arrived split, and an undeclared write to the project's own
-  // file was judged as outside it, with the wrong hint.
-  if (/[\n\r]/.test(home)) {
-    throw new UserError(
-      `exec.sandbox: ${home} holds a line break, which the sandbox runtime's reports cannot ` +
-        `carry, so a refused touch is misreported — rename the directory, or run the task without exec.sandbox`,
-    )
-  }
-  // Bun's realpath throws ENOENT on a path holding a backslash, and SRT
-  // mounts no path it cannot resolve: the task saw no project and ran in
-  // $HOME.
-  if (process.platform === 'linux' && home.includes('\\')) {
-    throw new UserError(
-      `exec.sandbox: ${home} holds a backslash, which the Linux sandbox cannot resolve, so ` +
-        `it mounts none of the project — rename the directory, or run the task without exec.sandbox`,
-    )
-  }
-  // Asked here, not left to bwrap: its "Can't remount" reads as a mount
-  // race, so the task ran twice and failed with no word of the cause.
-  if (replacedBySandbox(home)) {
-    throw new UserError(
-      `exec.sandbox: ${home} is under /dev, which the Linux sandbox replaces with its own, so ` +
-        `it mounts none of the project — move the workspace out of /dev, or run the task without exec.sandbox`,
-    )
-  }
+  const bad = unmountable(home)
+  if (bad !== null) throw new UserError(`exec.sandbox: ${home} ${bad.why}${bad.rest}`)
   // A workspace dependency is a SYMLINK in `node_modules` pointing at a
   // sibling project, so granting `node_modules` grants a link whose
   // target is outside it. That target is a dependency, not a reach-out:

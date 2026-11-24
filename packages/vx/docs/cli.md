@@ -5338,6 +5338,9 @@ the JSON keeps them absolute.
   never downgrades. So the row warns first.
 - The warning reads
   `unavailable — <why>; 3 tasks declare exec.sandbox and will fail`.
+- A workspace path no sandbox can mount is unavailable too, as a run
+  refuses each sandboxed task there: under `/dev`, a line break, a
+  backslash on Linux, or `[`, `]`, `*` or `?` on macOS.
 - Root inside a container: the seccomp helper cannot create its nested
   user namespace.
 - Fix for root in a container: run as a non-root user, or set

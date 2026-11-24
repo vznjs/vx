@@ -876,6 +876,50 @@ describe.skipIf(process.platform !== 'linux' || !existsSync('/dev/shm'))(
   },
 )
 
+// 2026-11-24: a run refuses every sandboxed task in a workspace whose path
+// holds a backslash (Linux) or a line break, as under /dev; the doctor
+// called the sandbox available there.
+describe('vx info — a workspace path the sandbox cannot mount', () => {
+  let parent = ''
+  afterAll(async () => {
+    if (parent !== '') await rm(parent, { recursive: true, force: true })
+  })
+
+  it(
+    'calls the sandbox unavailable, and says why',
+    async () => {
+      parent = await mkdtemp(path.join(os.tmpdir(), 'vx-show-'))
+      const cases: [string, string][] = [
+        [
+          'line\nbreak',
+          "the workspace path holds a line break, which the sandbox runtime's reports cannot carry",
+        ],
+        ...(process.platform === 'linux'
+          ? ([
+              [
+                'back\\slash',
+                'the workspace path holds a backslash, which the Linux sandbox cannot resolve',
+              ],
+            ] as [string, string][])
+          : ([
+              [
+                'star*',
+                'the workspace path holds [, ], * or ?, which the macOS sandbox reads as a pattern, not a name',
+              ],
+            ] as [string, string][])),
+      ]
+      for (const [name, reason] of cases) {
+        const root = path.join(parent, name)
+        await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+        Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+        const facts = await collectInfo(root, { warn: () => {} })
+        expect(facts.sandbox).toEqual({ available: false, reason, declared: 0, untraced: null })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // Every row of the printout from literal facts: a real box shows one side of
 // each branch (a supported Bun, git present, a sandbox that starts), so the
 // other side is driven here or nowhere.

@@ -33,7 +33,7 @@ import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
 import {
   probeSandbox,
-  replacedBySandbox,
+  unmountable,
   resetSandbox,
   toRealPath,
   untracedReason,
@@ -365,14 +365,16 @@ async function collectWorkspaceInfo(
   const probed = await probing
   // The host's runtime may start, but no sandboxed task runs here (a run
   // refuses each one, sandbox/request.ts).
-  const sandbox = replacedBySandbox(toRealPath(root))
-    ? {
-        available: false,
-        reason: 'the workspace is under /dev, which the Linux sandbox replaces with its own',
-        untraced: null,
-        declared: sandboxed,
-      }
-    : { ...probed, declared: sandboxed }
+  const bad = unmountable(toRealPath(root))
+  const sandbox =
+    bad !== null
+      ? {
+          available: false,
+          reason: `the workspace${bad.why.startsWith('is ') ? '' : ' path'} ${bad.why}`,
+          untraced: null,
+          declared: sandboxed,
+        }
+      : { ...probed, declared: sandboxed }
   // A home the store cannot live in leaves the entries in the cache dir
   // (store-index.ts): no store, not one shared by the checkouts.
   const cacheStore = indexStore === cacheDir ? null : (indexStore ?? storeRoot)
