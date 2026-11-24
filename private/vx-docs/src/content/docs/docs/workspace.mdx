@@ -216,7 +216,8 @@ Resolve the `vx.config.ts` files, then run `vx lock`. It writes both locks from 
 </Aside>
 
 <Quiz q="You edit packages/web/vx.config.ts and run vx run build. Which config does the run use?">
-  The old one, from `.vx/projects.lock`. Run `vx lock` first: runs read only the lock.
+  Neither: the run refuses, `packages/web/vx.config.ts changed since the last vx lock`. Runs read
+  only the lock, so run `vx lock` first.
 </Quiz>
 
 <Takeaway>keep the lock in step with your configs, and fix a conflicted one in one command.</Takeaway>
