@@ -1145,8 +1145,10 @@ app#build: outputs matched no files (dist/index.js) — the command exited 0
 but never wrote it, so the task fails and nothing is cached: write it, or
 fix the pattern`. The line names the likely cause when it applies: a
 sandboxed task with no `exec.sandbox.allow.write`, whose writes never
-reached disk, or an undeclared state file that survived the clean
-(below). A failed task is retried as any failure is.
+reached disk, an undeclared state file that survived the clean
+(below), or, when no output's folder exists either, an output written only
+sometimes (Nx and Turbo cache whichever outputs exist; a test target's
+`coverage/` written only with coverage on cannot be declared here). A failed task is retried as any failure is.
 A remote executor checks the outputs where they landed, by the same
 rule, and names what matched nothing (`ExecuteResult.outputsMissing`;
 `@vzn/vx-dte`'s workers and `@vzn/vx-reapi` do): the task fails the same

@@ -5,6 +5,7 @@
 // their verdict line), so every attempt of the retry loop takes one path.
 
 import { existsSync } from 'node:fs'
+import path from 'node:path'
 import {
   assertExecuteResult,
   type ExecuteRequest,
@@ -675,6 +676,16 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     (noWrite
       ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
       : '') +
+    // Nx and Turbo cache whichever outputs exist, so an Nx test target's
+    // coverage dir, written only with coverage on, failed every other run.
+    (!noWrite &&
+    !elsewhere &&
+    wroteNone(missing, [
+      ...policy.outputs.map((g) => [node.projectDir, g] as const),
+      ...policy.wsOutputs.map((g) => [args.run.workspaceRoot, g] as const),
+    ])
+      ? ` — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it`
+      : '') +
     (files.length > 0
       ? ` — a folder was declared, a file was written: ${[...new Set(files)].join(', ')}`
       : '') +
@@ -698,4 +709,20 @@ function failCarried(upstream: readonly TaskOutcome[], id: string, code: number)
     if (o.node.id === id) failServer(new Map([[id, o]]), id, code)
     else if (o.groupUpstream !== undefined) failCarried(o.groupUpstream, id, code)
   }
+}
+
+/**
+ * Every positive output matched nothing and its top folder is not there:
+ * the command wrote nowhere near them (a coverage dir with coverage off),
+ * not to a neighbour of a mistyped path (`dist/main.js` beside `dist/index.js`).
+ */
+function wroteNone(
+  missing: readonly string[],
+  outputs: readonly (readonly [string, string])[],
+): boolean {
+  const named = new Set(missing)
+  return outputs.every(
+    ([base, g]) =>
+      g.startsWith('!') || (named.has(g) && !existsSync(path.join(base, g.split('/')[0]!))),
+  )
 }

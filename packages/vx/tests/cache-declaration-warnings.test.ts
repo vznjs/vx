@@ -141,7 +141,7 @@ describe('cache declarations that match nothing', () => {
     const first = await runTask('lost')
     expect(first).toEqual([
       "[vx] app#lost: inputs matched no files (lib/**) — the key will not change when this project's source does",
-      '[vx] app#lost: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
+      '[vx] app#lost: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it',
     ])
     // Nothing was saved, so the next run runs and fails again.
     expect(await runTask('lost')).toEqual(first)
@@ -279,7 +279,7 @@ describe('cache declarations that match nothing', () => {
     // Declared only as workspaceFiles, matching nothing: the line names
     // the root-anchored glob.
     expect((await runTask('wslost')).filter((l) => l.includes('outputs'))).toEqual([
-      '[vx] app#wslost: outputs matched no files (nowhere/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
+      '[vx] app#wslost: outputs matched no files (nowhere/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it',
     ])
     // A wildcard is optional: one that matched beside one that did not says nothing.
     expect((await runTask('wsfound')).filter((l) => l.includes('outputs'))).toEqual([])
@@ -314,7 +314,7 @@ describe('cache declarations that match nothing', () => {
     ])
     expect(await runTask('cls', false)).toEqual([
       "[vx] app#cls: inputs matched no files (lib/[ab].txt) — the key will not change when this project's source does",
-      '[vx] app#cls: outputs matched no files (build/[ab]/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
+      '[vx] app#cls: outputs matched no files (build/[ab]/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it',
     ])
   })
 
