@@ -18,6 +18,10 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
+### `.vx/projects.lock` is version 10
+
+`.vx/projects.lock` is version 10: each task's JSON sits under its project, so two branches editing different projects merge cleanly. Run `vx lock` once and commit the rewritten lock.
+
 ### A glob that names its way into a nested project is refused
 
 `vx lock` refuses a glob that reaches into a nested project, such as a root `packages/**/*.log` over a member. Those files were skipped silently.
