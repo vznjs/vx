@@ -2790,7 +2790,7 @@ Default: every setting has a built-in value, and no plugin runs.
 - `'10GB'`: a size carries its unit too.
 - `VX_DEBUG_TIMING=1`: `debug.*`, `config.workerTimeout` and `run.outputLogs` are read before this file loads, so they have a variable (and a flag) only.
 - `outputs: { clean: false }`: only `outputs.clean` and `inputs.stability.strategy` reach a cache key. They key a task as if it declared the value it runs under.
-- `vx info` lists every setting not at its default, and where it came from.
+- `vx info` lists every setting a variable, this file or a plugin set, and where it came from.
 
 </div>
 </details>
@@ -3737,7 +3737,7 @@ The messages you meet most:
 - `env: { set: … }`, if dropped silently, would run the task without its variables.
 - `passthrough` on `exec.env` prints `tasks.build.exec.env has unknown field "passthrough"`, then `allowed: define, passThrough, secret`.
 - It ends `fix  use passThrough`: the nearest accepted spelling, when one is within two edits.
-- `output: ['dist/**']` on a task ends `— vx spells it \`outputs.files\``: a key another tool uses names where vx keeps it.
+- `output: ['dist/**']` on a task ends ``fix  use `outputs.files` ``: a key another tool uses names where vx keeps it.
 - On a task: `files`, `output`, `dependencies`, `env`, `passThroughEnv`, `persistent`, `continuous`, `interactive` and `outputLogs`.
 - Also on a task: `with`, `executor`, `options`, `cwd`, `parallelism`, `configurations`, and `command`, `cmd` or `script`.
 - On `exec`: `cmd`, `script`, `cwd`, `args`, `commands`, `parallel` and `shell`.

@@ -1202,7 +1202,7 @@ Flags that cannot go together:
 - In `vx run --affected main build`, `main` is a task. When no project
   declares it, the refusal names `--affected=main`.
 - `vx watch` and `vx show` say so too.
-- A word from a closed set says so first: `--dry json` is refused with its `=` form.
+- `--dry json` is refused, naming `--dry --format json`.
 
 Empty values:
 
@@ -5131,11 +5131,12 @@ Fields the task does not set are left out. An empty list prints `none`.
 - Fields shown: description, command, `dependsOn`, `timeout`, `retries`,
   `env.passThrough` / `env.define` / `env.secret`, `remote`, `platforms`,
   `sandbox`.
-- More fields: `persistent` and `interactive` (`yes` / `no`).
-- With `cache: true`: `inputs.files` / `.workspaceFiles` / `.env` /
-  `.tasks` / `.runtime` / `.workspaceRuntime`.
-- Also with `cache: true`: `outputs.files` / `.workspaceFiles` / `.clean`
-  (`yes` / `no`) and `inputs.stability.strategy` / `.severity`.
+- More fields: `persistent` (`yes`, or its `readyWhen`) and
+  `interactive` (`yes` / `no`).
+- When declared: `inputs.files` / `.workspaceFiles` / `.env` / `.tasks` /
+  `.runtime` / `.workspaceRuntime` / `.stability.strategy` / `.severity`.
+- Also when declared: `outputs.files` / `.workspaceFiles` / `.clean`
+  (`yes` / `no`).
 - `cache  yes`: the last row of a cached task.
 - A multi-line value, such as a command, continues under its first line.
 - `vx show <project> --format json`: `{ name, dir, defaultBuild, config }`, the config
