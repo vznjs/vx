@@ -29,17 +29,8 @@ you can do.
 
 ## Meet the workspace
 
-The `ui` kit and the `web` app from the last pages have company: an
+The `ui` kit and the `web` app from the last pages get company: an
 **admin** panel that also uses `ui`, and an **api** that stands alone.
-
-<FileTree>
-- .vx/workspace.ts
-- packages/
-  - ui/ vx.config.ts, src/
-  - web/ vx.config.ts, src/
-  - admin/ vx.config.ts, src/
-  - api/ vx.config.ts, src/
-</FileTree>
 
 ```mermaid
 flowchart LR
@@ -48,11 +39,53 @@ flowchart LR
   api["@demo/api"]
 ```
 
-An arrow reads "is used by". Every project declares the same three
-tasks: `build` runs `vite build`, `test` runs `vitest run`, `lint` runs
-`oxlint src`. `web` also has `e2e`, its end-to-end tests.
+An arrow reads "is used by". From the workspace root, add Vite, Vitest
+and the two projects:
 
-```ts title="packages/web/vx.config.ts" mark={6,13}
+```sh
+bun add -d vite vitest
+for p in admin api; do
+  mkdir -p packages/$p/src
+  cp packages/ui/vite.config.ts packages/$p/
+  echo "{ \"name\": \"@demo/$p\", \"type\": \"module\" }" > packages/$p/package.json
+  echo "export const name = '$p'" > packages/$p/src/index.ts
+done
+(cd packages/admin && bun add @demo/ui@workspace:*)
+```
+
+Give every project a test. This replaces `web`'s `API_URL` test:
+
+```sh
+for p in ui web admin api; do
+  printf "import { expect, test } from 'vitest'\n\ntest('adds', () => expect(1 + 1).toBe(2))\n" > packages/$p/src/index.test.ts
+done
+```
+
+`web` also gets an end-to-end test. It waits until the checkout page loads:
+
+```ts title="packages/web/e2e/checkout.test.ts"
+import { test } from 'vitest'
+
+test('checkout loads', async () => {
+  const up = () => fetch('http://localhost:5173/checkout').then((r) => r.ok, () => false)
+  while (!(await up())) await new Promise((r) => setTimeout(r, 500))
+}, 3_600_000)
+```
+
+<FileTree>
+- .vx/workspace.ts
+- packages/
+  - ui/ vx.config.ts, src/
+  - web/ vx.config.ts, src/, e2e/
+  - admin/ vx.config.ts, src/
+  - api/ vx.config.ts, src/
+</FileTree>
+
+Every project declares the same three tasks: `build` runs `vite build`,
+`test` runs `vitest run src`, `lint` runs `oxlint src`. Write this
+config in `ui`, `admin` and `api`:
+
+```ts title="packages/admin/vx.config.ts" mark={6,13}
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -66,7 +99,7 @@ export default defineProject({
     },
     test: {
       dependsOn: ['^build'],
-      exec: { command: 'vitest run' },
+      exec: { command: 'vitest run src' },
       inputs: { files: ['src/**'] },
       outputs: { files: [] },
       cache: true,
@@ -79,6 +112,37 @@ export default defineProject({
     },
   },
 })
+```
+
+`web` keeps its `build`, `dev` and `smoke`. Its `test` gets `^build` and
+`src`, and it adds `lint` and `e2e`:
+
+```ts title="packages/web/vx.config.ts" ins={2,3,8-16}
+    test: {
+      dependsOn: ['^build'],
+      exec: { command: 'vitest run src', env: { passThrough: ['API_URL'] } },
+      inputs: { files: ['src/**'], env: ['API_URL'] },
+      outputs: { files: [] },
+      cache: true,
+    },
+    lint: {
+      exec: { command: 'oxlint src' },
+      inputs: { files: ['src/**'] },
+      outputs: { files: [] },
+      cache: true,
+    },
+    e2e: {
+      exec: { command: 'vitest run e2e' },
+    },
+```
+
+`vitest run src` leaves `e2e/` to the `e2e` task. Lock the configs and
+commit, so a branch can compare with this later:
+
+```sh
+vx lock
+git add -A
+git commit -m "admin, api and tests"
 ```
 
 <Concept term="^build">
@@ -98,16 +162,23 @@ vx run build
 ```
 
 ```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94msuccess[0m [2minternal[0m   [38;2;203;213;225m189ms[0m   [38;2;147;197;253mvx[0m[2m:[0m[38;2;96;165;250mload[0m
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
 [36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[0m 2 modules transformed.
+[32m✓[0m 9 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[0m[36mindex.js  [0m[1;2m0.04 kB[0m[2m │ gzip: 0.06 kB[0m
+[2mdist/[0m[32mindex.html                 [0m[1;2m 0.45 kB[0m[2m │ gzip: 0.29 kB[0m
+[2mdist/[0m[2massets/[0m[32mvite-BF8QNONU.svg   [0m[1;2m 8.70 kB[0m[2m │ gzip: 1.60 kB[0m
+[2mdist/[0m[2massets/[0m[32mhero-CLDdwZDr.png   [0m[1;2m13.05 kB[0m
+[2mdist/[0m[2massets/[0m[35mindex-CsUDhMuy.css  [0m[1;2m 4.10 kB[0m[2m │ gzip: 1.46 kB[0m
+[2mdist/[0m[2massets/[0m[36mindex-CAoPt-vL.js   [0m[1;2m 4.05 kB[0m[2m │ gzip: 1.77 kB[0m
 
-[32m✓ built in 29ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(238ms)[0m [2msuccess[0m
+[32m✓ built in 128ms[39m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(633ms)[0m [2msuccess[0m
+
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
@@ -118,13 +189,16 @@ computing gzip size...
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a20a08-fb9f-74bc-9f3f-dbe43cbf6268
-  [2mtime    [0m  687ms [2m·[0m [2mmax 369ms[0m [2m·[0m [2mavg 304ms[0m [2m·[0m [2mmin 238ms[0m
+            run 01a20ae3-3389-7624-9011-cc495c7df8d4
+  [2mtime    [0m  1.56s [2m·[0m [2mmax 633ms[0m [2m·[0m [2mavg 630ms[0m [2m·[0m [2mmin 627ms[0m
 ```
 
 Look at `2 in run`. You asked for one build and got two: `@demo/ui`
 built first, because `web` waits on it. Only `web`'s log is shown; the
 tasks it needs run quietly unless they fail.
+
+The `vx:load` row is vx reading your configs. It shows when that takes
+over 150 ms.
 
 <Takeaway>build any project, with everything it needs, from inside its folder.</Takeaway>
 
@@ -138,8 +212,9 @@ declares it. Step through three runs of the same command:
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m210ms[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m214ms[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m480ms[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m657ms[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
+
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
@@ -150,8 +225,8 @@ declares it. Step through three runs of the same command:
             [2mlocal[0m [38;2;34;197;94m2✓[0m [38;2;56;189;248m2↑[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a20a08-ff47-722d-8655-ed02f8a7b23f
-  [2mtime    [0m  295ms [2m·[0m [2mmax 214ms[0m [2m·[0m [2mavg 212ms[0m [2m·[0m [2mmin 210ms[0m
+            run 01a20ae3-3acf-7572-9de2-aaa0877fc4a9
+  [2mtime    [0m  813ms [2m·[0m [2mmax 657ms[0m [2m·[0m [2mavg 569ms[0m [2m·[0m [2mmin 480ms[0m
 ```
 
 Only `api` and `admin` ran. `ui` and `web` were built in section 1, so
@@ -161,6 +236,10 @@ the `cache` line counts them as `2✓`.
 <Frame title="2. Again: nothing changed, nothing runs">
 
 ```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94msuccess[0m [2minternal[0m   [38;2;203;213;225m151ms[0m   [38;2;147;197;253mvx[0m[2m:[0m[38;2;96;165;250mload[0m
+
+
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [38;2;234;179;8m4 in run[0m [2m·[0m [2m4 total[0m
@@ -170,11 +249,11 @@ the `cache` line counts them as `2✓`.
             [2mlocal[0m [38;2;34;197;94m4✓[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a20a09-0155-7323-935b-2fd8173f6a63
-  [2mtime    [0m  25ms
+            run 01a20ae3-401b-72e7-8600-d91826b923cd
+  [2mtime    [0m  60ms
 ```
 
-`4✓` in 25 ms. Every output is already on disk.
+`4✓` in 60 ms. Every output is already on disk.
 
 </Frame>
 <Frame title="3. Delete every dist/, then run again">
@@ -185,6 +264,10 @@ vx run build --all
 ```
 
 ```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94msuccess[0m [2minternal[0m   [38;2;203;213;225m235ms[0m   [38;2;147;197;253mvx[0m[2m:[0m[38;2;96;165;250mload[0m
+
+
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
             [38;2;234;179;8m4 in run[0m [2m·[0m [2m4 total[0m
@@ -194,8 +277,8 @@ vx run build --all
             [2mlocal[0m [38;2;56;189;248m4↓[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a20a09-0242-767c-a294-c02f8049c5b0
-  [2mtime    [0m  46ms
+            run 01a20ae3-444e-7360-a6f8-8ecd09cef7dc
+  [2mtime    [0m  125ms
 ```
 
 `4↓`: vx put each `dist/` back from its cache instead of building.
@@ -311,16 +394,18 @@ vx run build --filter @demo/web --dry
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
-  [2mtasks    [0m  [38;2;203;213;225m2 planned · 2 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~391ms wall · ~391ms total execution[0m
+  [2mtasks   [0m  [38;2;203;213;225m2 planned · 2 cache hits (2 local)[0m
 ```
 
-Two rows, not one: `web` waits for `@demo/ui#build`, so it runs too. When
-you know the dependencies are built, add `--exclude-dependencies` to run
-only the picked tasks.
+Two rows, not one: `web` waits for `@demo/ui#build`, so it comes along
+too. Both are cache hits here, since section 2 built them.
+
+When you know
+the dependencies are built, add `--exclude-dependencies` to run only the
+picked tasks.
 
 <Takeaway>work on one app and trust that what it needs is built first.</Takeaway>
 
@@ -330,8 +415,16 @@ only the picked tasks.
 
 ## 4. Run only what changed
 
-You open a branch and edit `ui` and `api`. `--affected` runs only the
-tasks your change can reach. Add `--dry` to see the list first:
+You open a branch and edit `ui` and `api`:
+
+```sh
+git checkout -b feature
+echo "export const size = 'lg'" >> packages/ui/src/index.ts
+echo "export const port = 3000" >> packages/api/src/index.ts
+```
+
+`--affected` runs only the tasks your change can reach. Add `--dry` to
+see the list first:
 
 ```sh
 vx run test --affected=main --dry
@@ -350,7 +443,7 @@ vx run test --affected=main --dry
             [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
 
   [2mtasks    [0m  [38;2;203;213;225m5 planned · 5 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~369ms wall · ~369ms total execution · 4 tasks[0m
+  [2mpredicted[0m  [38;2;203;213;225m~627ms wall · ~627ms total execution · 4 tasks[0m
              [38;2;203;213;225mnever timed (+?)[0m
 ```
 
@@ -414,7 +507,7 @@ really runs. The orange dot is the edit; bright boxes are affected.
             [2maffected: packages/ui/src/index.ts changed (an input), via @demo/ui#build[0m
 
   [2mtasks    [0m  [38;2;203;213;225m3 planned · 3 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~607ms wall · ~821ms total execution[0m
+  [2mpredicted[0m  [38;2;203;213;225m~1.26s wall · ~1.74s total execution[0m
 ```
 
 </TabItem>
@@ -428,11 +521,11 @@ dependency and is a cache hit:
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m2[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
             [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [2maffected: packages/web/src/index.ts changed (an input)[0m
+            [2maffected: packages/web/src/main.js changed (an input)[0m
             [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
   [2mtasks    [0m  [38;2;203;213;225m2 planned · 1 cache hit (1 local) · 1 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~238ms wall · ~238ms total execution[0m
+  [2mpredicted[0m  [38;2;203;213;225m~633ms wall · ~633ms total execution[0m
 ```
 
 </TabItem>
@@ -475,8 +568,9 @@ vx run lint test --filter @demo/api
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m121ms[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;232;121;249mlint[0m
-            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m493ms[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m647ms[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;232;121;249mlint[0m
+            [38;2;34;197;94msuccess[0m [2mmiss[0m       [38;2;203;213;225m1.36s[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
+
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
@@ -487,8 +581,8 @@ vx run lint test --filter @demo/api
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a20a09-0623-70a5-9d19-ab7cefc9e009
-  [2mtime    [0m  551ms [2m·[0m [2mmax 493ms[0m [2m·[0m [2mavg 307ms[0m [2m·[0m [2mmin 121ms[0m
+            run 01a20ae3-591c-74f6-b473-fd1ddd8b2dc8
+  [2mtime    [0m  1.64s [2m·[0m [2mmax 1.36s[0m [2m·[0m [2mavg 1.00s[0m [2m·[0m [2mmin 647ms[0m
 ```
 
 Two more ways to name tasks, from anywhere in the workspace:
@@ -513,16 +607,19 @@ vx run @demo/web#test -- --reporter=dot
 ```
 
 ```ansi
-[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run --reporter=dot
+[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m $ vitest run src --reporter=dot
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/repo/packages/web[39m
 
 [33m[39m[32m·[39m
 
 [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
 [2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
-[2m   Start at [22m 20:11:34
-[2m   Duration [22m 107ms[2m (import 44%, transform 35%, worker 11%, tests 9%)[22m
+[2m   Start at [22m 00:10:05
+[2m   Duration [22m 547ms[2m (transform 51%, import 31%, tests 9%, worker 8%)[22m
 
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(374ms)[0m [2msuccess[0m
+[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(1.45s)[0m [2msuccess[0m
+
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
@@ -533,11 +630,11 @@ vx run @demo/web#test -- --reporter=dot
             [2mlocal[0m [38;2;56;189;248m2↑[0m
 
   [2minfo    [0m  4 workers [2m·[0m local cache
-            run 01a20a09-0915-77c4-b8c8-30d1a4bc3e67
-  [2mtime    [0m  629ms [2m·[0m [2mmax 374ms[0m [2m·[0m [2mavg 279ms[0m [2m·[0m [2mmin 183ms[0m
+            run 01a20ae3-60a8-767b-af39-1eac940875bb
+  [2mtime    [0m  2.39s [2m·[0m [2mmax 1.45s[0m [2m·[0m [2mavg 1.09s[0m [2m·[0m [2mmin 723ms[0m
 ```
 
-The first line shows what ran: `vitest run --reporter=dot`. The
+The first line shows what ran: `vitest run src --reporter=dot`. The
 forwarded words are part of the task's cache key, so a run with other
 flags is never replayed for this one.
 
@@ -549,6 +646,8 @@ vx run test --all -- --bail
 ```
 
 ```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;239;68;68mfailed[0m  [2minternal[0m   [38;2;203;213;225m326ms[0m   [38;2;147;197;253mvx[0m[2m:[0m[38;2;96;165;250mload[0m
 [38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mforwarded args (after --) go to one task in one[0m
           [38;2;203;213;225mproject, and this run asks for 4:[0m
           [38;2;203;213;225m@demo/admin#test, @demo/api#test, @demo/ui#test,[0m
@@ -588,6 +687,7 @@ Full rules: [argument forwarding](../../cli/run/#argument-forwarding---).
 You edit `ui` again. Before running, ask what would happen:
 
 ```sh
+echo "export const tone = 'dark'" >> packages/ui/src/index.ts
 vx run build --all --dry
 ```
 
@@ -595,19 +695,18 @@ vx run build --all --dry
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
             [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
             [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
             [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
 
-  [2mtasks    [0m  [38;2;203;213;225m4 planned · 1 cache hit (1 local) · 3 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~607ms wall · ~821ms total execution[0m
+  [2mtasks    [0m  [38;2;203;213;225m4 planned · 4 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~1.36s wall · ~2.49s total execution[0m
 ```
 
 Nothing ran. Read it row by row:
 
-- `api#build` is `cached local`: it comes from the cache, since `api`
-  did not change.
-- The other three `run`: `ui` changed, and `web` and `admin` build on it.
-- `predicted` adds up how long these tasks took last time: about 600 ms.
+- `ui`, `web` and `admin` run: `ui` changed, and both apps build on it.
+- `api#build` runs too: `api` changed in section 4, and no build ran since.
+- `predicted` adds up how long these tasks took last time: about 1.4 s.
 
 `--dry --format json` prints the same plan for scripts. The next page
 browses it.
@@ -704,75 +803,119 @@ Every detail: [`vx run`](../../cli/run/).
 
 <Deeper level="patterns" title="Stop at the first failure">
 
-`ui`'s test fails fast. The apps' tests take over a second. Pick a tab and watch.
+Break `ui`'s test: change its `toBe(2)` to `toBe(3)`. `--no-cache` makes
+every test run, as after a real change.
+
+The apps' tests start once `ui`
+is built, so they are still running when `ui`'s test fails. Pick a tab
+and watch.
 
 <Tabs>
 <TabItem label="Default">
 
 <Timeline
-  label="ui's test fails at 631 ms; web's and admin's tests keep running and pass at about 1.7 s"
-  end={1800}
+  label="ui's test fails at 1.7 s; the other tests keep running and pass at about 2.3 s"
+  end={2400}
   unit="ms"
   lanes={[
-    { task: '@demo/ui#test', bars: [{ from: 0, to: 631, tone: 'danger', label: 'failed' }] },
-    { task: '@demo/web#test', bars: [{ from: 0, to: 1670, tone: 'ok', label: 'success' }] },
-    { task: '@demo/admin#test', bars: [{ from: 0, to: 1700, tone: 'ok', label: 'success' }] },
+    { task: '@demo/ui#build', bars: [{ from: 11, to: 1025, tone: 'ok', label: 'success' }] },
+    { task: '@demo/ui#test', bars: [{ from: 10, to: 1699, tone: 'danger', label: 'failed' }] },
+    { task: '@demo/api#test', bars: [{ from: 0, to: 1647, tone: 'ok', label: 'success' }] },
+    { task: '@demo/admin#test', bars: [{ from: 1093, to: 2268, tone: 'ok', label: 'success' }] },
+    { task: '@demo/web#test', bars: [{ from: 1094, to: 2294, tone: 'ok', label: 'success' }] },
   ]}
-  marks={[{ at: 631, label: 'ui fails', tone: 'danger' }]}
+  marks={[{ at: 1699, label: 'ui fails', tone: 'danger' }]}
 />
 
-The apps run to the end. One run shows you **every** failure. Only the
+The other tests run to the end. One run shows you **every** failure. Only the
 tasks that need a failed one are skipped:
 
 ```sh
-vx run test --all
+vx run test --all --no-cache
 ```
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;239;68;68mfailed[0m  [2mno-cache[0m   [38;2;203;213;225m631ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [38;2;203;213;225m1.67s[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [38;2;203;213;225m1.70s[0m [38;2;234;179;8m◆[0m [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2minternal[0m   [38;2;203;213;225m151ms[0m   [38;2;147;197;253mvx[0m[2m:[0m[38;2;96;165;250mload[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [38;2;203;213;225m1.01s[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [38;2;203;213;225m1.64s[0m [38;2;234;179;8m◆[0m [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;239;68;68mfailed[0m  [2mno-cache[0m   [38;2;203;213;225m1.68s[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [38;2;203;213;225m1.17s[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [38;2;203;213;225m1.20s[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
 [2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m>[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 
-[2mpackages/ui $ vitest run[0m
+[2mpackages/ui $ vitest run src[0m
 
 [2m├─[0m [1mOUTPUT[0m [2m──────────────────────────────────────────────────[0m
- [31m❯[39m src/sum.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 7[2mms[22m[39m
-[31m   [31m×[31m sum[39m[32m 6[2mms[22m[39m
-[31m     → expected 1 to be 2 // Object.is equality[39m
-[36m [2m❯[22m src/sum.test.ts:[2m3:37[22m[39m
 
-[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(631ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/repo/packages/ui[39m
+
+ [31m❯[39m src/index.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 16[2mms[22m[39m
+[31m   [31m×[31m adds[39m[32m 8[2mms[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 00:10:15
+[2m   Duration [22m 811ms[2m (transform 35%, tests 28%, worker 20%, import 17%)[22m
+
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/index.test.ts[2m > [22madds
+[31m[1mAssertionError[22m: expected 2 to be 3 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 3[39m
+[31m+ 2[39m
+
+[36m [2m❯[22m src/index.test.ts:[2m3:34[22m[39m
+    [90m  1|[39m [35mimport[39m { expect[33m,[39m test } [35mfrom[39m [32m'vitest'[39m
+    [90m  2|[39m
+    [90m  3|[39m [34mtest[39m([32m'adds'[39m[33m,[39m () [33m=>[39m [34mexpect[39m([34m1[39m [33m+[39m [34m1[39m)[33m.[39m[34mtoBe[39m([34m3[39m))
+    [90m   |[39m                                  [31m^[39m
+    [90m  4|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+[0m
+
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(1.68s)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
 </TabItem>
 <TabItem label="--fail-fast">
 
 <Timeline
-  label="ui's test fails at 671 ms; vx stops both apps' tests at about 690 ms"
-  end={1800}
+  label="ui's test fails at 1.3 s; vx stops the other tests at about 1.4 s"
+  end={2400}
   unit="ms"
   lanes={[
-    { task: '@demo/ui#test', bars: [{ from: 0, to: 671, tone: 'danger', label: 'failed' }] },
-    { task: '@demo/web#test', bars: [{ from: 0, to: 688, tone: 'warn', label: 'aborted' }] },
-    { task: '@demo/admin#test', bars: [{ from: 0, to: 691, tone: 'warn', label: 'aborted' }] },
+    { task: '@demo/ui#build', bars: [{ from: 73, to: 718, tone: 'ok', label: 'success' }] },
+    { task: '@demo/ui#test', bars: [{ from: 72, to: 1324, tone: 'danger', label: 'failed' }] },
+    { task: '@demo/api#test', bars: [{ from: 0, to: 1347, tone: 'warn', label: 'aborted' }] },
+    { task: '@demo/web#test', bars: [{ from: 749, to: 1380, tone: 'warn', label: 'aborted' }] },
+    { task: '@demo/admin#test', bars: [{ from: 748, to: 1424, tone: 'warn', label: 'aborted' }] },
   ]}
-  marks={[{ at: 671, label: 'ui fails', tone: 'danger' }]}
+  marks={[{ at: 1324, label: 'ui fails', tone: 'danger' }]}
 />
 
-vx kills the apps' tests and ends the run. Their rows say `aborted`:
+vx kills every test still running and ends the run. Their rows say `aborted`:
 
 ```sh
-vx run test --all --fail-fast
+vx run test --all --no-cache --fail-fast
 ```
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;239;68;68mfailed[0m  [2mno-cache[0m   [38;2;203;213;225m671ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;249;115;22maborted[0m [2m—[0m          [38;2;203;213;225m688ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;249;115;22maborted[0m [2m—[0m          [38;2;203;213;225m691ms[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94msuccess[0m [2minternal[0m   [38;2;203;213;225m161ms[0m   [38;2;147;197;253mvx[0m[2m:[0m[38;2;96;165;250mload[0m
+            [38;2;34;197;94msuccess[0m [2mno-cache[0m   [38;2;203;213;225m637ms[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;239;68;68mfailed[0m  [2mno-cache[0m   [38;2;203;213;225m1.18s[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;249;115;22maborted[0m [2m—[0m          [38;2;203;213;225m1.28s[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;249;115;22maborted[0m [2m—[0m          [38;2;203;213;225m623ms[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;249;115;22maborted[0m [2m—[0m          [38;2;203;213;225m674ms[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
 ```
 
 </TabItem>
@@ -828,12 +971,27 @@ vx run @demo/web#e2e --timeout 3s
 ```
 
 ```ansi
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mTasks[0m[4m[58;2;110;118;129m     [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+            [38;2;34;197;94msuccess[0m [2minternal[0m   [38;2;203;213;225m302ms[0m   [38;2;147;197;253mvx[0m[2m:[0m[38;2;96;165;250mload[0m
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m>[0m $ vitest run e2e
 
-[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/repo/packages/web[39m
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90m/repo/packages/web[39m
 
 [1m[38;2;234;179;8m[vx][0m[2m timed out after 3000ms — killed (SIGTERM)[0m
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m──[0m [2m(3.02s)[0m [1m[38;2;239;68;68mfailed (timed out, exit 143)[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253me2e[0m [2m──[0m [2m(3.10s)[0m [1m[38;2;239;68;68mfailed (timed out, exit 143)[0m
+
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                           [2mvx 0.0.0[0m
+  [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰[0m[2m▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱[0m
+            [38;2;234;179;8m1 in run[0m [2m·[0m [2m4 total[0m
+  [2mtasks   [0m  [38;2;239;68;68m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [1m[38;2;239;68;68m1 failed[0m [2m·[0m [2m1 total[0m
+  [2mcache   [0m  [2m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
+            [2mlocal[0m [2m1∅[0m
+
+  [2minfo    [0m  4 workers [2m·[0m local cache
+            run 01a20ae3-76d5-7336-ac38-c763887ffc36
+  [2mtime    [0m  3.39s
 ```
 
 Read the last words: `failed (timed out)`. vx exits `1`, and a timed-out
@@ -869,7 +1027,7 @@ vx run < /dev/null
 ```
 
 ```ansi
-[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mmissing task name (stdin is not a TTY, so no picker; tasks here: build, lint, test)[0m
+[38;2;239;68;68m✗[0m [1mvx run[0m  [38;2;203;213;225mmissing task name (stdin is not a TTY, so no picker; tasks here: build, dev, e2e, lint, smoke, test)[0m
 
   [2msee vx run --help[0m
 ```

@@ -90,7 +90,7 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
 // local hit, ui blocks two). The sample came from a run with history, so
 // its `usual` times and `predicted` line are read past.
 describe('the Running tasks page shows what --dry prints', () => {
-  it('its plan is formatPlanText on one local hit and three misses', () => {
+  it('its plan is formatPlanText on four misses', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
     const task = (id: string, cacheStatus: 'miss' | 'hit-local', deps: string[] = []) => ({
       node: {
@@ -107,7 +107,7 @@ describe('the Running tasks page shows what --dry prints', () => {
       tasks: [
         task('@demo/admin#build', 'miss', ['@demo/ui#build']),
         task('@demo/ui#build', 'miss'),
-        task('@demo/api#build', 'hit-local'),
+        task('@demo/api#build', 'miss'),
         task('@demo/web#build', 'miss', ['@demo/ui#build']),
       ],
     } as unknown as RunPlan
