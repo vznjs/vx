@@ -13,7 +13,7 @@ import {
 } from 'node:fs'
 import { chmod, mkdir, rename, rm, symlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
-import { isIndexFull } from '../index-db/index.js'
+import { isIndexFull, recordEntryPasses } from '../index-db/index.js'
 import {
   UserError,
   isDiskFull,
@@ -734,6 +734,7 @@ async function dropUnchanged(
       }
     }
     ix.deleteBlob.run(hash)
+    recordEntryPasses(ix.db, [hash])
     ix.deleteEntryRow.run(hash)
     ix.outputs.forget([hash])
     return true

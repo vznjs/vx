@@ -2324,8 +2324,7 @@ CREATE TABLE run_ids (
 -- out as its `runs` rows, ids `first_id` on, which the run reserved, and
 -- the flaky record's first hit of a key; every reader of `runs` calls it
 -- first, `vx last` and `vx why` on opening. A plan reads `hit_keys` where
--- it lies. A failing run writes out only its failed keys' first kept hit
--- (`expandHitOutcomes`), so it never pays for every past run.
+-- it lies. A failing run reads none of them: see `task_outcomes`.
 CREATE TABLE run_hits (
   run        INTEGER PRIMARY KEY,  -- the run's run_ids row
   first_id   INTEGER NOT NULL,     -- the runs id of its first hit
@@ -2602,7 +2601,13 @@ CREATE UNIQUE INDEX task_durations_remote
 -- executed success or failure that names its key (keyed, cached, not run
 -- behind a failure), and a key's first hit: a later hit replays a pass on
 -- record, so a warm run on passed keys writes no row (one index probe,
--- ~1 ms per 1,000 hits). Pruned by age with the run history.
+-- ~1 ms per 1,000 hits). A local hit is written when a reader writes the
+-- kept hits out; until then its entry stands for it: a failure, and an
+-- entry being deleted, write the key's entry as a pass at its created_at
+-- where the key has none (`recordEntryPasses`). A remote hit, whose entry
+-- may not be saved here, is written as the run keeps it. A key's rows are
+-- read in recorded_at order: worktrees write them late. Pruned by age with
+-- the run history.
 CREATE TABLE task_outcomes (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   project     TEXT NOT NULL,

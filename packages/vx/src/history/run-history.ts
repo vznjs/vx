@@ -4,7 +4,7 @@
 // its statements over the store's handle; `Cache` delegates.
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
-import { lazyStatement } from '../index-db/index.js'
+import { lazyStatement, recordEntryPasses } from '../index-db/index.js'
 import { decodeHits, hitRecords, type PackedHits } from './hit-rows.js'
 
 import { isMeasure, splitTaskId } from '../util/index.js'
@@ -135,49 +135,6 @@ export function expandHits(db: Database): number {
   }).expandHits()
 }
 /**
- * The flaky record's row for each of `hashes` whose only pass is a kept
- * hit: its first, written as `expandHits` would. What a failure of a key,
- * or the question whether it passed, needs of the kept hits, and nothing
- * more: their `runs` rows wait for a reader. A key that passed by running
- * costs one index probe; one only a hit passed reads kept rows until its
- * first.
- */
-export function expandHitOutcomes(db: Database, hashes: readonly string[]): void {
-  if (hashes.length === 0 || expanded.has(db)) return
-  if (db.query('SELECT 1 FROM main.run_hits LIMIT 1').get() === null) return
-  const asked = [...new Set(hashes)]
-  const passed = new Set(
-    (db.query(PASSED_HASHES).all(JSON.stringify(asked)) as { hash: string }[]).map((r) => r.hash),
-  )
-  const first = db.query(
-    `SELECT h.started_at AS startedAtMs, h.nums, k.keys,
-       (SELECT run_id FROM main.run_ids WHERE id = h.run) AS runId
-     FROM main.run_hits h JOIN main.hit_keys k ON k.id = h.keys
-     WHERE instr(k.keys, ?) > 0 ORDER BY h.run`,
-  )
-  const firsts: RunRecord[] = []
-  for (const hash of asked) {
-    if (passed.has(hash)) continue
-    for (const kept of first.iterate(`"${hash}"`) as Iterable<{
-      startedAtMs: number
-      nums: Uint8Array
-      keys: string
-      runId: string
-    }>) {
-      const hit = hitRecords(decodeHits(kept), kept).find((r) => r.hash === hash)
-      if (hit === undefined) continue
-      firsts.push(hit)
-      break
-    }
-  }
-  if (firsts.length === 0) return
-  const history = new RunHistory(db, () => {
-    throw new Error('a hit has no value to digest')
-  })
-  db.transaction(() => history.recordOutcomes(firsts)).immediate()
-}
-
-/**
  * The connections with no kept hits to write out, as far as this process
  * knows: asked once, then again only after this connection keeps some
  * (CLAUDE.md "once per run": another process's hits wait for its next reader).
@@ -240,7 +197,7 @@ export class RunHistory {
    * that pass out past the failure and read a relapse as a recovery.
    */
   private beforeFailures(runs: readonly RunRecord[]): void {
-    expandHitOutcomes(
+    recordEntryPasses(
       this.db,
       runs.filter((r) => r.status === 'failed' && keyed(r)).map((r) => r.hash!),
     )
@@ -271,6 +228,20 @@ export class RunHistory {
         'INSERT INTO main.run_hits(run, first_id, started_at, keys, nums) VALUES (?, ?, ?, ?, ?)',
       )
       .run(this.runKey(hits.runId), last + 1, hits.startedAtMs, keys, hits.nums)
+    if (hits.remote.length > 0)
+      this.insertOutcomes(
+        hits.remote.map(
+          ([project, task, hash, startMs]) =>
+            ({
+              project,
+              task,
+              hash,
+              status: 'cache-hit-remote',
+              cacheHit: true,
+              startedAt: hits.startedAtMs + startMs,
+            }) as RunRecord,
+        ),
+      )
   }
 
   /**
@@ -376,11 +347,6 @@ export class RunHistory {
    * The flaky record's rows: every executed outcome, and a key's first hit,
    * in the order given (a batch may hold one key's history).
    */
-  /** `insertOutcomes` inside the caller's transaction: `expandHitOutcomes`. */
-  recordOutcomes(runs: readonly RunRecord[]): void {
-    this.insertOutcomes(runs)
-  }
-
   private insertOutcomes(runs: readonly RunRecord[]): void {
     const rows = runs.filter(
       (r) => keyed(r) && (isHit(r) || r.status === 'success' || r.status === 'failed'),

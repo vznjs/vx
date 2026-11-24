@@ -6,8 +6,8 @@
 // of a repo judges a key on what all of them saw.
 
 import type { Database } from 'bun:sqlite'
-import { KEYED_RUNS_SQL } from '../index-db/index.js'
-import { expandHitOutcomes, expandHits } from './run-history.js'
+import { KEYED_RUNS_SQL, recordEntryPasses } from '../index-db/index.js'
+import { expandHits } from './run-history.js'
 import { isCacheHit, TASK_STATUSES } from '../graph/index.js'
 
 // SQL hit set derived from the predicate — never a hand-typed list and never
@@ -174,10 +174,11 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
     (c) => c.status === 'failed' || c.attempts > 1 || everFailed.has(keyOf(c)),
   )
   if (suspects.length === 0) return []
-  // A kept hit is a pass of its key: in the record before the passes are counted.
-  expandHitOutcomes(
+  // A kept hit is a pass of its key, which its entry stands for. Not a
+  // pass's: its entry is this run's own save, its row not yet written.
+  recordEntryPasses(
     db,
-    suspects.map((c) => c.hash),
+    suspects.filter((c) => c.status === 'failed').map((c) => c.hash),
   )
   const counts = new Map<string, { passes: number; failures: number; relapses: number }>()
   chunked(suspects, (chunk) => {
@@ -216,8 +217,9 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
  * a retry. Asked only after a failure, so a green run never reads it.
  */
 export function knownFlaky(db: Database, project: string, task: string, hash: string): boolean {
-  // Another key's kept pass went into the record before its failure did.
-  expandHitOutcomes(db, [hash])
+  // A kept hit is a pass of its key, which its entry stands for; another
+  // key's went into the record before its failure did.
+  recordEntryPasses(db, [hash])
   const passed = db
     .query(
       `SELECT 1 FROM ${OUTCOMES} WHERE hash = ? AND project = ? AND task = ?

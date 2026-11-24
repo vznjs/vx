@@ -16,6 +16,7 @@ import {
   HIT,
   HitBatch,
   hitRecords,
+  detectFlaky,
   knownFlaky,
   listRuns,
   localHistory,
@@ -81,6 +82,13 @@ const failed = (i: number, runId: string): RunRecord => ({
   cached: true,
 })
 
+/** The entry a pass of `p${i}`'s key saved at `at`. */
+const entryOf = (db: Database, i: number, at: number): void => {
+  db.query(
+    `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at)
+     VALUES (?, ?, 'build', 'x', 0, 1, 1, ?, ?)`,
+  ).run(hashOf(i), `p${i}`, at, at)
+}
 const count = (db: Database, table: string): number =>
   (db.query(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
 const all = (db: Database, sql: string): unknown[] => db.query(sql).all()
@@ -98,7 +106,8 @@ it('writes out the rows, and the flaky record, a run wrote for its hits before',
   expect(expandHits(indexDb(kept))).toBe(40)
   for (const sql of [
     'SELECT * FROM main.runs ORDER BY id',
-    'SELECT * FROM task_outcomes ORDER BY id',
+    // A remote hit is in the record as the run keeps it, before the rest.
+    'SELECT project, task, hash, status, attempts, recorded_at FROM task_outcomes ORDER BY hash',
     'SELECT * FROM task_durations ORDER BY id',
   ])
     expect(all(indexDb(kept), sql)).toEqual(all(indexDb(direct), sql))
@@ -154,9 +163,12 @@ it('stores the keys of runs that hit the same tasks once', () => {
 
 // The flaky record orders a key's outcomes by when they were written: a
 // kept pass written out after a later failure read as a recovery.
-it("writes a failed key's kept pass into the flaky record before the failure", () => {
+// A key's entry is saved from a pass and serves every hit a run keeps of
+// it, so the entry stands for those hits in the flaky record.
+it("writes a failed key's entry into the flaky record as its pass, before the failure", () => {
   const cache = new Cache(path.join(dir, 'cache'))
   const db = indexDb(cache)
+  entryOf(db, 2, T + 1)
   runHistory(cache).recordRuns([], undefined, hitsOf('run-1', 4))
   runHistory(cache).recordRuns([failed(2, 'run-2')])
   expect(
@@ -165,7 +177,7 @@ it("writes a failed key's kept pass into the flaky record before the failure", (
       `SELECT status, recorded_at AS at FROM task_outcomes WHERE hash = '${hashOf(2)}' ORDER BY id`,
     ),
   ).toEqual([
-    { status: 'cache-hit', at: T + 2 },
+    { status: 'success', at: T + 1 },
     { status: 'failed', at: T + 50 },
   ])
   // Written out later, the hits add no second pass of the key.
@@ -190,32 +202,59 @@ it('reads a key that failed after a pass written out late as flaky', () => {
   b.close()
 })
 
-it('reads a kept hit as a pass of its key', () => {
+it('reads a key with an entry as passed', () => {
   const cache = new Cache(path.join(dir, 'cache'))
+  entryOf(indexDb(cache), 3, T + 1)
   runHistory(cache).recordRuns([], undefined, hitsOf('run-1', 4))
   expect(knownFlaky(indexDb(cache), 'p3', 'build', hashOf(3))).toBe(true)
   cache.close()
 })
 
+// A remote hit's entry may never be saved here (`--cache local:r`).
+it('writes a remote hit into the flaky record as the run keeps it', () => {
+  const cache = new Cache(path.join(dir, 'cache'))
+  runHistory(cache).recordRuns([], undefined, hitsOf('run-1', 4))
+  runHistory(cache).recordRuns([], undefined, hitsOf('run-2', 4, T + 10))
+  expect(
+    all(indexDb(cache), 'SELECT project, status, recorded_at AS at FROM task_outcomes'),
+  ).toEqual([{ project: 'p1', status: 'cache-hit-remote', at: T + 1 }])
+  expect(knownFlaky(indexDb(cache), 'p1', 'build', hashOf(1))).toBe(true)
+  cache.close()
+})
+
+// Its hits stay kept, and a key that failed after them still relapsed.
+it('writes an evicted entry into the flaky record as its pass', async () => {
+  const cache = new Cache(path.join(dir, 'cache'))
+  const db = indexDb(cache)
+  entryOf(db, 2, T - 7_200_000)
+  runHistory(cache).recordRuns([], undefined, hitsOf('run-1', 4))
+  await cache.prune({ maxBytes: 1 << 30 })
+  expect(count(db, 'entries')).toBe(0)
+  runHistory(cache).recordRuns([failed(2, 'run-2')])
+  expect(knownFlaky(db, 'p2', 'build', 'another-key')).toBe(true)
+  cache.close()
+})
+
 // A failing run wrote out every hit every run had kept since the last
-// reader: 10,000 green runs of 200 tasks made one red run wait 35-46 s.
-// It writes none of them now, however many runs kept some.
-it('a failing run writes out no kept hits, however many runs kept them', () => {
-  const written = (runs: number): number[] => {
-    const cache = new Cache(path.join(dir, `c${runs}`))
-    const db = indexDb(cache)
-    for (let i = 0; i < runs; i++)
-      runHistory(cache).recordRuns([], undefined, hitsOf(`run-${i}`, 4, T + i))
-    knownFlaky(db, 'p2', 'build', hashOf(2))
-    runHistory(cache).recordRuns([failed(2, 'run-red')])
-    const out = [count(db, 'main.runs'), count(db, 'main.run_hits'), count(db, 'task_outcomes')]
-    cache.close()
-    return out
-  }
-  expect([written(3), written(60)]).toEqual([
-    [1, 3, 2],
-    [1, 60, 2],
+// reader: 10,000 green runs of 200 tasks made one red run wait 35-46 s,
+// and then still read each run's key list for a key that never passed.
+it('a failing run reads no kept hits, however many runs kept them', () => {
+  const cache = new Cache(path.join(dir, 'cache'))
+  const db = indexDb(cache)
+  for (let i = 0; i < 50; i++)
+    runHistory(cache).recordRuns([], undefined, hitsOf(`run-${i}`, 4, T + i))
+  const asked: string[] = []
+  const query = db.query.bind(db)
+  db.query = ((sql: string) => (asked.push(sql), query(sql))) as typeof db.query
+  knownFlaky(db, 'p2', 'build', hashOf(2))
+  detectFlaky(db, [
+    { project: 'p2', task: 'build', hash: hashOf(2), status: 'failed', attempts: 1 },
   ])
+  runHistory(cache).recordRuns([failed(2, 'run-red')])
+  db.query = query
+  expect(asked.filter((sql) => /run_hits|hit_keys/.test(sql))).toEqual([])
+  expect([count(db, 'main.runs'), count(db, 'main.run_hits')]).toEqual([1, 50])
+  cache.close()
 })
 
 it('marks a kept hit whose upload failed after the run', () => {

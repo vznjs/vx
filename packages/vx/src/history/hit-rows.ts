@@ -155,6 +155,12 @@ export interface PackedHits {
   keys: string
   /** zstd of a u32 count, the hits' numbers, then the rare fields as JSON. */
   nums: Uint8Array
+  /**
+   * The keyed remote hits, ms into the run: the flaky record's passes no
+   * entry here may stand for (`--cache local:r`), written as the run keeps
+   * them. Not stored.
+   */
+  remote: [project: string, task: string, hash: string, startMs: number][]
 }
 
 /** Every batch of a run as one stored value. */
@@ -187,6 +193,14 @@ export function encodeHits(batches: readonly HitRows[]): PackedHits {
     keys[i] = [strs[s]!, strs[s + 1]!, strs[s + 2] ?? null, strs[s + 3] ?? null]
   }
   for (const r of rare) r[0] = placed[r[0]]!
+  const blocked = new Set(rare.filter((r) => r[1] === 'blockedBy').map((r) => r[0]))
+  const remote: PackedHits['remote'] = []
+  for (let i = 0, at = 0; i < n; i++, at += WIDTH) {
+    const [project, task, hash] = keys[i]!
+    if (nums[at + HIT.remote] !== 1 || nums[at + HIT.cached] !== 1) continue
+    if (nums[at + HIT.cacheHit] !== 1 || !hash || blocked.has(i)) continue
+    remote.push([project!, task!, hash!, Math.round(nums[at + HIT.startNs]! / 1e6)])
+  }
   rare.sort((a, b) => a[0] - b[0])
   const text = new TextEncoder().encode(JSON.stringify(rare))
   const head = new Uint8Array(new Uint32Array([n]).buffer)
@@ -195,7 +209,12 @@ export function encodeHits(batches: readonly HitRows[]): PackedHits {
   raw.set(head, 0)
   raw.set(numBytes, head.length)
   raw.set(text, head.length + numBytes.length)
-  return { n, keys: JSON.stringify(keys), nums: Bun.zstdCompressSync(raw, { level: 1 }) }
+  return {
+    n,
+    keys: JSON.stringify(keys),
+    nums: Bun.zstdCompressSync(raw, { level: 1 }),
+    remote,
+  }
 }
 
 /** Row indices by project, then task: one task is one hit in a run. */

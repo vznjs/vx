@@ -257,6 +257,10 @@ The same rule, applied at the end of every run and by the doctor:
   this workspace's `runs`: every worktree of a repo judges a key on what
   all of them saw. It keeps every executed outcome that names its key and
   a key's first hit; a later hit replays a pass on record and adds none.
+  Until the kept hits are written out, a key's entry stands for them:
+  before a failure is judged, `recordEntryPasses` (index-db) writes it as
+  a pass, so no failure reads the kept hits. A key's rows count in
+  recorded_at order, not row order.
 - `knownFlaky(db, project, task, hash)` — asked by the retry loop
   (`execute-task.ts`) after a failure only, so a green run never reads it:
   this key passed before, or a key of the task failed after it passed, or

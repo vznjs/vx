@@ -33,6 +33,9 @@ export const KEYED_RUNS_SQL = "hash <> ''"
 export function inHashes(hashes: readonly string[]): { test: string; params: string[] }
 // The 30-day retention of run history, memo and remote-hit rows.
 export function pruneHistoryRows(db: Database, cutoff: number): number
+// Each hash's entry as a pass in the flaky record where the key has none:
+// the entry stands for the hits a run keeps packed (history, cache prune).
+export function recordEntryPasses(db: Database, hashes: readonly string[]): void
 // A statement prepared on its first run or get.
 export function lazyStatement(db: Database, sql: string): ReturnType<Database['prepare']>
 export function closeDb(db: Database): void
