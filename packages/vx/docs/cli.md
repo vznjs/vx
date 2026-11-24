@@ -4988,13 +4988,14 @@ vx show @demo/web#build
 **The project list.** With no target, `vx show` prints one row per
 project: its name, its folder from the root and its task count.
 
-| The tasks cell says                    | Means                                              |
-| -------------------------------------- | -------------------------------------------------- |
-| `3 tasks`                              | the project's config declares three tasks          |
-| `3 tasks, default build`               | it declares no `build`, so it gets the default one |
-| `2 tasks from plugins (no vx config)`  | a plugin gave the tasks; there is no config        |
-| `1 task, default build (no vx config)` | a configured project depends on it                 |
-| `no vx config`                         | a package with no config and no tasks              |
+| The tasks cell says                                     | Means                                              |
+| ------------------------------------------------------- | -------------------------------------------------- |
+| `3 tasks`                                               | the project's config declares three tasks          |
+| `3 tasks, default build`                                | it declares no `build`, so it gets the default one |
+| `2 tasks from plugins (no vx config)`                   | a plugin gave the tasks; there is no config        |
+| `3 tasks, 2 from plugins, default build (no vx config)` | a plugin gave two; `build` is the default          |
+| `1 task, default build (no vx config)`                  | a configured project depends on it                 |
+| `no vx config`                                          | a package with no config and no tasks              |
 
 A `tags` column appears when any project has tags.
 

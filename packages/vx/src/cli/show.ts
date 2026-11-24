@@ -412,7 +412,9 @@ function renderList(
           ? 'no vx config'
           : r.onlyDefault
             ? `${count}, default build (no vx config)`
-            : `${count} from plugins (no vx config)`
+            : r.hasDefault
+              ? `${count}, ${n - 1} from plugins, default build (no vx config)`
+              : `${count} from plugins (no vx config)`
     return [ui.id(r.name), r.dir, tasks, ...(anyTags ? [r.tags.join(', ')] : [])]
   })
   const columns = ['project', 'dir', 'tasks', ...(anyTags ? ['tags'] : [])]

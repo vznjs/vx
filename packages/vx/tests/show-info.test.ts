@@ -449,7 +449,8 @@ describe('vx show under a `project` plugin (e2e)', () => {
       // `(no vx config)` for a package `vx run` would happily run.
       const r = await vx(root, ['show'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('2 tasks from plugins (no vx config)')
+      // gen is the plugin's; build is the default, from no plugin.
+      expect(r.out).toContain('2 tasks, 1 from plugins, default build (no vx config)')
       expect(r.out).not.toMatch(/ {2}no vx config$/m)
       const one = await vx(root, ['show', 'one#gen'])
       expect(one.code).toBe(0)
