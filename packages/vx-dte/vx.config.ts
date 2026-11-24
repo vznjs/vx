@@ -80,6 +80,7 @@ export default defineProject({
       dependsOn: ['install'],
       inputs: {
         files: [
+          '*.ts',
           'src/**',
           'tests/**',
           'scripts/**',

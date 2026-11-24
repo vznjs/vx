@@ -236,6 +236,7 @@
       ],
       "inputs": {
         "files": [
+          "*.ts",
           "src/**",
           "tests/**",
           "package.json",

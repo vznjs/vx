@@ -19,6 +19,7 @@ export default defineProject({
       dependsOn: ['install'],
       inputs: {
         files: [
+          '*.ts',
           'plugins/**',
           'fingerprint/**',
           'migrators/**',

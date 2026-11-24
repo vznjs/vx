@@ -12,8 +12,8 @@
 #ybn9dgi
 {"cache":true,"dependsOn":["install"],"description":"oxfmt --check (no rewrite; CI-safe)","exec":{"command":"oxfmt --check .","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["**/*","package.json"]},"outputs":{"files":[]}}
 	lint.oxfmt
-#p1qzmmj
-{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
+#13z2pjs
+{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
 	lint.oxlint
 #lewu2os
 {"dependsOn":["test.*"]}
@@ -32,7 +32,6 @@
 #ybn9dgi
 	lint.oxfmt
 #13z2pjs
-{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
 	lint.oxlint
 #lewu2os
 	test
@@ -48,8 +47,8 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#36wy794
-{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#3gvykz9
+{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
 	lint.oxlint
 #lewu2os
 	test
@@ -98,7 +97,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#36wy794
+#3gvykz9
 	lint.oxlint
 #lewu2os
 	test
@@ -173,7 +172,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#36wy794
+#3gvykz9
 	lint.oxlint
 #lewu2os
 	test
@@ -634,7 +633,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#36wy794
+#3gvykz9
 	lint.oxlint
 #lewu2os
 	test
@@ -695,8 +694,8 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#3idhabs
-{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["plugins/**","fingerprint/**","migrators/**","distribute/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
+#1mb453b
+{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","plugins/**","fingerprint/**","migrators/**","distribute/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
 	lint.oxlint
 #lewu2os
 	test
@@ -725,7 +724,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#36wy794
+#3gvykz9
 	lint.oxlint
 #lewu2os
 	test
@@ -747,7 +746,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#p1qzmmj
+#13z2pjs
 	lint.oxlint
 #lewu2os
 	test
@@ -766,7 +765,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#36wy794
+#3gvykz9
 	lint.oxlint
 #lewu2os
 	test
@@ -782,7 +781,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#36wy794
+#3gvykz9
 	lint.oxlint
 #lewu2os
 	test
@@ -821,7 +820,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#p1qzmmj
+#13z2pjs
 	lint.oxlint
 #lewu2os
 	test
@@ -838,8 +837,8 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#38uv90w
-{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["src/**","tests/**","scripts/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
+#2x37nrr
+{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","scripts/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
 	lint.oxlint
 #lewu2os
 	test
@@ -904,7 +903,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#p1qzmmj
+#13z2pjs
 	lint.oxlint
 #lewu2os
 	test
