@@ -58,6 +58,7 @@ beforeAll(async () => {
   slow: { exec: { command: ${JSON.stringify(wait)} } },
   after: { exec: { command: 'true' }, dependsOn: ['slow'] },
   all: { dependsOn: ['quick', 'lost', 'after'] },
+  serve: { exec: { command: 'echo up; sleep 60', persistent: { readyWhen: 'up' } } },
 } }
 `,
   )
@@ -271,4 +272,33 @@ it('a follower whose run is killed before its end exits 1, not 0', async () => {
     run.kill()
     writeFileSync(go(), '')
   }
+}, 60_000)
+
+// A run whose work is done but whose server is the point (`vx run dev`)
+// released its socket with the lock and read "no run in progress" while
+// the server ran.
+it('a run holding only its server is in progress, the server running', async () => {
+  const run = Bun.spawn({
+    cmd: [process.execPath, BIN, 'run', 'a#serve'],
+    cwd: root,
+    env,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  try {
+    const reader = run.stdout.getReader()
+    let text = ''
+    while (!text.includes('running')) {
+      const { value, done } = await reader.read()
+      if (done) break
+      text += new TextDecoder().decode(value)
+    }
+    const l = await liveWhen((s) => s.tasks.length > 0)
+    expect(l.live.pid).toBe(run.pid)
+    expect(l.tasks).toEqual([expect.objectContaining({ taskId: 'a#serve', status: 'running' })])
+  } finally {
+    run.kill()
+    await run.exited
+  }
+  expect(existsSync(liveSocketPath(root))).toBe(false)
 }, 60_000)

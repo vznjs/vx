@@ -6313,6 +6313,8 @@ success  @demo/web#test  1.20s
 - Nothing is written.
 - The run listens on a unix socket beside its run lock while it holds
   the lock.
+- A run that holds its server in the foreground (`vx run dev`) still answers
+  after it frees the lock, until the server ends. The server reads `running`.
 - The socket sits in this user's own temp directory, so no other user
   reaches it.
 - The run keeps only when each task started. The snapshot is built when

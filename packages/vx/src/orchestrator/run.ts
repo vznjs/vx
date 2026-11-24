@@ -813,6 +813,8 @@ async function runOnBus(
   // the touch record, and LRU `vx cache clean` could evict entries the run just
   // hit. Once only: the normal path closes before a persistent task's wait.
   let live: ReturnType<typeof serveLive> | undefined
+  /** A foreground server outlives the lock: `vx last --live` still answers until it ends. */
+  let liveOutlivesLock = false
   let unfold = (): void => {}
   let cacheClosed = false
   // Stops the snapshots the run takes while it goes; every exit, before the close.
@@ -825,7 +827,7 @@ async function runOnBus(
     await stopSnapshots?.()
     await prepared.localCache.stopCheckpoints()
     cache.close()
-    live?.unlisten()
+    if (!liveOutlivesLock) live?.unlisten()
     // Released with the handle, on every exit (see run-lock.ts). Awaited:
     // fire-and-forget lost the race with the CLI's exit and left a lock
     // directory per run in the temp dir.
@@ -840,6 +842,10 @@ async function runOnBus(
     startedAt: Date.now(),
     nodes: () => nodes.values(),
     warnings: () => warned,
+    serving: (id) => {
+      const child = persistentRegistry.get(id)
+      return child !== undefined && !hasEnded(child)
+    },
   })
   try {
     // From the lock's ask, so a wait for another run counts. One instant with
@@ -1985,6 +1991,7 @@ async function runOnBus(
     telemetry?.dispose()
     await teardown(undefined, report)
     await bundling
+    liveOutlivesLock = keepAlive.children.length > 0 && !hold
     await step('vx:close', closeCache)
     mark('close')
     printTimings()
@@ -2123,6 +2130,7 @@ async function runOnBus(
     log.runEnd?.()
     log.runDone?.()
     unfold()
+    live?.unlisten()
     live?.dispose()
     stop.detach()
     // Plugins installed at the top of run() get their bus subscriptions
