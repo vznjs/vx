@@ -122,7 +122,7 @@ compiled binary no second copy of core transpiled from `node_modules`
 `vx` is shipped two ways:
 
 1. **As a Bun-runnable script** — `bin: "src/bin.ts"` in `package.json`,
-   shebang `#!/usr/bin/env -S bun --no-env-file --no-install`. Bun runs the
+   shebang `#!/usr/bin/env -S bun --no-env-file --no-install --config=/dev/null`. Bun runs the
    TypeScript directly.
 2. **As a standalone binary** — `bun build --compile
 --no-compile-autoload-dotenv --no-compile-autoload-bunfig
@@ -141,8 +141,10 @@ the shebang, and Bun loads a `.env` there.
 
 `--no-compile-autoload-bunfig` keeps the binary from reading the working
 directory's `bunfig.toml`: its `preload` ran inside vx, even for
-`vx --version` (`tests/compiled-bunfig.test.ts`). The script form still
-reads it, as any `bun` does.
+`vx --version` (`tests/compiled-bunfig.test.ts`). The script form's
+`--config=/dev/null`, in the shebang and the npm launcher's source
+fallback, does the same (`tests/bunfig-ignored.test.ts`). A task's own
+`bun` still reads it.
 
 `--compile-autoload-package-json` makes the binary read an on-disk
 package's `package.json` when it resolves one. Without it a compiled

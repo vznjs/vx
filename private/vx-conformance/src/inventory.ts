@@ -1013,6 +1013,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'bun-floor',
     'bun-test-import-descriptors',
     'bun-version',
+    'bunfig-ignored',
     'cache-baseline',
     'cache-close-old-bun',
     'cache-close.unsafe',

@@ -1,4 +1,4 @@
-#!/usr/bin/env -S bun --no-env-file --no-install
+#!/usr/bin/env -S bun --no-env-file --no-install --config=/dev/null
 // Wrapped in an explicit async main so `bun build --compile` accepts
 // the file. The compile target doesn't allow top-level await.
 import { handOff, localVx, retierJit, upgradesOnlyItself, vxPath } from './handoff.js'
