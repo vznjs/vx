@@ -71,8 +71,10 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
-      // The tests hold the Dockerfile and README to the code.
-      inputs: { files: ['src/**', 'tests/**', 'package.json', 'Dockerfile', 'README.md'] },
+      // The tests hold the Dockerfile, README and wrangler.jsonc to the code.
+      inputs: {
+        files: ['src/**', 'tests/**', 'package.json', 'Dockerfile', 'README.md', 'wrangler.jsonc'],
+      },
       outputs: { files: [] },
       cache: true,
     },

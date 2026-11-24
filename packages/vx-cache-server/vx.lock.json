@@ -123,7 +123,8 @@
           "tests/**",
           "package.json",
           "Dockerfile",
-          "README.md"
+          "README.md",
+          "wrangler.jsonc"
         ]
       },
       "outputs": {
