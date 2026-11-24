@@ -4,6 +4,7 @@
 // which order and what a re-run skips, which commit is released, and which
 // binaries a draft release still needs (scripts/release-assets.ts).
 import { describe, expect, it } from 'bun:test'
+import path from 'node:path'
 import { assetsToUpload, isPartial, releaseFor, type Release } from '../scripts/release-assets.js'
 import { decideRelease, greenCommit, type Git } from '../scripts/auto-release.js'
 import {
@@ -500,5 +501,35 @@ describe('the release graph', () => {
       }
     }
     expect(crossed).toEqual([])
+  })
+})
+
+describe('the release scripts', () => {
+  // A Mac sandbox may not list the workspace root (seatbelt.ts,
+  // darwinAncestorRules), so Bun there never finds the root's
+  // node_modules: a package only the root declares was "Cannot find
+  // module" on the darwin attest of v0.0.661.
+  it('import only packages @vzn/vx itself declares', async () => {
+    const dir = path.join(import.meta.dir, '..')
+    const pkg = (await Bun.file(path.join(dir, 'package.json')).json()) as {
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    const own = new Set([
+      ...Object.keys(pkg.dependencies ?? {}),
+      ...Object.keys(pkg.devDependencies ?? {}),
+    ])
+    const missing: string[] = []
+    for (const file of new Bun.Glob('scripts/release*.ts').scanSync(dir)) {
+      const text = await Bun.file(path.join(dir, file)).text()
+      for (const [, spec] of text.matchAll(/^import [^'"]*['"]([^'"]+)['"]/gm)) {
+        if (spec!.startsWith('.') || spec!.startsWith('node:') || spec!.startsWith('bun')) continue
+        const name = spec!.startsWith('@')
+          ? spec!.split('/').slice(0, 2).join('/')
+          : spec!.split('/')[0]!
+        if (name !== '@vzn/vx' && !own.has(name)) missing.push(`${file}: ${name}`)
+      }
+    }
+    expect(missing).toEqual([])
   })
 })
