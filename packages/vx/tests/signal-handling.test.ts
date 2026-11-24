@@ -773,11 +773,18 @@ describe('signal handling during vx run (e2e)', () => {
       expect(await list()).toEqual(['ok'])
       // Two slots: a one-core runner's one slot held `done` behind `slow`.
       const proc = vx('run', 'slow', 'done', '--all', '--concurrency', '2')
+      let out = ''
+      const read = (async () => {
+        for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
+      })()
       await waitForPid(path.join(dir, 'pid.txt'))
-      await waitForContent(path.join(dir, 'done.txt'), 'done\n')
-      await Bun.sleep(300)
+      // Stopped once vx has ended `done`, its row out, not once its command
+      // wrote its file: a loaded host was between the two 300 ms later, and
+      // `done` went unmeasured (load 40, 2026-11-24).
+      while (!/success .*app#done/.test(out)) await Bun.sleep(20)
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
+      await read
       expect(await list()).toEqual(['ok'])
       // What finished before the stop is still measured, so the next run
       // knows it (2026-10-21); the task the stop ended is not.
