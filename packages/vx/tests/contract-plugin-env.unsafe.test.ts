@@ -78,7 +78,7 @@ function envReads(source: string): Set<string> {
   // placeholders take.
   if (/\benv\[(?!['"])/.test(code)) {
     for (const m of code.matchAll(
-      /\w\((?:[^()]*?,\s*)?['"]([A-Z][A-Z0-9]*_[A-Z0-9_]+)['"]\s*[,)]/g,
+      /(?<![.\w$])[A-Za-z_$][\w$]*\((?:[^()]*?,\s*)?['"]([A-Z][A-Z0-9]*_[A-Z0-9_]+)['"]\s*[,)]/g,
     ))
       names.add(m[1]!)
     for (const m of code.matchAll(/`([A-Z][A-Z0-9_]*(?:\$\{[^}]+\}[A-Z0-9_]*)+)`/g))
@@ -158,8 +158,11 @@ it('the reader finds reads, and skips writes and comments', () => {
     const k = \`J_\${signal.toUpperCase()}_TEN\`
     warn('K_ELEVEN is set')
     env['L_TWELVE'] = 'x'
+    if (err.code?.startsWith('ERR_PARSE_ARGS')) usage()
   `
   expect([...envReads(indirect)].sort()).toEqual(['H_EIGHT', 'I_NINE', 'J_*_TEN'])
+  // A method's literal (`code.startsWith('ERR_PARSE_ARGS')`) is no helper's:
+  // vx-cache-server's error check was recorded as a read (2026-11-24).
   // CONTROL: without a read through a variable, a literal is only a literal.
   expect([...envReads("read('key', 'I_NINE')")]).toEqual([])
   const destructured = `
