@@ -679,6 +679,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/bun',
     'vx-lockfile/bun-catalog-precise',
     'vx-lockfile/bun-patch-precise',
+    'vx-lockfile/dependencies-lock-merge',
     'vx-lockfile/dependency-section',
     'vx-lockfile/discover',
     'vx-lockfile/discover-parity',
