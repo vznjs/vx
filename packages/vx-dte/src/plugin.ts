@@ -1276,7 +1276,14 @@ const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 /** `VX_DTE_RUN`, which turns distribution on. */
 function givenRun(): string | undefined {
   const run = process.env['VX_DTE_RUN']
-  if (run === undefined || run === '') return undefined
+  if (run === undefined) return undefined
+  // `export VX_DTE_RUN=$(uuidgen)` with no uuidgen sets it empty: the run
+  // stayed here without a word.
+  if (run.trim() === '') {
+    throw new UserError(
+      "VX_DTE_RUN is set but empty: set it to a random UUID, export VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())'), or unset it to run on this machine",
+    )
+  }
   if (!RUN_ID.test(run)) {
     throw new UserError(
       `VX_DTE_RUN is a random UUID, such as one \`bun -e 'console.log(crypto.randomUUID())'\` prints, so no one can guess the run: not ${JSON.stringify(run)}`,

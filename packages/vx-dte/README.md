@@ -168,7 +168,7 @@ VX_DTE_RUN=$(bun -e 'console.log(crypto.randomUUID())') vx run build --all
 ```
 
 `VX_DTE_RUN` names the run and turns distribution on. Without it, `vx run`
-runs here as always.
+runs here as always. Set but empty, the run is refused.
 
 On GitHub Actions, `github()` with a relay names the run itself.
 

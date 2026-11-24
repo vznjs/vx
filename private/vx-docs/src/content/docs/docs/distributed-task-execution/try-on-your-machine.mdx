@@ -251,7 +251,7 @@ workers: {
 
 | Name | What it does |
 | --- | --- |
-| `VX_DTE_RUN` | Names the run and turns distribution on. A random UUID, so no one can guess the run: `bun -e 'console.log(crypto.randomUUID())'` prints one. Any other value is refused. Unset, `vx run` stays on this machine. |
+| `VX_DTE_RUN` | Names the run and turns distribution on. A random UUID, so no one can guess the run: `bun -e 'console.log(crypto.randomUUID())'` prints one. Any other value is refused, an empty one too. Unset, `vx run` stays on this machine. |
 
 #### What a worker sees
 
