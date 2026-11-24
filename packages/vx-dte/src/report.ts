@@ -236,8 +236,8 @@ export class RunReport<W extends RecordedWorker> {
    * of joins is a side effect no plan escapes (2026-11-18: "We should not
    * be penalized for that"), and when it asked is the plan's own. A slot
    * no worker joined counts from its platform's fastest warm-up. Still a
-   * floor: no run with these sizes beats it. With no sizes it is the
-   * perfect end.
+   * floor: no run with these sizes beats it. With no sizes, the workers
+   * that joined stand for them (`shapes`).
    */
   idealMs(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): number | undefined {
     const perfect = this.perfectMs(depsOf)
@@ -251,7 +251,7 @@ export class RunReport<W extends RecordedWorker> {
     for (const [platform, w] of work) {
       // Each core slot's start, and its cores.
       const slots: [number, number][] = []
-      for (const s of sizes) {
+      for (const s of this.shapes(sizes)) {
         if (platform !== undefined && s.platform !== undefined && s.platform !== platform) continue
         const own = [...(ups.get(s.name) ?? [])].sort((a, b) => a - b)
         for (let i = 0; i < s.max; i++) slots.push([own[i] ?? r.warm(platform), s.cpu])
@@ -469,6 +469,26 @@ export class RunReport<W extends RecordedWorker> {
   }
 
   private advised: WorkerAdvice[] | undefined
+
+  /**
+   * `sizes`, or with none (workers that join on their own) the shapes that
+   * joined, as many of each as joined.
+   */
+  private shapes(sizes: readonly Size[]): Size[] {
+    if (sizes.length > 0) return [...sizes]
+    const by = new Map<string, Size>()
+    for (const a of [...this.workers.values(), ...this.gone]) {
+      const name = `${a.cores}c/${a.platform ?? ''}`
+      by.set(name, {
+        name,
+        max: (by.get(name)?.max ?? 0) + 1,
+        cpu: a.cores,
+        memory: a.memory,
+        platform: a.platform,
+      })
+    }
+    return [...by.values()]
+  }
   /** The advice's replays ran past their budget: it was not worked out. */
   private adviceCut = false
 
@@ -479,25 +499,7 @@ export class RunReport<W extends RecordedWorker> {
   ): WorkerAdvice[] {
     const r = this.replay(depsOf)
     if (r === undefined) return []
-    const shapes: Size[] =
-      sizes.length > 0
-        ? [...sizes]
-        : [
-            ...[...this.workers.values(), ...this.gone]
-              .reduce((by, a) => {
-                const name = `${a.cores}c/${a.platform ?? ''}`
-                const had = by.get(name)
-                by.set(name, {
-                  name,
-                  max: (had?.max ?? 0) + 1,
-                  cpu: a.cores,
-                  memory: a.memory,
-                  platform: a.platform,
-                })
-                return by
-              }, new Map<string, Size>())
-              .values(),
-          ]
+    const shapes = this.shapes(sizes)
     // Bounded: the replays grow faster than the run, and a 2,000-task run's
     // held its end for good. Past the budget, no line is given: a fleet
     // cut short reads as no better, so what finished is not exact either.
@@ -752,25 +754,38 @@ export class RunReport<W extends RecordedWorker> {
             ] as [string, ui.Inline],
           ]
         : []),
-      ...(this.ended && this.asks.length > 0
+      // Workers that joined unasked get these rows too: kept for a run that
+      // asked, theirs were hidden (2026-11-24).
+      ...(this.ended
         ? [
-            [
-              '',
-              ui.dim(
-                `${'asked'.padEnd(width)}  ${this.asks
-                  .map(
-                    (x) =>
-                      `${x.workers} at ${seconds(x.at)} for ${plural(x.tasks, 'task')} (${x.measured} measured), estimate ${seconds(x.endsInMs)}`,
-                  )
-                  .join(' · ')}`,
-              ),
-            ] as [string, ui.Inline],
+            ...(this.asks.length === 0
+              ? []
+              : [
+                  [
+                    '',
+                    ui.dim(
+                      `${'asked'.padEnd(width)}  ${this.asks
+                        .map(
+                          (x) =>
+                            `${x.workers} at ${seconds(x.at)} for ${plural(x.tasks, 'task')} (${x.measured} measured), estimate ${seconds(x.endsInMs)}`,
+                        )
+                        .join(' · ')}`,
+                    ),
+                  ] as [string, ui.Inline],
+                ]),
             // Beside core's time row, how close the run came (2026-10-23),
             // to the best its sizes allow and to the best with no cap
             // (2026-11-18).
             ...((best, ms) =>
               ms === undefined
-                ? []
+                ? perfect === undefined
+                  ? []
+                  : [
+                      [
+                        '',
+                        ui.dim(`${'ideal'.padEnd(width)}  not worked out: no task ran on a worker`),
+                      ] as [string, ui.Inline],
+                    ]
                 : [
                     ...(best === undefined
                       ? []

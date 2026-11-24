@@ -1312,6 +1312,10 @@ beat.
 - That is the perfect end, or later where a platform's work fills every
   core its sizes' `max` allows.
 - A platform's work is each task's cores for as long as it held them.
+- With no `workers` declared, the workers that joined stand for the sizes,
+  for the ideal end and for `best` and `any` alike.
+- With no task run on a worker, there is nothing to replay: the footer says
+  `ideal  not worked out`.
 - The ideal end (`distribution.idealMs`) sits beside the real time in the
   run summary and the footer's `ideal` line. `@vzn/vx-ci` prints it.
 

@@ -2309,6 +2309,62 @@ it('says the advice was not worked out when its replays ran out of time', async 
   }
 })
 
+// Workers that joined on their own, none asked for: the footer hid its
+// ideal, perfect and advice, kept for a run that asked (2026-11-24). The
+// workers that joined stand for the sizes: one 1-core worker ends two
+// 1-core tasks no sooner than one after the other.
+it('works out ideal, perfect and advice from the workers that joined unasked', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const w = await h.worker(1)
+    await Bun.sleep(50)
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await w.batches()
+    const done = { exitCode: 0, durationMs: 200, cpuMs: 200 }
+    await w.finish('t1', 'k-t1', done)
+    await w.finish('t2', 'k-t2', done)
+    await Promise.all(runs)
+    await h.stop()
+    const perfect = h.o.perfectMs(() => [])!
+    expect(h.o.idealMs(() => [], [])! - perfect).toBeGreaterThanOrEqual(200)
+    const rows = h.o
+      .footer(
+        () => h.o.idealMs(() => [], []),
+        () => h.o.perfectMs(() => []),
+        () => h.o.advice(() => [], []),
+      )
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.map((r) => /^(\w+) /.exec(r)?.[1]).filter((k) => k !== undefined)).toEqual(
+      expect.arrayContaining(['ideal', 'perfect', 'best']),
+    )
+  } finally {
+    await h.stop()
+  }
+})
+
+// No task ran on a worker: nothing to replay, and the footer says so
+// rather than leave the rows out.
+it('says ideal is not worked out when no task ran on a worker', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    await h.worker(1)
+    await Bun.sleep(50)
+    await h.stop()
+    const rows = h.o
+      .footer(
+        () => h.o.idealMs(() => [], []),
+        () => h.o.perfectMs(() => []),
+        () => h.o.advice(() => [], []),
+      )
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.filter((r) => r.startsWith('ideal'))).toEqual([
+      'ideal     not worked out: no task ran on a worker',
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-11-20: advice's eight replays took 15 s of one core on a
 // 200-task run once the uncapped fleets planned again; played side by
 // side they must say what one thread says.
