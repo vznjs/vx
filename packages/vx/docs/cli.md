@@ -2640,12 +2640,14 @@ Every other flag is `vx run`'s ([Flags](#flags)).
 - That holds when its key is the one it ran under and no path that started the cycle lies in its project.
 - So editing the app runs no uncached generator it builds on, and an edit elsewhere runs no failing lint again.
 - A path outside every project, a timeout, a proven flake or a result its key does not vouch for keeps nothing.
+- A task with no `inputs`, or one whose key reads such a task's, runs every cycle: that key is new each run.
 - Events that arrive during a cycle queue and run after it.
 - A cycle starts ~150 ms after the last event, and at most 1 s after the first, so a writer that never pauses holds no edit back.
 
 **Exit**
 
-- `SIGINT` (`Ctrl+C`), `SIGTERM` or `SIGHUP` exits 0. `vx watch: stopped` is the last line, once the cycle in flight is down.
+- `SIGINT` (`Ctrl+C`), `SIGTERM` or `SIGHUP` exits 0, once the cycle in flight is down.
+- After a `Ctrl+C`, `vx watch: stopped` is the last line. `SIGTERM` and `SIGHUP` print nothing.
 
 </div>
 </details>
@@ -2736,9 +2738,9 @@ A root file a plugin claims starts a cycle: a lockfile under `@vzn/vx-lockfile` 
 
 A config edit alone changes no command, since every cycle reads its configs from `.vx/projects.lock`. The watch says so, and each cycle refuses the edited config, as a run does, until `vx lock`:
 
-```
-vx watch: packages/web/vx.config.ts changed; runs read the lock, so run `vx lock` to apply it
-vx watch: cycle failed: packages/web/vx.config.ts changed since the last `vx lock` — run `vx lock`
+```ansi
+[38;2;234;179;8m![0m [1mvx watch[0m  [38;2;203;213;225mpackages/web/vx.config.ts changed; runs read the lock, so run [0m[1m`vx lock`[0m[38;2;203;213;225m to apply it[0m
+[38;2;239;68;68m✗[0m [1mvx watch[0m  [38;2;203;213;225mcycle failed: packages/web/vx.config.ts changed since the last [0m[1m`vx lock`[0m[38;2;203;213;225m — run [0m[1m`vx lock`[0m
 ```
 
 <details class="vx-deeper" data-level="3">
@@ -2817,8 +2819,8 @@ Each edit rebuilds only the libraries it reaches on the way to the app. The serv
 
 ### Exit codes
 
-- `0` — clean Ctrl+C / SIGTERM exit; also once its reader is gone; also, with no watch, when `--affected` selects nothing (`vx watch: nothing affected since <ref>`, as `vx run` does).
-- `1` — parser error, missing scope, or a task name no project in scope declares (the initial run refuses it as `vx run` does, with the same `Did you mean` hint).
+- `0` — clean Ctrl+C / SIGTERM exit; also once its reader is gone; also, with no watch, when `--affected` selects nothing (`› vx watch  nothing affected since <ref>`, as `vx run` does).
+- `1` — parser error, missing scope, or a task name no project in scope declares (the initial run refuses it as `vx run` does, with the same `fix` hint).
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -2830,6 +2832,7 @@ Each edit rebuilds only the libraries it reaches on the way to the app. The serv
 - A Ctrl-C passes on as SIGINT. A SIGTERM or SIGHUP passes on as SIGTERM. Then a 2 s grace, then SIGKILL.
 - The process leaves only once the cycle has returned, so a CI cancellation never orphans a task.
 - A second signal during that teardown changes nothing: still `0`, once the cycle is down.
+- A SIGINT or SIGHUP watch was started with ignored (a script's `vx watch build &`, `nohup`) stays ignored. `SIGTERM` stops it.
 - `vx watch dev | head`, or a quit `| less`: Bun ignores SIGPIPE, so the next write's EPIPE stops the watch as a SIGTERM does.
 - An idle watch with no reader ends at its next output.
 
@@ -2837,7 +2840,7 @@ Each edit rebuilds only the libraries it reaches on the way to the app. The serv
 
 - A task name no project declares exits rather than re-run the refusal on every change.
 - So do `vx requires git`, when git is not on `PATH`, and a cache dir vx cannot make: no edit the watch hears fixes them.
-- A cycle that throws (no `.vx/projects.lock`, or one that locks a config since removed) prints `vx watch: cycle failed: <reason>` once.
+- A cycle that throws (no `.vx/projects.lock`, or one that locks a config since removed) prints `✗ vx watch  cycle failed: <reason>`.
 - Watch keeps watching, the initial run included, so the `vx lock` that fixes it re-runs.
 - A cycle whose run fails (`{ ok: false }`) does not end the watch. It prints the framed FAILED block and waits for the next change.
 
