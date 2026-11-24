@@ -284,7 +284,12 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
     relock()
     await until(() => arms(w, 2) === 1, 'lib joins the set')
-    await Bun.sleep(SETTLE_MS)
+    // The re-lock's own cycle builds lib, then app: read past it, not past a
+    // sleep (a loaded host was between the two, load 40, 2026-11-24).
+    await until(async () => {
+      const l = await lines()
+      return l.includes('lib') && l.at(-1) === 'run'
+    }, "the re-lock's cycle")
     const afterDep = await lines()
 
     await writeFile(path.join(lib, 'src', 'l.txt'), 'l2\n')
