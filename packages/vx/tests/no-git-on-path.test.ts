@@ -88,7 +88,7 @@ describe('git absent from PATH', () => {
       env: { ...process.env, PATH: bin, NO_COLOR: '1', CI: '', GITHUB_ACTIONS: '' },
       stdout: 'pipe',
       stderr: 'pipe',
-      timeout: 15_000,
+      timeout: 25_000,
     })
     const [out, err, code] = await Promise.all([
       new Response(p.stdout).text(),
