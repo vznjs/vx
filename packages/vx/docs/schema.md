@@ -1136,7 +1136,8 @@ interface ExecEnv {
 - A value holding a `'` is also masked as a shell-quoted line spells it
   (`'\''`).
 - It is also masked URL-encoded (`ab%2Fcd` for `ab/cd`, a token in a
-  query string) and as a JSON string spells it (`pa\"ss`, `\n`).
+  query string; the escapes' hex in any case, `%2f` too) and as a JSON
+  string spells it (`pa\"ss`, `\n`).
 - `${A}xyz789`, where `B` is `A`'s tail plus `xyz789`, prints as one
   `***`: values that overlap or touch are masked as one.
 - A value split across two output chunks is still caught: the output

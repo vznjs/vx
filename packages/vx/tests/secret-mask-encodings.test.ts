@@ -32,6 +32,26 @@ describe('a secret in its encoded spellings', () => {
     expect(out).toBe(`t=${MASKED} done`)
   })
 
+  // A percent escape's hex is either case (RFC 3986 § 2.1): Python's
+  // quote() and JS print `%2F`, others `%2f`, and a lower or mixed one
+  // printed the token whole.
+  it('masks the URL-encoded value with its hex in lower or mixed case', () => {
+    const enc = encodeURIComponent(TOKEN)
+    const lower = enc.replace(/%[0-9A-F]{2}/g, (e) => e.toLowerCase())
+    let flip = false
+    const mixed = enc.replace(/%[0-9A-F]{2}/g, (e) => ((flip = !flip) ? e.toLowerCase() : e))
+    expect([lower, mixed].every((v) => v !== enc)).toBe(true)
+    for (const v of [lower, mixed])
+      expect(mask.mask(`?token=${v}&a=1`)).toBe(`?token=${MASKED}&a=1`)
+    const s = mask.stream()
+    const out = s.push(`t=${lower.slice(0, 5)}`) + s.push(`${lower.slice(5)} done`) + s.end()
+    expect(out).toBe(`t=${MASKED} done`)
+    expect(mask.maskCut(`t=${lower.slice(0, 5)}`, `${lower.slice(9)} done`)).toEqual([
+      `t=${MASKED}`,
+      `${MASKED} done`,
+    ])
+  })
+
   it('CONTROL: a value with nothing to encode is masked once, as before', () => {
     const plain = secretMask([{ API_TOKEN: 'plainsekretvalue1' }])!
     expect(plain.mask('x plainsekretvalue1 y')).toBe(`x ${MASKED} y`)

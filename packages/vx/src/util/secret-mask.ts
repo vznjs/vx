@@ -177,6 +177,23 @@ function urlPasswords(value: string): string[] {
   return found
 }
 
+/**
+ * A value as the mask's pattern matches it: literal, but a percent escape's
+ * hex in either case (RFC 3986 § 2.1). `encodeURIComponent` prints `%2F`,
+ * other tools `%2f` or a mix, and each printed the value whole.
+ */
+function valuePattern(value: string): string {
+  return value
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(
+      /%([0-9A-Fa-f])([0-9A-Fa-f])/g,
+      (_, a: string, b: string) => `%${hexEither(a)}${hexEither(b)}`,
+    )
+}
+
+const hexEither = (c: string): string =>
+  /[0-9]/.test(c) ? c : `[${c.toLowerCase()}${c.toUpperCase()}]`
+
 function maskOf(values: ReadonlySet<string>): SecretMask {
   // Longest first, so the value tried first at a position is the longest
   // there.
@@ -184,10 +201,7 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
   // A lookahead matches at every position, not only past the last match:
   // a value overlapping another's end (`${A}xyz789` where B is A's tail +
   // `xyz789`) is found too, and the union is masked (`***xyz789` leaked).
-  const pattern = new RegExp(
-    `(?=(${sorted.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}))`,
-    'g',
-  )
+  const pattern = new RegExp(`(?=(${sorted.map(valuePattern).join('|')}))`, 'g')
   /** Where values sit in `text`: overlapping or adjacent ones merged, in order. */
   const spans = (text: string): Array<[number, number]> => {
     const out: Array<[number, number]> = []
@@ -212,12 +226,19 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     }
     return out + text.slice(at)
   }
+  // A value's percent escapes match in either case, so a piece of one is
+  // compared folded: folding more only holds a tail back a little longer.
+  const folds = sorted.map((v) => (v.includes('%') ? v.toLowerCase() : undefined))
+  const piece = (text: string, at: number): string =>
+    folds[at] === undefined ? text : text.toLowerCase()
   /** The longest tail of `text` that is a proper prefix of a value. */
   const partialTail = (text: string): number => {
     let longest = 0
-    for (const v of sorted) {
-      for (let k = Math.min(v.length - 1, text.length); k > longest; k--) {
-        if (text.endsWith(v.slice(0, k))) {
+    for (const [i, raw] of sorted.entries()) {
+      const v = folds[i] ?? raw
+      const t = piece(text, i)
+      for (let k = Math.min(v.length - 1, t.length); k > longest; k--) {
+        if (t.endsWith(v.slice(0, k))) {
           longest = k
           break
         }
@@ -228,9 +249,11 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
   /** The longest head of `text` that is a proper suffix of a value. */
   const partialHead = (text: string): number => {
     let longest = 0
-    for (const v of sorted) {
-      for (let k = Math.min(v.length - 1, text.length); k > longest; k--) {
-        if (text.startsWith(v.slice(v.length - k))) {
+    for (const [i, raw] of sorted.entries()) {
+      const v = folds[i] ?? raw
+      const t = piece(text, i)
+      for (let k = Math.min(v.length - 1, t.length); k > longest; k--) {
+        if (t.startsWith(v.slice(v.length - k))) {
           longest = k
           break
         }
