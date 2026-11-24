@@ -82,6 +82,15 @@ describe('a secret in its encoded spellings', () => {
     expect(b64.mask(`: ${Buffer.from(`u:${value}\n`).toString('base64')}`)).toMatch(leftover)
   })
 
+  // A CI secret pasted with a trailing space or newline, printed by
+  // `echo $TOKEN` (word splitting drops the blanks) or a tool that trims it:
+  // only the whole value with its blanks was masked.
+  it('masks a value held with blanks around it as printed without them', () => {
+    const blank = secretMask([{ API_TOKEN: 'abcdefgh123 ', B_TOKEN: '\tzzz999yyy' }])!
+    expect(blank.mask('x abcdefgh123\n')).toBe(`x ${MASKED}\n`)
+    expect(blank.mask('[zzz999yyy]')).toBe(`[${MASKED}]`)
+  })
+
   it('CONTROL: a value with nothing to encode is masked once, as before', () => {
     const plain = secretMask([{ API_TOKEN: 'plainsekretvalue1' }])!
     expect(plain.mask('x plainsekretvalue1 y')).toBe(`x ${MASKED} y`)

@@ -110,6 +110,11 @@ export function secretMask(
   const add = (value: string | undefined): void => {
     if (value === undefined || value.length < min) return
     values.add(value)
+    // A secret pasted with a trailing blank or newline prints without it
+    // (`echo $T` splits it off, a tool trims it), and the whole value
+    // never matched.
+    const bare = value.trim()
+    if (bare !== value) add(bare)
     // A value with a `'` reaches a printed command spelled as shellQuote spells
     // it (`'\''`), which the plain value does not match.
     if (value.includes("'")) values.add(value.replaceAll("'", `'\\''`))

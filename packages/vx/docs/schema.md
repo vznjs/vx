@@ -1133,6 +1133,8 @@ interface ExecEnv {
   `vx watch`'s `cycle failed` line.
 - A multi-line value (a PEM key) is also masked line by line, each line
   of six characters or more.
+- A value with blanks around it (a pasted trailing newline) is also
+  masked without them, as `echo $TOKEN` prints it.
 - A value holding a `'` is also masked as a shell-quoted line spells it
   (`'\''`).
 - It is also masked URL-encoded (`ab%2Fcd` for `ab/cd`, a token in a
