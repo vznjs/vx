@@ -2923,6 +2923,7 @@ export interface SandboxViolation {
   path?: string
   via?: string
   opened?: 'read' | 'write'
+  entry?: 'file' | 'dir' | 'missing'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 ```

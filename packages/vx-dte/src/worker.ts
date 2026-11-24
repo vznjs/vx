@@ -5,7 +5,7 @@
 // cache by the keys its order names, and its own files and output go
 // there under its key; the relay carries only orders and status.
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { lstat, rm } from 'node:fs/promises'
 import os, { constants } from 'node:os'
 import path from 'node:path'
@@ -637,8 +637,15 @@ async function serve(
         ui.print('err', ui.status('error', m.task, `no file matched ${outputsMissing.join(', ')}`))
       // Its violations name the orchestrator's paths. As JSON first: the swap
       // round-trips them through JSON, which leaves a Date a string.
+      // Each path as this checkout holds it: the orchestrator's disk lacks
+      // what the task left here, and its `fix:` read a stray write there as
+      // missing and granted the whole project.
       const back = swapRoots(
-        res.violations.map((v) => ({ ...v, timestamp: v.timestamp.toISOString() })),
+        res.violations.map((v) => ({
+          ...v,
+          ...(v.path === undefined ? {} : { entry: entryAt(v.path) }),
+          timestamp: v.timestamp.toISOString(),
+        })),
         [
           [myReal, realRoot],
           [opts.root, root],
@@ -1289,4 +1296,10 @@ function parts(end: Extract<ToOrchestrator, { type: 'end' }>): ToOrchestrator[] 
   }
   out.push({ ...end, result: result as WiredResult })
   return out
+}
+
+/** What `abs` is on this worker now, as a violation's `entry` carries it. */
+function entryAt(abs: string): 'file' | 'dir' | 'missing' {
+  const st = lstatSync(abs, { throwIfNoEntry: false })
+  return st === undefined ? 'missing' : st.isDirectory() ? 'dir' : 'file'
 }

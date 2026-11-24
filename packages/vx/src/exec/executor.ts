@@ -93,6 +93,12 @@ export interface SandboxViolation {
    * whose flags no record names, a read.
    */
   opened?: 'read' | 'write'
+  /**
+   * What `path` was when the task ended, on the machine it ran on: set by an
+   * executor that ran it elsewhere, whose disk this one does not show. The
+   * `fix:` grant reads it in place of a look at this machine's disk.
+   */
+  entry?: 'file' | 'dir' | 'missing'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 

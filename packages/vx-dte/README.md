@@ -677,6 +677,8 @@ own sandbox, with the same `exec.sandbox`, built there
 - Its paths, walls and credential stores are the worker's. So an
   orchestrator on Linux can run macOS workers.
 - A violation there fails the task here, named in this checkout's paths.
+- Its `fix:` line names the grant a run here would, from what the worker's
+  checkout held when the task ended (`SandboxViolation.entry`).
 - An empty file it wrote over a write grant's placeholder is its output.
   Only a placeholder it never touched is removed.
 - The outputs of its dependencies that it may read are listed there too,
