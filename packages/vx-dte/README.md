@@ -411,8 +411,8 @@ For the sizes above:
 ```yaml
 # .github/workflows/vx-worker.yml
 # Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
-# DTE run, which github() dispatches once per size. Run vx dte init
-# again after changing the sizes.
+# DTE run, which github() dispatches once per size. After changing the
+# sizes, run vx dte init --force.
 name: vx-worker
 
 on:
@@ -1375,8 +1375,9 @@ next time (`TaskExecutor.advice`).
 - `GITHUB_HEAD_REF` or `GITHUB_REF_NAME`, then `GITHUB_BASE_REF`: the ref
   `github()` dispatches the worker workflow on.
 - It falls back to the base ref when the head has no workflow file.
-- `GITHUB_RUN_ID` and `GITHUB_RUN_ATTEMPT`: the run's attempt, so a worker
-  that starts after it ended cancels itself.
+- `GITHUB_RUN_ID`, `GITHUB_REPOSITORY` and `GITHUB_TOKEN`, on a worker: one
+  that finds its run over cancels its own workflow run, so its queued
+  fellows hold no runner.
 - `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`: where
   the job asks GitHub for its OIDC token.
 - `GITHUB_REPOSITORY_ID`: the repository a token must name.
