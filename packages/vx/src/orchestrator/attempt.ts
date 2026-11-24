@@ -510,13 +510,18 @@ async function classifyExit(
   if (res.timedOut) {
     // A plugin executor's child is its own: core only aborted its request,
     // or, on the executor's own clock, aborted nothing.
-    const how = !isLocalExecutor(args.executor)
-      ? m.signal.timeoutFired
-        ? 'its executor was aborted'
-        : 'as its executor reported'
-      : res.signal === 'SIGKILL' || res.killedAfterGrace === true
+    // One that reports the signal it stopped the child with (a DTE worker)
+    // is said as a run here is.
+    const killed =
+      res.signal === 'SIGKILL' || res.killedAfterGrace === true
         ? 'killed (SIGKILL after the SIGTERM grace)'
         : 'killed (SIGTERM)'
+    const how =
+      isLocalExecutor(args.executor) || res.signal === 'SIGTERM' || res.signal === 'SIGKILL'
+        ? killed
+        : m.signal.timeoutFired
+          ? 'its executor was aborted'
+          : 'as its executor reported'
     const after = policy.timeout === undefined ? '' : ` after ${policy.timeout}ms`
     // Whose limit it was and how to raise it: "after 120000ms" alone sent
     // the user looking for where it came from.

@@ -599,7 +599,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   abort, a 0 included, is recorded `timedOut` and fails (X-125); one that has not returned within the
   kill grace of the abort is abandoned, the attempt settled without it,
   its `where` the executor's name; a `timedOut` it reports on its own
-  clock fails the same, the line saying its executor reported it),
+  clock fails the same, the line saying its executor reported it, or,
+  when it reports the `signal` it stopped the child with, `killed
+(SIGTERM)` as a run here says),
   `liveChildren?`, `onSpawn?` (an executor that runs the command as a
   process on this machine calls it with the pid, so a telemetry sink can
   sample the tree's CPU and memory; absent when nothing samples),

@@ -74,6 +74,7 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
     outputs: { files: ['stamp'] },
     cache: true,
   },
+  slow: { exec: { command: 'sleep 5', timeout: '1s' } },
   none: { exec: { command: 'true' }, outputs: { files: ['cov/'] } },
   asfile: { exec: { command: 'echo x > folder' }, outputs: { files: ['folder/'] } },
   stray: {
@@ -170,6 +171,15 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { max: 1
     }
     expect(said('none')).toContain('— it wrote none of its outputs:')
     expect(said('asfile')).toContain('— a folder was declared, a file was written: folder')
+  }, 60_000)
+
+  // The worker reports the signal it sent, as a run here knows it: the
+  // line said only "as its executor reported".
+  it('says how a timed-out task was stopped, as a run here does', () => {
+    const r = vx(['run', 'a#slow'], crypto.randomUUID())
+    expect(r.stdout.toString() + r.stderr.toString()).toContain(
+      '[vx] timed out after 1000ms — killed (SIGTERM)',
+    )
   }, 60_000)
 
   it('fails a read outside its grants, naming this checkout', () => {
