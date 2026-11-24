@@ -100,7 +100,8 @@ describe('hostile tokens', () => {
         401,
         'unknown signing key',
       ])
-    expect(fetches).toBe(before)
+    // One: the first set may have come from a cache, so it is read fresh once.
+    expect(fetches).toBe(before + 1)
   })
 
   // Any token reached the issuer's keys: anyone could make the server fetch.

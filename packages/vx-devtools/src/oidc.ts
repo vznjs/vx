@@ -356,7 +356,9 @@ export function oidcClaims(opts: {
   // once KEYS_MAX_AGE_MS old, and for a kid they lack once KEYS_COOLDOWN_MS
   // after the last read. A local set, so the first token pays no timer and
   // no Response round trip.
-  const keys = new Map<string, { at: number; set: Promise<KeySet> }>()
+  // `cached`: the read may have come from a cache (a Worker's shared one, up
+  // to KEYS_TTL_S old), so a kid it lacks is no reason to wait the cooldown.
+  const keys = new Map<string, { at: number; set: Promise<KeySet>; cached: boolean }>()
   const discovered = new Map<string, Promise<string>>()
   // The key set each URL last answered: one slow answer from the issuer
   // failed a request. Keys rotate rarely: the last set answers until the
@@ -380,12 +382,14 @@ export function oidcClaims(opts: {
     }
     return uri
   }
-  const read = (iss: string): { at: number; set: Promise<KeySet> } => {
-    const set = (async () => {
+  const read = (iss: string): { at: number; set: Promise<KeySet>; cached: boolean } => {
+    const entry = { at: Date.now(), set: undefined as unknown as Promise<KeySet>, cached: false }
+    entry.set = (async () => {
       const url = await jwksUri(iss)
       let json: unknown
+      entry.cached = !lastRead.has(url)
       try {
-        json = await fetchJson(url, lastRead.has(url))
+        json = await fetchJson(url, !entry.cached)
         lastRead.set(url, json)
         stale.delete(iss)
       } catch (err) {
@@ -395,10 +399,9 @@ export function oidcClaims(opts: {
       }
       return createLocalJWKSet(json as JSONWebKeySet)
     })()
-    const entry = { at: Date.now(), set }
     keys.set(iss, entry)
     // quiet: the awaited set rethrows it; this only forgets it
-    set.catch(() => keys.get(iss) === entry && keys.delete(iss))
+    entry.set.catch(() => keys.get(iss) === entry && keys.delete(iss))
     return entry
   }
   // The issuer's outage, not the token's fault: a client gives up on a
@@ -423,7 +426,10 @@ export function oidcClaims(opts: {
       try {
         return await set(header, token)
       } catch (err) {
-        if (!(err instanceof errors.JWKSNoMatchingKey) || Date.now() - entry.at < KEYS_COOLDOWN_MS)
+        if (
+          !(err instanceof errors.JWKSNoMatchingKey) ||
+          (!entry.cached && Date.now() - entry.at < KEYS_COOLDOWN_MS)
+        )
           throw err
         return (await usable(iss, reading(iss, raw).set))(header, token)
       }

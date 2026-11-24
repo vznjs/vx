@@ -144,7 +144,8 @@ a job of `acme/app`'s `ci.yml` passes the repository and workflow rules.
   and `exp` and `nbf` within 60 s.
 - The issuer's keys are found through its
   `/.well-known/openid-configuration` and kept 10 minutes.
-- They are read again for a key they lack, at most every 30 s.
+- They are read again for a key they lack, at most every 30 s. Keys a
+  cache may have answered (a Worker's first read) are read again at once.
 - With `oidcAuth`, every request names its repository: `vx-issuer` and
   `vx-repository`. One missing or not a hash is `400`.
   - They are the `hashPart`s of the issuer's URL (no trailing slash) and
