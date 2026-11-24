@@ -141,6 +141,35 @@ describe('task selection', () => {
     TIMEOUT,
   )
 
+  // `vx run typechek` from a project without it said "Tasks: build":
+  // the hint was drawn from the selection only.
+  it(
+    'a near-miss of a task only projects outside the selection declare names it there',
+    async () => {
+      await addProject('a', ['build'])
+      await addProject('b', ['typecheck'])
+      await addProject('c', ['typecheck'])
+      const one = await run({ cwd: root, projects: ['a'], tasks: ['typechek'], log: silent() })
+      expect(one.refused).toBe(
+        'no projects declare task(s): typechek. Did you mean typecheck? Only projects outside the selection declare it — pass --all, or a --filter that includes them.',
+      )
+      const filtered = await run({
+        cwd: root,
+        projects: ['a'],
+        handoff: { selectedByFilter: true },
+        tasks: ['typechek'],
+        log: silent(),
+      })
+      expect(filtered.refused).toContain(
+        'Only projects outside the selection declare it — widen --filter to include them, or drop it.',
+      )
+      // CONTROL: a near-miss the selection declares keeps the plain hint.
+      const own = await run({ cwd: root, projects: ['b'], tasks: ['typechek'], log: silent() })
+      expect(own.refused).toBe('no projects declare task(s): typechek. Did you mean typecheck?')
+    },
+    TIMEOUT,
+  )
+
   it(
     'a bogus ANCHORED task fails the run even when another task resolves',
     async () => {

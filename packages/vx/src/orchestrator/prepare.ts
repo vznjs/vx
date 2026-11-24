@@ -703,7 +703,9 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
       const at = t.indexOf('#')
       return at > 0 && !projects.has(t.slice(0, at))
     }) ||
-    (unresolvedTasks.some((t) => !t.includes('#')) && !declaresAny(projects))
+    (unresolvedTasks.some((t) => !t.includes('#')) && !declaresAny(projects)) ||
+    // A typo in a partial load: its nearest name may be declared outside it.
+    (partialLoad && unresolvedTasks.some((t) => !t.includes('#') && !declaredElsewhere.includes(t)))
   ) {
     try {
       hintProjects = (await everyProject()).projects

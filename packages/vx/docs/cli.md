@@ -103,8 +103,10 @@ nowhere. So `vx run lint test e2e` fails on CI the day `e2e` is renamed.
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- `Did you mean <task>?`: a declared task within two edits. For
-  `pkg#task`, a runnable one.
+- `Did you mean <task>?`: a declared task within two edits, in any
+  project. For `pkg#task`, a runnable one.
+- When only projects outside the run's selection declare it, the hint
+  says so and names `--all` or `--filter`.
 - `p/a#build` hints `alpha#build` when `alpha` lives at `p/a`: a
   directory from the root names its project.
 - `Tasks: build, test.`: nothing is close, so the refusal lists what

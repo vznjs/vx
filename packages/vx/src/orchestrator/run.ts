@@ -2469,6 +2469,9 @@ async function unresolvedHint(
     prepared.declaredElsewhere,
     prepared.taskless,
     prepared.workspaceRoot,
+    selected ?? [...prepared.projects.keys()],
+    byFilter,
+    prepared.projects,
   )
   const init = await initHint(prepared)
   // "No project declares a task yet" beside configs that declare one: the
@@ -2529,6 +2532,9 @@ function didYouMean(
   elsewhere: readonly string[],
   taskless: (name: string) => boolean,
   root: string,
+  selected?: readonly string[],
+  byFilter = false,
+  loaded: ReadonlyMap<string, ProjectEntry> = projects,
 ): string {
   // A default `build` is no declared task: no match, menu item or hint
   // (`p#build` would be refused).
@@ -2538,6 +2544,11 @@ function didYouMean(
       .map(([t]) => t)
   const allTasks = new Set<string>()
   for (const p of projects.values()) for (const t of tasksOf(p)) allTasks.add(t)
+  // With nothing near, the list is of what this run could take: the loaded
+  // projects' tasks, or every task when they declare none.
+  const here = new Set<string>()
+  for (const p of loaded.values()) for (const t of tasksOf(p)) here.add(t)
+  const listable = here.size > 0 ? here : allTasks
   // A Set: two typos of the same task hint it once, not once per typo.
   const hints = new Set<string>()
   // A typo past two edits named nothing to pick from: with no near name, say
@@ -2552,10 +2563,18 @@ function didYouMean(
     }
     if (at < 0) {
       const t = nearest(spec, allTasks)
-      if (t !== undefined) hints.add(t)
+      if (t !== undefined) {
+        hints.add(t)
+        // The nearest name may be declared only outside the selection: a
+        // run of it would be refused in turn.
+        if (selected !== undefined && !selected.some((p) => tasksOf(projects.get(p)).includes(t)))
+          lists.add(
+            `Only projects outside the selection declare it — ${byFilter ? 'widen --filter to include them, or drop it' : 'pass --all, or a --filter that includes them'}.`,
+          )
+      }
       // A name outside the selection is already said, with `--all`.
       else if (allTasks.size > 0 && !elsewhere.includes(spec)) {
-        lists.add(`Tasks: ${listed(allTasks)}.`)
+        lists.add(`Tasks: ${listed(listable)}.`)
       } else if (allTasks.size === 0 && elsewhere.length === 0) lists.add(NO_TASK)
       continue
     }
