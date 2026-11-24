@@ -343,6 +343,13 @@ integrity error.
 - Refused bytes are never written into the local content-addressed store.
 - So a corrupt or poisoned remote degrades to a miss (the cache invariant),
   never to wrong bytes under a trusted name.
+- An execution whose outputs or logs do not come down as the server named
+  them (other bytes, a wrong size, a blob the CAS lacks) is given back to
+  vx, which runs it here and says so once:
+
+`[vx] <task>: plugin '@vzn/vx-reapi' (executor 'vx/reapi') gave it back: its outputs or logs could not be fetched as the server named them: … — running it here`
+
+- A task placed `exec.remote: 'only'` fails with that reason instead.
 - Uploads are verified by the server; this is the mirror on the read side.
 
 <details><summary>Details</summary>
