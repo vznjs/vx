@@ -1193,6 +1193,8 @@ describe('project name', () => {
   it.each([
     ['^ui', "starts with '^', which names dependencies' tasks"],
     ['!ui', "starts with '!', which a filter reads as an exclusion"],
+    // `vx run -ui#build` and `vx show -ui` were refused as an unknown flag.
+    ['-ui', "starts with '-', which the CLI reads as a flag"],
     ['ui*', "holds '*', which makes it a pattern"],
     ['tag:ui', "starts with 'tag:', which a filter reads as a tag selector"],
     ['ui...', "starts or ends with '...', which a filter reads as a dependency walk"],

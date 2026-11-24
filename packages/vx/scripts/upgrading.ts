@@ -34,6 +34,14 @@ const HEADER = /^(\w+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/
  * same PR.
  */
 export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> = {
+  'fix(workspace): refuse a project name that starts with "-"': {
+    title: 'A project name that starts with `-` is refused',
+    steps: [
+      '`vx lock` refuses a project named `-web`, by its vx.config `name` or its `package.json` `name`: `vx run -web#build` read it as a flag, so the command line could not run its tasks.',
+      '',
+      'Rename the project where the refusal points.',
+    ].join('\n'),
+  },
   'fix(graph): refuse a glob that names its way into a nested project': {
     title: 'A glob that names its way into a nested project is refused',
     steps: [

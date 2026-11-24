@@ -831,12 +831,16 @@ export async function discoveredProject(
     )
   }
   const name = entry.name
-  if (name !== undefined) {
-    const bad = nameFault(name)
-    if (bad !== null) throw new UserError(`${where} ${JSON.stringify(name)}: ${bad}`)
-  }
   let dir = path.resolve(root, entry.dir)
   const rel = relPosix(root, dir)
+  if (name !== undefined) {
+    const bad = nameFault(name)
+    // Said with its directory: the name is the manifest's there (a package.json).
+    if (bad !== null)
+      throw new UserError(
+        `${where} ${JSON.stringify(name)} at ${rel || '.'}: ${bad} — rename it in the manifest plugin '${by}' reads there`,
+      )
+  }
   const named = name === undefined ? '' : ` "${name}"`
   if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
     throw new UserError(`${where}${named} at ${dir}: outside the workspace root`)
@@ -898,6 +902,7 @@ export function projectNameProblem(name: string): string | null {
   if (name.includes('*')) return "holds '*', which makes it a pattern"
   if (name.startsWith('^')) return "starts with '^', which names dependencies' tasks"
   if (name.startsWith('!')) return "starts with '!', which a filter reads as an exclusion"
+  if (name.startsWith('-')) return "starts with '-', which the CLI reads as a flag"
   // The root's own name, which the filter reads as the root's directory.
   if (name === ROOT_NAME) return null
   const walk = "starts or ends with '...', which a filter reads as a dependency walk"

@@ -193,18 +193,22 @@ Default: the name a `discover` plugin gives, else the project's path
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-A name `dependsOn` or `--filter` could not spell is refused at load:
+A name `dependsOn`, `--filter` or the command line could not spell is
+refused by `vx lock`:
 
 - `' web'`: surrounding whitespace.
 - `a#b`: `#` separates project and task.
 - `web*`: `*` is a pattern.
 - `^web`: a leading `^` means dependencies' tasks.
 - `!web`: a leading `!` is an exclusion.
+- `-web`: a leading `-` is a flag, so `vx run -web#build` could not name it.
 - `tag:web`: a leading `tag:` is a tag filter.
 - `web...` or `...web`: a dependency walk.
 - `web[main]`: a trailing `[<ref>]` is a git range.
 - `./web`, `{web}`, `web{dir}`: a directory form.
 - A name a plugin gives, and a project's path name, follow the same rule.
+- A plugin's name (a `package.json` `name`) is refused with its folder:
+  rename it there.
 
 </div>
 </details>

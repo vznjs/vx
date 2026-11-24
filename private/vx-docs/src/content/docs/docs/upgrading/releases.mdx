@@ -18,6 +18,12 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
+### A project name that starts with `-` is refused
+
+`vx lock` refuses a project named `-web`, by its vx.config `name` or its `package.json` `name`: `vx run -web#build` read it as a flag, so the command line could not run its tasks.
+
+Rename the project where the refusal points.
+
 ### `.vx/projects.lock` is version 10
 
 `.vx/projects.lock` is version 10: each task's JSON sits under its project, so two branches editing different projects merge cleanly. Run `vx lock` once and commit the rewritten lock.
