@@ -1441,9 +1441,9 @@ are a port bridge's: spawned guarded, released and unlinked with it,
 and the unix-socket lift is set for the task's wrap. A port the task
 also bridges out (`localBinding: [p]`) is its own and not relayed. On
 macOS the profile allows `(remote ip "localhost:<port>")` for each
-(`macProfileRules`), and the lookup of configd, which curl makes for
-the proxy settings before it dials: refused, its record failed a client
-that had its answer. `sandbox-loopback-reach.unsafe.test.ts` holds a
+(`macProfileRules`). Any network grant allows the lookup of configd,
+which curl makes for the proxy settings before it dials, a host the list
+names or not: refused, its record failed a client that had its answer. `sandbox-loopback-reach.unsafe.test.ts` holds a
 sandboxed client reaching an unsandboxed server and one behind a port
 bridge, and refused with no grant or another port's.
 
