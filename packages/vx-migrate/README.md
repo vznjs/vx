@@ -984,7 +984,8 @@ A different key, or no snapshot, runs `node_modules/.bin/nx graph --file=<snapsh
 - A touch without an edit, or a stray file a task writes at the root, does not.
 - Outside a git worktree the plugin falls back to the manifests' mtimes.
 - A run never exports, maps or reads the graph. `vx lock` records the projects the `discover` stage names and the edges Nx derives (`implicitDependencies`, an `import`).
-- So a `project.json` edit, a new edge included, changes what runs only after the next `vx lock`. Until then a run on this machine refuses, naming the file. An edit elsewhere (a source `import`, `vite.config.ts`) is not refused; `vx lock --check` names it.
+- So a `project.json` edit, a new edge included, changes what runs only after the next `vx lock`. Until then a run on this machine refuses, naming the file.
+- An edit elsewhere (a source `import`, `vite.config.ts`) is not refused; `vx lock --check` names it.
 - That holds under `vx watch` as in a run: a re-lock is the next cycle's event.
 
 <details><summary>Details</summary>

@@ -3024,6 +3024,12 @@ export function unlockedDir(
   metas: ReadonlyArray<{ dir: string }>,
   workspaceRoot: string,
 ): Promise<string | undefined>
+// The locked project whose package.json took `name` since the lock, asked only on a refusal
+export function renamedSinceLock(
+  name: string,
+  metas: ReadonlyArray<{ name: string; dir: string }>,
+  workspaceRoot: string,
+): Promise<string | undefined>
 ```
 
 ### Steps
@@ -3247,6 +3253,7 @@ export interface LoadedProjects {
   projects: Map<string, ProjectEntry>
   configured: readonly ProjectMeta[] // every project that can carry tasks
   stage?: Map<string, ProjectConfig> // with `lock`: each config the hooks left, by dir, before the default build
+  reads?: Map<string, Set<string>> // with `stage`: the files each project's plugins made it from, by dir
 }
 export function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjects>
 

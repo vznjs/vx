@@ -315,6 +315,7 @@ refusal is decided by the file's bytes now, never by a memo (rule 9).
 export interface ConfigStamps {
   at: number // epoch ms before the first stat: the racy window runs from here
   configs: Record<string, [number, number, string]>
+  reads?: Record<string, string[]> // the files a `project` plugin made each project's config from, by dir
 }
 export const CONFIG_STAMPS_FILE = 'config-stamps.json' // a cache clear deletes it
 export function takeConfigStamps(root: string, files: readonly string[]): Promise<ConfigStamps>
@@ -329,6 +330,12 @@ export function configsEditedSinceLock(
   lock: string | undefined,
   files: readonly { file: string; size: number; mtimeMs: number }[],
 ): Promise<string[]>
+// The files a `project` plugin made each project's config from, as stamped beside the lock `lock`
+export function readsBesideLock(
+  root: string,
+  cacheDir: string,
+  lock: string,
+): Promise<Record<string, string[]> | undefined>
 ```
 
 ## `src/memo/lockfile-memo.ts` — a lockfile claimant's parse

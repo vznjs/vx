@@ -571,6 +571,8 @@ export interface InvocationRecord {
   upToDateCount: number
   restoredLocalCount: number
   restoredRemoteCount: number
+  // v59: tasks a stop or --fail-fast killed, counted by the footer, with no runs row
+  abortedCount?: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null
