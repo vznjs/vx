@@ -41,8 +41,8 @@ export interface Env {
 /**
  * D1's errors Cloudflare says to retry (developers.cloudflare.com/d1/best-practices/retry-queries):
  * each failed a query or an upload 500, which vxHistory does not send again.
- * A write that lost its connection may have landed: retried, one report
- * folds twice, a smaller loss than the run's timings.
+ * A write that lost its connection may have landed: the fold leaves a row
+ * already written at its time, so a retried one folds once.
  */
 const AGAIN =
   /Network connection lost|storage caused object to be reset|reset because its code was updated/

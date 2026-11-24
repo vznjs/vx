@@ -7,7 +7,7 @@ import { parseArgs } from 'node:util'
 import { oidcTokenAuth, parseAllow, statusLine } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer } from './server.js'
-import { type Db, sqliteStore, TABLES } from './store.js'
+import { type Db, notOurs, sqliteStore, TABLES } from './store.js'
 
 const USAGE = `usage: vx-history-server [--db vx-history.sqlite] [--port 8080] [--host 0.0.0.0]
   ALLOW        who may take part, space separated, each issuer:owner/repo:workflow
@@ -21,19 +21,19 @@ export function sqliteDb(path: string): Db {
   const db = new Database(path, { create: true, strict: true })
   // A file another tool made started the server, and its first upload
   // failed 500 after init had altered that tool's table.
-  for (const [table, columns] of TABLES) {
-    const has = new Set(
-      db
-        .query<{ name: string }, [string]>('SELECT name FROM pragma_table_info(?1)')
-        .all(table)
-        .map((c) => c.name),
+  for (const table of TABLES.keys()) {
+    const why = notOurs(
+      table,
+      new Set(
+        db
+          .query<{ name: string }, [string]>('SELECT name FROM pragma_table_info(?1)')
+          .all(table)
+          .map((c) => c.name),
+      ),
     )
-    const missing = has.size === 0 ? [] : columns.filter((c) => !has.has(c))
-    if (missing.length > 0) {
+    if (why !== undefined) {
       db.close()
-      throw new Error(
-        `its table ${table} is not this server's: it has no column ${missing.join(', ')}`,
-      )
+      throw new Error(why)
     }
   }
   db.run('PRAGMA journal_mode = WAL')
