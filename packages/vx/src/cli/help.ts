@@ -40,6 +40,21 @@ export function wrapHelp(text: string, columns: number | undefined): string {
   const w = Math.min(columns, HELP_WIDTH)
   const lines = text.split('\n')
   const out: string[] = []
+  // Words filled from `row` (already indented), each new row at `hang`.
+  const fill = (row: string, words: string[], hang: number): void => {
+    let start = true
+    for (const word of words) {
+      if (!start && row.length + 1 + word.length > w) {
+        out.push(row)
+        row = ''
+      }
+      if (row === '') row = ' '.repeat(hang) + word
+      else if (start) row += word
+      else row += ` ${word}`
+      start = false
+    }
+    out.push(row)
+  }
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
     if (line.length <= w) {
@@ -52,30 +67,28 @@ export function wrapHelp(text: string, columns: number | undefined): string {
     // A usage line (`vx <verb> …`, no description) is an entry of its own:
     // the next one is not its continuation, and it hangs under the verb.
     const usage = gap === undefined && line.startsWith('vx ', lead)
-    // The entry's own continuation lines, authored under its description.
+    // The entry's own continuation lines, authored under its description
+    // or hung deeper.
     let body = line.slice(column)
     while (!usage && i + 1 < lines.length && /^ *\S/.test(lines[i + 1]!)) {
       const next = lines[i + 1]!
       // Another entry (a term, two spaces, its description) is not this one's.
-      if (/^ */.exec(next)![0].length !== column || /\S {2,}\S/.test(next)) break
+      if (/^ */.exec(next)![0].length < column || /\S {2,}\S/.test(next)) break
       body += ` ${next.trim()}`
       i++
     }
-    const hang = usage ? lead + 3 : w - column >= DESCRIPTION_ROOM ? column : lead + 4
-    let row = column === hang || usage ? line.slice(0, column) : ''
-    if (row === '') out.push(line.slice(0, column).trimEnd())
-    let start = true
-    for (const word of body.split(' ').filter(Boolean)) {
-      if (!start && row.length + 1 + word.length > w) {
-        out.push(row)
-        row = ''
-        start = true
-      }
-      if (start) row = row === '' ? ' '.repeat(hang) + word : row + word
-      else row += ` ${word}`
-      start = false
+    // Too narrow to keep it beside its term: under it, 4 in, or less when
+    // that leaves the description under 12 columns.
+    const under = Math.max(lead + 1, Math.min(lead + 4, w - 12))
+    const hang = usage ? lead + 3 : w - column >= DESCRIPTION_ROOM ? column : under
+    const words = body.split(' ').filter(Boolean)
+    if (column === hang || usage) fill(line.slice(0, column), words, hang)
+    else {
+      // The term alone, hung under itself when it is wider than the terminal.
+      const term = line.slice(lead, column).trim().split(' ')
+      fill(' '.repeat(lead), term, lead + 3)
+      fill('', words, hang)
     }
-    out.push(row)
   }
   return out.join('\n')
 }

@@ -6549,6 +6549,8 @@ Full reference: vx help
 - On a terminal, an entry wider than the terminal or 80 columns refills
   at spaces, its lines under its description; a usage line's go under
   its verb.
+- With under 20 columns beside its term, a description goes under the
+  term instead. A word wider than the room stays whole on its own line.
 - Piped, it prints as written.
 - A plugin verb answers its own `--help`.
 

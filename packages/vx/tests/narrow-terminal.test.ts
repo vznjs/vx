@@ -484,6 +484,18 @@ describe('help on a narrow terminal', () => {
     }
   })
 
+  // At 20 columns a description too wide for its column went 4 past the
+  // term's indent, at column 33, one word a line; an example's command
+  // stayed whole past the edge.
+  it('fits 20 columns, but for a word wider than its room alone on its line', () => {
+    for (const text of [helpText(), verbHelpText('run'), verbHelpText('last')]) {
+      const out = wrapHelp(text, 20)
+      for (const l of out.split('\n'))
+        if (words(l).length > 1) expect(l).toHaveLength(Math.min(l.length, 20))
+      expect(words(out)).toEqual(words(text))
+    }
+  })
+
   // At 60 columns the Usage list ran together into one paragraph: each
   // `vx <verb> …` line took the next as its continuation.
   it.each([60, 80])(
