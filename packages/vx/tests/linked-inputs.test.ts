@@ -452,6 +452,55 @@ describe('a symlinked input keys what it points to', () => {
 // string); followed, `b` keyed `a`'s gitignored dist, so `a`'s restore
 // between b's up-front key and its run re-keyed b, which was never saved.
 describe('a link into another project keys as the link', () => {
+  // A link was accepted when dependsOn reached ANY task of the project, and
+  // keyed by its target string alone: b read a's assets, which a#typecheck
+  // never keys, and an edit there replayed b's old output, green.
+  async function assets(declared: string): Promise<string> {
+    await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\n')
+    await addProject(root, 'a', {
+      config: `export default { tasks: { typecheck: { exec: { command: 'true' }, inputs: { files: [${declared}] }, outputs: { files: [] }, cache: true } } }`,
+      files: { 'assets/logo.svg': 'L1\n', 'src/index.ts': 'export {}\n' },
+    })
+    const b = await addProject(root, 'b', {
+      config: `export default { tasks: { build: { dependsOn: ['a#typecheck'], exec: { command: 'cat src/assets/logo.svg > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
+    })
+    await mkdir(path.join(b, 'src'))
+    await symlink('../../a/assets', path.join(b, 'src', 'assets'))
+    commit('fixture')
+    return b
+  }
+
+  it(
+    'is refused when no task it reaches there declares the target',
+    async () => {
+      await assets(`'src/**/*.ts'`)
+      const err = await all().then(
+        () => undefined,
+        (e: unknown) => e as Error & { code?: string },
+      )
+      const said_ = `${err?.message ?? ''}${said.join('')}`
+      expect(said_).toContain(
+        'b#build reads packages/b/src/assets in inputs.files, a link into the project a',
+      )
+      expect(said_).toContain(
+        'Depend on a task of a that declares assets in its inputs.files or outputs',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'runs again on an edit behind it once a reached task declares the target',
+    async () => {
+      const b = await assets(`'src/**/*.ts', 'assets/**'`)
+      expect((await all())['b#build'], said.join('')).toBe('success')
+      await writeFile(path.join(root, 'packages', 'a', 'assets', 'logo.svg'), 'L2\n')
+      expect((await all())['b#build'], said.join('')).toBe('success')
+      expect(await readFile(path.join(b, 'out.txt'), 'utf8')).toBe('L2\n')
+    },
+    TIMEOUT,
+  )
+
   async function siblings(): Promise<string> {
     await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\ndist/\n')
     await addProject(root, 'a', {
@@ -461,8 +510,8 @@ describe('a link into another project keys as the link', () => {
     const b = await addProject(root, 'b', {
       config: `export default { tasks: { build: { dependsOn: ['a#build'], exec: { command: 'cat src/a/dist/x.txt > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
     })
-    await mkdir(path.join(b, 'src'))
-    await symlink('../../a', path.join(b, 'src', 'a'))
+    await mkdir(path.join(b, 'src', 'a'), { recursive: true })
+    await symlink('../../../a/dist', path.join(b, 'src', 'a', 'dist'))
     commit('fixture')
     return b
   }

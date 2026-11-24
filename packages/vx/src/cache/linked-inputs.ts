@@ -41,12 +41,24 @@ interface ProjectAt {
 /** What a run tells the boundary: its projects, and its tasks by id. */
 interface RunBounds {
   readonly projects: readonly ProjectAt[]
-  readonly task: (
-    id: string,
-  ) => { readonly projectDir: string; readonly deps: readonly string[] } | undefined
+  readonly task: (id: string) =>
+    | {
+        readonly projectDir: string
+        readonly deps: readonly string[]
+        readonly config: {
+          readonly inputs?: { readonly files: readonly string[] }
+          readonly outputs?: { readonly files: readonly string[] }
+        }
+      }
+    | undefined
   /** Made real, deepest first, at the first link: links are rare. */
   real?: ProjectAt[]
-  readonly reach: Map<string, ReadonlySet<string>>
+  readonly reach: Map<string, ReadonlyMap<string, readonly Declared[]>>
+}
+
+/** One reached task's declared files, relative to its project. */
+interface Declared {
+  readonly files: readonly string[]
 }
 
 const boundsByRoot = new Map<string, RunBounds>()
@@ -72,7 +84,8 @@ function realOr(p: string): string {
   }
 }
 
-const within = (dir: string, p: string): boolean => p === dir || p.startsWith(dir + path.sep)
+const within = (dir: string, p: string, sep: string = path.sep): boolean =>
+  p === dir || p.startsWith(dir + sep)
 
 /** The task a link input belongs to, when the link lies in the task's own project. */
 interface LinkBounds {
@@ -102,11 +115,15 @@ function boundsOf(link: string, taskId: string | undefined): LinkBounds | undefi
   return undefined
 }
 
-/** The projects `id`'s `dependsOn` reaches, at any depth, its own aside. */
-function reachOf(run: RunBounds, id: string): ReadonlySet<string> {
+/**
+ * The projects `id`'s `dependsOn` reaches, at any depth, its own aside:
+ * each with the files its reached tasks declare (`inputs.files` and
+ * `outputs.files`, one list a task).
+ */
+function reachOf(run: RunBounds, id: string): ReadonlyMap<string, readonly Declared[]> {
   const known = run.reach.get(id)
   if (known !== undefined) return known
-  const out = new Set<string>()
+  const out = new Map<string, Declared[]>()
   const seen = new Set<string>([id])
   const stack = [...(run.task(id)?.deps ?? [])]
   while (stack.length > 0) {
@@ -115,7 +132,13 @@ function reachOf(run: RunBounds, id: string): ReadonlySet<string> {
     seen.add(d)
     const node = run.task(d)
     if (node === undefined) continue
-    out.add(realOr(node.projectDir))
+    const dir = realOr(node.projectDir)
+    let list = out.get(dir)
+    if (list === undefined) out.set(dir, (list = []))
+    list.push(
+      { files: node.config.inputs?.files ?? [] },
+      { files: node.config.outputs?.files ?? [] },
+    )
     stack.push(...node.deps)
   }
   run.reach.set(id, out)
@@ -123,15 +146,42 @@ function reachOf(run: RunBounds, id: string): ReadonlySet<string> {
 }
 
 /**
+ * Whether `rel` (project-relative, `/`-separated) lies under `declared`: a
+ * file one of its globs matches, or a directory a `dir/**` (or `**`) glob
+ * holds whole; either with no negation reaching into it.
+ */
+function covers(declared: Declared, rel: string, isDir: boolean): boolean {
+  const neg = declared.files.filter((f) => f.startsWith('!')).map((f) => f.slice(1))
+  const pos = declared.files.filter((f) => !f.startsWith('!'))
+  if (isDir) {
+    const holds = pos.some(
+      (f) => f === '**' || (f.endsWith('/**') && within(f.slice(0, -3), rel, '/')),
+    )
+    return holds && !neg.some((n) => within(rel, n, '/') || new Bun.Glob(n).match(rel))
+  }
+  return pos.some((f) => new Bun.Glob(f).match(rel)) && !neg.some((n) => new Bun.Glob(n).match(rel))
+}
+
+/**
  * Whether `real` lies in a project other than the task's own: `false` when
- * not, `true` when a `dependsOn` path reaches that project (keyed through
- * it), and a refusal when none does.
+ * not, `true` when a task its `dependsOn` reaches there declares it among
+ * its inputs or outputs (keyed through that task), and a refusal otherwise:
+ * keyed by its target string alone, an edit to an undeclared file behind it
+ * replayed the old output.
  */
 function otherProject(bounds: LinkBounds | undefined, real: string): boolean {
   if (bounds === undefined) return false
   const owner = bounds.projects.find((p) => within(p.dir, real))
   if (owner === undefined || owner.dir === bounds.own) return false
-  if (reachOf(bounds.run, bounds.taskId).has(owner.dir)) return true
+  const declared = reachOf(bounds.run, bounds.taskId).get(owner.dir)
+  const rel = relPosix(owner.dir, real)
+  let isDir = false
+  try {
+    isDir = statSync(real).isDirectory()
+  } catch {
+    isDir = false
+  }
+  if (declared?.some((d) => covers(d, rel, isDir)) === true) return true
   const link = relPosix(bounds.root, bounds.link)
   const own = relPosix(
     bounds.own,
@@ -141,7 +191,11 @@ function otherProject(bounds: LinkBounds | undefined, real: string): boolean {
   throw new UserError(
     `${bounds.taskId} reads ${link} in inputs.files, a link into the project ${owner.name} ` +
       `(${target}): a project's inputs never reach another project's files, so an edit there ` +
-      `would replay a stale hit. Depend on a task of ${owner.name}, or take the link back ` +
+      `would replay a stale hit. ` +
+      (declared === undefined
+        ? `Depend on a task of ${owner.name}`
+        : `Depend on a task of ${owner.name} that declares ${rel} in its inputs.files or outputs`) +
+      `, or take the link back ` +
       `with "!${own}" and name the files in inputs.workspaceFiles (${JSON.stringify(target)}).`,
     'VX_E_NESTED_INPUT',
   )

@@ -36,8 +36,11 @@ the `history` module's (history.md), and the tables `index-db`'s
   `behindLink(link, hashFile)` is the digest the key folds for one; the
   inputs re-check follows each linked input again with it. Given the task,
   an `inputs.files` link into another project keys nothing behind it when
-  the task's `dependsOn` reaches that project, and is refused
-  (`VX_E_NESTED_INPUT`) when not, by what `setLinkBounds` names.
+  a task its `dependsOn` reaches there declares the target in its
+  `inputs.files` or `outputs` (a file a glob matches, a directory a
+  `dir/**` holds whole), and is refused (`VX_E_NESTED_INPUT`) when not, by
+  what `setLinkBounds` names. Any task of the project was enough: a link
+  to files only an undeclared one read replayed a stale hit.
 - `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
   (`checkpointOffThread`), the index's WAL checkpoints run PASSIVE on a
   thread of their own every 100 ms, through a second connection, and the

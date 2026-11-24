@@ -450,10 +450,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     (`.git`, `node_modules`, `.vx/cache` and `.yarn/cache` aside, as Nx's walker skips them), a link
     among them followed in turn. The target may be in the project,
     elsewhere in the workspace or outside it, but an `inputs.files` link
-    is never followed into another project. With a `dependsOn` path to
-    that project, the link keys its target string alone and a linked
+    is never followed into another project. When a task its `dependsOn`
+    reaches there declares the target in its `inputs.files` or `outputs`,
+    the link keys its target string alone and a linked
     directory's walk skips that project: what the task reads there
-    reaches its key as that project's input keys. With none, the run
+    reaches its key as that task's input keys. Otherwise the run
     refuses it (`VX_E_NESTED_INPUT`), as it refuses a glob into another
     project. Followed, `b/src/a -> ../../a` keyed `a`'s git-ignored
     `dist`, so `a`'s restore re-keyed `b`, which was never saved

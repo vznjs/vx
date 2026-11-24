@@ -1422,7 +1422,7 @@ Paths start at the project folder. vx always leaves out what git ignores, its ow
 - Depend on that project's task instead, or name its files in `inputs.workspaceFiles`.
 - A pattern that reaches into it past its fixed folder is refused too: `*/d.txt`, or a root project's `packages/**/*.ts` over its members.
 - A leading `**`, a sibling folder and a `!` entry over a nested project are fine.
-- `src/a -> ../../a`, an input link into another project, is refused when a run finds it and no `dependsOn` path reaches that project. With one, the link keys its target string alone.
+- `src/a -> ../../a/dist`, an input link into another project, is refused when a run finds it and no task its `dependsOn` reaches there declares the target in `inputs.files` or `outputs` (`dist/**`). With one, the link keys its target string alone.
 
 </div>
 </details>
@@ -2406,7 +2406,7 @@ export default defineProject({
 - Through the proxy too, a loopback host (`localhost`, `127.0.0.1`,
   `::1`, `0.0.0.0`) passes only an entry that names its port.
 - Any other is refused `(a loopback host is reached only on a port the
-  list names)`, and the `fix:` line names `localhost:<port>`.
+list names)`, and the `fix:` line names `localhost:<port>`.
 - `localBinding: [4173]`: a sandboxed server lists its port, so it is
   reachable from outside its own sandbox.
 - On Linux, a failed task refused on a loopback port that a process on
