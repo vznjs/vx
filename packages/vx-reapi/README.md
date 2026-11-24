@@ -468,7 +468,20 @@ either deadline: queueing behind a busy worker pool is legitimate.
 - `queueTimeoutMs`, when set, bounds the wait for a worker.
 - Unset, the task's own `exec.timeout` bounds the queue as it bounds the
   run, and the task fails as timed out.
-- With neither, the wait is unbounded.
+- With neither, a task waits as long as the server keeps it queued, even
+  a server that never starts it. vx sets no bound of its own.
+- To bound it, give it back to vx after 2 minutes queued, in
+  `.vx/workspace.ts`:
+
+```ts
+reapi({ endpoint: 'grpcs://reapi.example.com', queueTimeoutMs: 120_000 })
+```
+
+- Or fail the task after 10 minutes, in its `vx.config.ts`:
+
+```ts
+build: { exec: { command: 'tsc', timeout: '10m' } }
+```
 
 <details><summary>Details</summary>
 
