@@ -3301,6 +3301,8 @@ that no longer matches the lockfile.
   refuses with `VX_E_LOCK`. `--affected` refuses too.
 - No dependencies lock while a plugin claims a lockfile that is there:
   the run refuses.
+- A lockfile the dependencies lock records that no plugin claims now (a
+  lockfile plugin removed since `vx lock`): the run refuses.
 - An install that moves no project's digest (a package that is no project
   yet) keys nothing, so it refuses nothing.
 - An edit in a `link:` or `file:` directory the lockfile names needs no
