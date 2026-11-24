@@ -2404,9 +2404,9 @@ export default defineProject({
   directly, never through the proxy that serves the rest of the list.
   Nothing else on loopback is reachable.
 - Through the proxy too, a loopback host (`localhost`, `127.0.0.1`,
-  `::1`, `0.0.0.0`) passes only an entry that names its port, and is
-  refused `(a loopback host is reached only on a port the list names)`.
-  The `fix:` line names `localhost:<port>`.
+  `::1`, `0.0.0.0`) passes only an entry that names its port.
+- Any other is refused `(a loopback host is reached only on a port the
+  list names)`, and the `fix:` line names `localhost:<port>`.
 - `localBinding: [4173]`: a sandboxed server lists its port, so it is
   reachable from outside its own sandbox.
 - On Linux, a failed task refused on a loopback port that a process on
@@ -2423,8 +2423,10 @@ export default defineProject({
 - A failed task whose output says so gets the grant: the path the
   client names (`unixSockets: ['/var/run/docker.sock']`) or the command
   connects to (`UNIX-CONNECT:<path>`, `unix://<path>`).
-- With neither, it says how to find the path, never `true`: that allows every socket,
-  docker.sock included, which is root on the host.
+- With neither, it says how to find the path, never `true`.
+- Either way it says that on Linux any grant opens every unix socket,
+  docker.sock included, which is root on the host: a list is no
+  narrower than `true` there.
 - A socket outside the project is hidden as any path is: the next run
   names its read grant.
 

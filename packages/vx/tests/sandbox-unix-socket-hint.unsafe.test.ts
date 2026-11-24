@@ -59,9 +59,12 @@ describe.skipIf(!available || process.platform !== 'linux')('a refused unix sock
       'echo "dial unix $SOCK: socket: operation not permitted" >&2; exit 1',
       '',
     )
-    expect(refused.lines.find((l) => l.includes('unixSockets'))).toContain(
-      `allow: { unixSockets: [${JSON.stringify(refused.sock)}] }`,
-    )
+    const line = refused.lines.find((l) => l.includes('unixSockets')) ?? ''
+    expect(line).toContain(`allow: { unixSockets: [${JSON.stringify(refused.sock)}] }`)
+    // Linux opens every socket once any is granted: the hint must not
+    // read as if the list kept docker.sock out.
+    expect(line).toContain('any grant opens every unix socket')
+    expect(line).toContain('docker.sock')
   }, 60_000)
 
   it('offers no bare unixSockets: true when no path is known (Python)', async () => {
@@ -69,7 +72,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a refused unix sock
     const line = refused.lines.find((l) => l.includes('unixSockets')) ?? ''
     expect(line).toContain("allow: { unixSockets: ['<socket path>'] }")
     expect(line).not.toContain('allow: { unixSockets: true }')
-    expect(line).toContain('every socket')
+    expect(line).toContain('any grant opens every unix socket')
     expect(line).toContain('docker.sock')
   }, 60_000)
 

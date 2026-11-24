@@ -508,8 +508,8 @@ function selfLookupHint(
  * one, is the grant (Linux allows any path once one is granted), else one
  * the command connects to (`UNIX-CONNECT:<path>`, `unix://<path>`): the
  * block refuses `socket()`, before any path reaches a trace. With none, it
- * says how to find it, never a bare `true`: that admits every socket,
- * docker.sock included, which is root on the host.
+ * says how to find it. Either way it says that on Linux any grant admits
+ * every socket, docker.sock included, which is root on the host.
  */
 function refusedUnixSocketHint(
   lines: readonly string[],
@@ -533,11 +533,12 @@ function refusedUnixSocketHint(
     line:
       'vx: the task was refused a unix socket: this sandbox blocks them unless granted. ' +
       (sock !== undefined
-        ? `If it needs one, grant it: \`allow: { unixSockets: [${JSON.stringify(sock)}] }\`.`
+        ? `If it needs one, grant it: \`allow: { unixSockets: [${JSON.stringify(sock)}] }\`. `
         : "If it needs one, grant its path: `allow: { unixSockets: ['<socket path>'] }`; the " +
           'client names it (DOCKER_HOST, SSH_AUTH_SOCK, a database URL), and `ss -xl` lists the ' +
-          'listening ones. Not `unixSockets: true`: it allows every socket, docker.sock ' +
-          'included, which is root on this machine.'),
+          'listening ones. ') +
+      'On Linux any grant opens every unix socket, docker.sock included, which is root on ' +
+      'this machine: grant one only to a command you trust with that.',
   }
 }
 
