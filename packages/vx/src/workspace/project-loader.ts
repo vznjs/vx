@@ -507,6 +507,17 @@ function loadFailure(err: unknown, configPath: string, kind: string): unknown {
 
 const VX_SRC = `${path.resolve(import.meta.dir, '..')}${path.sep}`
 
+/** Whether the innermost frame of `err` with a file is outside vx's own source. */
+function thrownByConfig(err: unknown): boolean {
+  const stack = (err as { stack?: unknown } | null)?.stack
+  if (typeof stack !== 'string') return false
+  for (const line of stack.split('\n')) {
+    const at = /^\s+at .*?\(?((?:file:\/\/)?\/[^()]*?):\d+:\d+\)?$/.exec(line)
+    if (at !== null) return !at[1]!.replace(/^file:\/\//, '').startsWith(VX_SRC)
+  }
+  return false
+}
+
 /** A thrown error's message and where it was thrown. */
 function thrownLine(err: Error, configPath: string): string {
   const stack = String(err.stack ?? '')
@@ -1397,8 +1408,18 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     }
     // Checked again once awaited: a Promise default passed the first check, and
     // `Promise.resolve(null)` crashed the validator.
-    assertDefaultObject(mod, 'Workspace', configPath)
-    validateWorkspace(mod, configPath)
+    try {
+      assertDefaultObject(mod, 'Workspace', configPath)
+      validateWorkspace(mod, configPath)
+    } catch (err) {
+      // The schema reads the live object (plugins are code, so no JSON rule
+      // precedes it): a getter or proxy trap of the config's own that threw
+      // there was vx's stack and "bug in vx". A throw from vx's own frame
+      // stays one.
+      throw isUserError(err) || !thrownByConfig(err)
+        ? err
+        : loadFailure(err, configPath, 'Workspace')
+    }
     if (mod.plugins?.some(isSkippedPlugin) === true)
       mod = { ...mod, plugins: mod.plugins.filter((p) => !isSkippedPlugin(p)) }
     // Set by a load that succeeded: a failed one may have left nothing in

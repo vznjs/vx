@@ -1399,6 +1399,28 @@ describe('loadWorkspaceConfig', () => {
     expect(await loadWorkspaceConfig(dir)).toBeNull()
   })
 
+  // The workspace file has no JSON rule (plugins are code), so its schema
+  // reads its values live: a getter or proxy trap that threw there was vx's
+  // own stack and "bug in vx".
+  it.each([
+    ['a getter', 'export default { get run() { throw new Error("getter says no") } }'],
+    [
+      'a proxy trap',
+      'export default new Proxy({}, { ownKeys() { throw new Error("trap says no") } })',
+    ],
+    [
+      'a plugin proxy',
+      'export default { plugins: [new Proxy({}, { get() { throw new Error("plugin says no") } })] }',
+    ],
+  ])('names the config when %s throws while vx reads it', async (_, body) => {
+    const file = path.join(dir, '.vx/workspace.mjs')
+    await Bun.write(file, `${body}\n`)
+    const err = (await loadWorkspaceConfig(dir).catch((e: unknown) => e)) as Error
+    expect(err.name).toBe('UserError')
+    expect(err.message).toStartWith(`Workspace config ${file} threw: `)
+    expect(err.message).toMatch(/ says no \(at .*workspace\.mjs:1:\d+\)$/)
+  })
+
   it('loads a default-exported object from .vx/workspace.mjs', async () => {
     await Bun.write(
       path.join(dir, '.vx/workspace.mjs'),
