@@ -1086,9 +1086,13 @@ function refuseBadOidc(oidc: unknown): void {
   }
   for (const key of ['tokenUrl', 'audience'])
     if (o[key] !== undefined && typeof o[key] !== 'string') bad(key, 'a string')
-  if (o.revokeUrl !== undefined && o.revokeUrl !== false && typeof o.revokeUrl !== 'string')
+  if (
+    o['revokeUrl'] !== undefined &&
+    o['revokeUrl'] !== false &&
+    typeof o['revokeUrl'] !== 'string'
+  )
     bad('revokeUrl', 'a string or false')
-  const params = o.params
+  const params = o['params']
   if (
     params !== undefined &&
     (params === null ||

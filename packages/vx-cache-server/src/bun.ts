@@ -115,7 +115,7 @@ function main(argv: string[]): void {
     return
   }
   const env = Bun.env
-  if (env.S3_BUCKET === undefined || env.S3_BUCKET === '') fail(`set S3_BUCKET\n${USAGE}`)
+  if (env['S3_BUCKET'] === undefined || env['S3_BUCKET'] === '') fail(`set S3_BUCKET\n${USAGE}`)
   // Digits only: Number('') is 0, a random port for `--port "$PORT"` with
   // PORT unset, and Number read 0x50 as 80 and 1e1 as 10.
   const port = /^\d+$/.test(values.port) ? Number(values.port) : Number.NaN
@@ -126,7 +126,7 @@ function main(argv: string[]): void {
   let allow
   let limits
   try {
-    allow = parseAllow(env.ALLOW ?? '')
+    allow = parseAllow(env['ALLOW'] ?? '')
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
@@ -137,7 +137,7 @@ function main(argv: string[]): void {
   } catch (err) {
     fail((err as Error).message)
   }
-  const client = new Bun.S3Client({ bucket: env.S3_BUCKET })
+  const client = new Bun.S3Client({ bucket: env['S3_BUCKET'] })
   try {
     // Signs offline: refuses missing credentials now, not every request 502.
     client.presign('vx-cache-server')
@@ -146,7 +146,7 @@ function main(argv: string[]): void {
   }
   // Unset, the audience would be the origin a request names: its Host
   // header, which the client picks. Workers know their own hostnames.
-  const audience = env.AUDIENCE?.trim() ?? ''
+  const audience = env['AUDIENCE']?.trim() ?? ''
   if (audience === '')
     fail(
       `set AUDIENCE: the aud a CI token names, the origin clients reach this server at\n${USAGE}`,
@@ -155,7 +155,7 @@ function main(argv: string[]): void {
     blobs: s3Blobs(client),
     authorize: oidcAuth({
       allow,
-      readAccess: env.READ_ACCESS,
+      readAccess: env['READ_ACCESS'],
       audience,
     }),
     limits,

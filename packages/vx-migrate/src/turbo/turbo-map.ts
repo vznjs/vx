@@ -434,12 +434,12 @@ function keyIgnored(
     const kept = list.filter((e) => typeof e !== 'string' || !entries.has(e))
     // Exclusions left alone narrow nothing core will take.
     const left = kept.some((e) => typeof e !== 'string' || !e.startsWith('!')) ? kept : []
-    if (kind === 'files') inputs.files = left
-    else if (left.length > 0) inputs.workspaceFiles = left
-    else delete inputs.workspaceFiles
+    if (kind === 'files') inputs['files'] = left
+    else if (left.length > 0) inputs['workspaceFiles'] = left
+    else delete inputs['workspaceFiles']
   }
-  const probes = (inputs.workspaceRuntime as unknown[] | undefined) ?? []
-  inputs.workspaceRuntime = [...probes, ignoredFilesProbe(hits.map(([rel]) => rel))]
+  const probes = (inputs['workspaceRuntime'] as unknown[] | undefined) ?? []
+  inputs['workspaceRuntime'] = [...probes, ignoredFilesProbe(hits.map(([rel]) => rel))]
 }
 
 /**
@@ -811,7 +811,7 @@ function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]
   })
   let from = 0
   for (let i = defs.length - 1; i > 0; i--) {
-    if (defs[i]?.extends === false) {
+    if (defs[i]?.['extends'] === false) {
       from = i
       break
     }
@@ -821,7 +821,7 @@ function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]
   for (const d of defs.slice(from)) {
     if (d === undefined) continue
     const own: TurboTask = { ...d }
-    delete own.extends
+    delete own['extends']
     if (Array.isArray(own.inputs)) {
       const found = dependencyOutputsOf(own.inputs)
       if (found !== null || !own.inputs.includes(TURBO_EXTENDS)) fromDeps = found
@@ -963,7 +963,7 @@ const TURBO_EXTENDS = '$TURBO_EXTENDS$'
  * definition not inherited.
  */
 function optedOut(def: TurboTask | undefined): boolean {
-  return def?.extends === false && Object.keys(def).length === 1
+  return def?.['extends'] === false && Object.keys(def).length === 1
 }
 
 /**
@@ -2346,16 +2346,16 @@ function buildTask(
   ).filter((n) => typeof n !== 'string' || SHELL_NAME.test(n))
 
   const exec: Record<string, unknown> = { command }
-  if (passThrough.length > 0) exec.env = { passThrough }
+  if (passThrough.length > 0) exec['env'] = { passThrough }
   if (persistent) {
-    exec.persistent = {}
+    exec['persistent'] = {}
     todos.push(opts.persistentTodo)
   }
-  if (interactive) exec.interactive = true
+  if (interactive) exec['interactive'] = true
 
   const task: Record<string, unknown> = { exec }
-  if (typeof def['description'] === 'string') task.description = def['description']
-  if (deps.length > 0) task.dependsOn = deps
+  if (typeof def['description'] === 'string') task['description'] = def['description']
+  if (deps.length > 0) task['dependsOn'] = deps
 
   const files: unknown[] = []
   // `.env` files Turbo hashes although git ignores them; a glob over git's
@@ -2475,10 +2475,10 @@ function buildTask(
     inline ? [] : hidden('inputs'),
   )
   const inputs: Record<string, unknown> = { files: withoutTakenBack(files) }
-  if (allWs.length > 0) inputs.workspaceFiles = withoutTakenBack(allWs)
-  if (keyEnv.length > 0) inputs.env = keyEnv
-  if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
-  if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]
+  if (allWs.length > 0) inputs['workspaceFiles'] = withoutTakenBack(allWs)
+  if (keyEnv.length > 0) inputs['env'] = keyEnv
+  if (pkgDotenv) inputs['runtime'] = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
+  if (wsDotenv.length > 0) inputs['workspaceRuntime'] = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]
   const globs = new Map<string, 'files' | 'workspaceFiles'>()
   for (const [rel, [kind]] of rels)
     if (!isLiteral(rel)) {
@@ -2493,7 +2493,7 @@ function buildTask(
   literals.tasks.push({ inputs, rels, globs, taken, own: ownOut, pkgDir: atRoot ? '' : pkgDir })
   // Turbo keys every task on its inputs, cached or not, and a dependant
   // folds that key: an uncached task's inputs still move its dependants.
-  task.inputs = inputs
+  task['inputs'] = inputs
   if (!cacheEnabled) return { name, todos, task, uses }
 
   const outFiles: string[] = []
@@ -2597,8 +2597,8 @@ function buildTask(
   // inputs, so those `!` entries come in this order too (`sortOrderFree`).
   const outputs: Record<string, unknown> = { files: takingBack(outFiles).sort(negationsLast) }
   const ws = takingBack(wsOutFiles).sort(negationsLast)
-  if (ws.length > 0) outputs.workspaceFiles = ws
-  task.outputs = outputs
+  if (ws.length > 0) outputs['workspaceFiles'] = ws
+  task['outputs'] = outputs
   // A path a `!` output takes back is still written by the task, often
   // not gitignored (`dist/skip`): as its own input it changed after the
   // key was taken, so no run was saved, and no dependant's either. One
@@ -2617,11 +2617,11 @@ function buildTask(
     )
     if (list !== undefined && negs.length > 0) inputs[field] = withoutTakenBack([...list, ...negs])
   }
-  subtract('files', outputs.files as string[])
+  subtract('files', outputs['files'] as string[])
   subtract('workspaceFiles', ws)
-  task.cache = true
+  task['cache'] = true
   // In place: the ignored-path passes hold this object.
-  if (rewritesManifest) inputs.stability = { strategy: 'mutable' }
+  if (rewritesManifest) inputs['stability'] = { strategy: 'mutable' }
 
   return { name, todos, task, uses }
 }

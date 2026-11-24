@@ -2262,15 +2262,15 @@ export function attributeFilesOutsideTree(
   }
   const out: string[] = []
   const configured = vars.get('core.attributesfile')
-  const home = env.HOME ?? ''
+  const home = env['HOME'] ?? ''
   if (configured !== undefined && configured !== '') {
     out.push(configured.startsWith('~/') ? path.join(home, configured.slice(2)) : configured)
-  } else if ((env.XDG_CONFIG_HOME ?? '') !== '') {
-    out.push(path.join(env.XDG_CONFIG_HOME!, 'git', 'attributes'))
+  } else if ((env['XDG_CONFIG_HOME'] ?? '') !== '') {
+    out.push(path.join(env['XDG_CONFIG_HOME']!, 'git', 'attributes'))
   } else if (home !== '') {
     out.push(path.join(home, '.config', 'git', 'attributes'))
   }
-  const noSystem = (env.GIT_ATTR_NOSYSTEM ?? '').toLowerCase()
+  const noSystem = (env['GIT_ATTR_NOSYSTEM'] ?? '').toLowerCase()
   if (!['1', 'true', 'yes', 'on'].includes(noSystem)) {
     out.push('/etc/gitattributes')
     try {

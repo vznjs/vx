@@ -8,7 +8,9 @@
 // public entry with `bun init`'s options, from outside the repo's tsconfigs.
 // A strict user's flags too: with `noUnusedLocals` and `noUnusedParameters`
 // (Vite's templates turn both on) tsc failed inside @vzn/vx, vx-lockfile,
-// vx-dte, vx-dte-server and vx-reapi on dead names (hardening, 2026-11-24).
+// vx-dte, vx-dte-server and vx-reapi on dead names, and with
+// `noPropertyAccessFromIndexSignature` (@tsconfig/strictest) on 152
+// `process.env.X` reads (hardening, 2026-11-24).
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -75,8 +77,13 @@ it("every public entry type-checks under bun init's tsconfig", () => {
   expect(check({})).toEqual({ said: '', code: 0 })
 }, 60_000)
 
-it('every public entry type-checks under a strict user’s unused and optional flags', () => {
+it('every public entry type-checks under a strict user’s flags (@tsconfig/strictest)', () => {
   expect(
-    check({ noUnusedLocals: true, noUnusedParameters: true, exactOptionalPropertyTypes: true }),
+    check({
+      noUnusedLocals: true,
+      noUnusedParameters: true,
+      exactOptionalPropertyTypes: true,
+      noPropertyAccessFromIndexSignature: true,
+    }),
   ).toEqual({ said: '', code: 0 })
 }, 60_000)

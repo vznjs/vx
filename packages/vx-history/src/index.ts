@@ -299,7 +299,7 @@ function serverUrlOf(
   option: string | undefined,
   env: Record<string, string | undefined> = Bun.env,
 ): string | undefined {
-  const given = option ?? env.VX_HISTORY_URL
+  const given = option ?? env['VX_HISTORY_URL']
   if (given === undefined || given === '') return undefined
   // Named as the workspace set it: a bad VX_HISTORY_URL was refused as `url`.
   const from = option === undefined ? 'VX_HISTORY_URL' : 'url'
@@ -552,7 +552,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   let remote: HistoryServer | undefined
   // Loaded only when a server is named: every run evaluates the config.
   const serverOf = async (): Promise<HistoryServer | undefined> => {
-    if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
+    if ((options.url ?? Bun.env['VX_HISTORY_URL'] ?? '') === '') return undefined
     // VX_HISTORY_URL alone: the workspace names no repository to ask for,
     // so the URL is never read; parsed first, a malformed one failed the run.
     if (named === undefined) return undefined
@@ -627,11 +627,11 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     } else if (remote !== undefined) {
       if (ctx.ci)
         ctx.warn(
-          Bun.env.GITHUB_ACTIONS === 'true'
+          Bun.env['GITHUB_ACTIONS'] === 'true'
             ? '[vx] vx-history: this job gets no OIDC token for the history server (give it `permissions: id-token: write`): it reads only'
             : '[vx] vx-history: no CI token for the history server (name an id_tokens entry VX_HISTORY_TOKEN): it reads only',
         )
-    } else if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') !== '') {
+    } else if ((options.url ?? Bun.env['VX_HISTORY_URL'] ?? '') !== '') {
       ctx.warn(
         '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
       )

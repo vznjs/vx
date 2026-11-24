@@ -1159,7 +1159,7 @@ function buildTask(
   // A name that is no shell identifier never reached a task (`sh` drops it)
   // and core refuses it in passThrough; the key still reads it.
   const passThrough = inputs.envNames.filter((n) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(n))
-  if (passThrough.length > 0) env.passThrough = passThrough
+  if (passThrough.length > 0) env['passThrough'] = passThrough
   // Nx hands every task its target (`getNxEnvVariablesForTask`), and `nx exec
   // -- <cmd>`, a package script's way to run under Nx, reads it: unset, it
   // booted Nx's own task runner, which ran the target and its dependencies
@@ -1180,18 +1180,18 @@ function buildTask(
       : {}),
     ...mapped.env,
   }
-  if (Object.keys(define).length > 0) env.define = define
-  if (Object.keys(env).length > 0) exec.env = env
-  if (mapped.timeout !== undefined) exec.timeout = mapped.timeout
+  if (Object.keys(define).length > 0) env['define'] = define
+  if (Object.keys(env).length > 0) exec['env'] = env
+  if (mapped.timeout !== undefined) exec['timeout'] = mapped.timeout
   if (readyWhen !== undefined) {
-    exec.persistent = { readyWhen }
+    exec['persistent'] = { readyWhen }
   } else if (persistent) {
     // Nx starts a continuous task's dependents once it has started
     // (tasks-schedule.js `canBeScheduled`, Nx 23): ready on spawn, as here.
-    exec.persistent = {}
+    exec['persistent'] = {}
   }
   const task: Record<string, unknown> = { exec }
-  if (deps.length > 0) task.dependsOn = deps
+  if (deps.length > 0) task['dependsOn'] = deps
   const keyed: Record<string, unknown> = { files: withoutTakenBack(inputs.files) }
   // Nx hashes the root TypeScript config into every task (its TsConfiguration
   // input, other projects' `paths` left out): a compilerOptions edit re-ran
@@ -1210,19 +1210,19 @@ function buildTask(
     !inputs.wsFiles.includes(opts.lockfile)
   )
     inputs.wsFiles.push(opts.lockfile)
-  if (inputs.wsFiles.length > 0) keyed.workspaceFiles = withoutTakenBack(inputs.wsFiles)
-  if (inputs.envNames.length > 0) keyed.env = inputs.envNames
+  if (inputs.wsFiles.length > 0) keyed['workspaceFiles'] = withoutTakenBack(inputs.wsFiles)
+  if (inputs.envNames.length > 0) keyed['env'] = inputs.envNames
   // The `.env` files the task loads are inputs, and gitignored ones
   // (`.env.local`) are invisible to a glob: their bytes, read per run.
   // Their paths are project-relative: `runtime`, in the project dir.
-  if (mapped.envInputs.length > 0) keyed.runtime = [envProbe(mapped.envInputs)]
-  if (inputs.runtimeCmds.length > 0) keyed.workspaceRuntime = inputs.runtimeCmds
-  task.inputs = keyed
+  if (mapped.envInputs.length > 0) keyed['runtime'] = [envProbe(mapped.envInputs)]
+  if (inputs.runtimeCmds.length > 0) keyed['workspaceRuntime'] = inputs.runtimeCmds
+  task['inputs'] = keyed
   if (cacheEnabled) {
     const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
-    if (wsOutFiles.length > 0) outputs.workspaceFiles = takingBack(wsOutFiles)
-    task.outputs = outputs
-    task.cache = true
+    if (wsOutFiles.length > 0) outputs['workspaceFiles'] = takingBack(wsOutFiles)
+    task['outputs'] = outputs
+    task['cache'] = true
   }
 
   const generated: GeneratedTask = { name: variant.name, todos, task }
@@ -1507,7 +1507,7 @@ function mapCommand(
     }
   }
   if (executor === 'nx:run-script') {
-    const script = typeof options.script === 'string' ? options.script : targetName
+    const script = typeof options['script'] === 'string' ? options['script'] : targetName
     // package.json is a boundary: a script value is whatever the file holds.
     // This read used to be typed `Record<string, string>`, so `body.length`
     // type-checked on a value that need not be a string at all.
@@ -1590,18 +1590,18 @@ function translation(
   for (const key of Object.keys(t))
     if (key !== 'command' && key !== 'timeout' && key !== 'env')
       throw new UserError(`${at}: unknown field "${key}" (allowed: command, env, timeout)`)
-  if (typeof t.command !== 'string' || t.command.trim() === '')
+  if (typeof t['command'] !== 'string' || t['command'].trim() === '')
     throw new UserError(`${at}: command must be a non-empty string`)
-  const timeout = t.timeout
+  const timeout = t['timeout']
   if (
     timeout !== undefined &&
     !(typeof timeout === 'string' && /^[1-9]\d*(ms|s|m|h|d)$/.test(timeout))
   )
     throw new UserError(`${at}: timeout must be a duration with its unit, like '30s' or '10m'`)
-  const env = t.env ?? {}
+  const env = t['env'] ?? {}
   if (!isRecord(env) || Object.values(env).some((v) => typeof v !== 'string'))
     throw new UserError(`${at}: env must map names to strings`)
-  return { command: t.command, env, timeout: timeout as Duration | undefined }
+  return { command: t['command'], env, timeout: timeout as Duration | undefined }
 }
 
 /**

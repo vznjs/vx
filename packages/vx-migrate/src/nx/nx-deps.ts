@@ -129,7 +129,7 @@ function expandTargetGlobs(
       return fresh(expand(d).filter(ownTarget))
     }
     if (d && typeof d === 'object') {
-      const t = (d as Record<string, unknown>).target
+      const t = (d as Record<string, unknown>)['target']
       if (typeof t === 'string' && TARGET_GLOB.test(t)) {
         return expand(t).map((target) => ({ ...(d as Record<string, unknown>), target }))
       }
@@ -208,7 +208,7 @@ export function mapNxDeps(
     }
     if (d && typeof d === 'object') {
       const o = d as Record<string, unknown>
-      const t = typeof o.target === 'string' ? o.target : undefined
+      const t = typeof o['target'] === 'string' ? o['target'] : undefined
       if (t === undefined) {
         todos.push(`dependsOn ${JSON.stringify(d)} has no target — dropped`)
         continue
@@ -217,16 +217,23 @@ export function mapNxDeps(
       // overrides (`createTaskOverrides`): a different command, which vx's
       // one task per target cannot be. Nothing to hand on, nothing to say
       // (cypress's atomized `e2e-ci` forwards its empty options).
-      if (o.options === 'forward' && forwarded !== undefined && Object.keys(forwarded).length > 0)
+      if (
+        o['options'] === 'forward' &&
+        forwarded !== undefined &&
+        Object.keys(forwarded).length > 0
+      )
         forwards.options = true
       // `ignore` is Nx's default; only `forward` asks for something vx lacks.
-      if (o.params === 'forward') forwards.params = true
-      const raw = o.projects ?? (o.dependencies === true ? 'dependencies' : undefined)
+      if (o['params'] === 'forward') forwards.params = true
+      const raw = o['projects'] ?? (o['dependencies'] === true ? 'dependencies' : undefined)
       // Nx 24 refuses these strings at run (`assertNotLegacyProjectsString`),
       // unless a project carries the name; read as older Nx read them.
-      if ((o.projects === 'self' || o.projects === 'dependencies') && !metaByNode.has(o.projects))
+      if (
+        (o['projects'] === 'self' || o['projects'] === 'dependencies') &&
+        !metaByNode.has(o['projects'])
+      )
         todos.push(
-          `dependsOn ${JSON.stringify(d)}: Nx 24 refuses \`projects: "${o.projects}"\` (run \`nx repair\`); vx reads it as older Nx did`,
+          `dependsOn ${JSON.stringify(d)}: Nx 24 refuses \`projects: "${o['projects']}"\` (run \`nx repair\`); vx reads it as older Nx did`,
         )
       // Nx reads a lone string as a one-entry list (`projects: "b"`); it was
       // not representable here, and the edge dropped.

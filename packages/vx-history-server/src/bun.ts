@@ -53,14 +53,14 @@ function main(argv: string[]): void {
   let allow
   let timingDays
   try {
-    allow = parseAllow(env.ALLOW ?? '')
+    allow = parseAllow(env['ALLOW'] ?? '')
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
   // An empty one started a server that refused every request.
   if (allow.length === 0) fail(`set ALLOW\n${USAGE}`)
   try {
-    timingDays = timingDaysOf(env.TIMING_DAYS)
+    timingDays = timingDaysOf(env['TIMING_DAYS'])
   } catch (err) {
     fail((err as Error).message)
   }
@@ -76,7 +76,7 @@ function main(argv: string[]): void {
   }
   // Unset, the audience would be the origin a request names: its Host
   // header, which the client picks. Workers know their own hostnames.
-  const audience = env.AUDIENCE?.trim() ?? ''
+  const audience = env['AUDIENCE']?.trim() ?? ''
   if (audience === '')
     fail(
       `set AUDIENCE: the aud a CI token names, the origin clients reach this server at\n${USAGE}`,
@@ -85,7 +85,7 @@ function main(argv: string[]): void {
     store: sqliteStore(db),
     authorize: oidcTokenAuth({
       allow,
-      readAccess: env.READ_ACCESS,
+      readAccess: env['READ_ACCESS'],
       audience,
     }),
     ...(timingDays === undefined ? {} : { timingDays }),

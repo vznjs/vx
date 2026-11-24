@@ -494,7 +494,9 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   /** On GitHub Actions with `id-token: write`: the job's token is asked for. */
   private get github(): boolean {
-    return !!this.env.ACTIONS_ID_TOKEN_REQUEST_URL && !!this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
+    return (
+      !!this.env['ACTIONS_ID_TOKEN_REQUEST_URL'] && !!this.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']
+    )
   }
 
   /**
@@ -507,7 +509,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private async bearer(marginMs = 60_000): Promise<string> {
     const lent = this.lent?.()
     if (lent !== undefined) return lent
-    if (!this.github) return this.env.VX_CACHE_TOKEN ?? ''
+    if (!this.github) return this.env['VX_CACHE_TOKEN'] ?? ''
     if (this.idToken !== undefined && Date.now() < this.idToken.exp - marginMs) {
       return this.idToken.jwt
     }
@@ -528,13 +530,13 @@ export class VxCacheLayer implements RemoteCacheLayer {
    * run on every worker. A refusal (a 4xx) is final.
    */
   private async askOnce(ask: URL): Promise<Response> {
-    this.sent.add(this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN!)
+    this.sent.add(this.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']!)
     for (let attempt = 1; ; attempt++) {
       let res: Response | undefined
       let failure: unknown
       try {
         res = await this.fetchImpl(ask, {
-          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN!}` },
+          headers: { authorization: `bearer ${this.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']!}` },
           signal: deadline(this.config.timeoutMs),
         })
       } catch (err) {
@@ -551,7 +553,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   private async askGithub(): Promise<string> {
-    const ask = new URL(this.env.ACTIONS_ID_TOKEN_REQUEST_URL!)
+    const ask = new URL(this.env['ACTIONS_ID_TOKEN_REQUEST_URL']!)
     ask.searchParams.set('audience', new URL(this.config.url).origin)
     let jwt: unknown
     try {
@@ -1108,7 +1110,7 @@ export function resolveVxCacheConfig(
   env: Record<string, string | undefined> = Bun.env,
 ): ResolvedVxCacheConfig | undefined {
   const named = namedOf(options)
-  const given = options.url ?? env.VX_CACHE_URL
+  const given = options.url ?? env['VX_CACHE_URL']
   if (given === undefined || given === '') return undefined
   // Named as the workspace set it: a bad VX_CACHE_URL was refused as `url`.
   const from = options.url === undefined ? 'VX_CACHE_URL' : 'url'
@@ -1149,8 +1151,8 @@ export interface ResolvedVxCacheConfig extends Required<Omit<VxCacheOptions, 'he
 export function hasCiToken(env: Record<string, string | undefined>, lent: boolean): boolean {
   return (
     lent ||
-    (!!env.ACTIONS_ID_TOKEN_REQUEST_URL && !!env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) ||
-    !!env.VX_CACHE_TOKEN
+    (!!env['ACTIONS_ID_TOKEN_REQUEST_URL'] && !!env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']) ||
+    !!env['VX_CACHE_TOKEN']
   )
 }
 
@@ -1198,10 +1200,10 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
       // A GitLab job with no `id_tokens` entry read only, unsaid.
       if (
         !hasCiToken(Bun.env, lent) &&
-        (Bun.env.GITHUB_ACTIONS === 'true' || Bun.env.GITLAB_CI === 'true')
+        (Bun.env['GITHUB_ACTIONS'] === 'true' || Bun.env['GITLAB_CI'] === 'true')
       )
         ctx.warn(
-          Bun.env.GITHUB_ACTIONS === 'true'
+          Bun.env['GITHUB_ACTIONS'] === 'true'
             ? '[vx] vx-cache: this job gets no OIDC token (give it `permissions: id-token: write`): it reads only'
             : '[vx] vx-cache: no CI token for the cache server (name an id_tokens entry VX_CACHE_TOKEN): it reads only',
         )
