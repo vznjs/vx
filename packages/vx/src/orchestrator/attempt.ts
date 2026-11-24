@@ -26,7 +26,7 @@ import { buildRequest } from './attempt-request.js'
 import { bracketLiteralHint } from './miss-save.js'
 import { declareStateHint, stateLeft } from './undeclared-state.js'
 import type { MissRun, PriorAttempt } from './miss-run.js'
-import { executorLabel, nameExecutorFailure } from './plugin-host.js'
+import { executorLabel, nameExecutorFailure, watchedExecute } from './plugin-host.js'
 import { lockedDirGone } from './projects.js'
 import {
   commandWriteReach,
@@ -364,7 +364,7 @@ async function runAttempt(
     running = Promise.resolve(
       unseen.length > 0
         ? unseenResult(unseen, node.projectDir, args.run.workspaceRoot)
-        : args.executor.execute(req),
+        : watchedExecute(args.executor, args.executor.execute(req)),
     )
   } catch (thrown) {
     running = Promise.reject(thrown)

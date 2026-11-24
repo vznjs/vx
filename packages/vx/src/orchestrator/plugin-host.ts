@@ -913,6 +913,17 @@ export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unkno
 }
 
 /**
+ * `running`, a plugin executor's `execute`, marked as its plugin's until it
+ * settles: one that never does strands the run, and the exit names it.
+ */
+export function watchedExecute<T>(executor: TaskExecutor, running: T | Promise<T>): Promise<T> {
+  const plugin = executorPlugin.get(executor)
+  if (plugin === undefined) return Promise.resolve(running)
+  const settled = hookStarted(plugin, 'execute')
+  return Promise.resolve(running).finally(settled)
+}
+
+/**
  * The executor a task's error says failed it, if a plugin's did: the task
  * was placed there, and its row read `local` with no `where` to show.
  */

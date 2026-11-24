@@ -271,6 +271,27 @@ describe('a hook that never settles', () => {
     ])
   }, 30_000)
 
+  it("in an executor's execute: the plugin is named", async () => {
+    const root = await fixture(
+      `{ executor() { return { name: 'pool', execute() { return new Promise(() => {}) } } } }`,
+    )
+    const r = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
+        'run',
+        'boom',
+        '--all',
+      ],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    expect([r.exitCode, new TextDecoder().decode(r.stderr)]).toEqual([
+      1,
+      "vx: the run stopped before it finished: plugin 'org/hang' never settled its execute hook\n",
+    ])
+  }, 30_000)
+
   it('in a plugin verb: the plugin and its verb are named', async () => {
     const root = await fixture(
       `{ commands: { probe: { description: 'p', run() { return new Promise(() => {}) } } } }`,

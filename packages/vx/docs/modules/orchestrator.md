@@ -3617,6 +3617,11 @@ nothing runs and caches here.
   (C-63), the plugin's error as its `cause`: printed plainly, as every
   stage's throw is, never as vx's internal error, and the plugin's own
   error is never renamed (C-85). The floor's is untouched.
+- `watchedExecute(executor, running)` — a plugin executor's `execute`
+  marked as its plugin's hook until it settles (`hookStarted`), so one
+  that never settles strands the run naming the plugin
+  (`never settled its execute hook`), not "a plugin hook?". The floor's
+  is not marked.
 - `executorFailedOn(err)` — the executor's name on an error
   `nameExecutorFailure` made, else `undefined`: `run()` sets it as the
   task's `where`, whose row read `local` though the task was placed on
