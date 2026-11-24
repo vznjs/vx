@@ -1489,7 +1489,12 @@ function namedRefusal(taskId: string, err: unknown): unknown {
   if (isUserError(err) || !(err instanceof Error)) return err
   const status = err as Error & { code?: unknown; details?: unknown }
   if (typeof status.code !== 'number' || typeof status.details !== 'string') return err
-  return new UserError(`${taskId}: the remote server failed the call — ${err.message}`)
+  // grpc-js names a code it does not know `undefined` ("42 undefined: …").
+  const unnamed = `${status.code} undefined: `
+  const said = err.message.startsWith(unnamed)
+    ? `gRPC code ${status.code}: ${err.message.slice(unnamed.length)}`
+    : err.message
+  return new UserError(`${taskId}: the remote server failed the call — ${said}`)
 }
 
 /**

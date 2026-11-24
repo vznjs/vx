@@ -1007,6 +1007,15 @@ describe.if(CHUNKING_SUPPORTED)('a server refusal (F-11)', () => {
     ])
   })
 
+  // grpc-js names a code it does not know `undefined`: "42 undefined: weird".
+  it('names a status code gRPC does not know by its number', async () => {
+    const got = await withExecutor((run) => {
+      fake.onExecute = () => ({ error: { code: 42 as grpc.status, details: 'weird' } })
+      return refusal(run(request()))
+    })
+    expect(got).toBe('pkg#gen: the remote server failed the call — gRPC code 42: weird')
+  })
+
   // CONTROL: a plain Error (core's own contract broken) stays one.
   it('leaves an error that is not a gRPC status as it was', async () => {
     const got = await withExecutor((run) =>
