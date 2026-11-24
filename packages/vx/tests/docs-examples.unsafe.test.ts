@@ -74,7 +74,9 @@ function commands(f: Fence): { verb: string; flags: string[] }[] {
       .trim()
     const m = /^(?:(?:npx|bunx) @vzn\/)?vx ([a-z]+)(.*)$/.exec(line)
     if (m === null || !(m[1]! in surface.verbs)) continue
-    out.push({ verb: m[1]!, flags: m[2]!.split(/\s+/).filter((a) => a.startsWith('-')) })
+    // `vx run --all; echo $?`: the `;` ends the command, not the flag.
+    const words = m[2]!.split(/\s+/).map((a) => a.replace(/;$/, ''))
+    out.push({ verb: m[1]!, flags: words.filter((a) => a.startsWith('-')) })
   }
   return out
 }
@@ -96,7 +98,9 @@ describe('every example an agent reads from the docs', () => {
         seen++
         const ok = acceptedFlags(verb)
         for (const a of flags)
-          if (!ok.includes(a.split('=')[0]!)) bad.push(`${f.page}: vx ${verb} ${a}`)
+          // Every verb takes --help.
+          if (a !== '--help' && !ok.includes(a.split('=')[0]!))
+            bad.push(`${f.page}: vx ${verb} ${a}`)
       }
     expect(bad).toEqual([])
     expect(seen).toBeGreaterThan(100)

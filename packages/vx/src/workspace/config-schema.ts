@@ -1708,14 +1708,6 @@ function assertNoBraceRange(glob: string, where: string): void {
 }
 
 /**
- * `.`, `./`, `././` (with or without a `!`) name the directory itself, which
- * no matcher expands: the entry selected nothing and said so nowhere.
- * `./src/**
- * Turbo's `!NAME` takes a name back out of a wildcard (`env`,
- * `passThroughEnv`). vx has no wildcards, so the entry was a variable
- * named `!NAME`: nothing excluded, nothing said.
- */
-/**
  * A list whose names each count once (a set): a repeat loaded clean and keyed
  * the task apart from the list without it.
  */
@@ -1727,6 +1719,14 @@ function assertOnce(names: readonly string[], where: string): void {
   }
 }
 
+/**
+ * `.`, `./`, `././` (with or without a `!`) name the directory itself, which
+ * no matcher expands: the entry selected nothing and said so nowhere.
+ * `./src/**
+ * Turbo's `!NAME` takes a name back out of a wildcard (`env`,
+ * `passThroughEnv`). vx has no wildcards, so the entry was a variable
+ * named `!NAME`: nothing excluded, nothing said.
+ */
 function assertNoEnvNegation(names: readonly string[], where: string): void {
   const neg = names.find((n) => n.startsWith('!'))
   if (neg !== undefined) {

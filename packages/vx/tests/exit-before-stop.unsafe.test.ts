@@ -22,8 +22,9 @@ const available = await sandboxAvailable('exit-before-stop test')
 const EXITS = "printf open; while [ ! -f go ]; do :; done; printf 'held\\n' >&2; exit 3"
 const LIVES = "printf open; while [ ! -f go ]; do :; done; printf 'held\\n' >&2; echo; sleep 30"
 
-const saved = process.env['VX_TEST_OPEN_LINE_WAIT']
+let saved: string | undefined
 beforeAll(() => {
+  saved = process.env['VX_TEST_OPEN_LINE_WAIT']
   process.env['VX_TEST_OPEN_LINE_WAIT'] = '60s'
 })
 afterAll(() => {
