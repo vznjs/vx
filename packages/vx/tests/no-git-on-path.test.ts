@@ -71,6 +71,36 @@ describe('git absent from PATH', () => {
   )
   it('`vx run build --all` is one line naming the install', oneLine(['run', 'build', '--all']))
 
+  // No workspace edit installs git, so watching on after this refusal
+  // idled forever under a "watching" line.
+  it('`vx watch build --all` exits on the one line naming the install', async () => {
+    // Locked with git, as the run that reaches the watch's git refusal is.
+    expect(vxSync(root, ['lock']).code).toBe(0)
+    const p = Bun.spawn({
+      cmd: [
+        process.execPath,
+        path.join(import.meta.dir, '../src/bin.ts'),
+        'watch',
+        'build',
+        '--all',
+      ],
+      cwd: root,
+      env: { ...process.env, PATH: bin, NO_COLOR: '1', CI: '', GITHUB_ACTIONS: '' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 15_000,
+    })
+    const [out, err, code] = await Promise.all([
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+      p.exited,
+    ])
+    expect(p.signalCode).toBeNull()
+    expect(code).toBe(1)
+    expect(out + err).toContain("vx requires git: failed to spawn 'git'")
+    expect(out + err).not.toContain('watching')
+  }, 20_000)
+
   it('the watch judge ignores nothing and keeps going', async () => {
     const saved = process.env['PATH']
     process.env['PATH'] = bin

@@ -30,7 +30,7 @@ import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './wo
 import { resolveSetting } from '../settings.js'
 import { lockedExtras } from './watch-filter.js'
 import { watchCycle } from './watch-cycle.js'
-import { startedIgnoring } from '../util/index.js'
+import { startedIgnoring, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
@@ -272,6 +272,8 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
         'vx watch',
         `cycle failed: ${err instanceof Error ? err.message : String(err)}`,
       )
+      // No workspace edit installs git: watching on idled forever.
+      if (err instanceof UserError && err.code === 'VX_E_NO_GIT') refusedToStart = true
       return undefined
     },
   )
