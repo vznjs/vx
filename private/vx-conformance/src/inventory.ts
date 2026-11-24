@@ -101,6 +101,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'inputs-property',
     'inputs-resolution',
     'key-not-derived',
+    'key-portable',
     'keyed-group-config',
     'keyed-projects',
     'linked-inputs',
