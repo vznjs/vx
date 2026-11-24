@@ -2024,6 +2024,11 @@ A reader that leaves does not change the code:
 - The output after that point goes nowhere: `EPIPE`, on stdout or
   stderr, is not an error vx reports.
 
+Any other refusal of stdout (`ENOSPC`, `EIO`) is one:
+
+- vx prints `vx: write error on stdout: <error>` on stderr once.
+- A verdict of `0` becomes `1`; any other code stands.
+
 </div>
 </details>
 

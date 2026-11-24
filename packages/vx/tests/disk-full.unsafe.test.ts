@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { vx } from './helpers/vx.js'
+import { BIN, vx } from './helpers/vx.js'
 
 const SMALL = process.env['VX_SMALL_DISK']
 const BWRAP = Bun.which('bwrap')
@@ -87,7 +87,7 @@ describe.skipIf(
           proc.exited,
         ])
         expect(`${code}\n${out}${err}`).toStartWith('0\n')
-        expect(err).toMatch(/\b6 pass\b/)
+        expect(err).toMatch(/\b7 pass\b/)
         // The one skip is this wrapper, inside.
         expect(err).toMatch(/\b1 skip\b/)
       } finally {
@@ -254,6 +254,35 @@ describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
       )
       expect(run.out + run.err).not.toContain('\n    at ')
       expect(run.out + run.err).not.toContain('bug in vx')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a run whose own output the full disk refuses says so and fails',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-full-out-' })
+      const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'vx-full-cache-'))
+      made.push(root, cacheDir)
+      await project(root)
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      const out = path.join(small, 'out.txt')
+      await fill(small)
+      await fill(small, 512)
+      // A green run's output lost to the disk exited 0 with nothing said.
+      const proc = Bun.spawn(
+        [process.execPath, BIN, 'run', 'build', '--all', '--cache-dir', cacheDir],
+        {
+          cwd: root,
+          env: { ...process.env, NO_COLOR: '1', CI: '', GITHUB_ACTIONS: '' },
+          stdout: Bun.file(out),
+          stderr: 'pipe',
+        },
+      )
+      const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+      expect(err).toContain('vx: write error on stdout: ENOSPC')
+      expect(err).toContain('the disk it goes to is full')
+      expect(code).toBe(1)
     },
     TIMEOUT,
   )
