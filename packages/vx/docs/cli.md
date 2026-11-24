@@ -460,6 +460,7 @@ filter(s): …`, plus a hint: running the rest would hide the typo.
   refuses, naming `nope`) and for an exclusion (`!nope`).
 - A filter that names no project (`...`, a bare `!`, an empty `{}`) is refused.
 - A path that climbs out of the root (`../`, `{..}`) is refused.
+- An empty git ref (`[]`, `@demo/web[]`) is refused.
 - A filter holding a control character is refused.
 - `@demo/web^...[main]` is refused: write `@demo/web[main]^...`, the
   dependencies of a changed app. `^...` never goes before a git ref.
