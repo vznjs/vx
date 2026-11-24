@@ -1592,7 +1592,7 @@ platform has no task left.
 **`WorkerSpawn`** is what `spawn` gets:
 
 ```text
-{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env }
+{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env, exited }
 ```
 
 - `memory` is in bytes, and `max` is its size's (`Infinity` uncapped).
@@ -1601,7 +1601,10 @@ platform has no task left.
   uncommitted changes included. A worker must check out its tree.
 - `cacheDir` is the run's cache dir (absolute) when the workspace names
   one, so workers on this machine save where the run reads.
-- `env` holds the three variables the worker reads.
+- `env` holds what the worker reads: `VX_DTE_RUN`, `VX_DTE_WORKER`,
+  `VX_DTE_RELAY`, and `VX_DTE_SECRET` when the run has a key.
+- `exited(reason)` says the worker's job or process ended, a success
+  too, and why: its exit or its last stderr line.
 
 **The adapters:**
 

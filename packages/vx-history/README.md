@@ -237,7 +237,7 @@ The runner records every execution's CPU time and peak RSS. Core's only gate is 
 
 This plugin's `admit` hook packs the finer numbers, and core never learns them.
 
-Each task's reservation is the largest peak RSS in the window, times a headroom (1.25), rounded up to 64 MB.
+Each task's reservation is the largest peak RSS in the window, times a headroom (1.25), rounded up to a multiple of 64 MB.
 
 Cores are never learned, only declared. The parallelism a build shows is what the machine let it have.
 
@@ -294,9 +294,11 @@ history: last 20 runs · budgets 4 cores (the default worker count; --concurrenc
 
 A cache hit's row carries the producing execution's usage. So a task restored from a remote cache shows a reservation on a machine that never executed it.
 
-A task lighter than vx itself has no peak on record, and reserves nothing: what a task under vx's own footprint needs.
+A task whose peak times the headroom is under 64 MB reserves nothing: there is nothing worth packing.
 
-The runner reports a peak only above its own footprint, since Linux hands a lighter child the parent's figure.
+On Linux a small helper forks each task's shell, so a task's peak is its own.
+
+Where the helper cannot start, and on macOS, a task lighter than vx has no peak on record (`lib#test` above). The runner reports a peak only above its own footprint there.
 
 `resources: false` turns the learning off. Declared `reservations` are still packed.
 
