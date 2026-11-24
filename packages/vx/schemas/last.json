@@ -515,6 +515,7 @@
         "upToDateCount",
         "restoredLocalCount",
         "restoredRemoteCount",
+        "abortedCount",
         "exitOk",
         "commitSha",
         "branch",
@@ -562,6 +563,10 @@
         "restoredRemoteCount": {
           "type": "integer",
           "description": "hits that restored outputs from the remote cache"
+        },
+        "abortedCount": {
+          "type": "integer",
+          "description": "tasks a stop or --fail-fast killed once started: counted by the footer, with no row in tasks"
         },
         "exitOk": { "type": "boolean", "description": "the run exited 0" },
         "commitSha": {

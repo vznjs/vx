@@ -199,12 +199,12 @@ export class RunHistory {
         run_id, command, requested_tasks, cache_policy, concurrency, flow,
         started_at, ended_at, total_duration_ms,
         task_count, failed_count, hit_count, hit_local_count, hit_remote_count,
-        up_to_date_count, restored_local_count, restored_remote_count,
+        up_to_date_count, restored_local_count, restored_remote_count, aborted_count,
         exit_ok,
         commit_sha, branch, dirty, ci, ci_provider,
         host, os, arch, vx_version
       )
-      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?)
       ON CONFLICT(run_id) DO NOTHING
     `,
     )
@@ -608,6 +608,7 @@ function bindInvocation(inv: InvocationRecord): SQLQueryBindings[] {
     inv.upToDateCount,
     inv.restoredLocalCount,
     inv.restoredRemoteCount,
+    inv.abortedCount ?? 0,
     inv.exitOk ? 1 : 0,
     inv.commitSha,
     inv.branch,
@@ -730,6 +731,8 @@ export interface InvocationRecord {
   upToDateCount: number
   restoredLocalCount: number
   restoredRemoteCount: number
+  /** Tasks a stop or `--fail-fast` killed: counted by the footer, no `runs` row (v59). */
+  abortedCount?: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null

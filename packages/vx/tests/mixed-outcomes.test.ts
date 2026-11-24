@@ -49,6 +49,7 @@ export default { tasks: {
   slow: c('sleep 5', { exec: { timeout: '500ms' } }),
   dep: c('echo dep', { task: { dependsOn: ['fail'] } }),
   sig: c('kill -9 $$'),
+  long: c('sleep 5'),
 } }
 `,
   )
@@ -87,4 +88,15 @@ it('names the bytes a failed task wrote whether or not a task depends on it', ()
   expect([by['fail']!.outputBytes, by['lone']!.outputBytes, by['miss']!.outputBytes]).toEqual([
     5, 5, 5,
   ])
+})
+
+// A --fail-fast run kills what still runs: the footer counts it aborted, and
+// `vx last` read the same run with those tasks gone and nothing saying so.
+it('counts the tasks --fail-fast killed in vx last as the footer does', () => {
+  const r = vx('run', 'm#lone', 'm#long', '--fail-fast')
+  expect(r.code).toBe(1)
+  expect(r.out).toContain('tasks     1 failed · 1 aborted · 2 total')
+  const { invocation } = last()
+  expect(invocation).toMatchObject({ taskCount: 1, failedCount: 1, abortedCount: 1 })
+  expect(vx('last').out).toContain('1 task · 0 hits · 1 failed · 1 aborted')
 })

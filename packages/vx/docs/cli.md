@@ -1881,6 +1881,8 @@ Default: `run.failFast`, else off.
 - The first failure stops the run at once.
 - The tasks still running are killed: they end `aborted`, are never
   saved and start no retry.
+- `vx last` keeps no row for them but counts them on its `tasks` line
+  (`· 2 aborted`), and `--format json` as `invocation.abortedCount`.
 - One whose command had already exited when the stop landed ends on its
   own exit, failed or passed.
 - Everything not yet started (cache restores included) completes as skipped.
@@ -5228,7 +5230,7 @@ vx info
   [2mmemory          [0m  [38;2;203;213;225m13 GB usable — cgroup limit; the machine has 16 GB[0m
   [2mcache dir       [0m  [38;2;203;213;225m/work/demo/.vx/cache (440 KB, this workspace's run history)[0m
   [2mcache store     [0m  [38;2;203;213;225m~/.vx/97cf846b43fdfb12/cache (156 KB, shared by this workspace's checkouts)[0m
-  [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v58[0m
+  [2mcache versions  [0m  [38;2;203;213;225mkeys vx-cache-v56 · index schema v59[0m
   [2mcache entries   [0m  [38;2;203;213;225m4 (1.9 KB)[0m
   [2mtask runs (24h) [0m  [38;2;203;213;225m58 (19 cache hits: 18 up-to-date, 1 restored)[0m
   [2mflaky tasks     [0m  [38;2;203;213;225m1 — @demo/web#test (5 of 13 runs failed on unchanged inputs)[0m

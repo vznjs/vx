@@ -2220,7 +2220,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/index-db/schema.ts (SCHEMA_VERSION = 'v58')
+-- src/index-db/schema.ts (SCHEMA_VERSION = 'v59')
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -2473,6 +2473,7 @@ CREATE TABLE invocations (
   up_to_date_count       INTEGER NOT NULL DEFAULT 0, -- v31: hits that restored nothing
   restored_local_count   INTEGER NOT NULL DEFAULT 0, -- v31: hits that restored, local layer
   restored_remote_count  INTEGER NOT NULL DEFAULT 0, -- v31: hits that restored, remote layer
+  aborted_count     INTEGER NOT NULL DEFAULT 0, -- v59: tasks a stop or --fail-fast killed once started
   exit_ok           INTEGER NOT NULL,         -- 1 if the run's `ok`
   commit_sha        TEXT,                     -- nullable: not a git repo / probe failed
   branch            TEXT,
@@ -2837,6 +2838,10 @@ breaking footer).
 
 ### History
 
+- **`SCHEMA_VERSION` v58 → v59** (2026-11-24), `CACHE_VERSION` unmoved:
+  `invocations` gained `aborted_count`, the tasks `--fail-fast` killed,
+  which have no `runs` row: `vx last` read such a run as fewer tasks than
+  its footer, and said nothing of them. The index resets once.
 - **`SCHEMA_VERSION` v57 → v58** (2026-11-23), `CACHE_VERSION` unmoved:
   `failures` gained `dir`, the failed task's project directory, so
   `vx last --format json` says where its output's relative paths start.

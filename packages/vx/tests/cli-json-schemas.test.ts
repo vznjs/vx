@@ -666,6 +666,7 @@ describe('each schema object is its source type', () => {
         upToDateCount: true,
         restoredLocalCount: true,
         restoredRemoteCount: true,
+        abortedCount: true,
         exitOk: true,
         commitSha: true,
         branch: true,

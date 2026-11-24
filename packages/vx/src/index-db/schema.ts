@@ -325,6 +325,8 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       up_to_date_count       INTEGER NOT NULL DEFAULT 0,
       restored_local_count   INTEGER NOT NULL DEFAULT 0,
       restored_remote_count  INTEGER NOT NULL DEFAULT 0,
+      -- Tasks a stop or --fail-fast killed: in the footer, with no runs row (v59).
+      aborted_count     INTEGER NOT NULL DEFAULT 0,
       exit_ok           INTEGER NOT NULL,
       commit_sha        TEXT,
       branch            TEXT,
@@ -548,7 +550,7 @@ export function pruneHistoryRows(db: Database, cutoff: number): number {
 
 // The index's schema. A mismatch drops and recreates the index: no
 // migrations, so any change to what it stores bumps this.
-export const SCHEMA_VERSION = 'v58'
+export const SCHEMA_VERSION = 'v59'
 
 /**
  * SQL predicate selecting `runs` rows that record an EXECUTION.

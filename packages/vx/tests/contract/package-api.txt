@@ -1103,6 +1103,7 @@ export interface InvocationRecord {
   upToDateCount: number
   restoredLocalCount: number
   restoredRemoteCount: number
+  abortedCount?: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null

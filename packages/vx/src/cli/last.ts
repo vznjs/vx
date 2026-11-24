@@ -936,7 +936,8 @@ export function formatRunList(
       | 'upToDateCount'
       | 'restoredLocalCount'
       | 'restoredRemoteCount'
-    >
+    > &
+      Partial<Pick<InvocationDetail, 'abortedCount'>>
     id: string
   }[],
 ): ui.Block {
@@ -956,6 +957,7 @@ export function formatRunList(
       [
         ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
         ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
+        ...((inv.abortedCount ?? 0) > 0 ? [ui.tone('warn', ` · ${inv.abortedCount} aborted`)] : []),
       ],
       fmtMs(inv.totalDurationMs),
       // One row per run: a forwarded `$'a\nb'` broke the table in two.
@@ -1264,6 +1266,7 @@ function printRun(
           [
             ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
             ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
+            ...(inv.abortedCount > 0 ? [ui.tone('warn', ` · ${inv.abortedCount} aborted`)] : []),
           ],
         ],
       ]),

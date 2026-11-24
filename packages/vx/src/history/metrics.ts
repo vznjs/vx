@@ -170,6 +170,8 @@ export interface InvocationDetail {
   upToDateCount: number
   restoredLocalCount: number
   restoredRemoteCount: number
+  /** Tasks a stop or `--fail-fast` killed (v59): no row in `tasks`. */
+  abortedCount: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null
@@ -200,6 +202,7 @@ interface InvocationRawRow {
   upToDateCount: number
   restoredLocalCount: number
   restoredRemoteCount: number
+  abortedCount: number
   exitOk: number
   commitSha: string | null
   branch: string | null
@@ -219,7 +222,7 @@ const INVOCATION_COLUMNS = `
   task_count AS taskCount, failed_count AS failedCount, hit_count AS hitCount,
   hit_local_count AS hitLocalCount, hit_remote_count AS hitRemoteCount,
   up_to_date_count AS upToDateCount, restored_local_count AS restoredLocalCount,
-  restored_remote_count AS restoredRemoteCount,
+  restored_remote_count AS restoredRemoteCount, aborted_count AS abortedCount,
   exit_ok AS exitOk,
   commit_sha AS commitSha, branch, dirty, ci, ci_provider AS ciProvider,
   host, os, arch, vx_version AS vxVersion`
@@ -248,6 +251,7 @@ function mapInvocation(r: InvocationRawRow): InvocationDetail {
     upToDateCount: r.upToDateCount,
     restoredLocalCount: r.restoredLocalCount,
     restoredRemoteCount: r.restoredRemoteCount,
+    abortedCount: r.abortedCount,
     exitOk: Boolean(r.exitOk),
     commitSha: r.commitSha,
     branch: r.branch,

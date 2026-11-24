@@ -134,13 +134,17 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
   let upToDateCount = 0
   let restoredLocalCount = 0
   let restoredRemoteCount = 0
+  let abortedCount = 0
   for (const o of outcomes) {
     if (isGroupTask(o.node)) continue
     // aborted (killed by a shutdown signal) isn't a real run. One that
     // started is still in the summary's task list, as the terminal lists it;
     // one the stop reached first is only `notRunCount`.
     if (o.status === 'aborted') {
-      if (input.withTelemetry && !neverStarted(o)) telemetryTasks.push(taskTelemetryOf(o))
+      // As the footer counts it: one the stop reached first is `not run`.
+      if (neverStarted(o)) continue
+      abortedCount++
+      if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
       continue
     }
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
@@ -175,6 +179,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     upToDateCount,
     restoredLocalCount,
     restoredRemoteCount,
+    abortedCount,
     exitOk: input.ok,
     commitSha: input.git.commitSha,
     branch: input.git.branch,
