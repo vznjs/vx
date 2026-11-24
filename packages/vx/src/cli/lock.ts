@@ -793,6 +793,9 @@ async function writeLock(
  * Only these: `passThrough` exists for values that do not change the output
  * (`CI`, a region, a token).
  */
+/** How long `vx lock` waits on a task's runtime probes, all of them together. */
+const PROBE_ANSWER_MS = 5_000
+
 const INLINED_ENV =
   /^(?:VITE_|NEXT_PUBLIC_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_|GATSBY_|STORYBOOK_|VUE_APP_|BUN_PUBLIC_|NX_PUBLIC_|NUXT_ENV_|NUXT_PUBLIC_|REDWOOD_ENV_|SANITY_STUDIO_)|^NODE_ENV$/
 
@@ -839,6 +842,9 @@ async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> 
   const found: { task: string; ws: string; rel: string; glob: string }[] = []
   let dotenvOf: Map<string, string[]> | undefined
   const answers = new Map<string, Promise<string>>()
+  // One deadline for every probe: a hung one costs its note, never the lock.
+  // vx's exit kills the probes still running.
+  let probeDeadline: Promise<string> | undefined
   const probedOf = new Map<string, Promise<Set<string>>>()
   for (const m of check.all) {
     for (const [name, t] of Object.entries(check.resolved.get(m.name)?.tasks ?? {})) {
@@ -851,7 +857,15 @@ async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> 
           const at = `${workspace ? root : m.dir}\0${cmd}`
           let out = answers.get(at)
           if (out === undefined)
-            answers.set(at, (out = answerRuntime(cmd, m.dir, root, workspace).catch(() => '')))
+            answers.set(
+              at,
+              (out = Promise.race([
+                answerRuntime(cmd, m.dir, root, workspace).catch(() => ''),
+                (probeDeadline ??= new Promise<string>((resolve) => {
+                  setTimeout(resolve, PROBE_ANSWER_MS, '').unref()
+                })),
+              ])),
+            )
           const base = workspace ? root : m.dir
           return (await out).split('\n').map((l) => relPosix(root, path.join(base, l)))
         }

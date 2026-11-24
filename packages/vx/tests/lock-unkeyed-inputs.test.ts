@@ -17,7 +17,7 @@ afterAll(async () => {
   for (const r of roots) await rm(r, { recursive: true, force: true })
 })
 
-async function lock(tasks: string): Promise<{ code: number; err: string }> {
+async function lock(tasks: string): Promise<{ code: number; err: string; locked: string }> {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-lock-unkeyed-')))
   roots.push(root)
   await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
@@ -39,7 +39,10 @@ async function lock(tasks: string): Promise<{ code: number; err: string }> {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  return { code: r.exitCode, err: r.stderr.toString() }
+  let locked = ''
+  for await (const f of new Bun.Glob('.vx/*.lock').scan({ cwd: root, dot: true }))
+    locked += await Bun.file(path.join(root, f)).text()
+  return { code: r.exitCode, err: r.stderr.toString(), locked }
 }
 
 const task = (name: string, inputs: object, env: object = {}, cache = true): string =>
@@ -123,7 +126,7 @@ describe('vx lock and what a key never sees', () => {
         task('dev', { files: ['src/**'] }, { passThrough: ['VITE_API_URL'] }, false),
       ].join(', '),
     )
-    expect(r).toEqual({ code: 0, err: '' })
+    expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
   })
 
   // `['**']` keys every file git lists, and `.env.production.local` is not one.
@@ -162,6 +165,25 @@ describe('vx lock and what a key never sees', () => {
       'packages/app#build: .env.production.local beside its config is in no input',
     )
   })
+
+  // The lock asks a probe only to spare a note: one that hangs, fails or
+  // prints junk costs the note, never the lock, and nothing it prints is
+  // locked.
+  it('bounds a hung, failing or junk probe and locks none of its output', async () => {
+    const started = Date.now()
+    const r = await lock(
+      [
+        task('build', { files: ['src/**'], runtime: ['sleep 60; echo .env'] }),
+        task('fail', { files: ['src/**'], runtime: ["printf 'PROBE_%s' JUNK; exit 3"] }),
+        task('junk', { files: ['src/**'], runtime: ["printf '\\377PROBE_%s .env' JUNK"] }),
+      ].join(', '),
+    )
+    expect(Date.now() - started).toBeLessThan(25_000)
+    expect(r.code).toBe(0)
+    expect(r.err).toContain('packages/app#build, packages/app#fail, packages/app#junk: .env,')
+    expect(r.err).not.toContain('PROBE_JUNK')
+    expect(r.locked).not.toContain('PROBE_JUNK')
+  }, 60_000)
 
   it('names Bun and Nx public variables only passThrough names', async () => {
     const r = await lock(
