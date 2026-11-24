@@ -120,6 +120,8 @@ The remote misses the key until the bucket's lifecycle rule expires it (`@vzn/vx
 
 A download that ends short of the size the server names (`vx-size`) is a transfer that failed, not a corrupt artifact: a miss, asked again next run.
 
+vx keeps a download only once it reads back whole and checks out, so a bad one, altered, cut short or no artifact at all, restores no output file and leaves no cache entry: the task runs as a miss.
+
 Some errors turn the remote off for the run. Each is said once (the run's, counted on no task), while the server answered nothing else:
 
 - a refused token;

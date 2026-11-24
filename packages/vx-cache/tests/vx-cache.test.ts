@@ -1954,6 +1954,71 @@ describe('vx run with vxCache()', () => {
     ])
   })
 
+  // vx-size checks the length; what keeps a bad body out is core's staging,
+  // which keeps a download only once it reads back whole. Each case is a
+  // miss that runs its task: no output restored (the command refuses to run
+  // over one), no entry kept (the run saves none of its own, and a run with
+  // the remote off still misses).
+  for (const bad of ['altered body', 'truncated body', 'garbage'] as const) {
+    it(`a download with a ${bad} is a miss that leaves no byte behind`, async () => {
+      const config = path.join(root, 'pkg', 'vx.config.mjs')
+      const honest = await Bun.file(config).text()
+      await writeFile(
+        config,
+        honest.replace("'mkdir -p dist", "'test ! -e dist/app.js && mkdir -p dist"),
+      )
+      const cacheDir = path.join(root, '.vx', 'cache')
+      const log = silentLogger({ root, log: [], err: [] })
+      const opts = (remoteRead: boolean) => ({
+        cwd: root,
+        tasks: ['build'],
+        handleSignals: false,
+        cacheDir,
+        log,
+        cache: { localRead: true, localWrite: false, remoteRead, remoteWrite: false },
+      })
+      const before = new Set(srv.blobs.keys())
+      await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+      await run({
+        ...opts(false),
+        cache: { localRead: false, localWrite: false, remoteRead: false, remoteWrite: true },
+      })
+      const name = [...srv.blobs.keys()].find((k) => !before.has(k))!
+      const stored = srv.blobs.get(name)!
+      try {
+        // Control: the honest body is a remote hit under the same options.
+        await rm(cacheDir, { recursive: true, force: true })
+        await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+        expect((await run(opts(true))).outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
+        const tar = new Uint8Array(Bun.zstdDecompressSync(stored))
+        tar[Buffer.from(tar).indexOf(Buffer.from('console.log("app")')) + 10] = 'f'.charCodeAt(0)
+        srv.blobs.set(
+          name,
+          bad === 'altered body'
+            ? Bun.zstdCompressSync(tar)
+            : bad === 'truncated body'
+              ? stored.slice(0, -16)
+              : new TextEncoder().encode('not an artifact'),
+        )
+        await rm(cacheDir, { recursive: true, force: true })
+        await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+        const r = await run(opts(true))
+        const out = await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text()
+        await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+        const again = await run(opts(false))
+        expect({
+          status: r.outcomes.map((o) => o.status),
+          out,
+          again: again.outcomes.map((o) => o.status),
+        }).toEqual({ status: ['success'], out: 'console.log("app")\n', again: ['success'] })
+      } finally {
+        // The server as the next test expects it: only the honest config's artifact.
+        srv.blobs.delete(name)
+        await writeFile(config, honest)
+      }
+    })
+  }
+
   // The re-run's save is told `replace`; the server keeps what it holds, so
   // the upload must not count as landed (a DTE peer is told it did).
   it('a corrupt remote artifact is run again and said unreplaced', async () => {
