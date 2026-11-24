@@ -2,7 +2,7 @@
 // composition proof: a real `vx run` with `github({ summaryFile })` writes
 // the job summary. No GitHub API involved in wave one — the summary is a
 // file the Actions runner renders.
-import { describe, expect, it } from 'bun:test'
+import { afterAll, describe, expect, it } from 'bun:test'
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -26,9 +26,14 @@ function restoreEnv(saved: Readonly<Record<string, string | undefined>>): void {
   }
 }
 
+const made: string[] = []
+afterAll(() => Promise.all(made.map((d) => rm(d, { recursive: true, force: true }))))
+
 /** A path in a fresh directory, nothing written there yet. */
 async function fresh(name = 'sumfile.md'): Promise<string> {
-  return path.join(await mkdtemp(path.join(tmpdir(), 'vx-gh-sum-')), name)
+  const dir = await mkdtemp(path.join(tmpdir(), 'vx-gh-sum-'))
+  made.push(dir)
+  return path.join(dir, name)
 }
 const written = (file: string): Promise<string | undefined> =>
   readFile(file, 'utf8').catch(() => undefined)

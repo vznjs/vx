@@ -442,7 +442,7 @@ describe('retierJit', () => {
   // 100-project nothing-changed run's 70.
   it('leaves alone a run in a workspace whose lock is under the size, or with none', () => {
     expect(restart({}, true, 'run', small)).toBe('not restarted')
-    expect(restart({}, true, 'run', mkdtempSync(path.join(os.tmpdir(), 'vx-no-ws-')))).toBe(
+    expect(restart({}, true, 'run', mkdtempSync(path.join(root, 'vx-no-ws-')))).toBe(
       'not restarted',
     )
   })

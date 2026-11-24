@@ -161,11 +161,16 @@ describe('VxCacheLayer', () => {
   })
 
   it('uploads an artifact held in a file whole', async () => {
-    const file = path.join(await mkdtemp(path.join(tmpdir(), 'vx-cache-')), 'a.tar')
-    await Bun.write(file, 'from a file')
-    const c = layer(srv.url, write)
-    await c.put('f11e', Bun.file(file), { durationMs: 1 })
-    expect(await (await c.get('f11e'))!.body.text()).toBe('from a file')
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-cache-'))
+    try {
+      const file = path.join(dir, 'a.tar')
+      await Bun.write(file, 'from a file')
+      const c = layer(srv.url, write)
+      await c.put('f11e', Bun.file(file), { durationMs: 1 })
+      expect(await (await c.get('f11e'))!.body.text()).toBe('from a file')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   // The limits were asked apart (`/v1/capabilities`) before the first

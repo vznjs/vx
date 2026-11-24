@@ -41,12 +41,14 @@ const flatten = (s: Record<string, Set<string>>): Record<string, string> =>
   )
 
 let dir: string | undefined
+const dirs: string[] = []
 afterAll(async () => {
-  if (dir !== undefined) await rm(dir, { recursive: true, force: true })
+  await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })))
 })
 
 async function profileJson(): Promise<unknown> {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-profile-wire-'))
+  dirs.push(dir)
   const outcome = (id: string, extra: Partial<TaskOutcome>): TaskOutcome => {
     const [projectName, taskName] = id.split('#') as [string, string]
     return {

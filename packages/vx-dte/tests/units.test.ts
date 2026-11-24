@@ -10,10 +10,10 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it } from 'bun:test'
+import { afterAll, afterEach, expect, it } from 'bun:test'
 import {
   changedTracked,
   crowdShare,
@@ -51,6 +51,17 @@ import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
+
+// A worker that ends with an error leaves its log in a `vx-dte-logs-*`
+// under TMPDIR, the user's to read: here, under a TMPDIR of this file's.
+const tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'vx-dte-units-'))
+const savedTmp = process.env['TMPDIR']
+process.env['TMPDIR'] = tmpRoot
+afterAll(() => {
+  if (savedTmp === undefined) delete process.env['TMPDIR']
+  else process.env['TMPDIR'] = savedTmp
+  rmSync(tmpRoot, { recursive: true, force: true })
+})
 
 const dirs: string[] = []
 afterEach(async () => {

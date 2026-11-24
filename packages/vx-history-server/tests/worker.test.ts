@@ -1,10 +1,18 @@
 // src/worker.ts in workerd, the runtime Workers deploy to, with D1.
 
 import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { conformance } from './conformance.js'
 import { allowVarOf, GITHUB, type Issuer, issuer, REPO } from './issuer.js'
+
+// Miniflare removes its temp directory unawaited on dispose, so the process
+// often ended first and left a `miniflare-*` there: it gets one of ours.
+const tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'vx-miniflare-'))
+const savedTmp = process.env['TMPDIR']
+process.env['TMPDIR'] = tmpRoot
 
 /** The Worker's own origin, its tokens' audience. */
 const AUD = 'https://history.example.com'
@@ -41,7 +49,19 @@ beforeAll(async () => {
   base = await mf.ready
 })
 
-afterAll(() => mf.dispose())
+afterAll(async () => {
+  await mf.dispose()
+  if (savedTmp === undefined) delete process.env['TMPDIR']
+  else process.env['TMPDIR'] = savedTmp
+  // Its unawaited removal may still be writing under it: retry until gone.
+  for (let i = 0; i < 40 && existsSync(tmpRoot); i++) {
+    try {
+      rmSync(tmpRoot, { recursive: true, force: true })
+    } catch {
+      await Bun.sleep(50)
+    }
+  }
+})
 
 conformance('Workers with D1', {
   base: () => base.href,

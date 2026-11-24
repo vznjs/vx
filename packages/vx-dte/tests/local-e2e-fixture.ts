@@ -3,7 +3,7 @@
 // adapter's loopback relay. Its tests are split over two files, each a
 // task of its own, so neither is the run's longest.
 
-import { readdirSync, readFileSync, readlinkSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -203,7 +203,12 @@ export default { name: 'c', tasks: {
 }
 
 export async function teardown(): Promise<void> {
-  await rm(root, { recursive: true, force: true })
+  // A worker still ending writes under it while it goes, and the removal
+  // reports success with the tree still there: one root left per test.
+  for (let i = 0; i < 100 && existsSync(root); i++) {
+    await rm(root, { recursive: true, force: true }).catch(() => {})
+    if (existsSync(root)) await Bun.sleep(50)
+  }
 }
 
 /** `vx`, a distributed run when `run` names one; its id is a fresh UUID. */
