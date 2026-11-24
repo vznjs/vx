@@ -911,6 +911,9 @@ executor declares `timeouts`).
   beside it, may be the flake.
 - With no other worker of its platform in the run, it runs there again
   rather than wait.
+- A worker still holding a cancelled attempt that it has not answered
+  takes no new attempt of that task until it ends that one. Its end is
+  never counted as the retry's.
 
 </details>
 

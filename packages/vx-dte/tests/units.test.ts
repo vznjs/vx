@@ -6798,3 +6798,29 @@ it('local() makes no worktree folder for a worker asked after close', async () =
   }
   expect(await readdir(dir)).toEqual([])
 })
+
+// A stop or timeout cancels a sent task; a worker slow to answer it held it
+// past core's grace, and core's retry went to that worker again. The worker
+// drops an order for a task it still runs, and its end of the cancelled
+// attempt was taken as the retry's: the retry ended with the cancel's exit
+// and never ran.
+it('a retry waits for the worker still holding its cancelled attempt, and runs after its end', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(2)
+    const stop = new AbortController()
+    const first = h.o.execute({ ...h.req('t'), signal: stop.signal })
+    expect(await a.batches()).toEqual([['t']])
+    stop.abort()
+    expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't' }])
+    const second = h.o.execute({ ...h.req('t'), attempt: 2 } as ExecuteRequest)
+    // Sent nothing while it holds the first: the end that comes is the first's.
+    await a.finish('t', 'k-t', { exitCode: 143, durationMs: 1 })
+    expect((await first).exitCode).toBe(143)
+    expect(await a.batches()).toEqual([['t']])
+    await a.finish('t', 'k-t', { exitCode: 0, durationMs: 1 })
+    expect((await second).exitCode).toBe(0)
+  } finally {
+    await h.stop()
+  }
+}, 10000)

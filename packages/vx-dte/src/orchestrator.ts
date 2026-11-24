@@ -781,6 +781,11 @@ export class Orchestrator extends RunReport<Worker> {
           )
         }
         if (a.faulty) return false
+        // It still holds an earlier attempt, cancelled and not yet answered:
+        // it drops an order for a task it runs, and that attempt's end would
+        // be taken as this one's.
+        const held = a.busy.get(task)
+        if (held !== undefined && held !== job) return false
         if (!roomier(job.need, a.cores, a.memory) && bigger(job.need)) return false
         if (pin?.only !== undefined && pin.only !== a.id) return false
         if (pin?.avoid !== undefined && pin.avoid === a.id) return false
