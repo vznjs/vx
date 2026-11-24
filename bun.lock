@@ -5,6 +5,7 @@
     "": {
       "name": "@vzn/monorepo",
       "devDependencies": {
+        "@actions/attest": "3.2.0",
         "@types/bun": "1.4.4",
         "@vzn/vx": "workspace:*",
         "@vzn/vx-cache": "workspace:*",
@@ -31,7 +32,6 @@
         "@anthropic-ai/sandbox-runtime": "^0.0.83",
       },
       "devDependencies": {
-        "@actions/attest": "3.2.0",
         "@types/bun": "^1.4.0",
       },
     },
