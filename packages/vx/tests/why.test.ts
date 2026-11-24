@@ -754,6 +754,9 @@ describe('vx why (e2e) — the exact lines', () => {
           ),
           `  format    ${WHAT_TO_DO['format']}`,
         ])
+        // Back on an earlier vx, a task hits that version's entry: the same
+        // advice said every cached task misses once beside a hit.
+        expect(WHAT_TO_DO['format']).not.toContain('miss')
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
         back.run('UPDATE entry_inputs SET components = replace(components, ?, ?)', [

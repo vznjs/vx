@@ -75,7 +75,7 @@ export const WHAT_TO_DO: Readonly<Record<string, string>> = {
   plugin: "a key plugin's material changed; that plugin decides what goes into the key",
   platform: 'it ran on another platform; each of its `exec.platforms` keeps its own entry',
   format:
-    'another vx version keys tasks differently; every cached task misses once, nothing to fix',
+    'another vx version keys tasks differently, and each keeps its own entries; nothing to fix',
 }
 
 export function parseWhyArgs(args: readonly string[]): WhyArgs {
