@@ -53,6 +53,34 @@ export type SrtTaskConfig = NonNullable<
   Parameters<SrtModule['SandboxManager']['wrapWithSandbox']>[2]
 >
 
+/**
+ * The variables the sandbox sets over a task's own (module page § The
+ * environment SRT sets): a `passThrough` or `define` of one never reaches
+ * a sandboxed task. Upper-case only, as `unpassedEnv` reads names.
+ */
+export const SANDBOX_SET_ENV: ReadonlySet<string> = new Set([
+  'SANDBOX_RUNTIME',
+  'TMPDIR',
+  'NO_PROXY',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'GRPC_PROXY',
+  'FTP_PROXY',
+  'RSYNC_PROXY',
+  'DOCKER_HTTP_PROXY',
+  'DOCKER_HTTPS_PROXY',
+  'CLOUDSDK_PROXY_TYPE',
+  'CLOUDSDK_PROXY_ADDRESS',
+  'CLOUDSDK_PROXY_PORT',
+  'CLOUDSDK_PROXY_USERNAME',
+  'CLOUDSDK_PROXY_PASSWORD',
+  'GIT_CONFIG_PARAMETERS',
+  'GIT_SSH_COMMAND',
+  'CLAUDE_CODE_HOST_HTTP_PROXY_PORT',
+  'CLAUDE_CODE_HOST_SOCKS_PROXY_PORT',
+])
+
 let srtPromise: Promise<SrtModule> | undefined
 
 /** Set once loaded, for `releaseBridges`, which a sync exit handler calls. */

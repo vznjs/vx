@@ -7,6 +7,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import { unpassedEnv } from '../src/orchestrator/shell-verdict.js'
+import { SANDBOX_SET_ENV } from '../src/sandbox/session.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -48,6 +49,30 @@ describe('unpassedEnv', () => {
     expect(
       unpassedEnv('', {}, { OLDPWD: '/', HOSTNAME: 'h' }, 'cd $OLDPWD && echo $HOSTNAME'),
     ).toBeUndefined()
+  })
+
+  // The sandbox sets its own proxy variables over the task's, so a
+  // passThrough of one never arrives: a sandboxed task that printed
+  // HTTPS_PROXY was told to pass it through (2026-11-24).
+  it('names none the sandbox sets over the task, for a sandboxed task', () => {
+    const proxy = { HTTPS_PROXY: 'http://corp:3128', DATABASE_URL: 'x' }
+    expect(unpassedEnv('HTTPS_PROXY refused', {}, proxy, '', true)).toBeUndefined()
+    expect(unpassedEnv('HTTPS_PROXY and DATABASE_URL', {}, proxy, '', true)).toBe(
+      LINE('DATABASE_URL', true),
+    )
+    expect(unpassedEnv('HTTPS_PROXY refused', {}, proxy)).toBe(LINE('HTTPS_PROXY', true))
+  })
+
+  it("holds the sandbox's names to the ones the runtime sets", async () => {
+    const srt = await import('@anthropic-ai/sandbox-runtime/dist/sandbox/sandbox-utils.js')
+    const set = srt
+      .generateProxyEnvVars(3128, 3128, undefined, 'token', false, 'cmd')
+      .map((v: string) => v.split('=')[0]!)
+      .filter((n: string) => /^[A-Z][A-Z0-9_]{3,}$/.test(n))
+    // bwrap sets these two itself (linux-sandbox-utils.js); vx repairs
+    // JAVA_TOOL_OPTIONS so the task's own value arrives.
+    set.push('CLAUDE_CODE_HOST_HTTP_PROXY_PORT', 'CLAUDE_CODE_HOST_SOCKS_PROXY_PORT')
+    expect([...SANDBOX_SET_ENV].sort()).toEqual([...new Set(set)].sort())
   })
 
   it.each([

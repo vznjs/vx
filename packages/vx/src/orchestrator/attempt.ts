@@ -571,7 +571,15 @@ async function classifyExit(
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(verdict))}\n`)
     // A pipeline's `env` is vx's alone: no passThrough gives it to a task.
     const unpassed =
-      code === 0 ? undefined : unpassedEnv(stream.tail, m.env, taskEnvSource(), policy.exec.command)
+      code === 0
+        ? undefined
+        : unpassedEnv(
+            stream.tail,
+            m.env,
+            taskEnvSource(),
+            policy.exec.command,
+            sandbox !== undefined,
+          )
     if (unpassed !== undefined)
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(unpassed))}\n`)
   }

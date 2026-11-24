@@ -3,7 +3,13 @@
 // and returns its result plus the violations it saw; what it exports is
 // only what the orchestrator and the façade call.
 
-export { networkPatternRefusal, probeSandbox, releaseBridges, resetSandbox } from './session.js'
+export {
+  networkPatternRefusal,
+  probeSandbox,
+  releaseBridges,
+  resetSandbox,
+  SANDBOX_SET_ENV,
+} from './session.js'
 export { runSandboxed, wrapSandboxedCommand } from './runtime.js'
 export { untracedReason } from './trace.js'
 export { atOrUnder, sandboxReads, toRealPath, unmountable, wildcardAt } from './paths.js'

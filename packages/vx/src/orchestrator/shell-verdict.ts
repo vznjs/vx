@@ -2,6 +2,7 @@ import { accessSync, constants as fsConstants, existsSync, readFileSync, statSyn
 import { constants as osConstants } from 'node:os'
 import path from 'node:path'
 import { execWord, exitSignal } from '../exec/index.js'
+import { SANDBOX_SET_ENV } from '../sandbox/index.js'
 
 /**
  * The frame line for a shell verdict the task's own output leaves a mystery.
@@ -290,12 +291,19 @@ export function unpassedEnv(
   given: NodeJS.ProcessEnv,
   host: NodeJS.ProcessEnv,
   command = '',
+  /** A sandboxed task: the sandbox's own variables are no passThrough's to give. */
+  sandboxed = false,
 ): string | undefined {
   const named = new Set(tail.match(/(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]{3,}(?![A-Za-z0-9_])/g) ?? [])
   for (const m of command.matchAll(/\$\{?([A-Z][A-Z0-9_]{3,})(?![A-Za-z0-9_])/g))
     if (!SHELL_SET.has(m[1]!)) named.add(m[1]!)
   const missing = [...named]
-    .filter((n) => Object.hasOwn(host, n) && !Object.hasOwn(given, n))
+    .filter(
+      (n) =>
+        Object.hasOwn(host, n) &&
+        !Object.hasOwn(given, n) &&
+        !(sandboxed && SANDBOX_SET_ENV.has(n)),
+    )
     .sort()
     .slice(0, 5)
   if (missing.length === 0) return undefined

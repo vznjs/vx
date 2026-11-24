@@ -252,6 +252,8 @@ export function initSandbox(opts?: {
   allowAllUnixSockets?: boolean // some task asks; the lift is set per task's wrap
 }): Promise<void>
 export function resetSandbox(): Promise<void>
+// The upper-case names SRT sets over a task's own (§ The environment SRT sets)
+export const SANDBOX_SET_ENV: ReadonlySet<string>
 // `vx lock`: the first task whose network entry the runtime would refuse, named, or undefined
 export function networkPatternRefusal(
   projects: Iterable<{ name: string; config: ProjectConfig }>,
@@ -917,6 +919,8 @@ variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `GRPC_PROXY`,
 `CA_TRUST_VARS`). A task's `define` or `passThrough` of one of these
 names does not reach a sandboxed task: the sandbox's network goes through
 SRT's proxy and nowhere else.
+So a failed sandboxed task whose output names one gets no line telling
+it to pass that variable through (`SANDBOX_SET_ENV`).
 
 `JAVA_TOOL_OPTIONS` is the exception vx repairs. SRT composes its proxy
 agent's flag with the value in VX'S environment, so a host value that no
