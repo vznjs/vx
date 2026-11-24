@@ -1374,6 +1374,8 @@ next time (`TaskExecutor.advice`).
 `@vzn/vx-dte` reads these variables from the CI job it runs in:
 
 - `GITHUB_SHA`: the commit every worker checks out.
+- `GITHUB_API_URL`, `GITHUB_REPOSITORY` and `GITHUB_TOKEN`: the API
+  `github()` dispatches, watches and cancels worker runs through.
 - `GITHUB_HEAD_REF` or `GITHUB_REF_NAME`, then `GITHUB_BASE_REF`: the ref
   `github()` dispatches the worker workflow on.
 - It falls back to the base ref when the head has no workflow file.
@@ -1384,6 +1386,8 @@ next time (`TaskExecutor.advice`).
   the job asks GitHub for its OIDC token.
 - `GITHUB_REPOSITORY_ID`: the repository a token must name.
 - `GITLAB_CI` and `CI_JOB_TOKEN`: `gitlab()` runs on GitLab CI.
+- `CI_API_V4_URL`, `CI_PROJECT_ID` and `CI_COMMIT_SHA`: the API, project
+  and commit `gitlab()` triggers each wave's pipeline with.
 - `CI_MERGE_REQUEST_SOURCE_BRANCH_NAME` or `CI_COMMIT_REF_NAME`, then
   `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`: the ref worker pipelines run on.
 - `PATH`: a worker keeps the task's own bin directories, then its own

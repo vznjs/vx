@@ -36,16 +36,39 @@ function sourceFiles(dir: string): string[] {
  * defaults to or is passed the process's). A write (`env['PORT'] = …`,
  * a task's env being built) is not a read; comments are not code.
  */
-function envReads(source: string): Set<string> {
-  const code = source
+function uncommented(source: string): string {
+  return source
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n')
     .filter((l) => !l.trimStart().startsWith('//'))
     .join('\n')
+}
+
+function envReads(source: string): Set<string> {
+  const code = uncommented(source)
   const names = new Set<string>()
   const read =
     /\benv(?:\.([A-Z][A-Z0-9_]*)(?![A-Z0-9_])|\[['"]([A-Z][A-Z0-9_]*)['"]\])(?!\s*=[^=])/g
   for (const m of code.matchAll(read)) names.add(m[1] ?? m[2]!)
+  // Through another name (`const vars = Bun.env`, then `vars.X_ON`).
+  for (const m of code.matchAll(
+    /\b(?:const|let|var)\s+(\w+)(?:\s*:[^=\n]+)?\s*=\s*(?:process|Bun)\.env\b(?!\s*[[.])/g,
+  )) {
+    if (m[1] === 'env') continue
+    const alias = new RegExp(
+      `\\b${m[1]}(?:\\.([A-Z][A-Z0-9_]*)(?![A-Z0-9_])|\\[['"]([A-Z][A-Z0-9_]*)['"]\\])(?!\\s*=[^=])`,
+      'g',
+    )
+    for (const r of code.matchAll(alias)) names.add(r[1] ?? r[2]!)
+  }
+  // Destructured (`const { GITHUB_TOKEN: token, ...rest } = process.env`):
+  // vx-dte read four names so that no record held (2026-11-24).
+  for (const m of code.matchAll(
+    /\b(?:const|let|var)\s*\{([^{}]*)\}\s*=\s*(?:process\.|Bun\.|this\.|\w+\.)?env\b(?!\s*\[)/g,
+  ))
+    for (const part of m[1]!.split(','))
+      if (/^\s*[A-Z][A-Z0-9_]*\s*(?:[:=].*)?$/s.test(part))
+        names.add(part.trim().split(/[\s:=]/)[0]!)
   // A read through a variable (`env[name]`, `process.env[envName]`) reads
   // the names the file hands it: a literal passed to a helper
   // (`off('OTEL_TRACES_EXPORTER')`, `read('concurrency', 'TURBO_CONCURRENCY')`)
@@ -64,6 +87,34 @@ function envReads(source: string): Set<string> {
   return names
 }
 
+/**
+ * A package's reads: each file's, and the literals other files pass to a
+ * helper exported by a file that reads `env[name]` through a variable
+ * (`export const flag = (name) => env[name] === '1'`, called elsewhere as
+ * `flag('X_ON')`), which a file-by-file read saw in neither file.
+ */
+function packageReads(sources: ReadonlyMap<string, string>): Set<string> {
+  const names = new Set<string>()
+  const helpers: string[] = []
+  for (const source of sources.values()) {
+    for (const n of envReads(source)) names.add(n)
+    const code = uncommented(source)
+    if (!/\benv\[(?!['"])/.test(code)) continue
+    for (const m of code.matchAll(
+      /\bexport\s+(?:async\s+)?(?:function\s+(\w+)|const\s+(\w+)\s*=)/g,
+    ))
+      helpers.push(m[1] ?? m[2]!)
+  }
+  if (helpers.length === 0) return names
+  const call = new RegExp(
+    `\\b(?:${helpers.join('|')})\\((?:[^()]*?,\\s*)?['"]([A-Z][A-Z0-9]*_[A-Z0-9_]+)['"]\\s*[,)]`,
+    'g',
+  )
+  for (const source of sources.values())
+    for (const m of uncommented(source).matchAll(call)) names.add(m[1]!)
+  return names
+}
+
 function current(): string {
   const lines: string[] = []
   for (const dir of readdirSync(PACKAGES).sort()) {
@@ -71,9 +122,11 @@ function current(): string {
     if (dir === 'vx' || !existsSync(manifest)) continue
     const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as { name: string; private?: boolean }
     if (pkg.private === true || !existsSync(path.join(PACKAGES, dir, 'src'))) continue
-    const names = new Set<string>()
-    for (const f of sourceFiles(path.join(PACKAGES, dir, 'src')))
-      for (const n of envReads(readFileSync(f, 'utf8'))) names.add(n)
+    const names = packageReads(
+      new Map(
+        sourceFiles(path.join(PACKAGES, dir, 'src')).map((f) => [f, readFileSync(f, 'utf8')]),
+      ),
+    )
     for (const n of [...names].sort()) lines.push(`${pkg.name} ${n}`)
   }
   return lines.join('\n') + '\n'
@@ -109,6 +162,31 @@ it('the reader finds reads, and skips writes and comments', () => {
   expect([...envReads(indirect)].sort()).toEqual(['H_EIGHT', 'I_NINE', 'J_*_TEN'])
   // CONTROL: without a read through a variable, a literal is only a literal.
   expect([...envReads("read('key', 'I_NINE')")]).toEqual([])
+  const destructured = `
+    const { P_ONE: a, P_TWO, P_THREE = 'x', ...rest } = process.env
+    let {
+      Q_ONE: q,
+    } = Bun.env
+    const { R_ONE } = this.env
+    const { s_lower } = process.env
+    const { T_ONE } = options
+    const vars = Bun.env
+    if (vars.V_ONE || vars['V_TWO']) vars.V_THREE = 'x'
+  `
+  expect([...envReads(destructured)].sort()).toEqual([
+    'P_ONE',
+    'P_THREE',
+    'P_TWO',
+    'Q_ONE',
+    'R_ONE',
+    'V_ONE',
+    'V_TWO',
+  ])
+  const helper = new Map([
+    ['flag.ts', "export const flag = (name: string) => process.env[name] === '1'"],
+    ['use.ts', "import { flag } from './flag.js'\nif (flag('U_ON')) go()\nother('W_NOT')"],
+  ])
+  expect([...packageReads(helper)].sort()).toEqual(['U_ON'])
 })
 
 it('the plugin packages read the environment tests/contract/plugin-env.txt records', () => {
