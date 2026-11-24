@@ -7320,6 +7320,8 @@ vx: EACCES: permission denied, open '…/.vx/projects.lock' — a path vx must w
 - `ENOSPC`, `EDQUOT`: `— the disk that path is on is full`. Exit 1.
 - A cache index the full disk will not let SQLite make says the same:
   `the cache index <path> could not be opened (database or disk is full)`.
+- A cache index another process holds locked past 5 s: `the cache index
+<path> is locked: another process held it past 5s`. Exit 1.
 - `scandir`, `stat`, `lstat` refused: a read, so `— a path vx must read
 is not readable by this user`.
 - Inside a run, the task's line says the same.

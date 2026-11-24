@@ -70,6 +70,20 @@ function unreadableIndexError(dbFile: string, err: unknown): UserError {
   )
 }
 
+/**
+ * Held past the open's `busy_timeout` by another connection (a stuck
+ * process, a tool with it open): a stack before, "database is locked".
+ */
+function lockedIndex(dbFile: string, err: unknown): UserError | undefined {
+  if ((err as { code?: unknown } | null)?.code !== 'SQLITE_BUSY') return undefined
+  return new UserError(
+    `the cache index ${dbFile} is locked: another process held it past ${BUSY_TIMEOUT_MS / 1000}s ` +
+      `(${(err as Error).message}) — re-run once it lets go`,
+  )
+}
+
+const BUSY_TIMEOUT_MS = 5000
+
 /** The longest index path SQLite opens: its unix `MAX_PATHNAME`, 512, less `-journal`. */
 const SQLITE_PATH_MAX = 512 - '-journal'.length
 
@@ -377,7 +391,7 @@ export class StoreIndex {
         return read()
       } catch (err) {
         if (!unreadableIndex(err)) {
-          const fds = cantOpenIndex(dbFile, err)
+          const fds = cantOpenIndex(dbFile, err) ?? lockedIndex(dbFile, err)
           if (fds === undefined) throw err
           try {
             closeDb(this.db)
@@ -395,7 +409,7 @@ export class StoreIndex {
       }
     }
     readable(() => {
-      this.db.exec('PRAGMA busy_timeout = 5000')
+      this.db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`)
       this.db.exec('PRAGMA journal_mode = WAL')
       // Keep `-wal` and `-shm` when the last connection closes: a cache
       // directory this user may not write (a CI cache restored read-only)
