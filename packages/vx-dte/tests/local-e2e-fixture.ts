@@ -118,8 +118,10 @@ export default { name: 's', tasks: {
   after: { dependsOn: ['user'], exec: { command: gone } },
   // A server that keeps a core busy only while a dependant asks it (the
   // file busy), and a dependant that uses none of its own.
-  hot: { exec: { command: 'echo up && exec sh -c "while :; do [ -e busy ] || sleep 0.05; done"', persistent: { readyWhen: 'up' } } },
-  calm: { dependsOn: ['hot'], exec: { command: 'touch busy && sleep 4 && rm busy' } },
+  // The dependant holds it busy until it has burned 4 s of CPU, read off
+  // /proc: a 4 s wall on a loaded machine gave it too little to charge.
+  hot: { exec: { command: 'echo $$ > hot.pid && echo up && exec sh -c "while :; do [ -e busy ] || sleep 0.05; done"', persistent: { readyWhen: 'up' } } },
+  calm: { dependsOn: ['hot'], exec: { command: 'touch busy; p=$(cat hot.pid); c=$(($(getconf CLK_TCK) * 4)); n=0; while [ $n -lt 400 ] && read -r _ _ _ _ _ _ _ _ _ _ _ _ _ u s _ < /proc/$p/stat && [ $((u + s)) -lt $c ]; do sleep 0.1; n=$((n + 1)); done; rm busy' } },
 } }
 `,
     // Keys that fold a runtime probe: one every machine answers alike, one
