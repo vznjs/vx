@@ -1738,7 +1738,7 @@ Below the environment, in Turbo's order, the plugin reads:
 - A signed download streams to vx as it arrives, and is copied to a temp file in vx's cache directory as it passes.
 - The sandbox walls that directory, unlike the shared temp dir a sandboxed task may read.
 - The tag covers the body's length, which a chunked response does not declare up front, so it is checked from the temp once the last byte is in.
-- A bad tag errors that last read: vx keeps nothing of the body, and it reads as a miss.
+- A bad tag errors that last read. vx stages a download in its own temp and keeps it only once the last read succeeds, so a body that fails its tag (tampered, truncated, or under a wrong tag) leaves no cache entry and restores no output file: the task runs as a miss.
 - The temp goes once the body is read or cancelled.
 - A process that exits first deletes it on the way out (vx's Ctrl-C exit awaits no stream).
 

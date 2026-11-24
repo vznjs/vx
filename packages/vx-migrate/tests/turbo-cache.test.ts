@@ -704,6 +704,96 @@ describe('TurboRemoteCache against the spec server', () => {
   })
 })
 
+// A signed download streams to core and its tag is checked at the end
+// (6ae1db72e): safe only if a body that fails its check leaves nothing
+// anywhere. Each case is a miss that runs its task: no output restored
+// (the command refuses to run over one), no entry kept (the run saves
+// none of its own, and a run with the remote off still misses), and the
+// outputs are the command's own.
+describe('vx run with a signed turboCache(): a body that fails its tag leaves nothing', () => {
+  let srv: ReturnType<typeof turboServer>
+  let root: string
+  const policy = (localWrite: boolean, remoteRead: boolean, remoteWrite = false) => ({
+    cwd: root,
+    tasks: ['build'],
+    handleSignals: false,
+    cache: { localRead: true, localWrite, remoteRead, remoteWrite },
+  })
+  beforeAll(async () => {
+    srv = turboServer()
+    root = await mkdtemp(path.join(tmpdir(), 'vx-turbo-signed-'))
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'fixture' }))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'pkg'\n")
+    await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
+    await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
+    await writeFile(path.join(root, 'pkg', 'src', 'app.js'), 'console.log("app")\n')
+    await writeFile(
+      path.join(root, 'pkg', 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'test ! -e dist/app.js && mkdir -p dist && cp src/app.js dist/app.js' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true } } }\n",
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(
+        [
+          `turboCache({ url: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, teamId: 'team_1', signatureKey: ${JSON.stringify(KEY)} })`,
+        ],
+        `import { turboCache } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
+      ),
+    )
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  })
+  afterAll(async () => {
+    await srv.stop()
+    await rm(root, { recursive: true, force: true })
+  })
+  const wipe = async () => {
+    await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
+    await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+  }
+
+  it('an honest signed body restores (control)', async () => {
+    await wipe()
+    expect((await run(policy(true, true, true))).ok).toBe(true)
+    expect(srv.store.size).toBe(1)
+    await wipe()
+    const r = await run(policy(true, true))
+    expect(r.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
+  })
+
+  for (const tamper of ['tampered body', 'tampered tag', 'truncated body'] as const) {
+    it(`a download with a ${tamper} is a miss that leaves no byte behind`, async () => {
+      const [hash, stored] = [...srv.store][0]!
+      // The body altered inside a tar and zstd that stay valid: only the tag can tell.
+      const tar = new Uint8Array(Bun.zstdDecompressSync(stored.body))
+      const at = Buffer.from(tar).indexOf(Buffer.from('console.log("app")'))
+      tar[at + 10] = 'f'.charCodeAt(0)
+      srv.store.set(hash, {
+        ...stored,
+        ...(tamper === 'tampered body' ? { body: Bun.zstdCompressSync(tar) } : {}),
+        ...(tamper === 'tampered tag'
+          ? { tag: await artifactTag(Buffer.from(KEY), hash, 'team_1', new Blob(['other'])) }
+          : {}),
+        ...(tamper === 'truncated body' ? { body: stored.body.slice(0, -16) } : {}),
+      })
+      try {
+        await wipe()
+        // The run saves nothing of its own, so any entry after it is the download's.
+        const r = await run(policy(false, true))
+        const out = await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text()
+        await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
+        const again = await run(policy(false, false))
+        expect({
+          status: r.outcomes.map((o) => o.status),
+          out,
+          again: again.outcomes.map((o) => o.status),
+        }).toEqual({ status: ['success'], out: 'console.log("app")\n', again: ['success'] })
+      } finally {
+        srv.store.set(hash, stored)
+      }
+    })
+  }
+})
+
 describe('vx run with turboCache() layered over the local cache', () => {
   let srv: ReturnType<typeof turboServer>
   let root: string
