@@ -294,15 +294,27 @@ export async function applyGraphHooks(
   /** Runs after EACH plugin's edit, so a refused task config names the plugin that wrote it. */
   afterEach?: (plugin: VxPlugin) => void,
   rules?: GraphRules,
+  /** A run's graph: a hook that clears it is named. The lock's may be cleared. */
+  refuseEmpty = false,
 ): Promise<void> {
   let last: VxPlugin | undefined
   for (const plugin of plugins) {
     if (plugin.graph === undefined) continue
+    const had = nodes.size
     const returned = await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
     reading(plugin, 'graph', () =>
       assertEditedInPlace(plugin, 'graph', returned, nodes, 'the task graph'),
     )
     await safe(plugin, 'graph', () => checkNodeShapes(nodes))
+    // The run said only "no tasks to run": the user hunted a typo in the
+    // task name, not the plugin that cleared the graph.
+    if (refuseEmpty && had > 0 && nodes.size === 0) {
+      throw pluginFailure(
+        plugin,
+        'graph',
+        new UserError('it removed every task, so nothing is left to run'),
+      )
+    }
     afterEach?.(plugin)
     last = plugin
   }

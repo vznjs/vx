@@ -846,6 +846,7 @@ async function buildGraph(
       projectMetas,
       warn: warnOf(log),
       rules: graphRules,
+      refuseEmpty: true,
     })
   // `--affected` selects over the final graph: a `graph` hook's edge or input
   // moves a key, so hooks run first over every candidate.
