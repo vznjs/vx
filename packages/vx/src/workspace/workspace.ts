@@ -479,7 +479,7 @@ async function unlistedNested(
           if (isOutOfFds(err)) throw err
           return false
         },
-      )) && (await workspaceFileIn(root, d))
+      )) && (await workspaceFilesIn(root, d)).length > 0
         ? d
         : null,
     ),
@@ -704,9 +704,15 @@ async function scanConfigs(root: string): Promise<string[]> {
       if (isOutOfFds(err)) throw err
       return
     }
-    // A nested workspace's projects are its own.
-    if (rel !== '' && entries.some((e) => e.name === '.vx') && (await workspaceFileIn(root, rel)))
-      return
+    // A nested workspace's projects are its own. Its marker is listed, as
+    // git lists it, so it walls the outer workspace's discovered projects too.
+    if (rel !== '' && entries.some((e) => e.name === '.vx')) {
+      const marks = await workspaceFilesIn(root, rel)
+      if (marks.length > 0) {
+        out.push(...marks.map((n) => `${rel}/.vx/${n}`))
+        return
+      }
+    }
     const below: string[] = []
     let lossy = false
     for (const e of entries) {
@@ -761,9 +767,9 @@ async function holdsConfig(dir: Buffer): Promise<boolean> {
 // `.vx` holds vx's state (the cache), which a checkout ignores.
 const SCAN_SKIPS = new Set(['node_modules', '.git', '.vx'])
 
-async function workspaceFileIn(root: string, rel: string): Promise<boolean> {
+async function workspaceFilesIn(root: string, rel: string): Promise<string[]> {
   const names = await readdir(path.join(root, rel, '.vx')).catch(() => [] as string[])
-  return names.some((n) => WORKSPACE_RANK.has(`.vx/${n}`))
+  return names.filter((n) => WORKSPACE_RANK.has(`.vx/${n}`))
 }
 
 /** How each project got its name, when not by its path: `config`, or the plugin's name. */
