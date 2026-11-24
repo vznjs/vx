@@ -121,17 +121,20 @@ bunx @vzn/vx-migrate --dry
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m                                                                                                      [0m
   [2mfrom    [0m  [38;2;203;213;225mpackage.json scripts[0m
   [2mdry run [0m  [38;2;203;213;225mnothing written[0m
   [2mtasks   [0m  [38;2;34;197;94m5 clean[0m[2m · [0m[38;2;234;179;8m2 todo[0m
   [2mtodo    [0m  [38;2;203;213;225m@demo/ui#build, @demo/web#build:[0m
-            [38;2;203;213;225m  cache: add [0m[1m`inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true`[0m[38;2;203;213;225m with this package's real outputs, and narrow the inputs to what it reads — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task[0m
+            [38;2;203;213;225m  cache: add [0m[1m`inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true`[0m[38;2;203;213;225m with this package's[0m
+              [38;2;203;213;225mreal outputs, and narrow the inputs to what it reads — without it the task always runs, and so does every[0m
+              [38;2;203;213;225mtask that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task[0m
   [2mfiles   [0m  [38;2;203;213;225mpackages/ui/vx.config.ts[0m
             [38;2;203;213;225mpackages/web/vx.config.ts[0m
             [38;2;203;213;225m.vx/workspace.ts[0m
             [38;2;203;213;225m.vx/.gitignore[0m
-  [2mnote    [0m  [38;2;203;213;225meach script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got [0m[1m`cache: true`[0m
+  [2mnote    [0m  [38;2;203;213;225meach script became a task with its command verbatim; caching needs declared inputs and outputs, so no task[0m
+            [38;2;203;213;225mgot [0m[1m`cache: true`[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
