@@ -29,7 +29,8 @@
 // platform SRT does not support or a container without user namespaces,
 // and an unrunnable suite gets ignored rather than fixed.
 
-import { probeSandbox } from '../../src/sandbox/session.js'
+import { afterAll } from 'bun:test'
+import { probeSandbox, resetSandbox } from '../../src/sandbox/session.js'
 import { envFlag } from './env.js'
 
 const required = (): boolean => envFlag('VX_REQUIRE_SANDBOX')
@@ -61,7 +62,13 @@ export async function sandboxAvailable(label: string): Promise<boolean> {
   // verdict, a line naming a file — went with `--verify` (2026-09-04); the
   // gate that withheld them on darwin outlived them until item 615.
   const availability = await probeSandbox()
-  if (availability.available) return true
+  if (availability.available) {
+    // The probe brings the runtime up in this process, its sockets in
+    // TMPDIR, and Bun's test runner fires no exit hook to take them down:
+    // a file that never reset left `srt-*` and `claude-http-*` there.
+    afterAll(() => resetSandbox())
+    return true
+  }
 
   if (required()) {
     throw new Error(

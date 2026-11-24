@@ -1,6 +1,6 @@
 // scripts/live-bench.ts against a fake GitHub: main's deploy builds the
 // site from the newest numbers Bench measured on main.
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { deflateRawSync } from 'node:zlib'
@@ -129,8 +129,12 @@ it('fills every figure from VX_DOCS_BENCH when it is set', () => {
     )
       .stdout.toString()
       .trim()
-  expect(read({ VX_DOCS_BENCH: live })).toBe('7,777')
-  expect(read({})).toBe(Number(committed.packages).toLocaleString('en-US'))
+  try {
+    expect(read({ VX_DOCS_BENCH: live })).toBe('7,777')
+    expect(read({})).toBe(Number(committed.packages).toLocaleString('en-US'))
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })
 
 // Astro's content store keeps each markdown page as rendered: the deploy

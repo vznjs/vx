@@ -4,7 +4,7 @@
 //
 // `.unsafe`: the workflows live at the repo root, which a sandboxed project
 // task may not read.
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -465,10 +465,13 @@ describe('conformance.yml', () => {
   // share near 90 s (plan), then one merge.
   it('runs every tool on every share of the cases, and merges them all', () => {
     const plan = doc.jobs['plan']!.steps![0]!.run!
-    const out = path.join(mkdtempSync(path.join(os.tmpdir(), 'plan-')), 'out')
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'plan-'))
+    const out = path.join(dir, 'out')
     const r = Bun.spawnSync(['bash', '-c', plan], { env: { ...process.env, GITHUB_OUTPUT: out } })
+    const text = readFileSync(out, 'utf8')
+    rmSync(dir, { recursive: true, force: true })
     expect(r.exitCode).toBe(0)
-    const { include } = JSON.parse(readFileSync(out, 'utf8').replace(/^matrix=/, '')) as {
+    const { include } = JSON.parse(text.replace(/^matrix=/, '')) as {
       include: { tool: string; shard: string }[]
     }
     expect([...new Set(include.map((m) => m.tool))]).toEqual([

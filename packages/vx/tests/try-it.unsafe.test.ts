@@ -25,8 +25,8 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { withNpm } from './helpers/npm.js'
-import { installFromCheckout, withCheckoutNpm } from './helpers/npm-checkout.js'
+import { removeNpm, withNpm } from './helpers/npm.js'
+import { installFromCheckout, removeCheckoutNpm, withCheckoutNpm } from './helpers/npm-checkout.js'
 import { gitIn, gitInit } from './helpers/workspace.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
@@ -72,6 +72,8 @@ const COMMANDS = [
 
 const roots: string[] = []
 afterAll(() => {
+  removeNpm()
+  removeCheckoutNpm()
   for (const r of roots) rmSync(r, { recursive: true, force: true })
 })
 

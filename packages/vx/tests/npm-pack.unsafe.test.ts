@@ -27,7 +27,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { emitMainPackage, emitPluginPackages } from '../scripts/build-npm.ts'
-import { withNpm } from './helpers/npm.js'
+import { removeNpm, withNpm } from './helpers/npm.js'
 import { gitIn, gitInit } from './helpers/workspace.js'
 
 const RECORDS = path.join(import.meta.dir, 'contract', 'pack')
@@ -37,7 +37,10 @@ const SIZE_CAP = 512 * 1024
 const STRAY = /(^|\/)(tests?|__tests__|fixtures?)\/|\.test\.[cm]?[jt]s$/
 
 const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-pack-')))
-afterAll(() => rmSync(root, { recursive: true, force: true }))
+afterAll(() => {
+  rmSync(root, { recursive: true, force: true })
+  removeNpm()
+})
 
 const out = path.join(root, 'npm')
 const packages = [

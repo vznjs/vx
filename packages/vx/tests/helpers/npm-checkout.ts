@@ -102,6 +102,12 @@ function uninstall(root: string, names: readonly string[]): void {
 
 let shim: string | undefined
 
+/** Removes the shim: a test file's `afterAll` (Bun's test runner fires no `process.on('exit')`). */
+export function removeCheckoutNpm(): void {
+  if (shim !== undefined) rmSync(shim, { recursive: true, force: true })
+  shim = undefined
+}
+
 /** `env` with an `npm` first on PATH that installs `@vzn` packages from this checkout. */
 export function withCheckoutNpm(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   if (shim === undefined) {
@@ -109,7 +115,6 @@ export function withCheckoutNpm(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     const npm = path.join(dir, 'npm')
     writeFileSync(npm, `#!/bin/sh\nexec '${process.execPath}' '${import.meta.path}' "$@"\n`)
     chmodSync(npm, 0o755)
-    process.on('exit', () => rmSync(dir, { recursive: true, force: true }))
     shim = dir
   }
   return {

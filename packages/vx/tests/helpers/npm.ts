@@ -5,17 +5,31 @@
 // npm bundled beside Node and fails without one, so `npm` and `npx` link
 // the CLI scripts directly, alone in a directory: the root's
 // `node_modules/.bin` would put `vx` and the linters on PATH too.
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
 const cli = path.join(path.dirname(Bun.resolveSync('npm/package.json', import.meta.dir)), 'bin')
-const NPM_BIN = mkdtempSync(path.join(os.tmpdir(), 'vx-npm-'))
-symlinkSync(path.join(cli, 'npm-cli.js'), path.join(NPM_BIN, 'npm'))
-symlinkSync(path.join(cli, 'npx-cli.js'), path.join(NPM_BIN, 'npx'))
-process.on('exit', () => rmSync(NPM_BIN, { recursive: true, force: true }))
+let bin: string | undefined
+
+function npmBin(): string {
+  if (bin !== undefined && existsSync(bin)) return bin
+  bin = mkdtempSync(path.join(os.tmpdir(), 'vx-npm-'))
+  symlinkSync(path.join(cli, 'npm-cli.js'), path.join(bin, 'npm'))
+  symlinkSync(path.join(cli, 'npx-cli.js'), path.join(bin, 'npx'))
+  return bin
+}
+
+/**
+ * Removes the links' directory: a test file's `afterAll`. Bun's test runner
+ * fires no `process.on('exit')`, where it was, so each process left one.
+ */
+export function removeNpm(): void {
+  if (bin !== undefined) rmSync(bin, { recursive: true, force: true })
+  bin = undefined
+}
 
 /** `env` with the pinned npm's `npm` and `npx` first on PATH. */
 export function withNpm(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return { ...env, PATH: `${NPM_BIN}${path.delimiter}${env['PATH'] ?? ''}` }
+  return { ...env, PATH: `${npmBin()}${path.delimiter}${env['PATH'] ?? ''}` }
 }
