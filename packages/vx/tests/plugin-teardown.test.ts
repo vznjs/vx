@@ -405,7 +405,10 @@ describe('the lifecycle is reached on a run a signal stops', () => {
       const lockRoot = uid === undefined ? tmp : path.join(tmp, `vx-runs-${uid}`)
       expect({
         lifecycle: await lifecycle(),
-        left: readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-')),
+        // `<lock>-files` is holdLockFiles' SQLite file: it stays, as a lock file must.
+        left: readdirSync(lockRoot).filter(
+          (n) => n.startsWith('vx-run-') && !/-files(-journal)?$/.test(n),
+        ),
       }).toEqual({ lifecycle: ['setup', 'teardown'], left: [] })
     } finally {
       rmSync(tmp, { recursive: true, force: true })

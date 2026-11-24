@@ -227,8 +227,9 @@ describe('signal handling during vx run (e2e)', () => {
       const uid = process.getuid?.()
       const lockRoot = uid === undefined ? tmp : path.join(tmp, `vx-runs-${uid}`)
       // `<lock>.sock` beside it is the run's `vx last --live` socket.
+      // `<lock>-files` is holdLockFiles' SQLite file: it stays, as a lock file must.
       const locks = readdirSync(lockRoot).filter(
-        (n) => n.startsWith('vx-run-') && !n.endsWith('.sock'),
+        (n) => n.startsWith('vx-run-') && !n.endsWith('.sock') && !/-files(-journal)?$/.test(n),
       )
       expect(locks.length).toBe(1)
       expect(readdirSync(path.join(lockRoot, locks[0]!))).toEqual([
@@ -246,7 +247,9 @@ describe('signal handling during vx run (e2e)', () => {
       // With what each leftover holds: its entry (the hook never ran) or
       // nothing (the directory's removal was skipped). macOS CI left one
       // once (item 867).
-      const left = readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-'))
+      const left = readdirSync(lockRoot).filter(
+        (n) => n.startsWith('vx-run-') && !/-files(-journal)?$/.test(n),
+      )
       expect(
         left.map((n) => [n, n.endsWith('.sock') ? 'socket' : readdirSync(path.join(lockRoot, n))]),
       ).toEqual([])
