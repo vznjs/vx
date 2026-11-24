@@ -190,7 +190,9 @@ export async function applyConfigHooks(
     reading(plugin, 'config', () =>
       assertEditedInPlace(plugin, 'config', returned, workspace, 'the workspace config'),
     )
-    afterEach?.(plugin)
+    // The re-validation reads what the plugin left: a proxy whose trap
+    // throws there is the plugin's failure, not vx's stack.
+    if (afterEach !== undefined) reading(plugin, 'config', () => afterEach(plugin))
   }
 }
 
