@@ -69,7 +69,7 @@ it('an input edited before its key and put back during the cycle starts the next
   await writeFile(src, 'two\n')
   await rm(gate)
   await writeFile(at('after.go'), '')
-  await until(async () => (await out()) === 'two\n', 'the output built from two again', 20_000)
+  await until(async () => (await out()) === 'two\n', 'the output built from two again')
 }, 60_000)
 
 // `Date.now()` floors to the millisecond and a ctime does not: a task's

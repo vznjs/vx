@@ -132,6 +132,14 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   assertion, never the timeout. A test's own timeout argument overrides
   the flag, so none is set under 30 s either (258 were, 3 to 25 s;
   `tests/suite-coverage.unsafe.test.ts`).
+- A wait inside a test has no deadline of its own under the test's: at
+  load 40 on 4 cores a vx took over 10 s to reach its task and a watch
+  over 15 s to print its marker, and eight files failed on a wait that
+  would have passed (2026-11-24). Wait on the condition, or on the
+  process that would make it true having exited; the test's timeout is
+  the hang guard. A sleep is no sync point either: wait for the event
+  (the re-lock's cycle, the refusal line, the child saying it is armed)
+  that the next step needs.
 - Two measured quantities that are equal by construction sit on jitter:
   a light child's `ru_maxrss` IS the parent's mark, and the kernel's RSS
   counters lag by pages, so an exact `>` between them flipped on one CI

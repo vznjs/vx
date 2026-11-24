@@ -39,7 +39,7 @@ describe.skipIf(!linux)('vx watch memory over time', () => {
       })
       const w = spawnVx(root, ['watch', 'a#out'])
       try {
-        await until(() => w.out().includes('watching'), 'watching', 30_000)
+        await until(() => w.out().includes('watching'), 'watching')
         await Bun.sleep(SETTLE_MS)
         const heapFile = `${w.probe}.heap`
         const heapMib = async (): Promise<number> => {

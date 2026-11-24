@@ -57,29 +57,49 @@ const RECENT_MS = 60_000
 /** The last lines of a stream, enough to see where a watch stopped. */
 const tail = (text: string): string => text.split('\n').slice(-40).join('\n')
 
+/**
+ * Until `cond` holds. With no `timeoutMs` it has no deadline of its own (the
+ * test's timeout guards a hang): a 15 s one ran out before a loaded host's
+ * watch printed its marker (load 40, 2026-11-24). Waiting past 15 s, it
+ * prints what each watch said once, so a hang still shows where it stopped.
+ */
 export async function until(
   cond: () => Promise<boolean> | boolean,
   what: string,
-  timeoutMs = 15_000,
+  timeoutMs?: number,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
+  const began = performance.now()
+  let told = false
+  for (;;) {
     if (await cond()) return
+    const waited = performance.now() - began
+    if (timeoutMs !== undefined && waited >= timeoutMs) {
+      // A stalled event loop can spend the deadline inside one sleep: the
+      // condition gets one look on the far side of it.
+      if (await cond()) return
+      throw new Error(`timed out waiting for ${what}${dump()}`)
+    }
+    if (timeoutMs === undefined && !told && waited >= TELL_MS) {
+      told = true
+      process.stderr.write(`still waiting for ${what} after ${TELL_MS / 1000} s${dump()}\n`)
+    }
     await Bun.sleep(25)
   }
-  // A stalled event loop (5.8 s on CI, 2026-11-07) can spend the deadline
-  // inside one sleep: the condition gets one look on the far side of it.
-  if (await cond()) return
-  // A CI flake that said only "timed out waiting for the watching marker"
-  // could not be told from a slow runner or a stuck cycle.
-  const said = [...live]
+}
+
+const TELL_MS = 15_000
+
+// A CI flake that said only "timed out waiting for the watching marker"
+// could not be told from a slow runner or a stuck cycle.
+function dump(): string {
+  return [...live]
     .filter(([, endedAt]) => endedAt === undefined || Date.now() - endedAt < RECENT_MS)
     .map(([w, endedAt]) => {
       const state =
         endedAt === undefined ? 'running' : `exited ${w.proc.exitCode ?? w.proc.signalCode}`
       return `\nwatch ${w.proc.pid} (${state}) stdout:\n${tail(w.out())}\nwatch ${w.proc.pid} stderr:\n${tail(w.err())}`
     })
-  throw new Error(`timed out waiting for ${what}${said.join('')}`)
+    .join('')
 }
 
 export async function executions(log: string): Promise<number> {
