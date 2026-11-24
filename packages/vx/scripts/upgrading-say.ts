@@ -111,6 +111,9 @@ export const SAY: Readonly<Record<string, string>> = {
   // The 2026-11-23 day PR squashed three breaking commits into one.
   'feat!: land 2026-11-23 alpha hardening, docs and locks':
     "`.vx/projects.lock` is version 9 and `.vx/dependencies.lock` version 6. Run `vx lock` once to rewrite both.\n\n`vx lock --check --format json` lists each problem as `{ code, message }`, not as a string.\n\n`vx run --dry=json` → `vx run --dry --format json`; `--dry=pretty` → `--dry`; pipeline `dry: 'json'` → `dry: true, format: 'json'`.",
+  // Its footer missed the dependencies lock, which b9a90aa21 moved to version 7.
+  'docs(upgrading)!: .vx/projects.lock is version 10':
+    "`.vx/projects.lock` is version 10 and `.vx/dependencies.lock` version 7: each project's lines sit together, so branches that edit different projects merge cleanly.\n\nRun `vx lock` once and commit both locks. Until then every run, `vx show` and `vx watch` refuses and says to run it.",
   'feat(cache)!: make the artifact ceiling a setting, 1 GiB by default':
     'The default artifact ceiling is 1 GiB, not 2 GiB. Raise it with `cache.artifactCeiling` or `VX_CACHE_ARTIFACT_CEILING`.',
   'refactor(cli)!: remove vx run --tag':
@@ -123,6 +126,7 @@ export const SAY: Readonly<Record<string, string>> = {
 
 /** A heading for a commit whose subject uses a word readers do not know. */
 export const TITLE: Readonly<Record<string, string>> = {
+  'docs(upgrading)!: .vx/projects.lock is version 10': 'Both locks have new versions',
   'feat(vx-dte)!: plan a distributed run with one engine':
     'Distributed task execution plans with one engine',
   'refactor(workspace)!: keep JS out of the migration seam': '`foldScriptHooks` is not exported',

@@ -24,9 +24,11 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 Rename the project where the refusal points.
 
-### `.vx/projects.lock` is version 10
+### Both locks have new versions
 
-`.vx/projects.lock` is version 10: each task's JSON sits under its project, so two branches editing different projects merge cleanly. Run `vx lock` once and commit the rewritten lock.
+`.vx/projects.lock` is version 10 and `.vx/dependencies.lock` version 7: each project's lines sit together, so branches that edit different projects merge cleanly.
+
+Run `vx lock` once and commit both locks. Until then every run, `vx show` and `vx watch` refuses and says to run it.
 
 ### A glob that names its way into a nested project is refused
 
