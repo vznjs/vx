@@ -25,60 +25,74 @@ exec: {
 <Levels />
 
 <Walkthrough title="Sandbox a vite build">
-<Frame title="1. The build passes, and vx fails it">
+<Frame title="1. vite fails, and vx says why">
 
-`@demo/web` builds with `vite build`. Grant it the files you think it reads, and the folder it writes:
+`@demo/ui` builds with `vite build`. Grant it the files you think it reads, and the folder it writes:
 
-```ts title="packages/web/vx.config.ts" mark={4-9}
+```ts title="packages/ui/vx.config.ts" mark={4-9}
 build: {
   exec: {
     command: 'vite build',
     sandbox: {
       allow: {
-        read: ['src/', 'index.html'],
+        read: ['src/'],
         write: ['dist/'],
       },
     },
   },
-  inputs: { files: ['src/**', 'index.html'] },
+  inputs: {
+    files: ['src/**'],
+  },
   outputs: { files: ['dist/**'] },
   cache: true,
 },
 ```
 
-```ansi title="vx run @demo/web#build"
-[2m$[0m vx run @demo/web#build
+```ansi title="vx run @demo/ui#build"
+[2m$[0m vx run @demo/ui#build
 
-[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
 [36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[0m 4 modules transformed.
-rendering chunks...
-computing gzip size...
-[2mdist/[0m[32mindex.html                [0m[1;2m0.12 kB[0m[2m │ gzip: 0.12 kB[0m
-[2mdist/[0m[2massets/[0m[36mindex-Cdr0KPAF.js  [0m[1;2m0.71 kB[0m[2m │ gzip: 0.41 kB[0m
+[32m✓[0m 1 modules transformed.
+[31m✗[39m Build failed in 23ms
+[31merror during build:
+[31mBuild failed with 1 error:
 
-[32m✓ built in 66ms[39m
+[31m[UNRESOLVED_ENTRY] [0mCannot resolve entry module index.html.
+[31m
+    at aggregateBindingErrorsIntoJsError (file:///repo/node_modules/.bun/rolldown@1.2.19/node_modules/rolldown/dist/shared/error-CLo6EJKG.mjs:50:18)
+    at unwrapBindingResult (file:///repo/node_modules/.bun/rolldown@1.2.19/node_modules/rolldown/dist/shared/error-CLo6EJKG.mjs:20:128)
+    at #build (file:///repo/node_modules/.bun/rolldown@1.2.19/node_modules/rolldown/dist/shared/rolldown-AohEFLrh.mjs:146:34)
+    at async buildEnvironment (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/chunks/node.js:34787:66)
+    at async Object.build (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/chunks/node.js:35208:19)
+    at async Object.buildApp (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/chunks/node.js:35205:153)
+    at async CAC.<anonymous> (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/cli.js:789:3) {
+  errors: [Getter/Setter]
+}[39m
 [0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (3)[0m [2m────────────────────────────────────[0m
 
-access(/repo/packages/web/vite.config.ts) = -1 ENOENT  [/repo/packages/web/vite.config.ts]
-access(/repo/packages/web/package.json) = -1 ENOENT  [/repo/packages/web/package.json]
-openat(/repo/packages/web/package.json) = -1 ENOENT  [/repo/packages/web/package.json]
+access(/repo/packages/ui/vite.config.ts) = -1 ENOENT  [/repo/packages/ui/vite.config.ts]
+access(/repo/packages/ui/package.json) = -1 ENOENT  [/repo/packages/ui/package.json]
+openat(/repo/packages/ui/package.json) = -1 ENOENT  [/repo/packages/ui/package.json]
+vx: the sandbox hid paths outside the project that exist on this machine, which are not reported as violations: /repo/package.json. If the task reads one, grant it, e.g. `allow: { read: ['../../package.json'] }`, and, if the output depends on it, key it: `inputs: { workspaceFiles: ['package.json'] }`.
 
 [2mfix: exec.sandbox.allow: { read: ['package.json', 'vite.config.ts'] }[0m
 [2mand, if the output depends on them, inputs.files: ['vite.config.ts'][0m
 
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(343ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 3 sandbox violations)[0m
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(884ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 3 sandbox violations)[0m
 ```
 
-Vite says **built**. vx says **failed**: vite looked for `vite.config.ts` and `package.json`, found nothing, and built without your config.
+vite never read its config, so it looked for an app's `index.html` and failed. vx names what it reached for: `vite.config.ts` and `package.json`.
+
+The `vx:` line names a workspace file the sandbox hid too; this build does not need it.
 
 </Frame>
 <Frame title="2. Grant the config, key it, run again">
 
 Copy the `fix:` line into `read`, and the second line into `inputs.files`. It leaves out `package.json`: your [lockfile plugin](../lockfiles/) keys that already.
 
-```ts title="packages/web/vx.config.ts" ins={9-10,20}
+```ts title="packages/ui/vx.config.ts" ins={8-9,18}
 build: {
   exec: {
     command: 'vite build',
@@ -86,7 +100,6 @@ build: {
       allow: {
         read: [
           'src/',
-          'index.html',
           'package.json',
           'vite.config.ts',
         ],
@@ -97,7 +110,6 @@ build: {
   inputs: {
     files: [
       'src/**',
-      'index.html',
       'vite.config.ts',
     ],
   },
@@ -106,28 +118,41 @@ build: {
 },
 ```
 
-```ansi title="vx run @demo/web#build"
-[2m$[0m vx run @demo/web#build
+```ansi title="vx run @demo/ui#build"
+[2m$[0m vx run @demo/ui#build
 
-[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
-[31mfailed to load config from /repo/packages/web/vite.config.ts[39m
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[31mfailed to load config from /repo/packages/ui/vite.config.ts[39m
 [31merror during build:
-Error: ENOENT: no such file or directory, mkdir '/repo/packages/web/node_modules/.vite-temp'
+Error: EROFS: read-only file system, open '/repo/packages/ui/node_modules/.vite-temp/vite.config.ts.timestamp-1795479363449-8d8ae977b38c4.mjs'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.writeFile (node:internal/fs/promises:1222:14)
+    at async loadConfigFromBundledFile (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/chunks/node.js:38171:3)
+    at async bundleAndLoadConfigFile (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/chunks/node.js:38019:21)
+    at async loadConfigFromFile (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/chunks/node.js:37979:42)
+    at async resolveConfig (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/chunks/node.js:37580:22)
+    at async createBuilder (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/chunks/node.js:35183:17)
+    at async CAC.<anonymous> (file:///repo/node_modules/.bun/vite@8.3.8/node_modules/vite/dist/node/cli.js:778:19) {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'open',
+  path: '/repo/packages/ui/node_modules/.vite-temp/vite.config.ts.timestamp-1795479363449-8d8ae977b38c4.mjs'
+}[39m
 [0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (1)[0m [2m────────────────────────────────────[0m
 
-mkdir(/repo/packages/web/node_modules/.vite-temp) = a write no grant covers  [/repo/packages/web/node_modules/.vite-temp]
+openat(/repo/packages/ui/node_modules/.vite-temp/vite.config.ts.timestamp-1795479363449-8d8ae977b38c4.mjs) = a write no grant covers  [/repo/packages/ui/node_modules/.vite-temp/vite.config.ts.timestamp-1795479363449-8d8ae977b38c4.mjs]
 
 [2mfix: exec.sandbox.allow: { write: ['node_modules/.vite-temp/'] }[0m
 
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(288ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(761ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 ```
 
 Vite reads its config this time, and needs one more folder: it bundles the config into `node_modules/.vite-temp/` first.
 
 </Frame>
-<Frame title="3. Every file accounted for">
+<Frame title="3. Grant the temp folder">
 
-```ts title="packages/web/vx.config.ts" ins={14}
+```ts title="packages/ui/vx.config.ts" ins={13}
 build: {
   exec: {
     command: 'vite build',
@@ -135,7 +160,6 @@ build: {
       allow: {
         read: [
           'src/',
-          'index.html',
           'package.json',
           'vite.config.ts',
         ],
@@ -149,7 +173,6 @@ build: {
   inputs: {
     files: [
       'src/**',
-      'index.html',
       'vite.config.ts',
     ],
   },
@@ -158,23 +181,80 @@ build: {
 },
 ```
 
-```ansi title="vx run @demo/web#build"
-[2m$[0m vx run @demo/web#build
+```ansi title="vx run @demo/ui#build"
+[2m$[0m vx run @demo/ui#build
 
-[2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
 [36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
 transforming...
-[32m✓[0m 4 modules transformed.
+[32m✓[0m 2 modules transformed.
 rendering chunks...
 computing gzip size...
-[2mdist/[0m[32mindex.html                [0m[1;2m0.12 kB[0m[2m │ gzip: 0.12 kB[0m
-[2mdist/[0m[2massets/[0m[36mindex-Cdr0KPAF.js  [0m[1;2m0.71 kB[0m[2m │ gzip: 0.41 kB[0m
+[2mdist/[0m[36mindex.js  [0m[1;2m0.17 kB[0m[2m │ gzip: 0.15 kB[0m
 
-[32m✓ built in 44ms[39m
-[0m[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(316ms)[0m [2msuccess[0m
+[32m✓ built in 40ms[39m
+[0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (1)[0m [2m────────────────────────────────────[0m
+
+access(/repo/packages/ui/public) = -1 ENOENT  [/repo/packages/ui/public]
+
+[2mfix: exec.sandbox.allow: { read: ['public'] }[0m
+[2mand, if the output depends on them, inputs.files: ['public'][0m
+
+[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(928ms)[0m [1m[38;2;239;68;68mfailed (exit 1, 1 sandbox violation)[0m
 ```
 
-**success**. Every file the build reads is in its key. An edit to `vite.config.ts` builds again, instead of putting back an old `dist/`.
+Vite built, then looked for `public/`: it copies those files into `dist/`. They shape the output, so take both lines.
+
+</Frame>
+<Frame title="4. Every file accounted for">
+
+```ts title="packages/ui/vx.config.ts" ins={9,22}
+build: {
+  exec: {
+    command: 'vite build',
+    sandbox: {
+      allow: {
+        read: [
+          'src/',
+          'package.json',
+          'public',
+          'vite.config.ts',
+        ],
+        write: [
+          'dist/',
+          'node_modules/.vite-temp/',
+        ],
+      },
+    },
+  },
+  inputs: {
+    files: [
+      'src/**',
+      'public',
+      'vite.config.ts',
+    ],
+  },
+  outputs: { files: ['dist/**'] },
+  cache: true,
+},
+```
+
+```ansi title="vx run @demo/ui#build"
+[2m$[0m vx run @demo/ui#build
+
+[2m┌─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m>[0m $ vite build
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[0m 2 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[0m[36mindex.js  [0m[1;2m0.17 kB[0m[2m │ gzip: 0.15 kB[0m
+
+[32m✓ built in 80ms[39m
+[0m[2m└─[0m [1m[38;2;192;132;252m@demo/ui[0m[2m#[0m[1m[38;2;244;114;182mbuild[0m [2m──[0m [2m(723ms)[0m [2msuccess[0m
+```
+
+**success**. Every file the build reads is in its key. An edit to `vite.config.ts` or `public/` builds again, instead of putting back an old `dist/`.
 
 </Frame>
 </Walkthrough>
@@ -220,13 +300,12 @@ exec: {
 A failed sandboxed task ends with three parts. Each tells you one thing:
 
 ```ansi
-[0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (2)[0m [2m────────────────────────────────────[0m
+[0m[2m├─[0m [1m[38;2;239;68;68mSANDBOX VIOLATIONS (1)[0m [2m────────────────────────────────────[0m
 
-access(/repo/packages/web/vite.config.ts) = -1 ENOENT  [/repo/packages/web/vite.config.ts]
-access(/repo/packages/web/package.json) = -1 ENOENT  [/repo/packages/web/package.json]
+access(/repo/packages/ui/public) = -1 ENOENT  [/repo/packages/ui/public]
 
-[2mfix: exec.sandbox.allow: { read: ['package.json', 'vite.config.ts'] }[0m
-[2mand, if the output depends on them, inputs.files: ['package.json', 'vite.config.ts'][0m
+[2mfix: exec.sandbox.allow: { read: ['public'] }[0m
+[2mand, if the output depends on them, inputs.files: ['public'][0m
 ```
 
 1. **The violations**: what the task did, and the full path in `[ ]`.
@@ -276,7 +355,15 @@ An edit to the config is a **miss**: the build runs with it.
 
 ## Let it reach the network
 
-A sandboxed task reaches no host until you list it. A call anywhere else is refused, and named:
+A sandboxed task reaches no host until you list it. Add a task to `web` that calls one, then run `vx lock`:
+
+```ts title="packages/web/vx.config.ts"
+ping: {
+  exec: { command: 'curl -sS -o /dev/null https://example.com', sandbox: {} },
+},
+```
+
+The call is refused, and named:
 
 ```ansi title="vx run @demo/web#ping"
 [2m$[0m vx run @demo/web#ping
@@ -328,7 +415,7 @@ e2e: {
 },
 ```
 
-A bare `localhost` reaches no port: name the one you need.
+A bare `localhost`, `127.0.0.1` or `0.0.0.0` reaches no port: name the one you need.
 
 <Takeaway>run a server and its tests both sandboxed.</Takeaway>
 
@@ -392,7 +479,7 @@ exec: {
 },
 ```
 
-Grant a tool's libraries with it: `ldd $(command -v node)` lists them. vx still grants the shell the command runs in.
+Grant a tool's libraries with it: `ldd $(command -v node)` lists them. A grant of a link (`/usr/bin/python3`) brings its target. vx still grants the shell the command runs in.
 
 <Takeaway>build with only the tools you named, nothing from the host.</Takeaway>
 
@@ -524,7 +611,8 @@ The [full list](../../schema/sandbox/) lives in the config reference. A grant na
 - A task with no command (a group task) cannot be sandboxed.
 - On macOS, a task that runs its own sandbox cannot be sandboxed: one cannot nest in another.
 - A task with `interactive` cannot take a `sandbox`.
-- A persistent task (a dev server) runs inside the same walls, but nothing traces it: a refused read is `ENOENT`, named nowhere. Run its command once as a normal sandboxed task to see what it was refused.
+- A persistent task (a dev server) runs inside the same walls, but nothing traces it: a refused read is `ENOENT`, named nowhere.
+- To see what it was refused, run its command once as a normal sandboxed task.
 - On Linux, a tool that only checks a path exists (`existsSync`, `test -e`) is not traced: it sees the file as missing, and no violation names it.
 
 ### Common problems
@@ -533,8 +621,10 @@ The [full list](../../schema/sandbox/) lives in the config reference. A grant na
 - **`File exists` or `Not a directory` from the task's own `mkdir`.** A write grant with no trailing slash is a file. Write `'coverage/'`.
 - **A file the task creates later is refused on Linux** ("Read-only file system") under a glob outside the project (`~/.cache/tool/*.log`). Grant its folder: `'~/.cache/tool/'`.
 - **`bun build --compile --target=…` fails on a fresh machine** ("Network error downloading executable"). Grant `network: ['registry.npmjs.org']` and `write: ['~/.bun/install/cache/', '.*.tmp/**']`.
-- **`next build` with `output: 'standalone'` writes `node_modules/.bun/…` under the app.** Next looks for the lockfile, which the sandbox hides. Grant it: `read: ['.', '../../bun.lock']`, keyed with `inputs.workspaceFiles: ['bun.lock']`.
-- **`read packages/ui (linked at …/node_modules/@x/ui), and its key includes no task of packages/ui`.** The task imports a sibling its key never sees. Depend on a task of it (`dependsOn: ['^build']`), or grant and key the files: the `fix:` line names both.
+- **`next build` with `output: 'standalone'` writes `node_modules/.bun/…` under the app.** Next looks for the lockfile, which the sandbox hides.
+- **Grant it:** `read: ['.', '../../bun.lock']`, keyed with `inputs.workspaceFiles: ['bun.lock']`.
+- **`read packages/ui (linked at …/node_modules/@x/ui), and its key includes no task of packages/ui`.** The task imports a sibling its key never sees.
+- **Fix it:** depend on a task of it (`dependsOn: ['^build']`), or grant and key the files. The `fix:` line names both.
 - **`exit 127` under `hermetic: true`.** The tool's runtime or its libraries are outside the grants. Grant the runtime's folder and what `ldd` lists.
 
 </Deeper>

@@ -24,22 +24,26 @@ import {
 } from './cache.js'
 import { isCorruptArtifact, type TaskInputComponent, type TaskMemo } from './layer.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
-import type { PluginSecrets } from '../util/index.js'
+import { teardownTimeoutMs, type PluginSecrets } from '../util/index.js'
 
 const STOPPED: unique symbol = Symbol('stopped')
 
 /**
  * A body that errors once the run stops, so the ingest reading it fails at
- * once, removes its temp and releases the connection.
+ * once, removes its temp and releases the connection; and once no bytes
+ * came for `idleMs` (`run.pluginTimeout`; 0: never), so a remote that
+ * stops sending is a miss while a slow one that keeps sending finishes.
  */
 function endsOnStop(
   body: Blob | Response,
   stopped: Promise<typeof STOPPED>,
   onChunk: (bytes: number) => void = () => {},
+  idleMs = 0,
 ): Blob | Response {
   if (body instanceof Blob || body.body === null) return body
   const reader = body.body.getReader()
   let stop = false
+  let idle = false
   // Once, not raced per chunk: a cancel ends the pending read as `done`, which
   // the flag turns into an error, not a short body.
   void stopped.then(() => {
@@ -49,8 +53,20 @@ function endsOnStop(
   })
   const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
-      const next = await reader.read()
+      const timer =
+        idleMs > 0
+          ? setTimeout(() => {
+              idle = true
+              // quiet: the flag says why; a reader already done has nothing to cancel
+              void reader.cancel().catch(() => undefined)
+            }, idleMs)
+          : undefined
+      const next = await reader.read().finally(() => clearTimeout(timer))
       if (stop) controller.error(new Error('the run was stopped'))
+      else if (idle)
+        controller.error(
+          new Error(`no bytes for ${idleMs} ms (run.pluginTimeout) — degraded to a miss`),
+        )
       else if (next.done) controller.close()
       else {
         onChunk(next.value.byteLength)
@@ -113,7 +129,9 @@ export interface LentAccess {
  * throw is a miss reported to `onError`. The bytes are the local
  * `<hash>.tar.zst` verbatim. See docs/modules/cache.md.
  *
- * Core bounds no call, so each request carries the layer's own deadline.
+ * Core bounds only a download's waiting (`run.pluginTimeout` for the answer,
+ * then between bytes; a miss), so each request carries the layer's own
+ * deadline too.
  */
 export interface RemoteCacheLayer {
   /**
@@ -466,7 +484,7 @@ export class LayeredCache implements CacheLayer {
     try {
       const ingest = this.local.ingest(
         hash,
-        endsOnStop(remoteBody.body, ends, (n) => (dl.received += n)),
+        endsOnStop(remoteBody.body, ends, (n) => (dl.received += n), teardownTimeoutMs()),
         meta,
       )
       // quiet: raced and awaited below, where its error is reported

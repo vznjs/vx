@@ -12,7 +12,7 @@
 // its own sandbox), the processes of the run are those carrying its tag and
 // what they started, not every process of the host.
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, openSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { constants } from 'node:os'
 import path from 'node:path'
 import { runProcesses, TAG } from './sandbox.ts'
@@ -31,6 +31,8 @@ interface Options {
   left?: string
   /** The tool's stdin is a pipe this holds open and never writes. */
   openStdin?: boolean
+  /** The tool's stdout is `/dev/full`, where every write fails. */
+  fullStdout?: boolean
 }
 
 // What the tool leaves behind is re-parented here, not to the host's init,
@@ -59,7 +61,11 @@ const cmd = stop?.ignored
   ? ['sh', '-c', `trap '' ${stop.signal.slice(3)}; exec "$@"`, 'sh', ...argv]
   : argv
 const proc = Bun.spawn(cmd, {
-  stdio: [opts.openStdin ? 'pipe' : 'ignore', 'inherit', 'inherit'],
+  stdio: [
+    opts.openStdin ? 'pipe' : 'ignore',
+    opts.fullStdout ? openSync('/dev/full', 'w') : 'inherit',
+    'inherit',
+  ],
   detached: true,
 })
 

@@ -308,6 +308,7 @@ const cases: Case[] = [
       'A gitignored directory named in the inputs keys its own files, not a project nested in it',
     why: 'Naming a gitignored directory in the inputs opts its files back in, but only the outer project’s own files. A project nested inside that directory still owns its files, and the outer task never reads them. Keying on them reruns the outer task on every edit in the nested project.',
     from: ['inputs-resolution'],
+    needs: ['glob-into-nested-project'],
     workspace: {
       projects: {
         a: {
@@ -1499,6 +1500,29 @@ const cases: Case[] = [
     links: { 'packages/a/src/x.txt': '../../../elsewhere/linked.txt' },
     first: 'O1\n',
     changes: [[{ 'elsewhere/linked.txt': 'O2\n' }, 'O2\n']],
+  }),
+
+  defineCase({
+    id: 'inputs/file-link-into-unrelated-project',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'An edit behind an input link into a project the task does not depend on reruns, or the link is refused',
+    why: 'A link in the inputs can point into another project the task has no dependency on. The task still reads that project’s file, so an edit there must rerun it. A tool that keys the link by the path it names, trusting the other project to key its own files, replays the build made from the old contents. Refusing the link up front, and asking for the dependency, is as good as keying it.',
+    from: ['linked-inputs'],
+    workspace: {
+      projects: {
+        a: { tasks: { build: linkedRead('src/x.txt') }, files: { '.gitignore': 'out.txt\n' } },
+        b: { files: { 'data.txt': 'B1\n' } },
+      },
+    },
+    steps: [
+      { link: { 'packages/a/src/x.txt': '../../b/data.txt' } },
+      { commit: 'links' },
+      { run: 'build', expect: { exit: 0, files: { [OUT_TXT]: 'B1\n' }, orRefused: true } },
+      { write: { 'packages/b/data.txt': 'B2\n' } },
+      { run: 'build', expect: { exit: 0, files: { [OUT_TXT]: 'B2\n' }, orRefused: true } },
+    ],
   }),
 
   linkCase({

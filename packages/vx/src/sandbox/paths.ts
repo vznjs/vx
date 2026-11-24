@@ -48,8 +48,47 @@ export function grantAlternatives(grant: string): string[] {
  * project there is gone from the task's view and bwrap fails to remount
  * it. No grant can bring it back.
  */
-export function replacedBySandbox(dir: string): boolean {
+function replacedBySandbox(dir: string): boolean {
   return process.platform === 'linux' && atOrUnder(dir, '/dev')
+}
+
+/**
+ * Why no sandboxed task can run with its project at `dir` (its real path),
+ * or null: `why` names the cause, `rest` what follows and the fix. A run
+ * refuses each such task; the doctor says the sandbox is unavailable there.
+ */
+export function unmountable(dir: string): { why: string; rest: string } | null {
+  const rename = ' — rename the directory, or run the task without exec.sandbox'
+  // Linux mounts each path by name; macOS reads one as a pattern.
+  if (process.platform !== 'linux' && /[[\]*?]/.test(dir))
+    return {
+      why: 'holds [, ], * or ?, which the macOS sandbox reads as a pattern, not a name',
+      rest: rename,
+    }
+  // The runtime reports a refused touch one line per record: a path holding
+  // a line break arrived split, and an undeclared write to the project's own
+  // file was judged as outside it, with the wrong hint.
+  if (/[\n\r]/.test(dir))
+    return {
+      why: "holds a line break, which the sandbox runtime's reports cannot carry",
+      rest: `, so a refused touch is misreported${rename}`,
+    }
+  // Bun's realpath throws ENOENT on a path holding a backslash, and SRT
+  // mounts no path it cannot resolve: the task saw no project and ran in
+  // $HOME.
+  if (process.platform === 'linux' && dir.includes('\\'))
+    return {
+      why: 'holds a backslash, which the Linux sandbox cannot resolve',
+      rest: `, so it mounts none of the project${rename}`,
+    }
+  // Asked here, not left to bwrap: its "Can't remount" reads as a mount
+  // race, so the task ran twice and failed with no word of the cause.
+  if (replacedBySandbox(dir))
+    return {
+      why: 'is under /dev, which the Linux sandbox replaces with its own',
+      rest: ', so it mounts none of the project — move the workspace out of /dev, or run the task without exec.sandbox',
+    }
+  return null
 }
 
 /**

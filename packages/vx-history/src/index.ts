@@ -215,7 +215,7 @@ const memoryBudgetMb = (options: VxHistoryOptions): number =>
   usable(options.memory) ? options.memory : Math.floor(machineMemoryBytes() / MB)
 
 /**
- * The `assume` durations that are numbers from 0 to 2^53: a larger one summed
+ * The `assume` durations that are numbers from 0 to 2^53−1: a larger one summed
  * along a chain to Infinity, which core refuses too. A NaN
  * (`Number(process.env.X)` with X unset) became a NaN weight and a string (an
  * untyped `.mjs` config) string weights, and core refused both as a UserError:
@@ -234,7 +234,7 @@ function assumptions(
   }
   if (bad.length > 0) {
     warn(
-      `[vx] vx-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a number of ms from 0 to 2^53`,
+      `[vx] vx-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a number of ms from 0 to 2^53−1`,
     )
   }
   return ok
@@ -244,7 +244,7 @@ function assumptions(
  * A duration a task can take, in ms. A chain's weight is its durations
  * summed, and two `1e308`s (a timings file a CI cache handed over, or
  * `assume`) summed to Infinity, which core refuses: the run failed in
- * `schedule`. Under 2^53 ms, any chain's sum stays finite.
+ * `schedule`. Under 2^53 ms each, any chain's sum stays finite.
  */
 const isDuration = (ms: unknown): ms is number =>
   typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER
@@ -299,10 +299,16 @@ function serverUrlOf(
   option: string | undefined,
   env: Record<string, string | undefined> = Bun.env,
 ): string | undefined {
-  const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
-  if (url === undefined || url === '') return undefined
+  const given = option ?? env['VX_HISTORY_URL']
+  if (given === undefined || given === '') return undefined
   // Named as the workspace set it: a bad VX_HISTORY_URL was refused as `url`.
   const from = option === undefined ? 'VX_HISTORY_URL' : 'url'
+  // A trailing blank kept the slash before it: each route went to `…/ /v1/…`.
+  if (given.trim() !== given)
+    throw new UserError(
+      `vxHistory(): ${from} has blanks around it: ${JSON.stringify(shown(given))}`,
+    )
+  const url = given.replace(/\/+$/, '')
   if (!secure(url))
     throw new UserError(
       `vxHistory(): ${from} must be https (http only to 127.0.0.1, ::1 or localhost), got ${shown(url)}`,
@@ -494,6 +500,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         const server = remote
         let late = false
         stopImport = () => (late = true)
+        let abandoned = false
         const weights = (async () => {
           const hashes = [...new Set(timed.flatMap((id) => timedDefs.get(id) ?? []))]
           const { timings: got, flaky } = await server.query(refs, hashes)
@@ -519,13 +526,23 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
           reservations = reservationsFor(nodes.keys(), fresh, options)
           return order(fresh)
         })().catch((err: unknown) => {
-          if (!late) {
+          // Said after the run too, while teardown waits for it: a
+          // never-fail plugin still warns. Past that wait, teardown said it.
+          if (!abandoned)
             ctx.warn(
               `[vx] vx-history: the timings of the history server at ${shown(server.url)} were not applied: ${err instanceof Error ? err.message : String(err)}`,
             )
-          }
           return undefined
         })
+        querying = {
+          settled: weights.then(() => true as const),
+          abandon: () => {
+            abandoned = true
+            ctx.warn(
+              `[vx] vx-history: the timings of the history server at ${shown(server.url)} were not applied: no answer in the ${UPLOAD_WAIT_MS} ms a teardown waits`,
+            )
+          },
+        }
         ctx.refine(weights)
       }
       return order(table)
@@ -535,7 +552,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   let remote: HistoryServer | undefined
   // Loaded only when a server is named: every run evaluates the config.
   const serverOf = async (): Promise<HistoryServer | undefined> => {
-    if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
+    if ((options.url ?? Bun.env['VX_HISTORY_URL'] ?? '') === '') return undefined
     // VX_HISTORY_URL alone: the workspace names no repository to ask for,
     // so the URL is never read; parsed first, a malformed one failed the run.
     if (named === undefined) return undefined
@@ -549,6 +566,8 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   // Stops the server's answer from landing once the run is over: no row
   // lands after the cache closes.
   let stopImport: (() => void) | undefined
+  // The run's query, settled or not: teardown waits for it within its bound.
+  let querying: { settled: Promise<true>; abandon: () => void } | undefined
   // The timings file is written for a run only: `schedule` also orders a
   // `--dry` plan, which has no `setup` and records nothing.
   let scheduled:
@@ -577,7 +596,9 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     | undefined
   hooks.setup = async (ctx) => {
     remote ??= await serverOf()
-    if (remote?.writes === true) {
+    // Off CI a run only reads, whatever token its shell holds: a copied
+    // one wrote that machine's timings into CI's ref.
+    if (remote?.writes === true && ctx.ci) {
       const { timingOf: timing, outcomeOf } = await import('./history-server.js')
       // Only the run that ran the tasks hears them: under DTE, the
       // orchestrator, with each worker's measurements. Sent while the run
@@ -608,11 +629,11 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     } else if (remote !== undefined) {
       if (ctx.ci)
         ctx.warn(
-          Bun.env.GITHUB_ACTIONS === 'true'
+          Bun.env['GITHUB_ACTIONS'] === 'true'
             ? '[vx] vx-history: this job gets no OIDC token for the history server (give it `permissions: id-token: write`): it reads only'
             : '[vx] vx-history: no CI token for the history server (name an id_tokens entry VX_HISTORY_TOKEN): it reads only',
         )
-    } else if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') !== '') {
+    } else if ((options.url ?? Bun.env['VX_HISTORY_URL'] ?? '') !== '') {
       ctx.warn(
         '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
       )
@@ -640,6 +661,14 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   hooks.teardown = async () => {
     stopImport?.()
     stopImport = undefined
+    // Waited beside the file and the upload, under the same bound.
+    const query = querying
+    querying = undefined
+    const queryWait = query === undefined ? undefined : waitFor(UPLOAD_WAIT_MS)
+    const queried =
+      query === undefined
+        ? undefined
+        : Promise.race([query.settled, queryWait!.done.then(() => false as const)])
     const server = remote
     const sent = reported
     remote = undefined
@@ -710,6 +739,8 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
           )
         }
       }
+      if ((await queried) === false) query!.abandon()
+      queryWait?.cancel()
     }
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
@@ -822,16 +853,28 @@ class Live {
       if (timings.size === 0 && outcomes.size === 0) return
       this.timings = new Map()
       this.outcomes = new Map()
-      const n = timings.size
-      this.sending += n
+      this.sending += timings.size
       try {
-        await this.server.upload(timings, this.stop.signal, [...outcomes.values()], (s) => {
-          this.answered = s
-        })
+        await this.server.upload(
+          timings,
+          this.stop.signal,
+          [...outcomes.values()],
+          (s) => {
+            this.answered = s
+          },
+          // A part the server folded is not held: sent again, its rows
+          // would move twice.
+          (hashes, sent) => {
+            for (const h of hashes) if (timings.delete(h)) this.sending--
+            for (const o of sent) outcomes.delete(`${o.hash}\0${o.key}`)
+          },
+        )
       } catch (err) {
         // Abandoned by teardown, which says so itself.
         if (this.stop.signal.aborted) return
-        if (!last) {
+        // A refused token turns the server off: the last upload would
+        // send nothing, and the timings were lost unsaid.
+        if (!last && !this.server.off) {
           this.held = true
           this.restore(timings, outcomes)
           return
@@ -840,7 +883,7 @@ class Live {
           `[vx] vx-history: the timings were not sent to the history server at ${shown(this.server.url)}: ${err instanceof Error ? err.message : String(err)}`,
         )
       } finally {
-        this.sending -= n
+        this.sending -= timings.size
       }
     })
     return this.chain
@@ -987,7 +1030,7 @@ async function historyCmd(
       ui.print('out', ui.gap())
       ui.say(
         'info',
-        'What vx-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.',
+        'What vx-history learned per task (p50, peak RSS, CPU parallelism) and the\nreservation it packs.',
         'out',
       )
       return 0

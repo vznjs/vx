@@ -69,10 +69,11 @@ for (const git of ['init', false] as const)
       const inner = await addProject(root, 'inner', CONFIG)
       await mkdir(path.join(inner, '.vx'))
       await plant(path.join(inner, '.vx/workspace.ts'))
-      // The outer lock leaves the nested workspace's project out.
+      // Still a nested workspace's marker, with git or without: the outer
+      // lock refuses the project its plugin discovers there (git alone did).
       const outer = vx(root, 'lock')
-      expect(outer.code).toBe(0)
-      expect(outer.out).toContain('1 project config')
+      expect(outer.err).toContain('packages/inner/.vx makes packages/inner a workspace of its own')
+      expect(outer.code).not.toBe(0)
       const r = vx(inner, 'lock')
       expect(r.err).toContain(`${path.join(inner, '.vx/workspace.ts')}: is ${kind}`)
       expect(r.code).not.toBe(0)

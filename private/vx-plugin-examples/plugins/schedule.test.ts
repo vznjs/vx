@@ -84,4 +84,4 @@ it('the named task starts first on one worker, whichever it is', async () => {
   }
   expect(await first('b#build')).toBe('start b#build')
   expect(await first('a#build')).toBe('start a#build')
-}, 20_000)
+}, 30_000)

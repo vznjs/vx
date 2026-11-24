@@ -28,7 +28,11 @@ const ROOTS = [
 
 const RULES: readonly [what: string, re: RegExp][] = [
   ['a stream write', /\bprocess\.(?:stdout|stderr)\.write\b|\bBun\.(?:stdout|stderr)\b/],
-  ['console output', /\bconsole\.(?:log|error|warn|info|debug|table|dir|trace)\b/],
+  // Outside a string: a message may tell the user to run `bun -e 'console.log(…)'`.
+  [
+    'console output',
+    /^(?:[^'"`]|(['"`])(?:(?!\1).)*\1)*?\bconsole\.(?:log|error|warn|info|debug|table|dir|trace)\b/,
+  ],
   // In a string: a regex that reads a task's escapes draws nothing.
   ['a terminal escape', /(['"`])(?:(?!\1).)*\\(?:x1b|u001b|033)[[\]]/],
   ['a colour', /['"`]#[0-9a-fA-F]{6}['"`]/],

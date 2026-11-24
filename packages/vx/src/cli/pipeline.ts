@@ -13,7 +13,7 @@ import {
   pipelineRunArgs,
 } from '../workspace/index.js'
 import { refuse, seeHelp } from './help.js'
-import { parseRunArgs, runCmd } from './run.js'
+import { FORMAT_NEEDS_DRY, parseRunArgs, runCmd } from './run.js'
 
 /**
  * `vx pipeline <name> [flags]`, read by the run's own parser: the name is
@@ -28,7 +28,10 @@ export function parsePipelineArgs(args: readonly string[]): {
   const at = args.findIndex((a) => a === parsed.tasks[0])
   const rest = at === -1 ? [...args] : [...args.slice(0, at), ...args.slice(at + 1)]
   const see = seeHelp('pipeline')
-  if (parsed.error !== undefined) return { rest, error: `${parsed.error}${see}` }
+  // The saved keys join the typed flags later: a saved `dry` takes a typed
+  // `--format`, and the run checks the joined line.
+  if (parsed.error !== undefined && parsed.error !== FORMAT_NEEDS_DRY)
+    return { rest, error: `${parsed.error}${see}` }
   const [name, ...extra] = parsed.tasks
   if (name === undefined)
     return {
@@ -104,10 +107,6 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
       'VX_E_USAGE',
     )
   }
-  // The run's parser would refuse a bad saved value as a typed flag or a
-  // variable the user never set: name the key that holds it.
-  const refused = savedRefusal(name, pipeline, rest)
-  if (refused !== undefined) return refuse('pipeline', args, refused, 'VX_E_CONFIG')
   // Its paths are the workspace file's, so they stand from the root, as
   // `cache.dir` there does: from a project's directory a relative
   // `cacheDir` put a second cache inside that project.
@@ -122,6 +121,11 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
   // Read before its own `env` is set: that is saved as its keys are, so a
   // policy variable there dropped its `noCache` as a typed one does.
   const own = pipelineRunArgs(saved, rest)
+  // The run's parser would refuse a bad saved value as a typed flag or a
+  // variable the user never set: name the key that holds it, in the
+  // pipeline's own format (a saved `format: 'json'` gets the error document).
+  const refused = savedRefusal(name, pipeline, rest)
+  if (refused !== undefined) return refuse('pipeline', [...own, ...rest], refused, 'VX_E_CONFIG')
   // A variable already set wins, as it beats every setting the file holds.
   for (const [k, v] of Object.entries(pipeline.env ?? {}))
     if ((process.env[k] ?? '') === '') setVxOnlyEnv(k, v)
@@ -129,5 +133,28 @@ export async function pipelineCmd(args: readonly string[]): Promise<number> {
   for (const [key, { flag }] of Object.entries(PIPELINE_FLAGS))
     if (own.some((a) => a === flag || a.startsWith(`${flag}=`)))
       keys.set(flag, `\`pipelines.${name}.${key}\``)
-  return runCmd([...own, ...rest], ['vx', 'pipeline', ...args], keys)
+  return runCmd([...own, ...rest], ['vx', 'pipeline', ...args], keys, {
+    name,
+    affectedInstead: affectedInstead(name, pipelines, keys.has('--affected')),
+  })
+}
+
+/**
+ * A bare `--affected` on the base branch has no base. `vx run`'s advice,
+ * `--all`, is refused here, and a saved `affected` is no flag to drop: name
+ * a pipeline without it, the same tasks first.
+ */
+function affectedInstead(
+  name: string,
+  pipelines: Readonly<Record<string, Pipeline>>,
+  saved: boolean,
+): string {
+  const why = '(the cache skips what did not change)'
+  if (!saved) return `drop --affected ${why}`
+  const tasks = pipelines[name]!.tasks.join('\0')
+  const others = Object.keys(pipelines).filter((n) => n !== name && !pipelines[n]!.affected)
+  const alt = others.find((n) => pipelines[n]!.tasks.join('\0') === tasks) ?? others[0]
+  return alt === undefined
+    ? `drop \`affected\` from pipelines.${name} ${why}`
+    : `run vx pipeline ${alt}, which has no \`affected\` ${why}`
 }

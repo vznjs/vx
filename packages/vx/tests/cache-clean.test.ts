@@ -281,7 +281,10 @@ describe('vx cache clean with no bound clears the cache', () => {
           if (done) break
           err += decoder.decode(value, { stream: true })
         }
-        expect(err).toContain(`waiting for another vx process using the cache store ${st}`)
+        // At a line's start, a status line: not `! vx  [vx] waiting…`.
+        expect(`\n${err}`).toContain(
+          `\n[vx] waiting for another vx process using the cache store ${st}`,
+        )
         expect([proc.exitCode, existsSync(path.join(st, 'store.db'))]).toEqual([null, true])
         expect((held.query('SELECT count(*) AS n FROM entries').get() as { n: number }).n).toBe(1)
       } finally {
@@ -398,8 +401,8 @@ describe('vx cache clean with no bound clears the cache', () => {
           env,
           'waiting for another vx process using the cache directory',
         )
-        expect(clear.said).toContain(
-          `waiting for another vx process using the cache directory ${shared}`,
+        expect(`\n${clear.said}`).toContain(
+          `\n[vx] waiting for another vx process using the cache directory ${shared}`,
         )
         expect([clear.proc.exitCode, existsSync(path.join(shared, 'cache.db'))]).toEqual([
           null,

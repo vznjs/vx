@@ -190,6 +190,47 @@ describe('resolveFilters', () => {
     })
   })
 
+  it('a path filter typed relative to a subfolder hints the root-relative path', async () => {
+    // From packages/, `./lib` listed the project names: a path filter is
+    // read from the workspace root, as pnpm users do not expect.
+    const from = path.join(root, 'packages')
+    for (const [f, meant] of [
+      ['./lib', './packages/lib'],
+      ['{lib}', '{packages/lib}'],
+      ['!./lib', '!./packages/lib'],
+      ['./lib...', './packages/lib...'],
+      ['{lib}[HEAD]', '{packages/lib}[HEAD]'],
+    ] as const) {
+      const { value } = await quiet(() => resolveFilters(from, [f]))
+      expect(value).toEqual({
+        error: `no projects matched filter(s): "${f}". A path filter is relative to the workspace root: did you mean ${meant}?`,
+      })
+    }
+    // CONTROL: a path that names nothing from the subfolder either, and the root.
+    const none = await quiet(() => resolveFilters(from, ['./nosuch']))
+    expect(none.value).toEqual({
+      error: 'no projects matched filter(s): "./nosuch". Projects: app, lib',
+    })
+    const atRoot = await quiet(() => resolveFilters(root, ['./lib']))
+    expect(atRoot.value).toEqual({
+      error: 'no projects matched filter(s): "./lib". Did you mean lib?',
+    })
+  })
+
+  it('a selector whose projects did not change, beside a change elsewhere, says so', async () => {
+    // `app[HEAD]` with only lib changed said "nothing affected since HEAD".
+    const loose = path.join(root, 'packages', 'lib', 'loose.txt')
+    await Bun.write(loose, 'x\n')
+    try {
+      const { value } = await quiet(() => resolveFilters(root, ['app[HEAD]']))
+      expect(value).toMatchObject({
+        empty: 'nothing app[HEAD] selects changed since HEAD; the change reached lib',
+      })
+    } finally {
+      await rm(loose, { force: true })
+    }
+  })
+
   it('a typo beside a walk that came back empty names the typo, with its hint', async () => {
     // `lib^...` matched lib, which depends on no project; `apq` matched
     // nothing. The empty walk's error hid the typo and its "did you mean".

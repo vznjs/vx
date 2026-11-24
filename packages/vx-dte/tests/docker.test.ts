@@ -169,6 +169,8 @@ it('says why a worker’s container ended before it joined', async () => {
     expect(why).toMatch(/^exited 3: error: no bun in image \(log: .+\)$/)
     const log = why.match(/\(log: ([^)]+)\)/)![1]!
     expect(await readFile(log, 'utf8')).toBe('error: no bun in image\n')
+    // The log is the user's to read; the suite's to remove.
+    await rm(path.dirname(log), { recursive: true, force: true })
   } finally {
     process.env['PATH'] = saved
   }

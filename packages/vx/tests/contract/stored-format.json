@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v58",
+    "version": "v59",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -121,6 +121,7 @@
       "up_to_date_count       INTEGER NOT NULL DEFAULT 0,",
       "restored_local_count   INTEGER NOT NULL DEFAULT 0,",
       "restored_remote_count  INTEGER NOT NULL DEFAULT 0,",
+      "aborted_count     INTEGER NOT NULL DEFAULT 0,",
       "exit_ok           INTEGER NOT NULL,",
       "commit_sha        TEXT,",
       "branch            TEXT,",

@@ -150,6 +150,25 @@ function keyedBy(globs: readonly string[]): (rel: string) => boolean {
 }
 
 /**
+ * Whether directory `rel` is keyed whole by globs such as `public/**`: a
+ * probe of the directory itself (Vite's `access(public)`) matches no file
+ * glob, and the fix named `public` for an input already listed.
+ */
+function keysContents(keyed: (rel: string) => boolean, rel: string, v: SandboxViolation): boolean {
+  return entryOf(v) === 'dir' && keyed(`${rel}/_`)
+}
+
+/**
+ * What a violation's path was when the task ended: as its executor reported
+ * it (a worker's checkout), else as this machine's disk shows it.
+ */
+function entryOf(v: SandboxViolation): 'file' | 'dir' | 'missing' {
+  if (v.entry !== undefined) return v.entry
+  const st = lstatSync(v.path!, { throwIfNoEntry: false })
+  return st === undefined ? 'missing' : st.isDirectory() ? 'dir' : 'file'
+}
+
+/**
  * Whether a literal grant of the project file `abs` has vx make an empty
  * one before the run (`prepareOutputsForBind`): it is not there, or it is
  * a declared output, which the clean before the run takes. A task that
@@ -159,8 +178,8 @@ function keyedBy(globs: readonly string[]): (rel: string) => boolean {
  * file grant made anyway, and a glob is none (a write glob covers only
  * what exists when the task starts).
  */
-function placeheld(abs: string, output: (rel: string) => boolean): boolean {
-  return lstatSync(abs, { throwIfNoEntry: false }) === undefined || output(path.basename(abs))
+function placeheld(v: SandboxViolation, output: (rel: string) => boolean): boolean {
+  return entryOf(v) === 'missing' || output(path.basename(v.path!))
 }
 
 /** Whether read grant `g`, as written, covers directory `dir` whole: `.`, `./**`, `..`. */
@@ -172,6 +191,8 @@ function readsWhole(g: string, dir: string): boolean {
 
 /** The task proxy's refusals an `allow.network` entry cannot lift (task-proxy.ts). */
 const REFUSED_ANYWAY = /\((?:host is on the deny list|malformed host)\)$/
+/** The task proxy's refusal of a loopback host on a port no entry names. */
+const LOOPBACK_REFUSED = /\(a loopback host is reached only on a port the list names\)$/
 
 function kindOf(v: SandboxViolation): Kind | undefined {
   const can = v.ignorable ?? []
@@ -183,7 +204,7 @@ function kindOf(v: SandboxViolation): Kind | undefined {
   // A probe (`access`) names no flags: a file the host has was hidden from
   // a read; one it lacks was being created.
   if (can.includes('read') && can.includes('write') && v.path !== undefined)
-    return lstatSync(v.path, { throwIfNoEntry: false }) !== undefined ? 'read' : 'write'
+    return entryOf(v) !== 'missing' ? 'read' : 'write'
   return undefined
 }
 
@@ -241,7 +262,11 @@ export function sandboxFix(
     if (kind === undefined) continue
     // A host the deny list holds, or a malformed one, no allow grant admits.
     if (kind === 'network' && REFUSED_ANYWAY.test(v.line)) continue
-    if (kind === 'network') fix.network.add(v.target.replace(/:\d+$/, ''))
+    // A loopback host passes only an entry naming its port (task-proxy.ts),
+    // reached as `localhost`; `0.0.0.0` or `::ffff:7f00:1` alone, a lock refused.
+    if (kind === 'network' && LOOPBACK_REFUSED.test(v.line))
+      fix.network.add(`localhost:${/:(\d+)$/.exec(v.target)?.[1]}`)
+    else if (kind === 'network') fix.network.add(v.target.replace(/:\d+$/, ''))
     else if (kind === 'systemInfo') fix.systemInfo.add(v.target)
     else if (v.path === undefined) continue
     else if (isCredential(v.path)) fix.withheld.add(grantPath(v.path, dirs))
@@ -255,7 +280,7 @@ export function sandboxFix(
       // The repository is no input: git lists nothing in it, so no glob keys it.
       if (atOrUnder(v.path, path.join(dirs.root, '.git'))) continue
       if (inProject(rel) && !nested.some((d) => atOrUnder(v.path!, toRealPath(d)))) {
-        if (!keyed.files(rel)) fix.inputs.add(taskGlobOf(rel))
+        if (!keyed.files(rel) && !keysContents(keyed.files, rel, v)) fix.inputs.add(taskGlobOf(rel))
       } else if (atOrUnder(v.path, dirs.root)) {
         const wsRel = relPosix(dirs.root, v.path)
         if (!keyed.workspaceFiles(wsRel)) fix.workspaceFiles.add(taskGlobOf(wsRel))
@@ -277,12 +302,10 @@ export function sandboxFix(
       const grant = writeGrant(path.dirname(v.path), dirs, true, inputs?.files ?? [], outDirs)
       fix.write.add(grant === './' ? (timeGlob(path.basename(v.path)) ?? grant) : grant)
     } else {
-      const isDir =
-        v.line.startsWith('mkdir') ||
-        lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() === true
+      const isDir = v.line.startsWith('mkdir') || entryOf(v) === 'dir'
       const grant = writeGrant(v.path, dirs, isDir, inputs?.files ?? [], outDirs)
       fix.write.add(
-        !isDir && listsProject && path.dirname(v.path) === dirs.project && placeheld(v.path, output)
+        !isDir && listsProject && path.dirname(v.path) === dirs.project && placeheld(v, output)
           ? '.'
           : grant,
       )

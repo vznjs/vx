@@ -57,6 +57,8 @@ export interface RecordedWorker {
 const FEW = 2
 /** The unmeasured tasks the summary names; the rest it counts. */
 const NAMED = 40
+/** How long the advice's replays may hold the run's end, ms. */
+const ADVICE_MS = 2_000
 /** The footer's label of each `WorkerAdvice`. */
 const ADVICE: Record<WorkerAdvice['of'], readonly [label: string, note: string]> = {
   declared: ['best', 'the fewest of its sizes'],
@@ -94,6 +96,13 @@ export class RunReport<W extends RecordedWorker> {
   protected readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   protected ended = false
   protected endedAt = 0
+  /**
+   * When the job summary took the workers' figures: the footer reads them at
+   * the same instant. The summary goes out before teardown stops the workers,
+   * and figures taken after it (online 0.4s, booked 1.4) read otherwise than
+   * the summary's (324ms, 1.6).
+   */
+  private snapshotAt: number | undefined
   /** Workers that joined and left, for the footer. */
   protected readonly gone: W[] = []
   /** Of `gone`, those the run let go (`release`), not lost. */
@@ -234,8 +243,8 @@ export class RunReport<W extends RecordedWorker> {
    * of joins is a side effect no plan escapes (2026-11-18: "We should not
    * be penalized for that"), and when it asked is the plan's own. A slot
    * no worker joined counts from its platform's fastest warm-up. Still a
-   * floor: no run with these sizes beats it. With no sizes it is the
-   * perfect end.
+   * floor: no run with these sizes beats it. With no sizes, the workers
+   * that joined stand for them (`shapes`).
    */
   idealMs(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): number | undefined {
     const perfect = this.perfectMs(depsOf)
@@ -249,7 +258,7 @@ export class RunReport<W extends RecordedWorker> {
     for (const [platform, w] of work) {
       // Each core slot's start, and its cores.
       const slots: [number, number][] = []
-      for (const s of sizes) {
+      for (const s of this.shapes(sizes)) {
         if (platform !== undefined && s.platform !== undefined && s.platform !== platform) continue
         const own = [...(ups.get(s.name) ?? [])].sort((a, b) => a - b)
         for (let i = 0; i < s.max; i++) slots.push([own[i] ?? r.warm(platform), s.cpu])
@@ -454,42 +463,57 @@ export class RunReport<W extends RecordedWorker> {
    * cores. With no sizes (workers that join on their own), the shapes
    * that joined stand for them, as many as joined.
    */
-  advice(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): WorkerAdvice[] {
+  advice(
+    depsOf: (id: string) => readonly string[],
+    sizes: readonly Size[],
+    budgetMs = ADVICE_MS,
+  ): WorkerAdvice[] {
     // The footer and the summary each ask once the run ended: played once.
     if (this.ended && this.advised !== undefined) return this.advised
-    const out = this.advise(depsOf, sizes)
+    const out = this.advise(depsOf, sizes, budgetMs)
     if (this.ended) this.advised = out
     return out
   }
 
   private advised: WorkerAdvice[] | undefined
 
+  /**
+   * `sizes`, or with none (workers that join on their own) the shapes that
+   * joined, as many of each as joined.
+   */
+  private shapes(sizes: readonly Size[]): Size[] {
+    if (sizes.length > 0) return [...sizes]
+    const by = new Map<string, Size>()
+    for (const a of [...this.workers.values(), ...this.gone]) {
+      const name = `${a.cores}c/${a.platform ?? ''}`
+      by.set(name, {
+        name,
+        max: (by.get(name)?.max ?? 0) + 1,
+        cpu: a.cores,
+        memory: a.memory,
+        platform: a.platform,
+      })
+    }
+    return [...by.values()]
+  }
+  /** The advice's replays ran past their budget: it was not worked out. */
+  private adviceCut = false
+
   private advise(
     depsOf: (id: string) => readonly string[],
     sizes: readonly Size[],
+    budgetMs: number,
   ): WorkerAdvice[] {
     const r = this.replay(depsOf)
     if (r === undefined) return []
-    const shapes: Size[] =
-      sizes.length > 0
-        ? [...sizes]
-        : [
-            ...[...this.workers.values(), ...this.gone]
-              .reduce((by, a) => {
-                const name = `${a.cores}c/${a.platform ?? ''}`
-                const had = by.get(name)
-                by.set(name, {
-                  name,
-                  max: (had?.max ?? 0) + 1,
-                  cpu: a.cores,
-                  memory: a.memory,
-                  platform: a.platform,
-                })
-                return by
-              }, new Map<string, Size>())
-              .values(),
-          ]
-    const a = advise(r.tasks, shapes, r.warm, playAside(r.tasks, r.warm))
+    const shapes = this.shapes(sizes)
+    // Bounded: the replays grow faster than the run, and a 2,000-task run's
+    // held its end for good. Past the budget, no line is given: a fleet
+    // cut short reads as no better, so what finished is not exact either.
+    const deadline = Date.now() + budgetMs
+    const a = advise(r.tasks, shapes, r.warm, playAside(r.tasks, r.warm, deadline))
+    this.adviceCut = Date.now() >= deadline
+    if (this.adviceCut) return []
     const wire = (of: WorkerAdvice['of'], f: Fleets | undefined): WorkerAdvice[] =>
       f === undefined
         ? []
@@ -552,10 +576,12 @@ export class RunReport<W extends RecordedWorker> {
    * before its teardown ends this run: then is its end, so one still here
    * was online until now (small#2 read online 1ms, booked 433802 of 4:
    * main, 2026-10-23). Each is `ok`, or `failed` when lost or faulty.
+   * `summary`: the summary's ask, whose instant the footer reads too.
    */
-  machines(): MachineReport[] {
+  machines(summary = false): MachineReport[] {
     const gone = new Set(this.gone)
-    const until = this.ended ? this.endedAt : performance.now()
+    const until = this.snapshotAt ?? (this.ended ? this.endedAt : performance.now())
+    if (summary) this.snapshotAt = until
     const report = (
       name: string,
       status: string,
@@ -571,6 +597,7 @@ export class RunReport<W extends RecordedWorker> {
         memoryBytes,
         done: u.done,
         failed: u.failed,
+        ...(u.aborted > 0 ? { aborted: u.aborted } : {}),
         onlineMs: st.onlineMs,
         busyMs: st.busyMs,
         cpuPeak: st.cpuPeak,
@@ -629,7 +656,9 @@ export class RunReport<W extends RecordedWorker> {
                   : ui.dim('none started: no task needed one'),
             ],
           ]
-        : []
+        : this.waited
+          ? [['workers', ui.tone('info', '0 joined · waiting for a worker to join the relay')]]
+          : []
     const gone = new Set(this.gone)
     const all = [...this.workers.values(), ...this.gone]
     const joined = new Set(all.map((a) => a.label))
@@ -703,7 +732,7 @@ export class RunReport<W extends RecordedWorker> {
     if (this.ended)
       for (const a of all) {
         resources(a.label, a.reported.cores, a.reported.memory, a.declared)
-        const st = a.usage.stats(a.cores, this.endedAt)
+        const st = a.usage.stats(a.cores, this.snapshotAt ?? this.endedAt)
         cpuMs += st.workCoreMs
         tasksMs += st.tasksUtilization * a.cores * st.workMs
         if (st.workerUtilization !== undefined)
@@ -734,25 +763,38 @@ export class RunReport<W extends RecordedWorker> {
             ] as [string, ui.Inline],
           ]
         : []),
-      ...(this.ended && this.asks.length > 0
+      // Workers that joined unasked get these rows too: kept for a run that
+      // asked, theirs were hidden (2026-11-24).
+      ...(this.ended
         ? [
-            [
-              '',
-              ui.dim(
-                `${'asked'.padEnd(width)}  ${this.asks
-                  .map(
-                    (x) =>
-                      `${x.workers} at ${seconds(x.at)} for ${plural(x.tasks, 'task')} (${x.measured} measured), estimate ${seconds(x.endsInMs)}`,
-                  )
-                  .join(' · ')}`,
-              ),
-            ] as [string, ui.Inline],
+            ...(this.asks.length === 0
+              ? []
+              : [
+                  [
+                    '',
+                    ui.dim(
+                      `${'asked'.padEnd(width)}  ${this.asks
+                        .map(
+                          (x) =>
+                            `${x.workers} at ${seconds(x.at)} for ${plural(x.tasks, 'task')} (${x.measured} measured), estimate ${seconds(x.endsInMs)}`,
+                        )
+                        .join(' · ')}`,
+                    ),
+                  ] as [string, ui.Inline],
+                ]),
             // Beside core's time row, how close the run came (2026-10-23),
             // to the best its sizes allow and to the best with no cap
             // (2026-11-18).
             ...((best, ms) =>
               ms === undefined
-                ? []
+                ? perfect === undefined
+                  ? []
+                  : [
+                      [
+                        '',
+                        ui.dim(`${'ideal'.padEnd(width)}  not worked out: no task ran on a worker`),
+                      ] as [string, ui.Inline],
+                    ]
                 : [
                     ...(best === undefined
                       ? []
@@ -788,6 +830,16 @@ export class RunReport<W extends RecordedWorker> {
                   ),
                 ] as [string, ui.Inline],
             ),
+            ...(advice !== undefined && this.adviceCut
+              ? [
+                  [
+                    '',
+                    ui.dim(
+                      `${'best'.padEnd(width)}  not worked out: replaying the run on each fleet took past its ${ADVICE_MS / 1000}s`,
+                    ),
+                  ] as [string, ui.Inline],
+                ]
+              : []),
             ...(this.unmeasured.length === 0
               ? []
               : [

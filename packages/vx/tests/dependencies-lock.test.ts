@@ -1,8 +1,8 @@
-// `.vx/dependencies.lock` is text, two lines per project keyed by its name,
-// in name-hash order, so a merge touches only the projects each branch
-// changed and git merges edits to neighbours: the name, then
-// `⇥deps⇥reach⇥digests`, a hex digest as base64url. The same workspace
-// writes the same bytes.
+// `.vx/dependencies.lock` is text, three lines per project keyed by its
+// name, in name-hash order, so a merge touches only the projects each
+// branch changed and git merges edits to neighbours: an empty line, the
+// name, then `deps⇥reach⇥digests`, a hex digest as base64url. The same
+// workspace writes the same bytes.
 
 import { expect, it } from 'bun:test'
 import {
@@ -36,11 +36,11 @@ const reread = (text: string) => parseDependenciesLock(new TextEncoder().encode(
 
 it('writes each project as its name line, then deps, reach and digests, in name-hash order', () => {
   expect(dependenciesLock(metas, files).text).toBe(
-    '{"version":6,"files":["bun.lock"],"edges":true}\n' +
-      'ui\n\tcore\t\t=du\n' +
-      'web\n\tcore,ui\t\t_ty6mHZUMhA\n' +
-      'core\n\t\t\t_ty6mHZUMhA\n' +
-      'docs\n\t\tui\n',
+    '{"version":7,"files":["bun.lock"],"edges":true}\n' +
+      '\nui\ncore\t\t=du\n' +
+      '\nweb\ncore,ui\t\t_ty6mHZUMhA\n' +
+      '\ncore\n\t\t_ty6mHZUMhA\n' +
+      '\ndocs\n\tui\n',
   )
 })
 
@@ -88,7 +88,7 @@ it('reads back what it wrote: edges, dependants and digests by name', () => {
 
 it('records no edge source when no plugin gave deps', () => {
   const lock = dependenciesLock([meta('a'), meta('b')], new Map())
-  expect(lock.text).toBe('{"version":6,"files":[]}\nb\n\t\na\n\t\n')
+  expect(lock.text).toBe('{"version":7,"files":[]}\n\nb\n\n\na\n\n')
   expect(reread(lock.text).edgeSource).toBe(false)
 })
 
@@ -150,17 +150,17 @@ it('reads nothing from a missing file, another format or an older version', () =
 it('refuses a lock a newer vx wrote: re-locking would write the older version over it', () => {
   const bytes = new TextEncoder().encode('{"version":99}\n')
   expect(() => parseDependenciesLock(bytes)).toThrow(
-    '.vx/dependencies.lock was written by a newer vx (version 99; this vx reads 6) — upgrade vx',
+    '.vx/dependencies.lock was written by a newer vx (version 99; this vx reads 7) — upgrade vx',
   )
 })
 
 // An older vx's lock after an upgrade: the run names the version, as
 // projects.lock's refusal does, not a bare "invalid".
 it("names an older vx's version in the refusal, and a conflict or garbage apart", () => {
-  expect(dependenciesLockRefusal('{"version":5,"files":[]}\n')).toBe(
-    '.vx/dependencies.lock has unsupported version 5 (this vx expects 6) — re-run `vx lock`',
+  expect(dependenciesLockRefusal('{"version":6,"files":[]}\n')).toBe(
+    '.vx/dependencies.lock has unsupported version 6 (this vx expects 7) — re-run `vx lock`',
   )
-  expect(dependenciesLockRefusal('{"version":6}\n<<<<<<< ours\n')).toContain('merge conflict')
+  expect(dependenciesLockRefusal('{"version":7}\n<<<<<<< ours\n')).toContain('merge conflict')
   expect(dependenciesLockRefusal('VXDL')).toBe('.vx/dependencies.lock is invalid, run `vx lock`')
 })
 
@@ -169,26 +169,29 @@ it("names an older vx's version in the refusal, and a conflict or garbage apart"
 it('reads nothing from a lock whose lines are broken, and refuses a broken field', () => {
   const good = dependenciesLock(metas, files).text
   const [head, ...lines] = good.trimEnd().split('\n')
-  const pairs = Array.from({ length: lines.length / 2 }, (_, i): [string, string] => [
-    lines[2 * i]!,
-    lines[2 * i + 1]!,
+  // Each project: its empty line, name and fields.
+  const pairs = Array.from({ length: lines.length / 3 }, (_, i): [string, string] => [
+    lines[3 * i + 1]!,
+    lines[3 * i + 2]!,
   ])
+  const blocks = (ps: readonly (readonly string[])[]) => ps.flatMap((p) => ['', ...p])
   const text = (...ls: string[]) => new TextEncoder().encode(`${[head, ...ls].join('\n')}\n`)
   expect(parseDependenciesLock(text(...lines))).not.toBeNull()
   // Two of one name: a merge that kept both sides.
+  expect(parseDependenciesLock(text(...blocks([pairs[0]!]), ...lines))).toBeNull()
+  // A name with no fields' line, a fields' line with no name, or no empty line.
+  expect(parseDependenciesLock(text('', pairs[0]![0], ...lines))).toBeNull()
+  expect(parseDependenciesLock(text('', pairs[0]![1], ...lines))).toBeNull()
   expect(parseDependenciesLock(text(...pairs[0]!, ...lines))).toBeNull()
-  // A name with no fields' line, or a fields' line with no name.
-  expect(parseDependenciesLock(text(pairs[0]![0], ...lines))).toBeNull()
-  expect(parseDependenciesLock(text(pairs[0]![1], ...lines))).toBeNull()
   expect(parseDependenciesLock(new TextEncoder().encode(good.trimEnd()))).toBeNull()
-  // The pairs in another order read the same.
-  expect(parseDependenciesLock(text(...[...pairs].reverse().flat()))).not.toBeNull()
+  // The projects in another order read the same.
+  expect(parseDependenciesLock(text(...blocks([...pairs].reverse())))).not.toBeNull()
   // An edge to no project, or a bad digest, refuses when read.
   const ui = pairs.findIndex((p) => p[0] === 'ui')
-  const swap = (v: string) => pairs.flatMap((p, i) => (i === ui ? [p[0], v] : p))
-  const lock = parseDependenciesLock(text(...swap('\tnone')))!
+  const swap = (v: string) => blocks(pairs.map((p, i) => (i === ui ? [p[0], v] : p)))
+  const lock = parseDependenciesLock(text(...swap('none')))!
   expect(() => lock.edges('ui')).toThrow('.vx/dependencies.lock is invalid, run `vx lock`')
-  const digest = parseDependenciesLock(text(...swap('\t\t\t!!')))!
+  const digest = parseDependenciesLock(text(...swap('\t\t!!')))!
   expect(() => recordedDigests(digest, 'bun.lock')!.of('ui')).toThrow('is invalid')
 })
 
@@ -197,7 +200,11 @@ it('reads nothing from a lock whose lines are broken, and refuses a broken field
 it('reads nothing from a lock holding merge conflict markers', () => {
   const [head, ...lines] = dependenciesLock(metas, files).text.trimEnd().split('\n')
   // Each marker before a fields' line, as a name would be: only the markers say it is no lock.
-  const marked = [head, '<<<<<<< ours', '\t', '=======', '\t', '>>>>>>> theirs', '\t', ...lines]
+  const marked = [
+    head,
+    ...['<<<<<<< ours', '=======', '>>>>>>> theirs'].flatMap((m) => ['', m, '']),
+    ...lines,
+  ]
   expect(parseDependenciesLock(new TextEncoder().encode(`${marked.join('\n')}\n`))).toBeNull()
   // CONTROL: a name with no fields is a line `vx lock` writes.
   expect(

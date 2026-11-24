@@ -82,3 +82,30 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   // The mapping is locked and audited too (2026-11-11).
   expect(JSON.parse(json.out)).toMatchObject({ audited: 3, notAudited: 0 })
 }, 30_000)
+
+it('--check with a failing discover names only that failure, no config the stage never staged', async () => {
+  // A config the `project` stage edits evaluates as the user wrote it before
+  // the stage; with `discover` refused the stage never ran, and each such
+  // config was named "evaluates differently … run 'vx lock'", which the
+  // same refusal would fail again.
+  const stage = pluginSource(
+    'org/stage',
+    `{ project(config) { for (const t of Object.values(config.tasks ?? {})) t.description = 'staged' } }`,
+  )
+  const ws = (fail: boolean): string =>
+    localWorkspaceSource([
+      pluginSource(
+        'org/tools',
+        `{ discover() { ${fail ? "throw new Error('lockfile out of date')" : ''}; return [{ dir: 'tools/gen', name: 'gen' }] } }`,
+      ),
+      stage,
+    ])
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), ws(false))
+  expect((await vx(root, ['lock'])).code).toBe(0)
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), ws(true))
+  const check = await vx(root, ['lock', '--check', '--format', 'json'])
+  expect(check.code).toBe(1)
+  expect(
+    (JSON.parse(check.out) as { problems: { message: string }[] }).problems.map((p) => p.message),
+  ).toEqual(["plugin 'org/tools' failed in discover: lockfile out of date"])
+}, 30_000)

@@ -357,6 +357,37 @@ it('refuses to start with no S3 credentials', () => {
   ]).toEqual([2, '', expect.stringMatching(/^✗ vx-cache-server {2}S3: Missing S3 credentials\./)])
 })
 
+// Bun's S3 client takes any S3_ENDPOINT: `ftp://x` signed for https://x,
+// `::not a url::` for a host no request reaches. The server listened and
+// answered every request 502.
+it('refuses to start with an S3 endpoint that is no http(s) URL or host', () => {
+  for (const [name, value] of [
+    ['S3_ENDPOINT', '::not a url::'],
+    ['S3_ENDPOINT', 'ftp://s3.example.com'],
+    ['AWS_ENDPOINT', 'https://'],
+  ] as const) {
+    const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+      env: {
+        ...process.env,
+        S3_BUCKET: 'b',
+        S3_ACCESS_KEY_ID: 'a',
+        S3_SECRET_ACCESS_KEY: 's',
+        ALLOW: ALLOW_VAR,
+        AUDIENCE: 'https://cache.example.com',
+        [name]: value,
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 10_000,
+    })
+    expect([name, cli.exitCode, Bun.stripANSI(cli.stderr.toString()).split('\n')[0]]).toEqual([
+      name,
+      2,
+      `✗ vx-cache-server  ${name}: an http(s) URL or a host such as s3.example.com, not ${value}`,
+    ])
+  }
+}, 30_000)
+
 // Bun's fetch asks for gzip and inflates what it is sent, so a bucket (or
 // a proxy before it) that compressed an answer named the compressed
 // Content-Length as the artifact's size: a check and a download said
@@ -397,8 +428,8 @@ it('reads sizes off the bytes as stored, never a compressed answer', async () =>
 })
 
 // Number(null) is 0: a HEAD naming no Content-Length was an artifact of
-// 0 bytes to a check and a HEAD. A download sent chunked still serves:
-// Bun frames a streamed answer itself.
+// 0 bytes to a check and a HEAD. A download sent chunked takes its size
+// from a HEAD, so a bucket that names it nowhere serves none.
 it('takes no size the bucket did not state', async () => {
   const unsized = createServer((sock) =>
     sock.once('data', () =>
@@ -416,9 +447,47 @@ it('takes no size the bucket did not state', async () => {
       }),
     )
     await expect(blobs.size('x')).rejects.toThrow('the bucket answered HEAD with no Content-Length')
-    expect(await new Response((await blobs.get('x'))!.body).text()).toBe('abc')
+    await expect(blobs.get('x')).rejects.toThrow('the bucket answered HEAD with no Content-Length')
   } finally {
     unsized.close()
+  }
+})
+
+// Number(null) is 0 again: a GET answered chunked named its artifact 0
+// bytes in vx-size, which vx holds a download to, so every download of it
+// was a miss ("ran past its 0 bytes") under a key marked immutable.
+it('names the size the bucket holds for a download the bucket sent chunked', async () => {
+  const chunked = createServer((sock) =>
+    sock.once('data', (req) =>
+      sock.end(
+        req.toString().startsWith('HEAD ')
+          ? 'HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\n'
+          : 'HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n',
+      ),
+    ),
+  )
+  await new Promise<void>((r) => chunked.listen(0, '127.0.0.1', r))
+  const blobs = s3Blobs(
+    new Bun.S3Client({
+      endpoint: `http://127.0.0.1:${(chunked.address() as AddressInfo).port}`,
+      bucket: 'b',
+      accessKeyId: 'a',
+      secretAccessKey: 's',
+    }),
+  )
+  const served = listen(
+    createCacheServer({ blobs, authorize: async () => ({ issuer: GITHUB, repository: REPO }) }),
+    '127.0.0.1',
+    0,
+  )
+  try {
+    const res = await fetch(new URL('/v1/artifacts/ab', served.url), {
+      headers: { 'vx-scope': scopeOf('refs/heads/main') },
+    })
+    expect([res.status, res.headers.get('vx-size'), await res.text()]).toEqual([200, '3', 'abc'])
+  } finally {
+    await served.stop(true)
+    chunked.close()
   }
 })
 
@@ -612,27 +681,184 @@ it('answers 502 naming the bucket on every route while the bucket fails', async 
         502,
         {
           code: 'bad_gateway',
-          message: 'the bucket could not be read: the bucket answered GET 500',
+          message: 'the bucket could not be read: the bucket answered GET 500 InternalError',
         },
       ],
       [
         502,
         {
           code: 'bad_gateway',
-          message: 'the bucket could not be read: the bucket answered HEAD 500',
+          message: 'the bucket could not be read: the bucket answered HEAD 500 InternalError',
         },
       ],
       [
         502,
         {
           code: 'bad_gateway',
-          message: 'the bucket could not be read: the bucket answered HEAD 500',
+          message: 'the bucket could not be read: the bucket answered HEAD 500 InternalError',
         },
       ],
     ])
     expect((await ask('HEAD', '/v1/artifacts/ab')).status).toBe(502)
   } finally {
     await down.stop(true)
+  }
+})
+
+// A bucket that refuses the server's signatures for its clock (S3's
+// RequestTimeTooSkewed) answered "the bucket answered HEAD 403" on every
+// check and download, as a wrong key does: the operator could not tell a
+// clock from a credential. The bucket's own reason is named.
+it("names the bucket's reason for a refused read: a skewed clock is not a wrong key", async () => {
+  const skewed =
+    '<?xml version="1.0" encoding="UTF-8"?><Error><Code>RequestTimeTooSkewed</Code>' +
+    '<Message>The difference between the request time and the current time is too large.</Message></Error>'
+  const s3 = fakeS3(0, () => new Response(skewed, { status: 403 }))
+  try {
+    const handle = createCacheServer({
+      blobs: s3Blobs(
+        new Bun.S3Client({ endpoint: s3.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
+      ),
+      authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
+    })
+    const headers = {
+      ...NAMED,
+      authorization: `Bearer ${await iss.sign(MAIN_JOB, 'http://x.test')}`,
+      'vx-scope': scopeOf('refs/heads/main'),
+      'content-type': 'application/json',
+    }
+    const logged = spyOn(console, 'error').mockImplementation(() => {})
+    const said = async (method: string, path: string, body?: string) => {
+      const res = await handle(new Request(`http://x.test${path}`, { method, headers, body }))
+      return [res.status, ((await res.json()) as { message: string }).message]
+    }
+    const reason =
+      '403 RequestTimeTooSkewed: The difference between the request time and the current time is too large.'
+    expect([
+      await said('GET', '/v1/artifacts/ab'),
+      await said(
+        'POST',
+        '/v1/artifacts',
+        JSON.stringify({ hashes: ['ab'], scopes: [scopeOf('refs/heads/main')] }),
+      ),
+    ]).toEqual([
+      [502, `the bucket could not be read: the bucket answered GET ${reason}`],
+      [502, `the bucket could not be read: the bucket answered HEAD ${reason}`],
+    ])
+    logged.mockRestore()
+  } finally {
+    await s3.stop()
+  }
+})
+
+// R2's "ask again" answers are retried on Workers (src/worker.ts); S3's
+// own (503 SlowDown, 500 InternalError) failed a Bun server's check or
+// download 502 on the first, so the client lost a hit Workers kept.
+it('asks a read again while S3 says to, as Workers does R2', async () => {
+  const refused = new Set<string>()
+  const flaky = fakeS3(0, (req) => {
+    // Each read's first ask: a HEAD throttled, a GET's internal error.
+    if (req.method === 'PUT' || refused.has(req.method)) return undefined
+    refused.add(req.method)
+    return req.method === 'HEAD'
+      ? new Response(null, { status: 503 })
+      : new Response('<Error><Code>InternalError</Code></Error>', { status: 500 })
+  })
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({
+        endpoint: flaky.url,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    )
+    await blobs.put('k', new Blob(['abc']).stream(), 3)
+    expect(await blobs.size('k')).toBe(3)
+    const got = await blobs.get('k')
+    expect(got === null ? null : await new Response(got.body).text()).toBe('abc')
+    expect([...refused]).toEqual(['HEAD', 'GET'])
+  } finally {
+    await flaky.stop()
+  }
+})
+
+// A throttled part (S3's 503 SlowDown) is retried, then the upload is
+// aborted: no object, no part left behind, and the client told 502.
+it('stores nothing of a multipart upload whose part the bucket keeps throttling', async () => {
+  const slow = fakeS3(0, (req, url) =>
+    req.method === 'PUT' && url.searchParams.get('partNumber') === '2'
+      ? new Response(
+          '<Error><Code>SlowDown</Code><Message>Please reduce your request rate.</Message></Error>',
+          { status: 503 },
+        )
+      : undefined,
+  )
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({ endpoint: slow.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
+    )
+    const size = 12 * 1024 * 1024
+    await expect(blobs.put('m', new Blob([new Uint8Array(size)]).stream(), size)).rejects.toThrow(
+      'Please reduce your request rate.',
+    )
+    const aborted = () => slow.log.some((l) => l.startsWith('DELETE /b/m?uploadId='))
+    for (let i = 0; i < 100 && !aborted(); i++) await Bun.sleep(50)
+    expect([
+      aborted(),
+      slow.log.some((l) => l.startsWith('POST /b/m?uploadId=')),
+      slow.objects.size,
+    ]).toEqual([true, false, 0])
+  } finally {
+    await slow.stop()
+  }
+})
+
+// A bucket that cuts a download short after its headers: the server has
+// already answered 200, so the cut must reach the client as a failed
+// transfer (vxCache reads it as a miss), never a clean end it could cache.
+it('passes a download the bucket cut short on as a failed transfer, never a whole body', async () => {
+  const sent = 'a'.repeat(200_000)
+  const cut = Bun.listen({
+    hostname: '127.0.0.1',
+    port: 0,
+    socket: {
+      data(sock, d) {
+        const line = Buffer.from(d).toString('latin1')
+        if (!line.includes('\r\n\r\n')) return
+        const head = `HTTP/1.1 200 OK\r\ncontent-length: ${sent.length + 100}\r\nconnection: close\r\n\r\n`
+        sock.write(line.startsWith('HEAD') ? head : head + sent)
+        sock.end()
+      },
+    },
+  })
+  const handle = createCacheServer({
+    blobs: s3Blobs(
+      new Bun.S3Client({
+        endpoint: `http://127.0.0.1:${cut.port}`,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    ),
+    authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
+  })
+  const served = listen(handle, '127.0.0.1', 0)
+  try {
+    const authorization = `Bearer ${await iss.sign(MAIN_JOB, served.url.origin)}`
+    // The cut may land before the server sent its headers (a loaded machine
+    // relays no byte first): then the request itself fails. Either way, no
+    // body ends clean.
+    const ended = fetch(`${served.url.origin}/v1/artifacts/ab`, {
+      headers: { ...NAMED, authorization, 'vx-scope': scopeOf('refs/heads/main') },
+    }).then(async (res) => {
+      expect([res.status, res.headers.get('vx-size')]).toEqual([200, String(sent.length + 100)])
+      await res.arrayBuffer()
+    })
+    await expect(ended).rejects.toThrow()
+  } finally {
+    await served.stop(true)
+    cut.stop(true)
   }
 })
 
@@ -716,3 +942,44 @@ it('refuses a write whose ref is over 512 characters percent-encoded: no read co
   ])
   expect(s3.objects.size).toBe(objects)
 })
+
+const PLACEHOLDER: Record<string, string> = {
+  ALLOW: 'https://token.actions.githubusercontent.com:acme/app:ci.yml',
+  S3_ENDPOINT: 'https://s3.example.com',
+}
+
+// A user starts the image as its Dockerfile's header or the README shows:
+// the header's run set no AUDIENCE, which the server refuses to start
+// without, so it exited at once with a usage.
+it('starts with the variables each docker run the Dockerfile and README show sets', async () => {
+  const runs = await Promise.all(
+    ['Dockerfile', 'README.md'].map(async (f) => {
+      const text = await Bun.file(`${import.meta.dir}/../${f}`).text()
+      // A run continued over lines (`\` at a line's end) is one run.
+      const run = /docker run [^\n]*/.exec(text.replace(/^# {0,3}/gm, '').replace(/\\\n/g, ' '))
+      expect(run, f).not.toBeNull()
+      return Object.fromEntries(
+        [...run![0].matchAll(/-e ([A-Z_0-9]+)=('[^']*'|\S*)/g)].map((m) => [
+          m[1]!,
+          // A placeholder (…) stands for the user's own value.
+          m[2]!.replace(/^'|'$/g, '').replace('…', PLACEHOLDER[m[1]!] ?? 'x'),
+        ]),
+      )
+    }),
+  )
+  const said = async (env: Record<string, string>) => {
+    const proc = Bun.spawn(
+      [process.execPath, `${import.meta.dir}/../src/bun.ts`, '--port', '0', '--host', '127.0.0.1'],
+      { env: { PATH: process.env['PATH'] ?? '', ...env }, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const reader = proc.stdout.getReader()
+    const { value } = await reader.read()
+    proc.kill()
+    await proc.exited
+    return (
+      Bun.stripANSI(new TextDecoder().decode(value)).split(' listening')[0]! ||
+      (await new Response(proc.stderr).text())
+    )
+  }
+  expect(await Promise.all(runs.map(said))).toEqual(runs.map(() => '✓ vx-cache-server '))
+}, 30_000)

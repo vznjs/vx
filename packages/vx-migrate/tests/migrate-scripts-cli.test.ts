@@ -294,6 +294,28 @@ describe('vx-migrate on package.json scripts', () => {
     expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
   })
 
+  // With no lockfile plugin nothing names a project from its manifest: vx
+  // calls the root `//` and a member by its path, and the report's
+  // `solo#build` was a task `vx run` refused (2026-11-23).
+  it('with no lockfile plugin the report names projects as vx does', async () => {
+    const solo = await mkdtemp(path.join(os.tmpdir(), 'vx-migrate-solo-name-'))
+    roots.push(solo)
+    await writeFile(path.join(solo, 'package.json'), '{"name":"solo","scripts":{"build":"tsc"}}\n')
+    const lone = await migrate(solo, ['--no-install', '--dry'])
+    expect([lone.code, lone.err]).toEqual([0, ''])
+    expect(lone.out).toContain('//#build: cache:')
+    expect(lone.out).not.toContain('solo#build')
+
+    const root = await bunRepo()
+    await rm(path.join(root, 'bun.lock'))
+    const ws = await migrate(root, ['--no-install', '--dry'])
+    expect([ws.code, ws.err]).toEqual([0, ''])
+    expect(ws.out).toContain('packages/a#build: cache:')
+
+    const named = await migrate(await bunRepo(), ['--no-install', '--dry'])
+    expect(named.out).toContain(' a#build: cache:')
+  })
+
   it('a workspace with no lockfile plugin is told what gives `^build` its edges', async () => {
     const root = await bunRepo()
     await rm(path.join(root, 'bun.lock'))

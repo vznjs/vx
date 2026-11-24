@@ -368,12 +368,12 @@ describe('placeTasks — an exclusive executor leaves this machine nothing', () 
     ).toThrow('its key includes a runtime probe, which it does not check')
     const dev = { ...node('s#dev', { persistent: {} }), requested: true } as TaskNode
     expect(refuses([dev])).toThrow(
-      "s#dev would run on this machine, and executor 'dte' runs every task elsewhere: it starts a server only beside a task that needs it",
+      "s#dev would run on this machine, and executor 'dte' runs every task elsewhere: it starts a server only beside a task that needs it: ask for a task that depends on it, not s#dev",
     )
     // Asked for beside a task that needs it, the server pinned the task,
     // and the run named the task, as folding a runtime probe (2026-10-24).
     expect(refuses([node('s#t', {}, ['s#dev']), dev])).toThrow(
-      "s#dev would run on this machine, and executor 'dte' runs every task elsewhere: it starts a server only beside a task that needs it",
+      "s#dev would run on this machine, and executor 'dte' runs every task elsewhere: it starts a server only beside a task that needs it: ask for a task that depends on it, not s#dev",
     )
   })
 })

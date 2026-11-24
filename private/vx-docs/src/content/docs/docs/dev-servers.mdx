@@ -20,19 +20,20 @@ vx run smoke
 ```ansi title="vx run smoke"
 [2m$[0m vx run smoke
 
+
 [2m┌─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250msmoke[0m [2m>[0m $ curl -sf http://localhost:5173/ -o /dev/null && echo "page served"
 page served
-[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250msmoke[0m [2m──[0m [2m(30ms)[0m [2msuccess[0m
+[2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250msmoke[0m [2m──[0m [2m(99ms)[0m [2msuccess[0m
 
 [2m┌─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m>[0m $ vite --port 5173 --strictPort
 [2m├─[0m [1m[38;2;34;197;94mSTDOUT (since ready)[0m [2m──────────────────────────────────────[0m
 
 [2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m[0m
 
-[2m└─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m──[0m [2m(183ms)[0m [38;2;6;182;212mrunning[0m
+[2m└─[0m [38;2;6;182;212m▸[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;147;197;253mdev[0m [2m──[0m [2m(383ms)[0m [2mstopped[0m
 ```
 
-`smoke` passed against a live `vite`. `dev` started first, but its frame prints last, once the run ends. It closes **running**: the server stayed up until the check was done.
+`smoke` passed against a live `vite`. `dev` started first, but its frame prints last, once the run ends. It closes **stopped**: the server stayed up until the check was done, then vx stopped it.
 
 <Diagram {...serverLife} />
 

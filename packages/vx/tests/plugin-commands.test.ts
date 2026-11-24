@@ -314,6 +314,7 @@ describe('plugin commands', () => {
           below: { description: 'negative', async run() { return -1 } },
           nan: { description: 'not a number', async run() { return NaN } },
           top: { description: 'control', async run() { return 255 } },
+          big: { description: 'holds a bigint', async run() { return { n: 1n } } },
         } }`,
         ),
       ]),
@@ -327,6 +328,10 @@ describe('plugin commands', () => {
     // JSON.stringify(NaN) is "null": the verb returned no null.
     await expect(cli(['nan'])).rejects.toThrow(
       "plugin 'org/counts': command 'nan' resolved NaN instead of an exit code (an integer 0–255)",
+    )
+    // JSON cannot say a BigInt: the refusal was vx's own TypeError and stack.
+    await expect(cli(['big'])).rejects.toThrow(
+      "plugin 'org/counts': command 'big' resolved { n: 1n } instead of an exit code (an integer 0–255)",
     )
     expect(await cli(['top'])).toBe(255) // CONTROL: the top of the range passes through
   })
@@ -477,6 +482,28 @@ describe('plugin commands', () => {
     expect(err.join('')).toContain(
       'A plugin declared in .vx/workspace.ts can add verbs; no plugin here adds one\n',
     )
+  })
+
+  it('vx help says why it lists no plugin verbs when the workspace file fails to load', async () => {
+    // A verb with no `description` failed the load, and `vx help` printed the
+    // reference without it and exit 0, saying nothing: the author saw their
+    // verb missing and no reason. The reference stays on stdout, whole.
+    const NO_DESCRIPTION = pluginSource('org/bad', `{ commands: { hi: { run() { return 0 } } } }`)
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([NO_DESCRIPTION]))
+    expect(await cli(['help'])).toBe(0)
+    expect(out.join('')).toContain('Usage:')
+    expect(out.join('')).not.toContain('Plugin commands:')
+    expect(err.join('')).toContain(
+      'plugin verbs could not be listed: .vx/workspace failed to load:',
+    )
+    expect(err.join('')).toContain(
+      "commands.hi` of plugin 'org/bad' must be { description: string, run: function }",
+    )
+    // A core verb's own help lists no plugin verb, so it has nothing to say.
+    err.length = 0
+    expect(await cli(['run', '--help'])).toBe(0)
+    expect(await cli(['help', 'run'])).toBe(0)
+    expect(err.join('')).toBe('')
   })
 
   it('vx help lists plugin verbs with their description and plugin', async () => {

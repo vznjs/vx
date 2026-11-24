@@ -111,6 +111,9 @@ export const SAY: Readonly<Record<string, string>> = {
   // The 2026-11-23 day PR squashed three breaking commits into one.
   'feat!: land 2026-11-23 alpha hardening, docs and locks':
     "`.vx/projects.lock` is version 9 and `.vx/dependencies.lock` version 6. Run `vx lock` once to rewrite both.\n\n`vx lock --check --format json` lists each problem as `{ code, message }`, not as a string.\n\n`vx run --dry=json` → `vx run --dry --format json`; `--dry=pretty` → `--dry`; pipeline `dry: 'json'` → `dry: true, format: 'json'`.",
+  // The 2026-11-25 day PR squashed three breaking commits into one.
+  'feat!: land 2026-11-25 alpha hardening, locks and docs':
+    "`.vx/projects.lock` is version 10 and `.vx/dependencies.lock` version 7: each project's lines sit together, so branches that edit different projects merge cleanly. Run `vx lock` once and commit both locks.\n\n`vx lock` now refuses:\n\n- `exec.persistent.readyWhen: ''`, which matched any line. Omit `readyWhen` to be ready once the task starts.\n- a name listed twice in `inputs.env`, `exec.env.passThrough`, `exec.env.secret` or `tags`. Keep one of each.\n- a dependency rule whose only list is `deny: []`. Delete the rule.\n- an `inputs.files` or `outputs.files` glob that reaches into a nested project past its fixed folder, such as a root `packages/**/*.log`. Let the member's task own them, or take them back with `!packages/a/**`.\n- a project named with a leading `-`, which `vx run -web#build` read as a flag. Rename the project.\n\nA run refuses an `inputs.files` link into another project (`VX_E_NESTED_INPUT`) unless a task it depends on there declares the target in `inputs.files` or `outputs`.\n\nDeclare it there, or take the link back (`!src/a`) and name its files in `inputs.workspaceFiles`.\n\nA plugin's `setup` that returns a value fails, and a `teardown` that returns one is warned. Close it in `teardown` and return nothing.\n\nui.Column's object form has an optional `align`: a plugin that reads `column.align` handles `undefined`.",
   'feat(cache)!: make the artifact ceiling a setting, 1 GiB by default':
     'The default artifact ceiling is 1 GiB, not 2 GiB. Raise it with `cache.artifactCeiling` or `VX_CACHE_ARTIFACT_CEILING`.',
   'refactor(cli)!: remove vx run --tag':
@@ -123,6 +126,8 @@ export const SAY: Readonly<Record<string, string>> = {
 
 /** A heading for a commit whose subject uses a word readers do not know. */
 export const TITLE: Readonly<Record<string, string>> = {
+  'feat!: land 2026-11-25 alpha hardening, locks and docs':
+    'Both locks have new versions, and vx lock refuses more',
   'feat(vx-dte)!: plan a distributed run with one engine':
     'Distributed task execution plans with one engine',
   'refactor(workspace)!: keep JS out of the migration seam': '`foldScriptHooks` is not exported',

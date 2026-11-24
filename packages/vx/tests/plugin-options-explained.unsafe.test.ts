@@ -12,6 +12,9 @@
 // `github()` and `gitlab()` are factories of both vx-ci and vx-dte, so a
 // heading naming one counts only for the package it also names (`vx-ci`).
 //
+// A row also gives its default (a `Default` cell) and an example (an
+// `Example` cell, or code in another cell): M asked for both, 2026-11-24.
+//
 // NOT_YET is the day's to-do (docs redo, 2026-11-24): it may only shrink.
 // A field listed here that gains a row, or that no options type has any
 // more, fails too, so the list stays true.
@@ -61,28 +64,64 @@ interface Section {
   readonly heading: string
   readonly names: readonly string[]
   readonly rows: Set<string>
+  /** The rows that also give a default and an example. */
+  readonly complete: Set<string>
+}
+
+/**
+ * A row gives its default in a non-empty `Default` cell, and an example in
+ * a non-empty `Example` cell or as code in another cell than the field's.
+ */
+function completeRow(header: readonly string[], cells: readonly string[]): boolean {
+  const at = (name: string): string | undefined => {
+    const i = header.findIndex((h) => h.toLowerCase() === name)
+    return i === -1 ? undefined : cells[i]
+  }
+  const def = at('default')
+  if (def === undefined || def === '') return false
+  const example = at('example')
+  if (example !== undefined) return example !== ''
+  return cells.some((c, i) => i > 0 && header[i]?.toLowerCase() !== 'default' && /`[^`]+`/.test(c))
 }
 
 function sections(page: string): Section[] {
   const out: Section[] = []
   let open: Array<[depth: number, section: Section]> = []
   let fence = false
+  let header: string[] | undefined
   for (const line of page.split('\n')) {
     if (line.startsWith('```')) fence = !fence
     if (fence || line.startsWith('```')) continue
+    const cells = line.startsWith('|')
+      ? line
+          .split('|')
+          .slice(1, -1)
+          .map((c) => c.trim())
+      : undefined
+    if (cells === undefined) header = undefined
+    else if (header === undefined) header = cells
     const h = /^(#+) (.*)/.exec(line)
     if (h) {
       const depth = h[1]!.length
       const names = [...h[2]!.matchAll(/`(?:[\w.]+\.)?(\w+)\([^`]*\)`/g)].map((m) => m[1]!)
       if (/\bOpenTelemetry\b/.test(h[2]!)) names.push('otel')
-      const section = { heading: h[2]!, names, rows: new Set<string>() }
+      const section = {
+        heading: h[2]!,
+        names,
+        rows: new Set<string>(),
+        complete: new Set<string>(),
+      }
       open = open.filter(([d]) => d < depth)
       open.push([depth, section])
       out.push(section)
       continue
     }
     const row = /^\|\s*`(\w+)`\s*\|\s*([^|]*)\|/.exec(line)
-    if (row && /[A-Za-z]/.test(row[2]!)) for (const [, s] of open) s.rows.add(row[1]!)
+    if (row && /[A-Za-z]/.test(row[2]!))
+      for (const [, s] of open) {
+        s.rows.add(row[1]!)
+        if (completeRow(header ?? [], cells ?? [])) s.complete.add(row[1]!)
+      }
   }
   return out
 }
@@ -94,16 +133,18 @@ function survey(page: string, records: ReadonlyMap<string, string>) {
     for (const f of factories(record)) owners.set(f, [...(owners.get(f) ?? []), pkg])
   owners.set('otel', ['vx-otel'])
   const explained = new Set<string>()
+  const complete = new Set<string>()
   for (const s of sections(page))
     for (const name of s.names)
       for (const pkg of owners.get(name) ?? []) {
         if ((owners.get(name)?.length ?? 0) > 1 && !s.heading.includes(pkg)) continue
         for (const field of s.rows) explained.add(`${pkg}: ${field}`)
+        for (const field of s.complete) complete.add(`${pkg}: ${field}`)
       }
   const all: string[] = []
   for (const [pkg, record] of records)
     for (const f of optionFields(record)) all.push(`${pkg}: ${f}`)
-  return { explained, all }
+  return { explained, complete, all }
 }
 
 describe('every plugin option is explained on a Docs page', () => {
@@ -164,5 +205,29 @@ describe('every plugin option is explained on a Docs page', () => {
   it('lists in NOT_YET only fields still without a row', () => {
     const { explained, all } = survey(pages(), records)
     expect([...NOT_YET].filter((f) => explained.has(f) || !all.includes(f))).toEqual([])
+  })
+})
+
+describe('every plugin option gives its default and an example', () => {
+  const records = new Map(
+    readdirSync(RECORDS)
+      .filter((f) => f.endsWith('.txt'))
+      .map((f) => [f.slice(0, -'.txt'.length), readFileSync(path.join(RECORDS, f), 'utf8')]),
+  )
+
+  it('reads a default cell and an example from a row', () => {
+    const h = ['Option', 'What it does', 'Default']
+    expect(completeRow(h, ['`url`', 'Where it sends: `https://x`.', '`VX_URL`'])).toBe(true)
+    expect(completeRow(h, ['`url`', 'Where it sends.', '`VX_URL`'])).toBe(false)
+    expect(completeRow(h, ['`url`', 'Where it sends: `https://x`.', ''])).toBe(false)
+    expect(completeRow(['Option', 'What it does'], ['`url`', 'Where: `https://x`.'])).toBe(false)
+    const e = ['Field', 'What it does', 'Default', 'Example']
+    expect(completeRow(e, ['`max`', 'At once: `2`.', 'none', ''])).toBe(false)
+    expect(completeRow(e, ['`max`', 'At once.', 'none', '`max: 4`'])).toBe(true)
+  })
+
+  it('gives every field of every options type a default and an example', () => {
+    const { complete, all } = survey(pages(), records)
+    expect(all.filter((f) => !complete.has(f))).toEqual([])
   })
 })

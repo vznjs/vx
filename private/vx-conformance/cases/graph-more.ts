@@ -792,6 +792,31 @@ export default [
   }),
 
   defineCase({
+    id: 'graph/forwarded-args-reach-a-task-named-twice',
+    category: 'graph',
+    kind: 'correctness',
+    title: 'Args forwarded to a run naming one task twice reach that one task',
+    why: 'A task name typed twice, from a script that joins two lists or a repeated shell word, is still one task: the run starts it once. Arguments after `--` then have one command to go to, so they reach it. Refusing them as if two tasks were named sends the user hunting for a second task that does not exist.',
+    from: ['forward-args-one-task'],
+    needs: ['multi-task'],
+    workspace: { projects: { app: { tasks: { t: echoArgs('got.txt') } } } },
+    steps: [
+      {
+        run: 't',
+        also: ['t'],
+        projects: ['app'],
+        args: ['--port', '3000'],
+        expect: {
+          exit: 0,
+          ran: ['app#t'],
+          files: { 'packages/app/got.txt': '<--port><3000>' },
+          within: 30,
+        },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'graph/forwarded-args-refused-for-many-projects',
     category: 'graph',
     kind: 'correctness',

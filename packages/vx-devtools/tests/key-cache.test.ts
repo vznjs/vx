@@ -67,17 +67,20 @@ describe('the keys oidcClaims keeps', () => {
     expect(state.reads).toBe(2)
   })
 
-  it('are read again for a kid they lack only 30 s after the last read', async () => {
+  it('are read again for a kid they lack only 30 s after the last fresh read', async () => {
     const { state, verdict } = issuer()
     at(0)
     expect(await verdict(0)).toBe('ok')
+    // The first read may be a cache's; the one at 10 minutes is the issuer's.
+    at(600_000)
+    expect(await verdict(0)).toBe('ok')
     state.served = [jwks[0], jwks[1]]
-    at(30_000 - 1)
+    at(630_000 - 1)
     expect(await verdict(1)).toBe('401 unknown signing key')
-    expect(state.reads).toBe(1)
-    at(30_000)
-    expect(await verdict(1)).toBe('ok')
     expect(state.reads).toBe(2)
+    at(630_000)
+    expect(await verdict(1)).toBe('ok')
+    expect(state.reads).toBe(3)
   })
 
   it('stop verifying a key the issuer withdrew once read again', async () => {
@@ -102,5 +105,51 @@ describe('the keys oidcClaims keeps', () => {
     expect(await verdict(1)).toBe(
       `502 could not read ${ISS}'s keys: a key the keys last read lack, and a refetch failed`,
     )
+  })
+
+  // A Worker's fresh isolate reads the keys through the shared cache, up to
+  // 10 minutes old: a key the issuer rotated in since was refused 401 for
+  // the isolate's first 30 s, and a client gives up on a 401.
+  it('a kid the keys a cache answered lack is read fresh at once', async () => {
+    let fresh = 0
+    const check = oidcClaims({
+      allow: [{ issuer: ISS }],
+      fetchJson: async (url, isFresh) => {
+        if (url.endsWith('/.well-known/openid-configuration')) return { jwks_uri: `${ISS}/keys` }
+        if (isFresh) fresh++
+        return { keys: isFresh ? [jwks[0], jwks[1]] : [jwks[0]] }
+      },
+    })
+    at(0)
+    await check(await sign(1), AUD)
+    expect(fresh).toBe(1)
+  })
+
+  // A flood of tokens with random kids made one refetch each: every request
+  // held the cache's set, and each read the issuer again.
+  it('a flood of unknown kids, at once or after, reads the issuer again once', async () => {
+    let reads = 0
+    const check = oidcClaims({
+      allow: [{ issuer: ISS }],
+      fetchJson: async (url) => {
+        if (url.endsWith('/.well-known/openid-configuration')) return { jwks_uri: `${ISS}/keys` }
+        reads++
+        return { keys: [jwks[0]] }
+      },
+    })
+    at(0)
+    const forged = (i: number) =>
+      new SignJWT({})
+        .setProtectedHeader({ alg: 'RS256', kid: `forged-${i}` })
+        .setIssuer(ISS)
+        .setAudience(AUD)
+        .setExpirationTime(Math.floor(Date.now() / 1000) + 3600)
+        .sign(pairs[0]!.privateKey)
+    const tokens = await Promise.all(Array.from({ length: 100 }, (_, i) => forged(i)))
+    const said = await Promise.all(tokens.map((t) => check(t, AUD).catch((e: Error) => e.message)))
+    expect(new Set(said)).toEqual(new Set(['unknown signing key']))
+    for (const t of tokens.slice(0, 10)) await check(t, AUD).catch(() => undefined)
+    // The first read, a cache's maybe, and one fresh read for all of them.
+    expect(reads).toBe(2)
   })
 })

@@ -6,9 +6,21 @@
 import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { beforeAll, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import { pluginSource } from './helpers/plugin.js'
-import { floor, linux, MIB, run, scratch, TIMEOUT, workspace } from './helpers/memory-ceiling.js'
+import {
+  floor,
+  linux,
+  MIB,
+  removeScratch,
+  run,
+  scratch,
+  TIMEOUT,
+  workspace,
+} from './helpers/memory-ceiling.js'
+
+// 5,000 projects' files take minutes to remove on a loaded disk.
+afterEach(removeScratch, TIMEOUT * 3)
 
 let base = 0
 

@@ -98,6 +98,8 @@ describe('definePlugin — the name is the package name', () => {
   it('refuses hooks that are not a plain object', () => {
     // A class's methods live on its prototype, which the copy dropped:
     // `setup` and `teardown` vanished and the plugin loaded without them.
+    // The refusal named no package, so a workspace of several plugins could
+    // not tell which one was wrong.
     class Hooks {
       readonly commands = {}
       setup(): void {}
@@ -112,8 +114,8 @@ describe('definePlugin — the name is the package name', () => {
       }
     }
     expect([said(new Hooks()), said(undefined), said({ setup() {} })]).toEqual([
-      'UserError: definePlugin: the hooks must be a plain object ({ setup() { … } }), got a Hooks',
-      'UserError: definePlugin: the hooks must be a plain object ({ setup() { … } }), got undefined',
+      "UserError: plugin '@acme/hooks-shape': definePlugin's hooks must be a plain object ({ setup() { … } }), got a Hooks",
+      "UserError: plugin '@acme/hooks-shape': definePlugin's hooks must be a plain object ({ setup() { … } }), got undefined",
       'taken',
     ])
   })

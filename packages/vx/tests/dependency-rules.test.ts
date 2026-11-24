@@ -103,6 +103,12 @@ describe('the schema', () => {
     expect(refusal([{ from: 'a' }])).toBe(
       '.vx/workspace.ts: `run.rules.dependencies[0]` names neither `allow` nor `deny`: add one, or drop the rule',
     )
+    // `deny: []` alone checked nothing and loaded as a rule.
+    expect(refusal([{ from: 'a', deny: [] }])).toBe(
+      '.vx/workspace.ts: `run.rules.dependencies[0].deny` is empty and there is no `allow`: the rule checks nothing; add a selector, or drop the rule',
+    )
+    // CONTROL: `allow: []` allows no dependency, so it checks every one.
+    expect(refusal([{ from: 'a', allow: [] }])).toBeNull()
     expect(refusal([{ from: '', deny: ['b'] }])).toBe(
       ".vx/workspace.ts: `run.rules.dependencies[0].from` must be a selector like 'tag:app'",
     )

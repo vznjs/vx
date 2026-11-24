@@ -5,7 +5,7 @@
 // cache by the keys its order names, and its own files and output go
 // there under its key; the relay carries only orders and status.
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { lstat, rm } from 'node:fs/promises'
 import os, { constants } from 'node:os'
 import path from 'node:path'
@@ -15,6 +15,7 @@ import {
   ui,
   machineParallelism,
   missingOutputs,
+  outputsMissingFacts,
   workerRuntime,
   isUserError,
   UserError,
@@ -237,6 +238,20 @@ async function serve(
    */
   // Taken by its orchestrator in this session: only then is a silence one to join again after.
   let welcomed = false
+  // One started by hand that the run ends before taking says so, as one
+  // with no live run does: a warm run's workers exited 0 without a word.
+  const untaken = (): number => {
+    if (!welcomed && opts.id === undefined)
+      ui.print(
+        'err',
+        ui.status(
+          'warn',
+          'vx dte worker',
+          `run ${opts.run} ended before it took this worker: nothing was left for it`,
+        ),
+      )
+    return 0
+  }
   const ended = (err: RelayError): number => {
     if (err.message === ORCHESTRATOR_SILENT) {
       if (welcomed) silenced()
@@ -248,8 +263,9 @@ async function serve(
           `the orchestrator went silent: the tasks running here were stopped, and the run gives them to other workers${welcomed ? '; joining it again' : ''}`,
         ),
       )
+      return 0
     }
-    return 0
+    return untaken()
   }
 
   /** Saves the task's files (none when `bare`) and output under `key` and says so. */
@@ -425,7 +441,9 @@ async function serve(
     work.add(p)
   }
 
-  /** The first probe this machine answers otherwise than the orchestrator did. */
+  /** Why this worker answers a keyed runtime fact otherwise: it runs no more. */
+  let differing: string | undefined
+  /** The first probe this machine answers otherwise than the orchestrator did, each learned once (`rt.probe`). */
   const runtimeDiffers = async (m: RunOrder): Promise<string | undefined> => {
     for (const r of m.runtime ?? []) {
       const dir = r.workspace === true ? '' : m.project
@@ -445,15 +463,14 @@ async function serve(
     const stop = new AbortController()
     running.set(m.task, stop)
     try {
+      // A fact the run's keys hold answers otherwise here: this worker runs
+      // nothing of the run, and the orchestrator refuses it, as another tree.
+      if (differing !== undefined) return
       const differs = await runtimeDiffers(m)
+      if (differing !== undefined) return
       if (differs !== undefined) {
-        ui.print('err', ui.status('error', m.task, differs))
-        await reply(m, m.runKey, undefined, {
-          exitCode: 1,
-          durationMs: 0,
-          output: [{ text: `${differs}\n`, err: true }],
-          violations: [],
-        })
+        differing = differs
+        await say({ type: 'differs', task: m.task, reason: differs }).catch(unsent('differs'))
         return
       }
       for (const d of m.deps) {
@@ -633,12 +650,27 @@ async function serve(
               { base: opts.root, globs: m.outputs.workspaceFiles, nestedDirs: [] },
             ])
           : []
+      // Why, read here: the orchestrator's disk lacks what the command wrote.
+      const outputsWhy =
+        outputsMissing.length === 0
+          ? {}
+          : outputsMissingFacts(outputsMissing, [
+              { base: path.join(opts.root, m.project), globs: m.outputs.files },
+              { base: opts.root, globs: m.outputs.workspaceFiles },
+            ])
       if (outputsMissing.length > 0)
         ui.print('err', ui.status('error', m.task, `no file matched ${outputsMissing.join(', ')}`))
       // Its violations name the orchestrator's paths. As JSON first: the swap
       // round-trips them through JSON, which leaves a Date a string.
+      // Each path as this checkout holds it: the orchestrator's disk lacks
+      // what the task left here, and its `fix:` read a stray write there as
+      // missing and granted the whole project.
       const back = swapRoots(
-        res.violations.map((v) => ({ ...v, timestamp: v.timestamp.toISOString() })),
+        res.violations.map((v) => ({
+          ...v,
+          ...(v.path === undefined ? {} : { entry: entryAt(v.path) }),
+          timestamp: v.timestamp.toISOString(),
+        })),
         [
           [myReal, realRoot],
           [opts.root, root],
@@ -657,7 +689,8 @@ async function serve(
       // this entry is withheld for any. Nor for an additive task that removed
       // an upstream's file: a hit left the file in place, and core saves none
       // once this machine removes it too. Nor for one that removed a committed
-      // file under its outputs: a hit leaves that in place too.
+      // file under its outputs: a hit leaves that in place too. Nor for one a
+      // server crashed under: built against a dead server, as core saves none.
       const changed = [
         ...(await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))),
         ...strays,
@@ -673,6 +706,7 @@ async function serve(
         res.leftRunning !== true &&
         !stop.signal.aborted &&
         res.violations.length === 0 &&
+        res.deadServers === undefined &&
         changed.length === 0 &&
         removed.length === 0 &&
         outputsMissing.length === 0 &&
@@ -687,7 +721,7 @@ async function serve(
         ...(cpuShare === undefined ? {} : { cpuShare }),
         ...(changed.length === 0 ? {} : { changed }),
         ...(removed.length === 0 ? {} : { removed }),
-        ...(outputsMissing.length === 0 ? {} : { outputsMissing }),
+        ...(outputsMissing.length === 0 ? {} : { outputsMissing, outputsMissingFacts: outputsWhy }),
       })
     } finally {
       running.delete(m.task)
@@ -716,7 +750,7 @@ async function serve(
       if (quit.signal.aborted) return quitCode()
       for (const { from, body } of messages) {
         if (from === 'relay') {
-          if ((body as { type?: string }).type === 'closed') return 0
+          if ((body as { type?: string }).type === 'closed') return untaken()
           continue
         }
         const m = body as ToWorker
@@ -1287,4 +1321,10 @@ function parts(end: Extract<ToOrchestrator, { type: 'end' }>): ToOrchestrator[] 
   }
   out.push({ ...end, result: result as WiredResult })
   return out
+}
+
+/** What `abs` is on this worker now, as a violation's `entry` carries it. */
+function entryAt(abs: string): 'file' | 'dir' | 'missing' {
+  const st = lstatSync(abs, { throwIfNoEntry: false })
+  return st === undefined ? 'missing' : st.isDirectory() ? 'dir' : 'file'
 }

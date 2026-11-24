@@ -259,6 +259,79 @@ export default [
     ],
   }),
 
+  // Hardening finds a250661 and 0e6ad51: a run between a pull that edits or
+  // adds a patch and the install built against the old copy, under the key
+  // of the new patch, and replayed it after the install.
+  defineCase({
+    id: 'inputs/patch-edit-built-before-install-not-replayed',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A build run after a patch edit but before the install is not replayed once the install applies it',
+    why: 'A pull can change a patch file while the installed package still holds the old patched bytes. A build run then reads the old bytes, but the patch file it is keyed on is already the new one. Stored under that key, the old build comes back after the install, so the patch looks applied when it is not. The tool must refuse to build on the stale install, or keep that result out of the cache.',
+    from: ['vx-lockfile/bun-patch-installed'],
+    workspace: {
+      projects: { a: reader('a', {}, 'cat node_modules/x/v.txt') },
+      files: vendored('x', 'x'),
+    },
+    steps: [
+      {
+        sh: 'mkdir -p vendor/t/package && cp vendor/x/* vendor/t/package/ && tar -czf vendor/x.tgz -C vendor/t package && rm -rf vendor/t',
+      },
+      { write: { 'packages/a/package.json': manifest('a', { x: 'file:../../vendor/x.tgz' }) } },
+      {
+        write: {
+          'package.json': rootManifest(['packages/a'], {
+            patchedDependencies: { 'x@../../vendor/x.tgz': PATCH_FILE },
+          }),
+          [PATCH_FILE]: patch('one'),
+        },
+      },
+      { install: true },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'one\n' } } },
+      { write: { [PATCH_FILE]: patch('two') } },
+      { run: 'build', expect: { exit: 0, orRefused: true } },
+      { install: true },
+      { write: { 'packages/a/dist': null } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'two\n' } } },
+    ],
+  }),
+
+  defineCase({
+    id: 'inputs/first-patch-built-before-install-not-replayed',
+    category: 'inputs',
+    kind: 'correctness',
+    title:
+      'A build run after a first patch is added but before the install is not replayed once the install applies it',
+    why: 'A pull that adds a patch leaves the unpatched package installed until the next install. A build run in between reads the unpatched bytes under a key that already names the patch. Stored, it comes back after the install and hides the patch entirely. The tool must refuse to build on the stale install, or keep that result out of the cache.',
+    from: ['vx-lockfile/bun-patch-installed'],
+    workspace: {
+      projects: { a: reader('a', {}, 'cat node_modules/x/v.txt') },
+      files: vendored('x', 'x'),
+    },
+    steps: [
+      {
+        sh: 'mkdir -p vendor/t/package && cp vendor/x/* vendor/t/package/ && tar -czf vendor/x.tgz -C vendor/t package && rm -rf vendor/t',
+      },
+      { write: { 'packages/a/package.json': manifest('a', { x: 'file:../../vendor/x.tgz' }) } },
+      { write: { 'package.json': rootManifest(['packages/a']) } },
+      { install: true },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'x\n' } } },
+      {
+        write: {
+          'package.json': rootManifest(['packages/a'], {
+            patchedDependencies: { 'x@../../vendor/x.tgz': PATCH_FILE },
+          }),
+          [PATCH_FILE]: patch('one'),
+        },
+      },
+      { run: 'build', expect: { exit: 0, orRefused: true } },
+      { install: true },
+      { write: { 'packages/a/dist': null } },
+      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'one\n' } } },
+    ],
+  }),
+
   // nx #37783 "projectsAffectedByDependencyUpdates: 'auto' marks every project
   // when a package is removed from the lockfile".
   defineCase({

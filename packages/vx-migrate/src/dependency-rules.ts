@@ -39,7 +39,9 @@ export function turboBoundaryRules(raw: unknown): { rules: DependencyRule[]; gap
     const r = (rule ?? {}) as { dependencies?: unknown; dependents?: unknown }
     const deps = (r.dependencies ?? {}) as { allow?: unknown; deny?: unknown }
     const allow = names(deps.allow)
-    const deny = names(deps.deny)
+    // An empty deny says nothing, and alone it is a rule vx lock refuses.
+    const denied = names(deps.deny)
+    const deny = denied?.length === 0 ? undefined : denied
     if (allow !== undefined || deny !== undefined)
       rules.push({
         from: sel(tag),

@@ -25,6 +25,7 @@ const SHARDS: readonly (readonly string[])[] = [
   ],
   [
     'encoding',
+    'executor-hostile-cas',
     'executor-no-stale-replay',
     'factory-capabilities',
     'merkle',
@@ -98,7 +99,10 @@ const shard = (i: number, files: readonly string[]) => ({
     },
   },
   inputs: {
-    files: ['src/**', 'tests/**', 'package.json', 'tsconfig.json'],
+    // The tests load protos/ at run time and hold the README to the code.
+    files: ['src/**', 'tests/**', 'protos/**', 'package.json', 'tsconfig.json', 'README.md'],
+    // The tests import core's test helpers; ^build keys only core's src/**.
+    workspaceFiles: ['packages/vx/tests/helpers/**'],
     env: [
       'VX_REAPI_TEST_ENDPOINT',
       'VX_REQUIRE_REAPI',
@@ -187,12 +191,14 @@ export default defineProject({
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
-        command: 'oxlint --type-aware --type-check',
+        command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
       inputs: {
-        files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,

@@ -1,7 +1,14 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { ConfigsRefused, isUserError, UserError, xxh3hex } from '../util/index.js'
+import {
+  ConfigsRefused,
+  exitClaimedBySignal,
+  isUserError,
+  REAL_STDOUT_WRITE,
+  UserError,
+  xxh3hex,
+} from '../util/index.js'
 import { isSkippedPlugin, validateProjectConfig, validateWorkspace } from './config-schema.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 import {
@@ -336,7 +343,10 @@ function guardExit(): () => void {
     if (--evaluating === 0) process.exit = ownExit
   }
 }
+// A stop signal's handler (Ctrl-C mid-load) exits through here too: its
+// exit is vx's, not the config's.
 const configExit = ((code?: number | string | null) => {
+  if (exitClaimedBySignal()) return ownExit(code)
   throw new Error(`process.exit(${code ?? ''}) in a config: ${CONFIG_EXIT}`)
 }) as typeof process.exit
 
@@ -496,6 +506,17 @@ function loadFailure(err: unknown, configPath: string, kind: string): unknown {
 }
 
 const VX_SRC = `${path.resolve(import.meta.dir, '..')}${path.sep}`
+
+/** Whether the innermost frame of `err` with a file is outside vx's own source. */
+function thrownByConfig(err: unknown): boolean {
+  const stack = (err as { stack?: unknown } | null)?.stack
+  if (typeof stack !== 'string') return false
+  for (const line of stack.split('\n')) {
+    const at = /^\s+at .*?\(?((?:file:\/\/)?\/[^()]*?):\d+:\d+\)?$/.exec(line)
+    if (at !== null) return !at[1]!.replace(/^file:\/\//, '').startsWith(VX_SRC)
+  }
+  return false
+}
 
 /** A thrown error's message and where it was thrown. */
 function thrownLine(err: Error, configPath: string): string {
@@ -884,7 +905,12 @@ function redirectedConsole(): typeof console {
   return facade as typeof console
 }
 
-function stdoutToStderr(): () => void {
+/**
+ * Every JS route to stdout goes to stderr until the release; `ui.data` alone
+ * still writes there, through `REAL_STDOUT_WRITE`. Under `--format json` for the whole
+ * verb: a plugin hook's `console.log` came out ahead of the document.
+ */
+export function stdoutToStderr(): () => void {
   if (redirectHolders++ === 0) undoRedirect = installRedirect()
   return () => {
     if (--redirectHolders === 0) undoRedirect()
@@ -956,8 +982,14 @@ function installRedirect(): () => void {
   const bun = Bun as { write: typeof Bun.write }
   const ownBunWrite = Bun.write
   const ownWriter = Object.getOwnPropertyDescriptor(Bun.stdout, 'writer')
-  out.write = ((...args: Parameters<typeof process.stderr.write>) =>
-    process.stderr.write(...args)) as typeof out.write
+  const real = out.write
+  out.write = Object.assign(
+    (...args: Parameters<typeof process.stderr.write>) => process.stderr.write(...args),
+    {
+      [REAL_STDOUT_WRITE]:
+        (real as { [REAL_STDOUT_WRITE]?: typeof real })[REAL_STDOUT_WRITE] ?? real,
+    },
+  ) as typeof out.write
   bun.write = ((dest: unknown, ...rest: unknown[]) =>
     (ownBunWrite as (...a: unknown[]) => Promise<number>)(
       dest === Bun.stdout ? Bun.stderr : dest,
@@ -1376,8 +1408,18 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     }
     // Checked again once awaited: a Promise default passed the first check, and
     // `Promise.resolve(null)` crashed the validator.
-    assertDefaultObject(mod, 'Workspace', configPath)
-    validateWorkspace(mod, configPath)
+    try {
+      assertDefaultObject(mod, 'Workspace', configPath)
+      validateWorkspace(mod, configPath)
+    } catch (err) {
+      // The schema reads the live object (plugins are code, so no JSON rule
+      // precedes it): a getter or proxy trap of the config's own that threw
+      // there was vx's stack and "bug in vx". A throw from vx's own frame
+      // stays one.
+      throw isUserError(err) || !thrownByConfig(err)
+        ? err
+        : loadFailure(err, configPath, 'Workspace')
+    }
     if (mod.plugins?.some(isSkippedPlugin) === true)
       mod = { ...mod, plugins: mod.plugins.filter((p) => !isSkippedPlugin(p)) }
     // Set by a load that succeeded: a failed one may have left nothing in

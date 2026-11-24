@@ -1,8 +1,8 @@
 // The plugins guide's "Plugins that ship" table names the hooks each
 // package fills. `@vzn/vx-migrate`'s row left out `config` and
 // `discover`, which turbo() and nx() both fill. Each row is held to the
-// hooks its package's factories return (setup/teardown are lifecycle,
-// not a hook the table lists).
+// hooks its package's factories return, setup and teardown included: the
+// table lists them since 87039f6.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -20,7 +20,7 @@ const FACTORIES: Record<string, string[]> = {
   'vx-otel': ['otel'],
   'vx-ci': ['github'],
 }
-const LIFECYCLE = new Set(['name', 'setup', 'teardown'])
+const LIFECYCLE = new Set(['name'])
 
 describe('the plugins guide lists the hooks each shipped plugin fills', () => {
   it('every row is its factories’ hooks, no more and no fewer', async () => {

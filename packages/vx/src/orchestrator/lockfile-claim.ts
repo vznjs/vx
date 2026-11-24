@@ -29,6 +29,7 @@ import {
   writeLockfileMemo,
 } from '../memo/index.js'
 import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
+import { BASE_SIDE } from '../workspace/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
   FingerprintChange,
@@ -529,7 +530,7 @@ export function lockfileClaim<L = unknown>(
             throw new Error(`${err instanceof Error ? err.message : String(err)} (${side})`)
           }
         }
-        const before = sideOf(change.before, 'before', `as of the base ref`)
+        const before = sideOf(change.before, 'before', BASE_SIDE)
         const after = sideOf(change.after, 'after', `in the working tree`)
         const names: string[] = []
         for (const p of ctx.projects) {

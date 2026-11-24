@@ -222,8 +222,8 @@ export interface VxPlugin {
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
 
   /**
-   * Optional setup per run (validate, connect, read a token). A throw aborts
-   * the run with a UserError naming the plugin. Not a guard over the
+   * Optional setup per run (validate, connect, read a token). A throw, or any
+   * returned value, aborts the run with a UserError naming the plugin. Not a guard over the
    * pipeline: the config, project, cache, graph and key stages ran already,
    * and a plan never calls it. It precedes `schedule`, the executors, the
    * sinks, admission and the first task.
@@ -232,8 +232,8 @@ export interface VxPlugin {
 
   /**
    * Optional teardown at run end (flush, close), in declaration order,
-   * `cache` plugins last since the others may write through them. Errors are
-   * logged, never thrown. A completed run passes its `RunReport`; other exits
+   * `cache` plugins last since the others may write through them. Errors, and
+   * any returned value, are logged, never thrown. A completed run passes its `RunReport`; other exits
    * pass none.
    */
   teardown?(run?: RunReport): void | Promise<void>
@@ -420,6 +420,14 @@ export interface ProjectHookContext extends BaseContext {
    * plugin's mapping could not say.
    */
   readonly lock: boolean
+  /**
+   * Names a file this project's config was made from (absolute or
+   * workspace-relative): `turbo.json`, a `package.json`'s scripts. A run
+   * reads the lock, never the file, so once it differs from what `vx lock`
+   * read here, a run refuses, naming `vx lock`, as for an edited vx.config.
+   * A file named while absent is an edit once it appears.
+   */
+  read(file: string): void
 }
 
 export interface GraphHookContext extends BaseContext {
@@ -601,6 +609,8 @@ export interface OutputContext extends BaseContext {
 export interface ExecutorContext extends BaseContext {
   /** The run's worker count — an executor that paces itself reads it here. */
   readonly concurrency: number
+  /** Say a line that is no warning, such as a wait for a machine; the footer does not count it. */
+  status(message: string): void
   /** Task entries by key in the run's cache, for a task another machine ran (`TaskArtifacts`). */
   readonly artifacts: TaskArtifacts
   /**
@@ -737,6 +747,12 @@ function pluginPackageName(dir: string): string {
  * package alone.
  */
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin {
+  const dir =
+    origin.dir ?? (origin.url !== undefined ? path.dirname(fileURLToPath(origin.url)) : undefined)
+  if (dir === undefined) {
+    throw new UserError(`definePlugin: the first argument must be the plugin module's import.meta`)
+  }
+  const name = pluginPackageName(dir)
   // The hooks are copied by spread, which takes own fields only: a class
   // instance's methods stayed on its prototype and the plugin loaded
   // without them, saying nothing.
@@ -748,18 +764,14 @@ export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
         ? String(hooks)
         : `a ${(hooks as object).constructor?.name || 'class instance'}`
     throw new UserError(
-      `definePlugin: the hooks must be a plain object ({ setup() { … } }), got ${got}`,
+      `plugin '${name}': definePlugin's hooks must be a plain object ({ setup() { … } }), got ${got}`,
     )
   }
   if ('name' in hooks) {
-    throw new UserError(`definePlugin: a plugin's name is its package name — drop the 'name' field`)
+    throw new UserError(
+      `plugin '${name}': a plugin's name is its package name — drop the 'name' field`,
+    )
   }
-  const dir =
-    origin.dir ?? (origin.url !== undefined ? path.dirname(fileURLToPath(origin.url)) : undefined)
-  if (dir === undefined) {
-    throw new UserError(`definePlugin: the first argument must be the plugin module's import.meta`)
-  }
-  const name = pluginPackageName(dir)
   return { ...hooks, name, [PLUGIN_PACKAGE]: name } as VxPlugin
 }
 
@@ -1051,7 +1063,13 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       const setup = async (): Promise<void> => {
         const settled = hookStarted(plugin.name, 'setup')
         try {
-          await plugin.setup?.(ctx)
+          // A returned disposer (`return () => close()`) was never called.
+          const returned: unknown = await plugin.setup?.(ctx)
+          if (returned !== undefined) {
+            throw new Error(
+              `returned ${describeValue(returned)}, which core ignores — release what setup holds in teardown`,
+            )
+          }
         } finally {
           settled()
         }
@@ -1080,4 +1098,15 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
   return () => {
     for (const d of disposers) d()
   }
+}
+
+/** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
+export function describeValue(v: unknown): string {
+  if (v === null) return 'null'
+  if (Array.isArray(v)) return 'an array'
+  const t = typeof v
+  if (t !== 'object') return `a ${t}`
+  const proto: unknown = Object.getPrototypeOf(v)
+  if (proto === Object.prototype || proto === null) return 'an object'
+  return `a ${(v as object).constructor?.name || 'class instance'}`
 }

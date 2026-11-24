@@ -720,8 +720,36 @@ export async function mapNxWorkspace(
   // and the run names each task whose pattern matched nothing.
   const optional = opts.migration === true ? optionalOutputsNote(projects) : undefined
   if (optional !== undefined) notes.push(optional)
+  const folded = opts.migration === true ? upstreamFoldNote(projects) : undefined
+  if (folded !== undefined) notes.push(folded)
   refuseTaskNames(projects, 'target')
   return { projects, notes }
+}
+
+/**
+ * Nx hashes a task's own inputs and not the tasks it depends on; vx folds
+ * each one's key (principle 5), so a file only an upstream task reads (a
+ * spec under `gen`'s `default`) re-ran `build`, which Nx 24 replayed
+ * (2026-11-24). Kept, and said once.
+ */
+function upstreamFoldNote(projects: readonly GeneratedProject[]): string | undefined {
+  const ids: string[] = []
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const deps = t.task?.['dependsOn']
+      const tasks = (t.task?.['inputs'] as { tasks?: unknown } | undefined)?.tasks
+      if (t.task?.['cache'] !== true || !Array.isArray(deps) || deps.length === 0) continue
+      if (Array.isArray(tasks) && tasks.length === 0) continue
+      ids.push(`${p.name}#${t.name}`)
+    }
+  if (ids.length === 0) return undefined
+  return (
+    'Nx keys a task on its own inputs only; vx also keys it on each task it depends on, ' +
+    'so an input only that task reads (a spec file under `default`) re-runs it here, where Nx replays it: ' +
+    `${ids.length} task${ids.length === 1 ? '' : 's'} (${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ', …' : ''}) — ` +
+    '`inputs.tasks: []` in its vx.config decouples it as Nx does, ' +
+    'and a hit may then replay output built from an older upstream'
+  )
 }
 
 /**
@@ -1073,6 +1101,18 @@ function buildTask(
     todos.push(orphanReaderTodo(inputs.dependentOutputs, target.dependsOn))
   }
   const cacheEnabled = !persistent && cacheWanted && wild === undefined && !orphanReader
+  // Nx caches whichever outputs exist; vx fails a task that wrote none.
+  // @nx/vitest's inferred coverage dir is written only with coverage on, so
+  // `vtest` failed every run of a real Nx 24 workspace (2026-11-24). Once,
+  // as the plan is written; the run's failure line says it too.
+  if (opts.migration === true && cacheEnabled) {
+    for (const o of [...outFiles, ...wsOutFiles])
+      if (!o.startsWith('!') && o.split('/').includes('coverage'))
+        todos.push(
+          'Nx treats outputs as optional; vx fails a task that writes none of its declared outputs: ' +
+            `drop \`${o}\` from ${variant.name}'s outputs or run it with coverage`,
+        )
+  }
   if (persistent && cacheWanted) {
     todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
   }
@@ -1131,7 +1171,7 @@ function buildTask(
   // A name that is no shell identifier never reached a task (`sh` drops it)
   // and core refuses it in passThrough; the key still reads it.
   const passThrough = inputs.envNames.filter((n) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(n))
-  if (passThrough.length > 0) env.passThrough = passThrough
+  if (passThrough.length > 0) env['passThrough'] = passThrough
   // Nx hands every task its target (`getNxEnvVariablesForTask`), and `nx exec
   // -- <cmd>`, a package script's way to run under Nx, reads it: unset, it
   // booted Nx's own task runner, which ran the target and its dependencies
@@ -1152,18 +1192,18 @@ function buildTask(
       : {}),
     ...mapped.env,
   }
-  if (Object.keys(define).length > 0) env.define = define
-  if (Object.keys(env).length > 0) exec.env = env
-  if (mapped.timeout !== undefined) exec.timeout = mapped.timeout
+  if (Object.keys(define).length > 0) env['define'] = define
+  if (Object.keys(env).length > 0) exec['env'] = env
+  if (mapped.timeout !== undefined) exec['timeout'] = mapped.timeout
   if (readyWhen !== undefined) {
-    exec.persistent = { readyWhen }
+    exec['persistent'] = { readyWhen }
   } else if (persistent) {
     // Nx starts a continuous task's dependents once it has started
     // (tasks-schedule.js `canBeScheduled`, Nx 23): ready on spawn, as here.
-    exec.persistent = {}
+    exec['persistent'] = {}
   }
   const task: Record<string, unknown> = { exec }
-  if (deps.length > 0) task.dependsOn = deps
+  if (deps.length > 0) task['dependsOn'] = deps
   const keyed: Record<string, unknown> = { files: withoutTakenBack(inputs.files) }
   // Nx hashes the root TypeScript config into every task (its TsConfiguration
   // input, other projects' `paths` left out): a compilerOptions edit re-ran
@@ -1182,19 +1222,19 @@ function buildTask(
     !inputs.wsFiles.includes(opts.lockfile)
   )
     inputs.wsFiles.push(opts.lockfile)
-  if (inputs.wsFiles.length > 0) keyed.workspaceFiles = withoutTakenBack(inputs.wsFiles)
-  if (inputs.envNames.length > 0) keyed.env = inputs.envNames
+  if (inputs.wsFiles.length > 0) keyed['workspaceFiles'] = withoutTakenBack(inputs.wsFiles)
+  if (inputs.envNames.length > 0) keyed['env'] = inputs.envNames
   // The `.env` files the task loads are inputs, and gitignored ones
   // (`.env.local`) are invisible to a glob: their bytes, read per run.
   // Their paths are project-relative: `runtime`, in the project dir.
-  if (mapped.envInputs.length > 0) keyed.runtime = [envProbe(mapped.envInputs)]
-  if (inputs.runtimeCmds.length > 0) keyed.workspaceRuntime = inputs.runtimeCmds
-  task.inputs = keyed
+  if (mapped.envInputs.length > 0) keyed['runtime'] = [envProbe(mapped.envInputs)]
+  if (inputs.runtimeCmds.length > 0) keyed['workspaceRuntime'] = inputs.runtimeCmds
+  task['inputs'] = keyed
   if (cacheEnabled) {
     const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
-    if (wsOutFiles.length > 0) outputs.workspaceFiles = takingBack(wsOutFiles)
-    task.outputs = outputs
-    task.cache = true
+    if (wsOutFiles.length > 0) outputs['workspaceFiles'] = takingBack(wsOutFiles)
+    task['outputs'] = outputs
+    task['cache'] = true
   }
 
   const generated: GeneratedTask = { name: variant.name, todos, task }
@@ -1479,7 +1519,7 @@ function mapCommand(
     }
   }
   if (executor === 'nx:run-script') {
-    const script = typeof options.script === 'string' ? options.script : targetName
+    const script = typeof options['script'] === 'string' ? options['script'] : targetName
     // package.json is a boundary: a script value is whatever the file holds.
     // This read used to be typed `Record<string, string>`, so `body.length`
     // type-checked on a value that need not be a string at all.
@@ -1562,18 +1602,18 @@ function translation(
   for (const key of Object.keys(t))
     if (key !== 'command' && key !== 'timeout' && key !== 'env')
       throw new UserError(`${at}: unknown field "${key}" (allowed: command, env, timeout)`)
-  if (typeof t.command !== 'string' || t.command.trim() === '')
+  if (typeof t['command'] !== 'string' || t['command'].trim() === '')
     throw new UserError(`${at}: command must be a non-empty string`)
-  const timeout = t.timeout
+  const timeout = t['timeout']
   if (
     timeout !== undefined &&
     !(typeof timeout === 'string' && /^[1-9]\d*(ms|s|m|h|d)$/.test(timeout))
   )
     throw new UserError(`${at}: timeout must be a duration with its unit, like '30s' or '10m'`)
-  const env = t.env ?? {}
+  const env = t['env'] ?? {}
   if (!isRecord(env) || Object.values(env).some((v) => typeof v !== 'string'))
     throw new UserError(`${at}: env must map names to strings`)
-  return { command: t.command, env, timeout: timeout as Duration | undefined }
+  return { command: t['command'], env, timeout: timeout as Duration | undefined }
 }
 
 /**

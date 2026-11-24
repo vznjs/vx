@@ -29,6 +29,10 @@ export interface ArtifactTask {
   }
   /** The projects inside `projectDir` (absolute), whose files are not its outputs. */
   readonly nestedProjectDirs?: readonly string[]
+  /** Its environment, `define` included: a restore masks a secret value in it out of the row's command. */
+  readonly env?: Readonly<Record<string, string | undefined>>
+  /** Its `exec.env.secret`: names in `env` whose values are masked whatever the name. */
+  readonly secret?: readonly string[]
   /**
    * Files under its outputs it found and left as they were (absolute): an
    * upstream's, which an additive task builds on, not its entry's.
@@ -142,7 +146,9 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       const ctx = {
         taskId: task.id,
         get command() {
-          return secretMask([process.env])?.mask(task.command) ?? task.command
+          return (
+            secretMask([process.env, task.env], task.secret)?.mask(task.command) ?? task.command
+          )
         },
         outputs: task.outputs,
       }

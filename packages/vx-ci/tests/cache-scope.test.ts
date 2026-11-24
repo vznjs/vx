@@ -301,3 +301,54 @@ it('outside Actions, or with cacheScope: false, names nothing', async () => {
   expect(await branchOf({ GITHUB_REF: 'refs/pull/1/merge' })).toEqual({})
   expect(await branchOf(actions('refs/pull/1/merge', '1/merge'), { cacheScope: false })).toEqual({})
 })
+
+// 2026-11-24: a schedule event's payload is `{ schedule }` alone, no
+// repository, so a nightly on main got the scope `<repo>:main`, which no
+// laptop on main reads. GitHub runs a schedule only on the default branch.
+it("a scheduled run is the default branch's, though its event names none", async () => {
+  const file = path.join(dir, 'schedule.json')
+  await writeFile(file, JSON.stringify({ schedule: '0 3 * * *' }))
+  expect(
+    await branchOf({
+      ...actions('refs/heads/main', 'main'),
+      GITHUB_EVENT_NAME: 'schedule',
+      GITHUB_EVENT_PATH: file,
+    }),
+  ).toEqual({ refs: ['refs/heads/main'] })
+})
+
+// 2026-11-24: a job that lost a runner variable (a container step that
+// passes only some) fell back silently; the variable it missed is named.
+it('a missing runner variable or an unreadable event file is named', async () => {
+  const warnsOf = async (env: Record<string, string>): Promise<string[]> => {
+    const saved = ACTIONS_KEYS.map((k) => [k, process.env[k]] as const)
+    for (const k of ACTIONS_KEYS) delete process.env[k]
+    Object.assign(process.env, env)
+    const warns: string[] = []
+    try {
+      await github()!.config!(
+        {},
+        { workspaceRoot: dir, warn: (m) => warns.push(m), setBranch: () => {} },
+      )
+      return warns
+    } finally {
+      for (const [k, v] of saved) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
+  }
+  const full: Record<string, string> = {
+    ...actions('refs/heads/feat', 'feat'),
+    GITHUB_EVENT_NAME: 'push',
+  }
+  expect(await warnsOf(full)).toEqual([])
+  const { GITHUB_REF: _, GITHUB_REPOSITORY: __, ...partial } = full
+  expect(await warnsOf(partial)).toEqual([
+    '[vx] vx-ci: GITHUB_REF and GITHUB_REPOSITORY are not set, so github() cannot name the branch',
+  ])
+  const gone = path.join(dir, 'gone.json')
+  expect(await warnsOf({ ...full, GITHUB_EVENT_PATH: gone })).toEqual([
+    `[vx] vx-ci: GITHUB_EVENT_PATH ${gone} cannot be read, so github() names no pull request or default branch from it`,
+  ])
+})

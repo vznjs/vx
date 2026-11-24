@@ -28,6 +28,7 @@ import {
   markTree,
   releaseGroup,
   releaseServerGroup,
+  sweepDeadShell,
   signalThrough,
   guardLine,
   spawnGuarded,
@@ -55,6 +56,9 @@ export interface RunResult {
    *  SIGINT/SIGTERM here means a Ctrl-C / shutdown teardown — the
    *  orchestrator reverts such a task to aborted, not failed. */
   signal?: string | number
+  /** The command exited before the run's stop landed: its exit is its own,
+   *  not the stop's. Set only when the stop landed after the exit. */
+  exitedBeforeStop?: true
   /** True when vx's own `timeout` timer fired and SIGTERMed the child.
    *  Distinguishes a timeout (a real `failed`) from a Ctrl-C shutdown
    *  SIGTERM (which the orchestrator reverts to `aborted`). */
@@ -475,6 +479,23 @@ const SHELL_BUILTINS = new Set([
   // is bash, and `exec [[ … ]]` there is "exec: [[: not found".
   '[[',
   'time',
+  // POSIX reserved words: a one-line `if` with no `;` is a syntax error,
+  // which `exec if` turned into "if: not found".
+  'if',
+  'then',
+  'else',
+  'elif',
+  'fi',
+  'do',
+  'done',
+  'case',
+  'esac',
+  'while',
+  'until',
+  'for',
+  'in',
+  'function',
+  'select',
 ])
 
 /**
@@ -859,6 +880,8 @@ export interface PersistentSpawn {
   ready: Promise<void>
   /** ms from spawn to ready, to the readiness timeout giving up, or to now. */
   readyMs: () => number
+  /** ms from spawn to the child's exit, or to now: a crashed server's time. */
+  liveMs: () => number
   /** Whether the readiness timeout fired: `ready` rejects only after the kill grace. */
   gaveUp: () => boolean
 }
@@ -889,6 +912,16 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
   signalChannel?: boolean
 }
 
+const serverExits = new WeakMap<object, Promise<number>>()
+
+/**
+ * A persistent task's exit code once what it wrote before it exited has
+ * reached its callbacks (`runPersistent`); a child spawned elsewhere, at its exit.
+ */
+export function serverExited(child: ReturnType<typeof Bun.spawn>): Promise<number> {
+  return serverExits.get(child) ?? child.exited
+}
+
 /**
  * Spawn a long-running task, returning once it is ready, not at exit. The
  * caller owns `child` and must SIGTERM it; output keeps streaming to the
@@ -897,6 +930,7 @@ export interface PersistentOptions extends Omit<RunOptions, 'forwardArgs' | 'cap
 export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   const start = performance.now()
   let readyAt: number | undefined
+  let exitedAt: number | undefined
   // When the readiness wait gave up: the wait's length, not the kill grace
   // a TERM-trapping server runs out after it.
   let gaveUpAt: number | undefined
@@ -972,6 +1006,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         new PersistentReadyError(`failed to spawn persistent task: ${message}`, 'spawn'),
       ),
       readyMs: () => Math.round(performance.now() - start),
+      liveMs: () => Math.round(performance.now() - start),
       gaveUp: () => false,
     }
   } finally {
@@ -1075,6 +1110,20 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     () => pipes.close(),
   )
   void Promise.allSettled([readers, child.exited]).then(() => pipes.closeStdin())
+  // A ready server's exit, said once its pipes are read (bounded, for a
+  // grandchild holding them): its last words are its crash message, and the
+  // exit line and the run's end went out while the pipe still held them.
+  const spawned = child
+  serverExits.set(
+    child,
+    spawned.exited.then(async (code) => {
+      await Promise.race([
+        readers,
+        new Promise((resolve) => setTimeout(resolve, POST_EXIT_DRAIN_MS).unref?.()),
+      ])
+      return code
+    }),
+  )
 
   opts.liveChildren?.add(child)
   opts.onSpawn?.(child.pid)
@@ -1114,7 +1163,10 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // If the child exits BEFORE ready fires, that's a failure to start
   // — reject the ready promise so the caller can surface it.
   void child.exited.then(async (code) => {
+    exitedAt = performance.now()
     opts.liveChildren?.delete(child)
+    // A clean exit is a setup step's: what it started is torn down with the run.
+    if (code !== 0) sweepDeadShell(child, true)
     releaseServerGroup(child)
     readyTimer?.clear()
     if (code !== 0) failedExit = true
@@ -1149,6 +1201,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     child,
     ready,
     readyMs: () => Math.round((readyAt ?? gaveUpAt ?? performance.now()) - start),
+    liveMs: () => Math.round((exitedAt ?? performance.now()) - start),
     gaveUp: () => gaveUpAt !== undefined,
   }
 }
@@ -1196,6 +1249,25 @@ function spawnErrorReason(
 }
 
 const MAX_ARG_STRLEN = 128 * 1024
+
+/** vx-measure's own line when its child's execve of the shell failed (vx-measure.c). */
+const MEASURE_EXEC_FAILED = "vx: cannot exec the task's shell\n"
+
+/**
+ * Why the shell did not exec, as the error a spawn would have thrown: E2BIG
+ * when the command or an environment entry is over one argument's limit, or
+ * the two over the usual total (2 MiB); else the bare refusal.
+ */
+function execFailure(command: string, env: NodeJS.ProcessEnv): Error {
+  const vars = envSize(env)
+  const tooLong =
+    Buffer.byteLength(command) > MAX_ARG_STRLEN ||
+    vars.largestBytes > MAX_ARG_STRLEN ||
+    Buffer.byteLength(command) + vars.bytes > 2 * 1024 * 1024
+  return tooLong
+    ? Object.assign(new Error('argument list too long (E2BIG)'), { code: 'E2BIG' })
+    : new Error('the shell could not be executed')
+}
 
 /**
  * The command is one argument to `sh -c`, and Linux caps one argument at 128
@@ -1354,15 +1426,30 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
   const [out, err] = pipes.streams(proc)
   const ends = lineEnds(opts.onStdout, opts.onStderr)
   const taken: StreamTally = { chars: 0 }
+  let errEnd = ''
   const streams = Promise.all([
     streamToString(out, ends.onStdout, ac.signal, opts.capture?.stdout ?? true, taken),
-    streamToString(err, ends.onStderr, ac.signal, opts.capture?.stderr ?? true, taken),
+    streamToString(
+      err,
+      (chunk) => {
+        // Kept whether or not stderr is: a run captures none (below).
+        errEnd = (errEnd + chunk).slice(-MEASURE_EXEC_FAILED.length)
+        ends.onStderr?.(chunk)
+      },
+      ac.signal,
+      opts.capture?.stderr ?? true,
+      taken,
+    ),
   ]).finally(() => pipes.close())
   // Gate on the child's exit, not stream EOF: an orphaned grandchild (`server &
   // echo up`, or after a timeout) keeps the pipe open. A timeout aborts the
   // readers at once; otherwise `drainOrAbort` cuts a stuck reader after a
   // grace.
   await proc.exited
+  const stoppedAtExit = opts.signal?.aborted === true
+  // Only a signal's death: a shell that ends on its own may leave a shared
+  // daemon (sccache) for the next task.
+  if (proc.signalCode !== null && !stoppedAtExit) sweepDeadShell(proc, false)
   // Stopped at the exit, before any return below: a watch left on kept
   // its timer reading /proc for the rest of the run.
   const looked = watch?.stop()
@@ -1402,6 +1489,26 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
       spawnFailed: true,
     }
   }
+  // vx-measure's child could not become the shell (its execve failed): no
+  // shell ran, and its 127 read as a command missing from PATH. Over a
+  // size limit the kernel's answer was E2BIG, which the spawn thread
+  // never sees: the limit fails in the child, after the fork.
+  if (
+    measure !== undefined &&
+    onSpare === undefined &&
+    exited === 127 &&
+    errEnd === MEASURE_EXEC_FAILED
+  ) {
+    const text = spawnFailureText(execFailure(fullCommand, env), opts.cwd, 'task', fullCommand, env)
+    opts.onStderr?.(text)
+    return {
+      exitCode: 127,
+      durationMs: Math.round(runTime() - start),
+      stdout,
+      stderr: stderr + text,
+      spawnFailed: true,
+    }
+  }
   // A timeout is a failure, whatever the child said: one that traps the
   // TERM and exits 0 reported success to every executor built on this.
   const exitCode = exited === 0 && timeout.timedOut() ? signalExitCode('SIGTERM') : exited
@@ -1414,6 +1521,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(timeout.sigkilled() ? { killedAfterGrace: true } : {}),
     ...(left ? { leftRunning: true } : {}),
+    ...(!stoppedAtExit && opts.signal?.aborted === true ? { exitedBeforeStop: true } : {}),
     ...usageOf(proc, looked),
   }
 }
@@ -1627,7 +1735,12 @@ export class BoundedCapture {
     tailChars: number,
     through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
   ): BoundedCapture {
-    const to = new BoundedCapture(headChars, tailChars)
+    // A cut tighter than the new bounds stays the cut: its head and tail fit
+    // the new head whole, and the dropped line fell after both.
+    const to =
+      this.dropped === 0
+        ? new BoundedCapture(headChars, tailChars)
+        : new BoundedCapture(Math.min(headChars, this.headLen), Math.min(tailChars, this.tailChars))
     const sides = this.dropped === 0 ? [[...this.head, ...this.tail]] : [this.head, this.tail]
     for (const side of sides) for (const c of through(side)) to.push(c.text, c.err)
     to.dropped += this.dropped

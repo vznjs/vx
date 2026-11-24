@@ -18,6 +18,7 @@ import {
   startedIgnoring,
   killGraceMs,
   relayedCopy,
+  settleStranded,
   settleWithin,
   stopActedOn,
 } from '../util/index.js'
@@ -117,7 +118,8 @@ export interface HeldSignals {
    * From here a stop is held for the run's own end (plugin setup has
    * begun, so teardown is owed); before it, a stop leaves at once, its
    * exit hooks releasing the run lock: nothing earlier (a git listing, a
-   * remote's open) waits on the stop, so holding it held the run.
+   * remote's open) waits on the stop, so holding it held the run. What
+   * is owed by then (`owedIfStranded`) is torn down first.
    */
   arm(): void
 }
@@ -132,8 +134,13 @@ export function holdSignals(): HeldSignals {
       exitOf(heard, false)
     }
     if (!armed) {
+      // Leaves at once, but a capability factory or stage that already
+      // ran (a cache factory, a key hook that hangs) is owed its teardown
+      // first, each bounded; a second signal exits without it.
       claimExitForSignal()
-      exitOf(signal, false)
+      heard = signal
+      void settleStranded().then(() => exitOf(signal, false))
+      return
     }
     heard = signal
     claimExitForSignal()

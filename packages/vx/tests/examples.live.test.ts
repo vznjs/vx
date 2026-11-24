@@ -104,10 +104,8 @@ describe('examples/vite', () => {
     expect(warm.status).toEqual(all(tasks, 'cache-hit'))
 
     const ui = path.join(root, 'packages/ui/src/index.ts')
-    writeFileSync(
-      ui,
-      readFileSync(ui, 'utf8').replace('${label} (${count})', '${label} (${count})​'),
-    )
+    const source = readFileSync(ui, 'utf8')
+    writeFileSync(ui, source.replace('${label} (${count})', '${label} (${count})​'))
     const edited = run(root, ['build', 'test', 'lint'])
     expect(edited.status).toEqual({
       'ui#build': 'success',
@@ -118,6 +116,20 @@ describe('examples/vite', () => {
       'web#lint': 'cache-hit',
       'web#test': 'failed',
     })
+
+    // vitest loads vite.config.ts: a test setting there reaches ui#test,
+    // which replayed the cold run's pass over a setup file that is not there.
+    writeFileSync(ui, source)
+    const config = path.join(root, 'packages/ui/vite.config.ts')
+    writeFileSync(
+      config,
+      readFileSync(config, 'utf8').replace(
+        /\n\}\)\n$/,
+        "\n  test: { setupFiles: ['./src/missing-setup.ts'] },\n})\n",
+      ),
+    )
+    const configured = run(root, ['test'])
+    expect(configured.status['ui#test']).toBe('failed')
   })
 })
 

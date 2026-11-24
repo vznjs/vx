@@ -255,6 +255,21 @@ describe('vx-history plugin end to end', () => {
           : /b#build\s+1\s+\S+\s+—\s+\S+\s+—$/m,
       )
       expect(text).toMatch(/c#build\s+1\s+.*1024 MB · 2 cores \(declared\)$/m)
+    },
+    TIMEOUT,
+  )
+
+  // Its own test: twelve vx launches in one passed the 30 s guard on a
+  // loaded machine (2026-11-24).
+  it(
+    '`vx history` refuses a bad argument as core verbs do, and takes --help',
+    async () => {
+      await pkg('a', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory()']),
+      )
       const bad = Bun.spawnSync({
         cmd: [process.execPath, CORE_BIN, 'history', '--nope'],
         cwd: root,
@@ -297,10 +312,13 @@ describe('vx-history plugin end to end', () => {
           cmd: [process.execPath, CORE_BIN, 'history', flag],
           cwd: root,
         })
-        expect([help.exitCode, Bun.stripANSI(help.stdout.toString()).split('\n')[0]]).toEqual([
+        const text = Bun.stripANSI(help.stdout.toString())
+        expect([help.exitCode, text.split('\n')[0]]).toEqual([
           0,
           'Usage: vx history [--format pretty|json]',
         ])
+        // Core help is written at 80 columns; this ran to 95.
+        expect(text.split('\n').filter((l) => l.length > 80)).toEqual([])
       }
     },
     TIMEOUT,
@@ -579,7 +597,7 @@ describe('vx-history plugin end to end', () => {
       expect(summary.ok).toBe(true)
       expect(log.started[0]).toBe('b#build')
       expect(lines.filter((l) => l.includes('vx-history'))).toEqual([
-        '[vx] vx-history: assume ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53',
+        '[vx] vx-history: assume ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53−1',
       ])
     },
     TIMEOUT,

@@ -48,8 +48,13 @@
         "files": [
           "src/**",
           "tests/**",
+          "protos/**",
           "package.json",
-          "tsconfig.json"
+          "tsconfig.json",
+          "README.md"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_REAPI_TEST_ENDPOINT",
@@ -69,7 +74,7 @@
         "install"
       ],
       "exec": {
-        "command": "for f in tests/encoding.test.ts tests/executor-no-stale-replay.test.ts tests/factory-capabilities.test.ts tests/merkle.test.ts tests/no-stale-hit.test.ts tests/option-kinds.test.ts tests/plugin-sweep.test.ts tests/queue-timeout.test.ts tests/read-bounds.test.ts tests/record-policy.test.ts tests/record-streams.test.ts tests/request-metadata-action.test.ts tests/timeout-options.test.ts tests/tls.test.ts tests/unknown-options.test.ts tests/wire-exec-sweep.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
+        "command": "for f in tests/encoding.test.ts tests/executor-hostile-cas.test.ts tests/executor-no-stale-replay.test.ts tests/factory-capabilities.test.ts tests/merkle.test.ts tests/no-stale-hit.test.ts tests/option-kinds.test.ts tests/plugin-sweep.test.ts tests/queue-timeout.test.ts tests/read-bounds.test.ts tests/record-policy.test.ts tests/record-streams.test.ts tests/request-metadata-action.test.ts tests/timeout-options.test.ts tests/tls.test.ts tests/unknown-options.test.ts tests/wire-exec-sweep.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done",
         "env": {
           "passThrough": [
             "VX_REAPI_TEST_ENDPOINT",
@@ -88,8 +93,13 @@
         "files": [
           "src/**",
           "tests/**",
+          "protos/**",
           "package.json",
-          "tsconfig.json"
+          "tsconfig.json",
+          "README.md"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_REAPI_TEST_ENDPOINT",
@@ -128,8 +138,13 @@
         "files": [
           "src/**",
           "tests/**",
+          "protos/**",
           "package.json",
-          "tsconfig.json"
+          "tsconfig.json",
+          "README.md"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_REAPI_TEST_ENDPOINT",
@@ -204,7 +219,7 @@
     "lint.oxlint": {
       "description": "oxlint with tsgolint-backed type-aware checks",
       "exec": {
-        "command": "oxlint --type-aware --type-check",
+        "command": "oxlint --type-aware --type-check --ignore-pattern node_modules",
         "sandbox": {
           "allow": {
             "read": [
@@ -221,11 +236,15 @@
       ],
       "inputs": {
         "files": [
+          "*.ts",
           "src/**",
           "tests/**",
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {

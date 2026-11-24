@@ -70,7 +70,8 @@ Find your starting point:
 
 <Steps>
 
-1. **Write the configs.** Run `bunx @vzn/vx init --native` at the workspace root.
+1. **Write the configs.** Run `bunx @vzn/vx init --native` at the workspace root,
+   or `bunx @vzn/vx-migrate` when you have only scripts.
    It never overwrites a file unless you add `--force`.
 2. **Fill the TODOs.** Search for `TODO(vx-migrate)`. Each one marks a
    choice vx could not make for you, such as which files a task reads.
@@ -121,22 +122,32 @@ bunx @vzn/vx-migrate --dry
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m                                                                                                      [0m
   [2mfrom    [0m  [38;2;203;213;225mpackage.json scripts[0m
   [2mdry run [0m  [38;2;203;213;225mnothing written[0m
   [2mtasks   [0m  [38;2;34;197;94m5 clean[0m[2m · [0m[38;2;234;179;8m2 todo[0m
   [2mtodo    [0m  [38;2;203;213;225m@demo/ui#build, @demo/web#build:[0m
-            [38;2;203;213;225m  cache: add [0m[1m`inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true`[0m[38;2;203;213;225m with this package's real outputs, and narrow the inputs to what it reads — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task[0m
+            [38;2;203;213;225m  cache: add [0m[1m`inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true`[0m[38;2;203;213;225m with this package's[0m
+              [38;2;203;213;225mreal outputs, and narrow the inputs to what it reads — without it the task always runs, and so does every[0m
+              [38;2;203;213;225mtask that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task[0m
   [2mfiles   [0m  [38;2;203;213;225mpackages/ui/vx.config.ts[0m
             [38;2;203;213;225mpackages/web/vx.config.ts[0m
             [38;2;203;213;225m.vx/workspace.ts[0m
             [38;2;203;213;225m.vx/.gitignore[0m
-  [2mnote    [0m  [38;2;203;213;225meach script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got [0m[1m`cache: true`[0m
+  [2mnote    [0m  [38;2;203;213;225meach script became a task with its command verbatim; caching needs declared inputs and outputs, so no task[0m
+            [38;2;203;213;225mgot [0m[1m`cache: true`[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
 
 Read the `todo` row: both `build` tasks wait for you. `dev` runs `vite`, so it became a persistent task.
+
+Write the files, and put `vx` on your PATH, since only `vx init` does that:
+
+```sh
+bunx @vzn/vx-migrate
+bun add -g @vzn/vx
+```
 
 <Takeaway>see every script as a task before one file is written.</Takeaway>
 
@@ -202,9 +213,10 @@ bunx @vzn/vx init --native
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m                                                                                                      [0m
   [2mfrom    [0m  [38;2;203;213;225mturbo.json[0m
   [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
+  [2mran     [0m  [38;2;203;213;225mnpm uninstall @vzn/vx-migrate[0m
   [2mtasks   [0m  [38;2;34;197;94m3 clean[0m
   [2mfiles   [0m  [38;2;203;213;225mpackages/app/vx.config.ts[0m
             [38;2;203;213;225mpackages/lib/vx.config.ts[0m
@@ -312,9 +324,9 @@ export default {
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m                                                                                                      [0m
   [2mfrom    [0m  [38;2;203;213;225mturbo.json, run by turbo() from @vzn/vx-migrate[0m
-  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-migrate@0.0.661 @vzn/vx-lockfile@0.0.661 @vzn/vx-history@0.0.661[0m
   [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts
             .vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)[0m
@@ -382,9 +394,10 @@ bunx @vzn/vx init --native
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m                                                                                                      [0m
   [2mfrom    [0m  [38;2;203;213;225mnx graph[0m
   [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
+  [2mran     [0m  [38;2;203;213;225mnpm uninstall @vzn/vx-migrate[0m
   [2mtasks   [0m  [38;2;34;197;94m2 clean[0m
   [2mfiles   [0m  [38;2;203;213;225mpackages/app/vx.config.ts[0m
             [38;2;203;213;225mpackages/lib/vx.config.ts[0m
@@ -393,6 +406,7 @@ bunx @vzn/vx init --native
   [2mlock    [0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
   [2mnote    [0m  [38;2;203;213;225mmigrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; [0m[1m`nx:run-commands`[0m[38;2;203;213;225m targets are their shell lines[0m
             [38;2;203;213;225mNx caches whichever of a target's outputs exist; vx fails a task when one of its literal output paths matches nothing ("outputs matched no files"; a wildcard may match nothing beside one that matched): 2 tasks declare literal outputs — remove each path its command never writes, or make it a wildcard[0m
+            [38;2;203;213;225mNx keys a task on its own inputs only; vx also keys it on each task it depends on, so an input only that task reads (a spec file under [0m[1m`default`[0m[38;2;203;213;225m) re-runs it here, where Nx replays it: 1 task (app#build) — [0m[1m`inputs.tasks: []`[0m[38;2;203;213;225m in its vx.config decouples it as Nx does, and a hit may then replay output built from an older upstream[0m
 
   [2mnext    [0m  [1mvx run build --all[0m
 ```
@@ -453,9 +467,9 @@ export default {
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mvx-migrate 0.0.0[0m[4m[58;2;110;118;129m                                                                                                      [0m
   [2mfrom    [0m  [38;2;203;213;225mnx.json, run by nx() from @vzn/vx-migrate[0m
-  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-lockfile @vzn/vx-history[0m
+  [2mran     [0m  [38;2;203;213;225mnpm install -D @vzn/vx-migrate@0.0.661 @vzn/vx-lockfile@0.0.661 @vzn/vx-history@0.0.661[0m
   [2mfiles   [0m  [38;2;203;213;225m.vx/workspace.ts
             .vx/.gitignore[0m
   [2mlock    [0m  [38;2;203;213;225m0 project configs → .vx/projects.lock, .vx/dependencies.lock (and the tasks a plugin maps for app, lib)[0m

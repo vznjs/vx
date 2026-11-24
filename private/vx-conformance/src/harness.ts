@@ -523,8 +523,9 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
       // An adapter names its bin from the root; started elsewhere, that path is the root's.
       .map((a, j) => (j === 0 && a.startsWith('node_modules/') ? path.join(root, a) : a))
     const openStdin = 'openStdin' in step && step.openStdin
+    const fullStdout = 'fullStdout' in step && step.fullStdout
     const argv =
-      stop || step.expect.alone || openStdin
+      stop || step.expect.alone || openStdin || fullStdout
         ? [
             process.execPath,
             SUPERVISE,
@@ -538,6 +539,7 @@ async function play(c: Case, adapter: Adapter, root: string, box: string): Promi
                 : {}),
               ...(step.expect.alone ? { left: LEFT } : {}),
               ...(openStdin ? { openStdin: true } : {}),
+              ...(fullStdout ? { fullStdout: true } : {}),
             }),
             ...tool,
           ]

@@ -106,6 +106,14 @@ const OUTCOMES: TaskOutcome[] = [
     restoreFailed: true,
   },
   {
+    node: node('b#pack'),
+    status: 'failed',
+    exitCode: 1,
+    durationMs: 8,
+    hash: 'h-pack',
+    outputsMissing: ['dist/**'],
+  },
+  {
     node: node('c#e2e'),
     status: 'aborted',
     exitCode: 130,

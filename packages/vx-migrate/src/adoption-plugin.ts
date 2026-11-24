@@ -6,6 +6,7 @@
 // run reads that and maps nothing. `turbo()` and `nx()` share this
 // skeleton; what differs is only how the mapping is made.
 
+import path from 'node:path'
 import { definePlugin, type ProjectHookContext, type VxPlugin } from '@vzn/vx'
 import { type AdoptionMapping, cachedMapping, codeId } from './mapping-cache.js'
 import { warnGaps } from './plugin-gaps.js'
@@ -49,6 +50,11 @@ export interface AdoptionRun {
    * file under one is taken back (`tracked-outputs.ts`).
    */
   readonly spareTracked?: boolean
+  /**
+   * Further files a project's mapping was made from (Nx's inferred targets'
+   * `vite.config.ts`), named to core as `own` is.
+   */
+  readonly madeFrom?: (dir: string) => readonly string[]
 }
 
 /**
@@ -64,6 +70,10 @@ export function adoptionPlugin(
   // Turbo's `concurrency`) that the workspace itself leaves unset.
   // `discover`: a project the tool has that no member glob lists.
   stages: Pick<VxPlugin, 'config' | 'discover'> = {},
+  // Each package's own files the mapping reads (`package.json`'s scripts,
+  // `project.json`), named to core with `reads` so a run refuses once one
+  // changes, naming `vx lock` (`ProjectHookContext.read`).
+  own: readonly string[] = [],
 ): VxPlugin {
   // One mapping per pass (`vx lock`, `--check`), not per process: the workspace
   // module — and so this plugin instance — can outlive a pass, and a mapping
@@ -71,16 +81,22 @@ export function adoptionPlugin(
   // command. `ctx.projects` is one array per pass, so its identity is the
   // pass's.
   let mappedFor: ProjectHookContext['projects'] | undefined
+  let run: Promise<AdoptionRun> | undefined
   let mapping: Promise<AdoptionMapping> | undefined
   let warned = false
   const plugin = definePlugin(meta, {
     async project(config, ctx) {
+      // A run reads the lock, never these: an edit with no `vx lock` ran the
+      // old command, green. Named present or not: one appearing is an edit.
+      for (const f of reads) ctx.read(path.join(ctx.workspaceRoot, f))
+      for (const f of own) ctx.read(path.join(ctx.dir, f))
       if (mappedFor !== ctx.projects) {
         mappedFor = ctx.projects
         // The key's other reads overlap the plugin's own.
         void codeId()
         const stamp = headStamp(ctx.workspaceRoot)
-        mapping = mapRun(ctx).then(async (r) =>
+        run = mapRun(ctx)
+        mapping = run.then(async (r) =>
           r.spareTracked === true
             ? cachedMapping(ctx.cacheDir, r.name, [...r.reads, await stamp], async () => {
                 let read: Promise<readonly string[] | null> | undefined
@@ -94,6 +110,7 @@ export function adoptionPlugin(
         warned = false
       }
       const mapped = await mapping!
+      for (const f of (await run!).madeFrom?.(ctx.dir) ?? []) ctx.read(f)
       if (!warned) {
         warned = true
         warnGaps(ctx.warn, plugin.name, mapped.gaps, ctx.lock)

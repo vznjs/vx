@@ -134,7 +134,7 @@ This blocks cache poisoning such as [CVE-2025-36852](https://nx.dev/blog/cve-202
 | Why a task missed | `vx why` names the file, env var or upstream that moved | Shows hashes, not the diff |
 | Tasks on other machines | [Distributed task execution](../../docs/distributed-task-execution/) over workers your CI starts | Nx Agents on Nx Cloud |
 | Plugins | Every stage of a run, 16 hooks; core applies none | Inferred tasks, graph data, generators, executors |
-| Other languages | JavaScript workspaces | Gradle, Maven and .NET |
+| Other languages | Any command runs; JavaScript support is a plugin, and any system can hook in the same way | Gradle, Maven and .NET |
 | One task, many modes (`build:prod`) | A TypeScript function per mode, two tasks | `configurations` and `-c` |
 | Terminal output | Streamed blocks you can scroll, copy and pipe | Terminal UI |
 | Install | One binary with Bun inside; Node optional | npm and Node |
@@ -148,7 +148,7 @@ Every row is held in [vx vs Turborepo vs Nx](../../comparison/), which links eac
 Pick Nx if one of these decides it for you:
 
 - **Plugins that already know your tools.** Nx infers targets from your tool configs ([Nx plugins](https://nx.dev/docs/concepts/nx-plugins)). vx asks you to write each task.
-- **JVM or .NET in the same graph** ([multi-language support](https://nx.dev/docs/features/multi-language-support)). vx runs JavaScript workspaces.
+- **JVM or .NET in the same graph** ([multi-language support](https://nx.dev/docs/features/multi-language-support)). vx ships plugins for JavaScript only. Other systems hook in through plugins, but none ships today.
 - **CI distribution run for you as a service** ([Nx Agents](https://nx.dev/docs/features/ci-features/distribute-task-execution)). vx's Distributed task execution runs on workers and servers you own.
 - **One task, many modes.** Nx's `configurations` keep `build:prod` as one target.
 - **A stable release.** vx is pre-alpha: 0.0.x on npm, no support policy.

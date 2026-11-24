@@ -16,7 +16,16 @@ vx run build test --all --dry --format json > plan.json
 
 <Levels />
 
-Here is that plan from the [running tasks](../running-tasks/) workspace, after one edit to `packages/ui/src/index.ts`. Its two tasks are `build` and `test`. **Click any box.**
+Make that plan on the [running tasks](../running-tasks/) workspace. Build
+and test everything once, then edit `ui`:
+
+```sh
+vx run build test --all
+echo "export const shade = 'blue'" >> packages/ui/src/index.ts
+vx run build test --all --dry --format json > plan.json
+```
+
+Here is that plan. Its two tasks are `build` and `test`. **Click any box.**
 
 <GraphExplorer sample={JSON.stringify(demoPlan)} pick="@demo/ui#build" />
 
@@ -50,23 +59,25 @@ vx run build test --all --dry
 ```
 
 ```ansi title="one file edited in @demo/ui"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m8[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual  blocks worker task[0m[4m[58;2;110;118;129m                           [0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~163ms[0m       [2m0[0m [2mlocal[0m  [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~185ms[0m       [38;2;203;213;225m4[0m [2mlocal[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m0[0m [2mlocal[0m  [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~164ms[0m       [2m0[0m [2mlocal[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~344ms[0m       [2m0[0m [2mlocal[0m  [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m0[0m [2mlocal[0m  [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~468ms[0m       [2m0[0m [2mlocal[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~353ms[0m       [2m0[0m [2mlocal[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m8[0m[4m[58;2;110;118;129m    [2mstatus  cache      usual    time   cpu    mem outputs  blocks worker         task[0m[4m[58;2;110;118;129m                           [0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~697ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~777ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [38;2;203;213;225m4[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m      [2m~829ms[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~1.2s[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~1.4s[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m
+            [38;2;6;182;212mrun[0m     [2mmiss[0m       [2m~1.4s[0m       [2m—[0m     [2m—[0m      [2m—[0m       [2m—[0m       [2m0[0m [2mlocal[0m          [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
 
   [2mtasks    [0m  [38;2;203;213;225m8 planned · 2 cache hits (2 local) · 6 would run[0m
-  [2mpredicted[0m  [38;2;203;213;225m~538ms wall · ~1.68s total execution[0m
+  [2mpredicted[0m  [38;2;203;213;225m~2.13s wall · ~6.26s total execution[0m
 ```
 
 Read **blocks**: how many tasks wait on that row. `@demo/ui#build` blocks 4, so while it runs, four tasks wait.
 
 **usual** is the task's usual run time from past runs; a cached row has none. **worker** is where it would run: `local` is this machine.
+
+**time**, **cpu**, **mem** and **outputs** fill in once a task runs, so a plan shows `—`.
 
 <Takeaway>spot the task that holds up the most work, before you run anything.</Takeaway>
 
@@ -144,8 +155,8 @@ jq '.predicted' plan.json
 
 ```ansi title="the demo plan"
 [1;39m{
-  [0m[1;34m"wallMs"[0m[1;39m: [0m[0;39m538[0m[1;39m,
-  [0m[1;34m"workMs"[0m[1;39m: [0m[0;39m1677[0m[1;39m,
+  [0m[1;34m"wallMs"[0m[1;39m: [0m[0;39m2129[0m[1;39m,
+  [0m[1;34m"workMs"[0m[1;39m: [0m[0;39m6256[0m[1;39m,
   [0m[1;34m"unknownCount"[0m[1;39m: [0m[0;39m0[0m[1;39m,
   [0m[1;34m"criticalPath"[0m[1;39m: [0m[1;39m[
     [0;32m"@demo/ui#build"[0m[1;39m,
@@ -191,6 +202,7 @@ Each task:
 | `hash` | the task's cache key; empty when the run computes none |
 | `cacheStatus` | what the run would do (table below) |
 | `deps` | the ids it waits on directly |
+| `command` | *sometimes*: the command as the run would run it, with any args forwarded after `--`; absent on a group |
 | `p50Ms` | *sometimes*: its usual run time in milliseconds, from history |
 | `executor` | *sometimes*: where it would run, when the workspace has more than one place to run tasks |
 | `download` | *sometimes*: `deferred` when its outputs would stay in the remote cache (`--cache-download`) |

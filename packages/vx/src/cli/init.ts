@@ -12,6 +12,7 @@ import path from 'node:path'
 import { gitTop, workspaceFileWritten } from '../handoff.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import { lockAfterMigration } from './lock.js'
+import { migrateHint } from './select.js'
 import { loadCliWorkspace } from './workspace-config.js'
 import { resolveSetting } from '../settings.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
@@ -28,6 +29,7 @@ import { VERSION } from '../version.js'
 import {
   DOT_VX_GITATTRIBUTES,
   DOT_VX_GITIGNORE,
+  jsonErrorAt,
   refuseSymlink,
   UserError,
   writeNoFollow,
@@ -39,6 +41,7 @@ import {
   findWorkspaceRoot,
   LOCKFILE_NAME,
   PROJECT_CONFIG_FILENAMES,
+  readLockfile,
   REVIEW_FILE,
   renderWorkspace,
   starterProject,
@@ -420,10 +423,12 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
     [path.join('plugins', `${seam}.ts`), template.plugin],
     [path.join('plugins', `${seam}.test.ts`), template.test],
   ] as const
+  // Named from the cwd: run below the root, a root-relative path pointed nowhere.
+  const shown = (rel: string): string => path.relative(process.cwd(), path.join(root, rel))
   if (!args.force) {
     for (const [rel] of files) {
       if (occupied(path.join(root, rel))) {
-        sayNotice('error', 'vx init', `${rel} exists. --force overwrites it`)
+        sayNotice('error', 'vx init', `${shown(rel)} exists. --force overwrites it`)
         return 1
       }
     }
@@ -443,13 +448,13 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
   const workspaceFile =
     WORKSPACE_CONFIG_FILENAMES.find((n) => existsSync(path.join(root, n))) ?? '.vx/workspace.ts'
-  const names = files.flatMap(([rel], i) => [...(i > 0 ? [' and '] : []), ui.strong(rel)])
+  const names = files.flatMap(([rel], i) => [...(i > 0 ? [' and '] : []), ui.strong(shown(rel))])
   ui.print('out', ui.line(ui.tone('ok', args.dry ? 'would write' : 'wrote', true), ' ', ...names))
   ui.print(
     'out',
     ui.line(
       'Declare it in ',
-      ui.path(workspaceFile),
+      ui.path(shown(workspaceFile)),
       ': ',
       ui.cmd(`import { ${factory} } from '../plugins/${seam}.ts'`),
       ', then ',
@@ -462,7 +467,11 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   )
   ui.print(
     'out',
-    ui.line('Test it: ', ui.cmd(`bun test plugins/${seam}.test.ts`), ' (needs @vzn/vx installed)'),
+    ui.line(
+      'Test it: ',
+      ui.cmd(`bun test ${shown(path.join('plugins', `${seam}.test.ts`))}`),
+      ' (needs @vzn/vx installed)',
+    ),
   )
   return 0
 }
@@ -484,6 +493,29 @@ function lockfilePlugin(pkgRoot: string | null): 'pnpm' | 'bun' | 'yarn' | 'npm'
   if (has('pnpm-workspace.yaml') || declaresWorkspaces(pkgRoot))
     return projectManager(pkgRoot, process.execPath)
   return null
+}
+
+/**
+ * Refuse a package.json that does not parse, by file and position: read as
+ * none, init wrote the starter and locked over the file every manager
+ * refuses. JSONC, as bun takes comments and a trailing comma.
+ */
+function refuseUnparsed(file: string): void {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8').replace(/^\uFEFF/, '')
+  } catch {
+    // quiet: none here, or unreadable, which the install names
+    return
+  }
+  try {
+    Bun.JSONC.parse(text)
+  } catch (err) {
+    const at = jsonErrorAt(text, true)
+    throw new UserError(
+      `vx init: ${path.relative(process.cwd(), file)}${at === undefined ? '' : `:${at}`}: not JSON (${(err as Error).message}); fix it, then run vx init again`,
+    )
+  }
 }
 
 /**
@@ -542,6 +574,7 @@ async function starter(
       'VX_E_USAGE',
     )
   }
+  if (pkgRoot !== null) refuseUnparsed(path.join(pkgRoot, 'package.json'))
   // A source checkout installs nothing, so it declares the plugin only where one is.
   const found = lockfilePlugin(pkgRoot)
   const plugin =
@@ -557,6 +590,9 @@ async function starter(
   const files: { path: string; contents: string }[] = []
   const kept: string[] = []
   const replaced: string[] = []
+  // Shown under `replaced` beside the deleted ones: under `files` alone an
+  // overwrite read as a first write. The JSON's `replaced` stays the deleted.
+  const overwritten: string[] = []
   for (const [names, name, contents] of [
     [
       WORKSPACE_CONFIG_FILENAMES,
@@ -579,6 +615,7 @@ async function starter(
       files.push({ path: name, contents })
       // Every other name goes too: a second config beside the one written.
       replaced.push(...existing.filter((n) => n !== name))
+      if (existing.includes(name)) overwritten.push(name)
     }
   }
   // vx's own housekeeping, as a run's first cache open and `vx lock` write them.
@@ -595,6 +632,7 @@ async function starter(
   const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `${migrateHint(args.mjs === true)} to make package.json scripts tasks, or ${declare}` : declare}`
   const notes = [
     ...unreadRunnerNotes(root),
+    ...keptWithoutPluginNotes(root, kept, plugin, pkgRoot),
     ...tscCompilesConfigNotes(
       root,
       files.map((f) => path.join(root, f.path)),
@@ -614,7 +652,7 @@ async function starter(
   if (installs.length > 0) rows.push(['install', ...installs])
   if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])
   if (kept.length > 0) rows.push(['kept', ...kept])
-  if (replaced.length > 0) rows.push(['replaced', ...replaced])
+  if (overwritten.length + replaced.length > 0) rows.push(['replaced', ...overwritten, ...replaced])
   if (notes.length > 0) rows.push(['note', ...notes])
   if (args.dry) {
     rows.push([
@@ -647,12 +685,61 @@ async function starter(
   const lock = await lockAfterMigration(root)
   rows.push(['lock', lock.code === 0 ? lock.said.replace(/^locked /, '') : 'not written'], null, [
     'next',
-    lock.code === 0 ? next : `fix the above, then vx lock and ${next}`,
+    lock.code === 0
+      ? await runNext(root, kept, noGit, gitInit, next)
+      : `fix the above, then vx lock and ${next}`,
   ])
   ui.print('out', ui.report(`vx init ${VERSION}`, rows))
   // A run reads only the lock: init without one is not done, as vx-migrate exits.
   return lock.code === 0 ? 0 : 1
 }
+
+/**
+ * A kept config that already declares tasks (a re-run): the next step is to
+ * run one, not to declare one.
+ */
+async function runNext(
+  root: string,
+  kept: readonly string[],
+  noGit: boolean,
+  gitInit: string,
+  next: string,
+): Promise<string> {
+  if (!kept.some((f) => f.startsWith('vx.config.'))) return next
+  const tasks = Object.keys((await readLockfile(root))?.projects['.']?.config?.tasks ?? {})
+  if (tasks.length === 0) return next
+  const run = `vx run ${root === process.cwd() ? tasks[0] : `//#${tasks[0]}`}`
+  return noGit ? `${gitInit}, then ${run}` : run
+}
+
+/**
+ * A workspace file kept from before the install (no lockfile then) declares
+ * no lockfile plugin, which a fresh one would: `^build` has no edges.
+ */
+function keptWithoutPluginNotes(
+  root: string,
+  kept: readonly string[],
+  plugin: string | null,
+  pkgRoot: string | null,
+): string[] {
+  const file = kept.find((f) => f.startsWith('.vx/workspace.'))
+  if (file === undefined || plugin === null || pkgRoot === null) return []
+  if (readFileSync(path.join(root, file), 'utf8').includes('@vzn/vx-lockfile')) return []
+  const lockfile = LOCKFILES.find((f) => existsSync(path.join(pkgRoot, f)))
+  const where = lockfile === undefined ? `in a ${plugin} workspace` : `beside ${lockfile}`
+  return [
+    `${file} declares no @vzn/vx-lockfile plugin: ${where}, add ${plugin}() from '@vzn/vx-lockfile' so ^build has project edges, or run vx init --force`,
+  ]
+}
+
+const LOCKFILES = [
+  'pnpm-lock.yaml',
+  'bun.lock',
+  'bun.lockb',
+  'yarn.lock',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+]
 
 /**
  * A task runner whose config no migration reads: its tasks would vanish
@@ -692,11 +779,6 @@ async function migrate(dirs: readonly string[], args: InitArgs): Promise<number>
     // A compiled vx is a Bun runtime only when told so.
     env: isCompiledBinary() ? { ...process.env, BUN_BE_BUN: '1' } : process.env,
   }).exited
-}
-
-/** The line that sends a scripts workspace to vx-migrate, at this vx's version: `bun x` may answer a bare name from its cache. */
-export function migrateHint(mjs: boolean, running = VERSION): string {
-  return `bunx @vzn/vx-migrate${running === '0.0.0' ? '' : `@${running}`}${mjs ? ' --mjs' : ''}`
 }
 
 export function migrateCommand(

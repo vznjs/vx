@@ -458,3 +458,90 @@ export default { name: 'ad', tasks: {
 }, 60_000)
 
 /** Project `dir` of `config`, its other `files` and a `.gitignore` of `dist`, committed. */
+
+// A run whose vx was killed never closed: its worktrees stay until the next
+// `local()` run that starts a worker removes them, once their owner is gone.
+// One whose owner still runs is another run's, and stays.
+it('local() reclaims the worktrees of a run whose vx was killed, not a live one’s', async () => {
+  const dead = Bun.spawn(['true'])
+  await dead.exited
+  const leftover = async (owner: number): Promise<string> => {
+    const base = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-'))
+    await writeFile(path.join(base, 'owner'), String(owner))
+    const add = Bun.spawnSync(['git', 'worktree', 'add', '-q', '--detach', path.join(base, '1')], {
+      cwd: root,
+    })
+    expect(add.exitCode).toBe(0)
+    return base
+  }
+  const killed = await leftover(dead.pid)
+  const live = await leftover(process.pid)
+  const trees = (): string[] =>
+    Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+      .stdout.toString()
+      .split('\n')
+      .filter((l) => l.startsWith('worktree '))
+      .map((l) => path.dirname(l.slice('worktree '.length)))
+  const exists = async (d: string) => (await readdir(d).catch(() => null)) !== null
+  try {
+    const a = local()
+    await a.relay!()
+    await a.spawn({
+      run: crypto.randomUUID(),
+      relay: '',
+      size: 'small',
+      max: 1,
+      cpu: 1,
+      memory: 1e9,
+      index: 1,
+      id: 'linux.small#1',
+      workspaceRoot: root,
+      commit: (await snapshot(root)).commit,
+      env: {},
+      exited: () => {},
+    })
+    await a.close!()
+    for (let i = 0; i < 200 && (await exists(killed)); i++) await Bun.sleep(50)
+    for (let i = 0; i < 200 && trees().includes(killed); i++) await Bun.sleep(50)
+    expect({
+      killed: await exists(killed),
+      killedListed: trees().includes(killed),
+      live: await exists(live),
+      liveListed: trees().includes(live),
+    }).toEqual({ killed: false, killedListed: false, live: true, liveListed: true })
+  } finally {
+    await rm(killed, { recursive: true, force: true })
+    await rm(live, { recursive: true, force: true })
+    Bun.spawnSync(['git', 'worktree', 'prune'], { cwd: root })
+  }
+}, 60_000)
+
+// Two workers' worktrees added at once: git read the first's half-written
+// record while adding the second, refused it ("failed to read
+// .git/worktrees/1/commondir: Success"), and that worker never joined
+// (2026-11-24). A `git` that refuses the first add the same way stands in.
+it('adds a worktree again that git refused over another one being added', async () => {
+  const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-git-'))
+  try {
+    const marker = path.join(bin, 'refused')
+    await writeFile(
+      path.join(bin, 'git'),
+      `#!/bin/sh
+if [ "$1 $2" = "worktree add" ] && [ ! -e ${marker} ]; then
+  : > ${marker}
+  echo 'fatal: failed to read .git/worktrees/1/commondir: Success' >&2
+  exit 128
+fi
+exec ${Bun.which('git')} "$@"
+`,
+      { mode: 0o755 },
+    )
+    const r = vx(['run', 'a#gen'], 'refused-add', { PATH: `${bin}:${process.env['PATH']}` })
+    const out = r.stdout.toString() + r.stderr.toString()
+    expect([r.exitCode, await Bun.file(marker).exists(), out.includes('git worktree add')]).toEqual(
+      [0, true, false],
+    )
+  } finally {
+    await rm(bin, { recursive: true, force: true })
+  }
+}, 60_000)

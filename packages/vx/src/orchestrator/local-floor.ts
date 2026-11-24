@@ -125,7 +125,11 @@ export function localFloor(
         await terminateChildren(() => [spawn.child!])
       const why = err instanceof Error ? err.message : String(err)
       const said = (heard ?? '').trimEnd()
-      throw new Error(said === '' ? why : `${why}; its output:\n${said}`)
+      const text = said === '' ? why : `${why}; its output:\n${said}`
+      // Its exit kept: the run fails the server's row with it.
+      throw err instanceof PersistentReadyError
+        ? new PersistentReadyError(text, err.reason, err.exitCode)
+        : new Error(text)
     }
     heard = undefined
     // Ready, so it spawned: only a failed spawn has no child.
@@ -183,7 +187,14 @@ export function localFloor(
             const code = typeof died === 'number' ? died : signalExitCode(died)
             const text = `${spec.taskId}, which ${req.taskId} depends on, exited with code ${code} after it was ready\n`
             req.onStderr(text)
-            return { exitCode: 1, durationMs: 0, stdout: '', stderr: text, violations: [] }
+            return {
+              exitCode: 1,
+              durationMs: 0,
+              stdout: '',
+              stderr: text,
+              violations: [],
+              deadServers: [{ taskId: spec.taskId, exitCode: code, began: false }],
+            }
           }
         } catch (err) {
           const why = err instanceof Error ? err.message : String(err)
@@ -192,7 +203,15 @@ export function localFloor(
           // ships only what its callbacks heard, and a dependant failed "exit
           // 1, 0ms" with no word of why (CI).
           req.onStderr(text)
-          return { exitCode: 1, durationMs: 0, stdout: '', stderr: text, violations: [] }
+          const code = err instanceof PersistentReadyError ? (err.exitCode ?? 1) : 1
+          return {
+            exitCode: 1,
+            durationMs: 0,
+            stdout: '',
+            stderr: text,
+            violations: [],
+            deadServers: [{ taskId: spec.taskId, exitCode: code, began: false }],
+          }
         }
       }
       if (req.sandbox !== undefined) await armer?.arm()
@@ -223,12 +242,13 @@ export function localFloor(
 }
 
 /**
- * `res`, failed when a server it ran against crashed while it ran. Its
- * server is no task of this machine's run: the orchestrator reported it up
- * and heard nothing more, so the run went green over a dead server and the
- * dependant was saved, where a run on one machine fails (2026-11-23). A
- * crash that lands in the task's own last event-loop turn is heard a turn
- * later. A stopped task's servers, and one this stopped, did not crash.
+ * `res`, naming each server it ran against that crashed while it ran
+ * (`deadServers`). Its server is no task of this machine's run: the
+ * orchestrator reported it up and heard nothing more, so the run went green
+ * over a dead server and the dependant was saved (2026-11-23). Its own exit
+ * stands: as on one machine, the server fails and the dependant is not
+ * saved. A crash that lands in the task's own last event-loop turn is heard
+ * a turn later. A stopped task's servers, and one this stopped, did not crash.
  */
 async function servedBy(
   req: ExecuteRequest,
@@ -239,13 +259,15 @@ async function servedBy(
   if (serving.length === 0 || req.signal?.aborted === true) return res
   await new Promise<void>((resolve) => setImmediate(resolve))
   let said = ''
+  const dead: { taskId: string; exitCode: number; began: boolean }[] = []
   for (const [id, child] of serving) {
     const died = child.exitCode ?? child.signalCode
     if (died === null || died === 0 || ended.has(child)) continue
     const code = typeof died === 'number' ? died : signalExitCode(died)
     said += `${id}, which ${req.taskId} depends on, exited with code ${code} while it ran\n`
+    dead.push({ taskId: id, exitCode: code, began: true })
   }
   if (said === '') return res
   req.onStderr(said)
-  return { ...res, exitCode: res.exitCode === 0 ? 1 : res.exitCode, stderr: res.stderr + said }
+  return { ...res, stderr: res.stderr + said, deadServers: dead }
 }

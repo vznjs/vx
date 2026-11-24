@@ -198,7 +198,7 @@ export function planNxUpstream(
     })
     // Two of Nx's sets in one list, as in `expandNxInputs`.
     inputs.wsFiles.push(...apartTakeBacks(files, own.wsFiles).flat())
-    inputs.envNames.push(...own.envNames)
+    for (const n of own.envNames) if (!inputs.envNames.includes(n)) inputs.envNames.push(n)
     inputs.runtimeCmds.push(...own.runtimeCmds)
     inputs.upstream.push(...own.upstream)
     const r = { inputs, todos }
@@ -355,15 +355,15 @@ export function planNxUpstream(
       // file appearing still re-keys it, and a missing literal is silent.
       const files = [...new Set(['package.json', 'project.json', ...inputs.files])]
       const keyed: Record<string, unknown> = { files }
-      if (inputs.wsFiles.length > 0) keyed.workspaceFiles = inputs.wsFiles
-      if (inputs.envNames.length > 0) keyed.env = inputs.envNames
-      if (inputs.runtimeCmds.length > 0) keyed.workspaceRuntime = inputs.runtimeCmds
+      if (inputs.wsFiles.length > 0) keyed['workspaceFiles'] = inputs.wsFiles
+      if (inputs.envNames.length > 0) keyed['env'] = inputs.envNames
+      if (inputs.runtimeCmds.length > 0) keyed['workspaceRuntime'] = inputs.runtimeCmds
       // A keyed group: dependants fold its key; nothing spawns.
       const task: Record<string, unknown> = {}
       if (isFileset(name))
-        task.description = `Nx fileset ${name} of this project and what it reaches`
-      if (edges.size > 0) task.dependsOn = [...edges].sort()
-      task.inputs = keyed
+        task['description'] = `Nx fileset ${name} of this project and what it reaches`
+      if (edges.size > 0) task['dependsOn'] = [...edges].sort()
+      task['inputs'] = keyed
       const list = out.get(node) ?? []
       list.push({ name: inputTask(name), task, todos })
       out.set(node, list)

@@ -167,6 +167,10 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     () => validated({ tasks: { b: { exec: { command: 'x', persistent: { readyWhen: 42 } } } } }),
   ],
   [
+    'exec.persistent.readyWhen is blank, which matches any line: omit it to be ready on spawn',
+    () => validated({ tasks: { b: { exec: { command: 'x', persistent: { readyWhen: ' ' } } } } }),
+  ],
+  [
     'exec.persistent.readyWhen is not a valid regex (<error>)',
     () => validated({ tasks: { b: { exec: { command: 'x', persistent: { readyWhen: '(' } } } } }),
   ],
@@ -215,7 +219,11 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
         },
       }),
   ],
-  ['a task with no exec must declare dependsOn', () => validated({ tasks: { b: {} } })],
+  ['a task with no exec must declare dependsOn or inputs', () => validated({ tasks: { b: {} } })],
+  [
+    '<list> lists "<name>" twice',
+    () => validated({ tasks: { b: { ...ok, inputs: { files: [], env: ['A', 'A'] } } } }),
+  ],
   [
     'cache needs exec — a task with no command produces nothing to cache',
     () =>

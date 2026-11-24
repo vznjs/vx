@@ -17,7 +17,7 @@ that owns its rows.
 ```ts
 // The index's schema. A mismatch drops and recreates the index: no
 // migrations, so any change to what it stores bumps this.
-export const SCHEMA_VERSION = 'v58'
+export const SCHEMA_VERSION = 'v59'
 // Every table; `store` names the schema holding the entry tables ('main'
 // when one cache.db holds everything, 'store' for the attached shared store).
 export function createTables(db: Database, store?: 'main' | 'store'): void
@@ -33,6 +33,9 @@ export const KEYED_RUNS_SQL = "hash <> ''"
 export function inHashes(hashes: readonly string[]): { test: string; params: string[] }
 // The 30-day retention of run history, memo and remote-hit rows.
 export function pruneHistoryRows(db: Database, cutoff: number): number
+// Each hash's entry as a pass in the flaky record where the key has none:
+// the entry stands for the hits a run keeps packed (history, cache prune).
+export function recordEntryPasses(db: Database, hashes: readonly string[]): void
 // A statement prepared on its first run or get.
 export function lazyStatement(db: Database, sql: string): ReturnType<Database['prepare']>
 export function closeDb(db: Database): void

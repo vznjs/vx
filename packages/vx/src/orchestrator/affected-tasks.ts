@@ -188,11 +188,13 @@ export function affectedRoots(
       (keyed || !isGroupTask(n))
     ) {
       if (seeds !== null) {
+        // An imported file moved the entry, not the config: the lock is the
+        // input. `workspace` read "(every task in its project)" of one task.
         const config = rels.find((r) => KEYED_BY_EVERY_TASK.has(r))
         seeds.set(
           n.id,
           config === undefined
-            ? { kind: 'workspace', file: LOCKFILE_NAME }
+            ? { kind: 'input', file: LOCKFILE_NAME }
             : { ...inProject(n.projectName, config), kind: 'input' },
         )
       }

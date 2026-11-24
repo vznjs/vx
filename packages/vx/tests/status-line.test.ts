@@ -1139,6 +1139,16 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     expect(s.chunks.at(-1)).toBe('\r\x1b[4A\x1b[Jn1\nn2')
   })
 
+  // A narrow terminal's task row puts its name on a line under it: one
+  // region entry of two lines, which erased as one and left a row behind.
+  it('erases each line of an entry that holds a newline', () => {
+    const s = ttyW(10)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setRegion(['row\n  name', 'l2'], { force: true })
+    w.setRegion(['n1'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[2A\x1b[Jn1')
+  })
+
   it('a single logical line that wraps still uses the cursor-up erase', () => {
     const s = ttyW(10)
     const w = createOutputWriter(s, { forceFloorMs: 0 })
@@ -1182,6 +1192,30 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     w.setRegion(['n2'], { force: true })
     // 30 cols now wraps to 3 rows → 4 physical rows → up 3.
     expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn2')
+  })
+
+  it('a resize erases each line at the fewer of its rows then and now', () => {
+    // Terminals differ on a resize: VTE rewraps every row, xterm.js all but
+    // the cursor's, xterm and screen none. Counting at the new width erased
+    // a log line above the region where a row did not rewrap (a 100 → 50
+    // resize ate `1.8MB local p/a#fail` in xterm.js). A row short leaves a
+    // stale row once; a row long destroys output on every terminal.
+    const s = ttyW(40)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    // Narrowed: 1 row then, 3 now → each counts 1: up 1.
+    w.setRegion(['q'.repeat(30), 'r'.repeat(30)], { force: true })
+    s.columns = 10
+    w.setRegion(['n'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[1A\x1b[Jn')
+    // Widened: 3 rows then, 1 now → 1 each: the single-line erase.
+    w.setRegion(['w'.repeat(25)], { force: true })
+    s.columns = 40
+    w.setRegion(['m'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\x1b[2K\rm')
+    // CONTROL: no resize, the rows as drawn.
+    w.setRegion(['z'.repeat(90), 'y'], { force: true })
+    w.setRegion(['k'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jk')
   })
 
   // Cursor-up stops at the top of the screen: rows that scrolled into the
@@ -1518,10 +1552,12 @@ describe('list headers', () => {
     expect(row(at(60))).toBe('            success no-cache   1.50s   web#build')
     for (const columns of [40, 60, 80, 100, 120]) {
       const head = over(formatListHeader(at(columns)))
-      const r = row(at(columns))
-      expect(head.indexOf('task')).toBe(r.indexOf('web#build'))
+      const [r, under] = row(at(columns)).split('\n') as [string, string | undefined]
+      // At 40 the name has no room beside the row: it goes under it.
+      if (columns === 40) expect(under).toBe('            web#build')
+      else expect(head.indexOf('task')).toBe(r.lastIndexOf(' ') + 1)
       expect(head.indexOf('time') + 4).toBe(r.indexOf('1.50s') + 5)
-      expect(Bun.stringWidth(r)).toBeLessThanOrEqual(Math.max(columns, 49))
+      expect(Bun.stringWidth(r)).toBeLessThanOrEqual(columns)
     }
   })
 

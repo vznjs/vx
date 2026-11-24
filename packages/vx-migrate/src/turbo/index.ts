@@ -121,6 +121,7 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
         return taken ? members : [...members.filter((m) => path.resolve(m.dir) !== rootDir), named]
       },
     },
+    ['package.json', 'turbo.json', 'turbo.jsonc'],
   )
 }
 

@@ -103,4 +103,41 @@ describe('vx init in a JS workspace', () => {
       `plugins: [${plugin}()]`,
     )
   })
+
+  // Init run before the install, then again once bun.lock exists: the kept
+  // workspace file declared no plugin, and init said nothing, so ^build
+  // stayed without edges.
+  it('a kept workspace file with no lockfile plugin is named, with the one to add', async () => {
+    const root = await tmp('vx-init-kept-plugin-')
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+    )
+    await mkdir(path.join(root, '.vx'))
+    await writeFile(
+      path.join(root, '.vx', 'workspace.ts'),
+      'export default { plugins: [] } // mine\n',
+    )
+    await writeFile(
+      path.join(root, 'bun.lock'),
+      '{"lockfileVersion":1,"workspaces":{"":{"name":"r"}},"packages":{}}\n',
+    )
+    await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+    await symlink(
+      path.resolve(import.meta.dir, '..', '..', 'vx-lockfile'),
+      path.join(root, 'node_modules', '@vzn', 'vx-lockfile'),
+    )
+    const note =
+      ".vx/workspace.ts declares no @vzn/vx-lockfile plugin: beside bun.lock, add bun() from '@vzn/vx-lockfile' so ^build has project edges, or run vx init --force"
+    const r = await vx(root, ['init', '--dry', '--format', 'json'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect((JSON.parse(r.out) as { notes: string[] }).notes).toEqual([note])
+    // CONTROL: a workspace file that declares it gets no note.
+    await writeFile(
+      path.join(root, '.vx', 'workspace.ts'),
+      "import { bun } from '@vzn/vx-lockfile'\nexport default { plugins: [bun()] }\n",
+    )
+    const ok = await vx(root, ['init', '--dry', '--format', 'json'])
+    expect((JSON.parse(ok.out) as { notes: string[] }).notes).toEqual([])
+  })
 })

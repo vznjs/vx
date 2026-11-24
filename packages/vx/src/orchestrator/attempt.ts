@@ -5,26 +5,28 @@
 // their verdict line), so every attempt of the retry loop takes one path.
 
 import { existsSync } from 'node:fs'
+import path from 'node:path'
 import {
   assertExecuteResult,
   type ExecuteRequest,
   type ExecuteResult,
   isExecutorFallback,
+  type OutputsMissingFacts,
   maskCaptured,
   type SandboxViolation,
   signalExitCode,
 } from '../exec/index.js'
 import { keyedOutsideGrants, sandboxReads } from '../sandbox/index.js'
 import { isLocalExecutor, localExecutor } from './local-executor.js'
-import { printable, relPosix, span, UserError } from '../util/index.js'
+import { printable, relPosix, span, taskEnvSource, UserError } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { tagged } from '../ui/index.js'
-import { missingOutputs, outputsStep } from './attempt-outputs.js'
+import { folderWrittenAsFile, missingOutputs, outputsStep } from './attempt-outputs.js'
 import { buildRequest } from './attempt-request.js'
 import { bracketLiteralHint } from './miss-save.js'
 import { declareStateHint, stateLeft } from './undeclared-state.js'
 import type { MissRun, PriorAttempt } from './miss-run.js'
-import { executorLabel, nameExecutorFailure } from './plugin-host.js'
+import { executorLabel, nameExecutorFailure, watchedExecute } from './plugin-host.js'
 import { lockedDirGone } from './projects.js'
 import {
   commandWriteReach,
@@ -36,6 +38,7 @@ import {
 import { sandboxFix } from '../sandbox/index.js'
 import { shellVerdict, unpassedEnv } from './shell-verdict.js'
 import { forgetUndeclaredWrites, taskBinDirs } from './task-process.js'
+import { failServer } from './persistent.js'
 import type { OutcomeTiming, TaskOutcome } from '../graph/index.js'
 import { failedOutputLog } from './output-log.js'
 import { mayWriteFingerprint, undeclaredWriteReach } from '../sandbox/index.js'
@@ -53,11 +56,34 @@ export interface Attempts {
   readonly attempts: number
   /** What THIS run spent on the task, every attempt. */
   readonly spentMs: number
+  /** What the executor held it before a machine took it, every attempt (`ExecuteResult.queuedMs`). */
+  readonly queuedMs: number
+  /** Of `queuedMs`, the first attempt's: the span starts after it. */
+  readonly firstQueuedMs: number
   readonly failedAttempts: FailedAttempt[]
   /** Each failed attempt's output, beside `failedAttempts`: kept for `vx last --log`. */
   readonly attemptOutputs: string[]
   /** Any attempt's shell left a process running, not only the last one's. */
   readonly leftRunning: boolean
+}
+
+/**
+ * A task's span and queue time once an executor said how long it held the
+ * task before a machine took it: the span starts after its first wait, and
+ * every wait is queue time, not run time.
+ */
+export function queuedTiming(
+  wallclock: { startNs: bigint; endNs: bigint },
+  firstMs: number,
+  totalMs: number,
+): OutcomeTiming {
+  if (totalMs <= 0) return { startNs: wallclock.startNs, endNs: wallclock.endNs }
+  const shifted = wallclock.startNs + BigInt(Math.round(firstMs * 1e6))
+  return {
+    startNs: shifted < wallclock.endNs ? shifted : wallclock.endNs,
+    endNs: wallclock.endNs,
+    queuedMs: Math.round(totalMs),
+  }
 }
 
 /** The attempts that ran, or the outcome when the task ends without one standing. */
@@ -79,13 +105,17 @@ export async function runAttempts(
   let maxAttempts = policy.maxAttempts
   let prior: { result: ExecuteResult; exitCode: number } | undefined
   let spentMs = 0
+  let queuedMs = 0
+  let firstQueuedMs: number | undefined
   let leftRunning = false
   const failedAttempts: FailedAttempt[] = []
   const attemptOutputs: string[] = []
-  const timing = (): OutcomeTiming => ({
-    startNs: wallclockStartNs,
-    endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs,
-  })
+  const timing = (): OutcomeTiming =>
+    queuedTiming(
+      { startNs: wallclockStartNs, endNs: process.hrtime.bigint() - args.run.runStartHrTimeNs },
+      firstQueuedMs ?? 0,
+      queuedMs,
+    )
   for (;;) {
     m.attempt++
     const a = await runAttempt(m, prior, spentMs)
@@ -99,6 +129,35 @@ export async function runAttempts(
             : { node, status: 'skipped', durationMs: 0, hash, timing: timing() },
       }
     const result = a.result
+    // A server carried to the machine that ran it died there: its row fails,
+    // a dependant it left unbegun is skipped behind it, and one that ran
+    // against it is not saved, nor what builds on it, as here.
+    if (result.deadServers !== undefined) {
+      for (const d of result.deadServers) {
+        failCarried(args.upstream, d.taskId, d.exitCode)
+        args.run.carriedDied?.(d.taskId)
+        // A pass shows no frame: said as a server here says it.
+        if (d.began)
+          warnOf(log)(
+            `[vx] ${d.taskId}, which ${node.id} depends on, exited with code ${d.exitCode} while it ran`,
+          )
+      }
+      const first = result.deadServers.find((d) => !d.began)
+      // A skip shows no output: the why, which a server here says in its own frame, is said here.
+      if (first !== undefined) {
+        if (result.stderr.trim() !== '') warnOf(log)(`[vx] ${result.stderr.trimEnd()}`)
+        return {
+          outcome: {
+            node,
+            status: 'skipped',
+            durationMs: 0,
+            hash,
+            blockedBy: first.taskId,
+            timing: timing(),
+          },
+        }
+      }
+    }
     prior = { result, exitCode: a.exitCode }
     if (a.withdrawn) {
       m.attempt--
@@ -116,6 +175,8 @@ export async function runAttempts(
     forgetUndeclaredWrites(args.node, args.run.gitFilesCache, writeReach)
     if (writesFingerprint) args.run.fingerprintWatch?.wrote()
     spentMs += result.durationMs
+    queuedMs += result.queuedMs ?? 0
+    firstQueuedMs ??= result.queuedMs ?? 0
 
     // An attempt that ended in a shutdown never finished on its own terms:
     // it is aborted, so it is neither cached, counted, shown, nor RETRIED.
@@ -127,14 +188,19 @@ export async function runAttempts(
     // seen before vx's own handler has run, so a signal death waits one
     // event-loop turn for a pending handler before it is judged; a
     // timeout's SIGTERM is our own deadline and judged now.
-    let shutdown = args.run.stopSignal?.aborted === true
+    // A command that exited before `--fail-fast`'s stop landed ended on its
+    // own: its exit is judged as any other, never the stop's abort.
+    const stopped = (): boolean =>
+      args.run.stopSignal?.aborted === true &&
+      !(args.run.failFast?.aborted === true && result.exitedBeforeStop === true)
+    let shutdown = stopped()
     if (
       !shutdown &&
       (result.signal === 'SIGINT' || result.signal === 'SIGTERM') &&
       !result.timedOut
     ) {
       await new Promise((resolve) => setTimeout(resolve, 0))
-      shutdown = args.run.stopSignal?.aborted === true
+      shutdown = stopped()
     }
     if (shutdown) {
       const outcome: TaskOutcome = {
@@ -208,6 +274,8 @@ export async function runAttempts(
     exitCode: prior.exitCode,
     attempts: m.attempt,
     spentMs,
+    queuedMs,
+    firstQueuedMs: firstQueuedMs ?? 0,
     failedAttempts,
     attemptOutputs,
     leftRunning,
@@ -296,7 +364,7 @@ async function runAttempt(
     running = Promise.resolve(
       unseen.length > 0
         ? unseenResult(unseen, node.projectDir, args.run.workspaceRoot)
-        : args.executor.execute(req),
+        : watchedExecute(args.executor, args.executor.execute(req)),
     )
   } catch (thrown) {
     running = Promise.reject(thrown)
@@ -327,6 +395,12 @@ async function runAttempt(
           assertExecuteResult('local', node.id, local)
           return local
         }
+      } else if (isExecutorFallback(raw)) {
+        // The bare reason failed the task, and its author read no word of
+        // why it did not run here.
+        raw = new UserError(
+          `${secrets.text(raw.message)}, but only an executor with capabilities.remote can give a task back`,
+        )
       }
       const err = nameExecutorFailure(args.executor, raw)
       // A remote executor's message carries the server's own text, which may
@@ -436,15 +510,28 @@ async function classifyExit(
   if (res.timedOut) {
     // A plugin executor's child is its own: core only aborted its request,
     // or, on the executor's own clock, aborted nothing.
-    const how = !isLocalExecutor(args.executor)
-      ? m.signal.timeoutFired
-        ? 'its executor was aborted'
-        : 'as its executor reported'
-      : res.signal === 'SIGKILL' || res.killedAfterGrace === true
+    // One that reports the signal it stopped the child with (a DTE worker)
+    // is said as a run here is.
+    const killed =
+      res.signal === 'SIGKILL' || res.killedAfterGrace === true
         ? 'killed (SIGKILL after the SIGTERM grace)'
         : 'killed (SIGTERM)'
+    const how =
+      isLocalExecutor(args.executor) || res.signal === 'SIGTERM' || res.signal === 'SIGKILL'
+        ? killed
+        : m.signal.timeoutFired
+          ? 'its executor was aborted'
+          : 'as its executor reported'
     const after = policy.timeout === undefined ? '' : ` after ${policy.timeout}ms`
-    log.taskStderr(node, `${stream.nl()}${vxLine(m, `[vx] timed out${after} — ${how}`)}\n`)
+    // Whose limit it was and how to raise it: "after 120000ms" alone sent
+    // the user looking for where it came from.
+    const whose =
+      policy.timeout === undefined
+        ? ''
+        : policy.timeoutFromTask
+          ? "; the task's exec.timeout; raise it to give it longer"
+          : "; the run's timeout (--timeout, VX_RUN_TIMEOUT or run.timeout); raise it, or set the task's exec.timeout"
+    log.taskStderr(node, `${stream.nl()}${vxLine(m, `[vx] timed out${after} — ${how}${whose}`)}\n`)
     // Non-zero even if the child TRAPPED SIGTERM and exited 0 (`trap 'exit
     // 0' TERM`): classified a success, its PARTIAL outputs were cached and
     // replayed forever. A genuinely killed child already reports 143.
@@ -482,7 +569,9 @@ async function classifyExit(
     // built from a secret: masked as the task's own output is.
     if (verdict !== undefined)
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(verdict))}\n`)
-    const unpassed = code === 0 ? undefined : unpassedEnv(stream.tail, m.env, process.env)
+    // A pipeline's `env` is vx's alone: no passThrough gives it to a task.
+    const unpassed =
+      code === 0 ? undefined : unpassedEnv(stream.tail, m.env, taskEnvSource(), policy.exec.command)
     if (unpassed !== undefined)
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(unpassed))}\n`)
   }
@@ -574,6 +663,17 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     left = missing.length > 0 && m.state !== undefined ? stateLeft(m.state, node.projectDir) : []
   }
   if (missing.length === 0) return undefined
+  // Read where the files are: an executor that ran the command elsewhere
+  // says what its disk showed, as this one lacks what the command wrote.
+  // One that says nothing keeps the hint this disk can give: a bracketed
+  // path is most often a source folder, checked out here too.
+  const facts: OutputsMissingFacts = elsewhere
+    ? (res.outputsMissingFacts ?? bracketOnly(policy, node.projectDir, args.run.workspaceRoot))
+    : outputsMissingFacts(missing, [
+        { base: node.projectDir, globs: policy.outputs },
+        { base: args.run.workspaceRoot, globs: policy.wsOutputs },
+      ])
+  const files = facts.folderAsFile ?? []
   const line =
     `[vx] ${node.id}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
     `but never wrote ${missing.length === 1 ? 'it' : 'them'}, so the task fails and nothing is cached: ` +
@@ -581,16 +681,79 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     (noWrite
       ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
       : '') +
+    // Nx and Turbo cache whichever outputs exist, so an Nx test target's
+    // coverage dir, written only with coverage on, failed every other run.
+    (!noWrite && facts.wroteNone === true
+      ? ` — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it`
+      : '') +
+    (files.length > 0 ? ` — a folder was declared, a file was written: ${files.join(', ')}` : '') +
     (left.length > 0
       ? ` — ${left.map(printable).join(', ')} survived the clean, which the task declares neither input nor ` +
         `output: a tool that reads such a file back (an incremental build's state) may take the cleaned ` +
         `outputs as built` +
         declareStateHint(left)
       : '') +
-    bracketLiteralHint([
-      ...policy.outputs.map((g) => [node.projectDir, g] as const),
-      ...policy.wsOutputs.map((g) => [args.run.workspaceRoot, g] as const),
-    ])
+    (facts.bracket ?? '')
   warnOf(log)(secrets.text(line))
   return missing
+}
+
+function bracketOnly(
+  policy: MissRun['policy'],
+  projectDir: string,
+  root: string,
+): OutputsMissingFacts {
+  const bracket = bracketLiteralHint([
+    ...policy.outputs.map((g) => [projectDir, g] as const),
+    ...policy.wsOutputs.map((g) => [root, g] as const),
+  ])
+  return bracket === '' ? {} : { bracket }
+}
+
+/**
+ * Why outputs `missing` matched nothing, as this disk shows it: what a
+ * refusal names beside them. An executor that ran the command elsewhere
+ * asks it where the files are (`ExecuteResult.outputsMissingFacts`).
+ */
+export function outputsMissingFacts(
+  missing: readonly string[],
+  sets: readonly { readonly base: string; readonly globs: readonly string[] }[],
+): OutputsMissingFacts {
+  const pairs = sets.flatMap((s) => s.globs.map((g) => [s.base, g] as const))
+  const folderAsFile = sets.flatMap((s) =>
+    folderWrittenAsFile(
+      s.base,
+      missing.filter((g) => s.globs.includes(g)),
+    ),
+  )
+  const bracket = bracketLiteralHint(pairs)
+  return {
+    ...(wroteNone(missing, pairs) ? { wroteNone: true as const } : {}),
+    ...(folderAsFile.length > 0 ? { folderAsFile: [...new Set(folderAsFile)] } : {}),
+    ...(bracket !== '' ? { bracket } : {}),
+  }
+}
+
+/** Fails server `id`'s outcome among `upstream`, through groups: a dependant's view of it. */
+function failCarried(upstream: readonly TaskOutcome[], id: string, code: number): void {
+  for (const o of upstream) {
+    if (o.node.id === id) failServer(new Map([[id, o]]), id, code)
+    else if (o.groupUpstream !== undefined) failCarried(o.groupUpstream, id, code)
+  }
+}
+
+/**
+ * Every positive output matched nothing and its top folder is not there:
+ * the command wrote nowhere near them (a coverage dir with coverage off),
+ * not to a neighbour of a mistyped path (`dist/main.js` beside `dist/index.js`).
+ */
+function wroteNone(
+  missing: readonly string[],
+  outputs: readonly (readonly [string, string])[],
+): boolean {
+  const named = new Set(missing)
+  return outputs.every(
+    ([base, g]) =>
+      g.startsWith('!') || (named.has(g) && !existsSync(path.join(base, g.split('/')[0]!))),
+  )
 }

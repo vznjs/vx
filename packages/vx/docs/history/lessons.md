@@ -132,6 +132,14 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   assertion, never the timeout. A test's own timeout argument overrides
   the flag, so none is set under 30 s either (258 were, 3 to 25 s;
   `tests/suite-coverage.unsafe.test.ts`).
+- A wait inside a test has no deadline of its own under the test's: at
+  load 40 on 4 cores a vx took over 10 s to reach its task and a watch
+  over 15 s to print its marker, and eight files failed on a wait that
+  would have passed (2026-11-24). Wait on the condition, or on the
+  process that would make it true having exited; the test's timeout is
+  the hang guard. A sleep is no sync point either: wait for the event
+  (the re-lock's cycle, the refusal line, the child saying it is armed)
+  that the next step needs.
 - Two measured quantities that are equal by construction sit on jitter:
   a light child's `ru_maxrss` IS the parent's mark, and the kernel's RSS
   counters lag by pages, so an exact `>` between them flipped on one CI
@@ -423,3 +431,33 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   that fork over: its one fork that does not wait, `cmd &`, ignores
   SIGINT and SIGQUIT in a non-interactive shell (POSIX), for good. A
   small process that forks every shell does (`vx-measure`, 2026-11-22).
+- Stage files by name, never `git add -A` or `git commit -a` on a tree
+  you did not just check: an absolute symlink to another worktree's
+  checkout (`packages/vx-lockfile/vx-lockfile`) was committed twice that
+  way, and a bare `bun test` there ran the other tree's tests (119 false
+  failures, 674fa7866, 2026-11-24).
+- A new test file needs its row in `private/vx-conformance/src/inventory.ts`
+  in the same commit: `inventory.test.ts` goes red on the branch for
+  everyone else until it lands (2026-11-24).
+- Never reset, check out, stash-pop or clean in another agent's worktree,
+  even to "help": its uncommitted work is gone for good. Work in yours;
+  ask its owner (2026-11-24).
+- Never `cp` a build over a file in `node_modules`: Bun hardlinks installs
+  from its global cache, so the write lands in the cache and every later
+  install on the machine gets it. A probe's `cp vx node_modules/.bin/vx`
+  target put a branch binary in @vzn/vx 0.0.661's cached `launcher.cjs`;
+  `bun add` then installed it as 0.0.661. Point at the build instead
+  (`VX_HANDED_OFF=1`, or run it by path), and purge the cache entry if it
+  happened (2026-11-24).
+- Bun ignores a function a `beforeEach` or `beforeAll` returns (vitest
+  runs it as cleanup): big-inputs' returned `rm` never ran and each test
+  left 600 MiB in TMPDIR until the disk filled. Clean up in `afterEach` /
+  `afterAll` (`test-hook-cleanup.unsafe.test.ts`). Bun's test runner fires
+  no `process.on('exit')` either. To find a leak, run each file alone
+  under an empty TMPDIR and list what is left (2026-11-24).
+- In the sandbox, oxlint misses the workspace `.gitignore` and lints all
+  node_modules links to; config `ignorePatterns` does not prune. Use
+  `--ignore-pattern node_modules` (2026-11-24).
+- A config edit runs the old command until `vx lock`; a fresh cache dir
+  does not notice the edit. Relock before timing a config change
+  (2026-11-24).

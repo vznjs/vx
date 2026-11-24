@@ -2,7 +2,7 @@ import { statSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { anchoredSpecError, flagHint, refuse, seeHelp } from './help.js'
+import { AFFECTED_EMPTY, anchoredSpecError, flagHint, refuse, seeHelp } from './help.js'
 import {
   planCore,
   runCore as runOrchestrator,
@@ -23,13 +23,14 @@ import {
 import {
   type AffectedFilter,
   affectedFilterFor,
+  findAllSelection,
   findCwdSelection,
   NO_TASKS_DECLARED,
   pickTask,
   resolveFilters,
 } from './select.js'
 import { nxTargetHint, taskNamesHere, undeclaredTasks } from './task-verb.js'
-import { envFlagOn, hasControl, parseDecimalInt } from '../util/index.js'
+import { ciProvider, hasControl, parseDecimalInt, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice, sayLine } from '../ui/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
@@ -301,6 +302,8 @@ function parse(
       spacedValue('--affected', before[i + 1])
     } else if (a.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
+      // `--affected=$BASE` with BASE unset diffed from the default base.
+      if (out.affected === '') return { ...out, error: AFFECTED_EMPTY }
     } else if (a === '--poll') {
       // The edit-distance hint offered vx run `--all`, a different flag.
       if (verb === 'run')
@@ -384,12 +387,10 @@ function parse(
   // tasks, or of whatever a change reaches, cannot say which. A --all or
   // --filter run is refused once planned, if it asks for more than one.
   if (out.forwardArgs.length > 0) {
+    // A name given twice is one task, as the run takes it.
+    const names = new Set(out.tasks).size
     const many =
-      out.affected !== undefined
-        ? '--affected'
-        : out.tasks.length > 1
-          ? `${out.tasks.length} tasks`
-          : undefined
+      out.affected !== undefined ? '--affected' : names > 1 ? `${names} tasks` : undefined
     if (many !== undefined)
       return {
         ...out,
@@ -397,12 +398,7 @@ function parse(
       }
   }
   // A run prints no JSON of its own; `vx last --format json` reads it after.
-  if (format !== undefined && !dryFlag)
-    return {
-      ...out,
-      error:
-        '--format prints the plan, so it needs --dry (the run as JSON is `vx last --format json` after it)',
-    }
+  if (format !== undefined && !dryFlag) return { ...out, error: FORMAT_NEEDS_DRY }
   if (dryFlag) out.dry = format ?? 'pretty'
   // A profile is about a run: the planning branch returns before it is written.
   if (out.dry !== undefined && out.profile !== undefined) {
@@ -410,6 +406,10 @@ function parse(
   }
   return out
 }
+
+/** `--format` without `--dry`: a pipeline's saved `dry` may still supply it. */
+export const FORMAT_NEEDS_DRY =
+  '--format prints the plan, so it needs --dry (the run as JSON is `vx last --format json` after it)'
 
 /**
  * The run's intent from its selection flags: broad iff `--all` / `--filter` /
@@ -428,6 +428,7 @@ export function detectFlow(
 async function scopeFilters(
   parsed: RunArgs,
   cwd: string,
+  affectedInstead?: string,
 ): Promise<
   { filterStrings: string[]; affected?: AffectedFilter } | { error: string; code?: string }
 > {
@@ -443,9 +444,10 @@ async function scopeFilters(
     const f = await affectedFilterFor(
       cwd,
       parsed.affected,
-      parsed.all
-        ? 'drop --affected, --all runs every project (the cache skips what did not change)'
-        : undefined,
+      affectedInstead ??
+        (parsed.all
+          ? 'drop --affected, --all runs every project (the cache skips what did not change)'
+          : undefined),
     )
     if ('error' in f) return f
     affected = f
@@ -469,6 +471,8 @@ export async function resolveRunOptions(
   verb: 'run' | 'watch' = 'run',
   /** Given, it learns the ref `--affected` diffed from (`--dry --format json` states it). */
   scopeOut?: { affectedBase?: string },
+  /** What to do instead of a bare `--affected` on the base branch (`vx pipeline`'s own advice). */
+  affectedInstead?: string,
 ): Promise<CoreRunOptions | { error: string; code?: string } | { nothingSelected: string }> {
   for (const t of tasks) {
     // A blank name (`vx run --all ''`) otherwise reached the orchestrator,
@@ -491,7 +495,7 @@ export async function resolveRunOptions(
     }
   }
 
-  const scope = await scopeFilters(parsed, cwd)
+  const scope = await scopeFilters(parsed, cwd, affectedInstead)
   if ('error' in scope) return scope
   const { filterStrings, affected: affectedFilter } = scope
   // `...[<base>]`: the base alone.
@@ -545,6 +549,15 @@ export async function resolveRunOptions(
     }
   } else if (parsed.all) {
     projects = undefined
+    discovered = await findAllSelection(
+      cwd,
+      parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
+    ).catch((err: unknown) => {
+      // Watch keeps watching a workspace whose lock is missing or behind:
+      // its first cycle fails on it, and a `vx lock` re-runs (item 1017).
+      if (verb === 'watch' && err instanceof UserError && err.code === 'VX_E_LOCK') return undefined
+      throw err
+    })
   } else {
     const cwdProject = await findCwdSelection(
       cwd,
@@ -565,9 +578,7 @@ export async function resolveRunOptions(
     ...(parsed.remoteRequested ? { remoteRequested: parsed.remoteRequested } : {}),
     // A laptop reads the shared cache and never writes it (owner); naming the
     // remote in `--cache-policy` is asking to.
-    ...(!parsed.remoteRequested && !envFlagOn(process.env['CI'])
-      ? { remoteReadOnlyByDefault: true }
-      : {}),
+    ...(!parsed.remoteRequested && ciProvider() === null ? { remoteReadOnlyByDefault: true } : {}),
     ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
   }
   const opts: CoreRunOptions = {
@@ -612,12 +623,14 @@ const TASKS_SHOWN = 12
 /**
  * `invocation`: the line `vx last` replays, when it is not `vx run <args>`
  * (`vx pipeline pr`). `saved`: each flag a pipeline saved, to the key that
- * holds it.
+ * holds it. `pipeline`: the pipeline it runs, and its advice for a bare
+ * `--affected` on the base branch.
  */
 export async function runCmd(
   args: readonly string[],
   invocation?: readonly string[],
   saved: ReadonlyMap<string, string> = new Map(),
+  pipeline?: { name: string; affectedInstead: string },
 ): Promise<number> {
   // `vx pipeline pr` refuses as itself, not as the `vx run` it stands for.
   const verb = invocation?.[1] ?? 'run'
@@ -631,7 +644,11 @@ export async function runCmd(
 
   const cwd = process.cwd()
   const unknownTask = async (message: string): Promise<number> =>
-    refused(`${message}${await spacedHint(parsed, cwd)}`, 'VX_E_UNKNOWN_TASK')
+    refused(
+      // Its tasks are the pipeline's alone: `vx pipeline` takes none typed.
+      `${message}${await spacedHint(parsed, cwd)}${pipeline === undefined ? '' : `\n  tasks are \`pipelines.${pipeline.name}.tasks\` in .vx/workspace`}`,
+      'VX_E_UNKNOWN_TASK',
+    )
   if (parsed.profile !== undefined) {
     const problem = profileProblem(cwd, parsed.profile)
     if (problem !== undefined) return refused(problem, 'VX_E_USAGE')
@@ -722,7 +739,14 @@ export async function runCmd(
   }
 
   const scopeOut: { affectedBase?: string } = {}
-  const resolved = await resolveRunOptions(parsed, cwd, tasks, 'run', scopeOut)
+  const resolved = await resolveRunOptions(
+    parsed,
+    cwd,
+    tasks,
+    'run',
+    scopeOut,
+    pipeline?.affectedInstead,
+  )
   if ('error' in resolved)
     return resolved.code === 'VX_E_UNKNOWN_TASK'
       ? unknownTask(resolved.error)
@@ -791,7 +815,11 @@ export async function runCmd(
 function savedNote(message: string, saved: ReadonlyMap<string, string>): string {
   let out = ''
   for (const [flag, key] of saved)
-    if (new RegExp(`(?<![\\w-])${flag}(?![\\w-])`).test(message))
+    if (
+      new RegExp(`(?<![\\w-])${flag}(?![\\w-])`).test(message) ||
+      // A filter matching no project is refused as `filter(s)`.
+      (flag === '--filter' && message.startsWith('no projects matched filter(s)'))
+    )
       out += `\n  ${flag} is ${key} in .vx/workspace`
   return out
 }

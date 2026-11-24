@@ -10,7 +10,8 @@ export default defineProject({
     },
     test: {
       exec: { command: 'vitest run' },
-      inputs: { files: ['src/**'] },
+      // vitest loads vite.config.ts: a `test` setting there changes the run.
+      inputs: { files: ['src/**', 'vite.config.ts'] },
       outputs: { files: [] },
       cache: true,
     },

@@ -59,8 +59,8 @@ export interface Named {
 
 /** Whether this job has a token: GitHub's OIDC endpoint, or GitLab's `VX_HISTORY_TOKEN`. */
 const hasToken = (env: Record<string, string | undefined>): boolean =>
-  (!!env.ACTIONS_ID_TOKEN_REQUEST_URL && !!env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) ||
-  !!env.VX_HISTORY_TOKEN
+  (!!env['ACTIONS_ID_TOKEN_REQUEST_URL'] && !!env['ACTIONS_ID_TOKEN_REQUEST_TOKEN']) ||
+  !!env['VX_HISTORY_TOKEN']
 
 /** A task the run ran and that succeeded, as the server takes its timing; else undefined. */
 export function timingOf(o: TaskOutcome): ServerTiming | undefined {
@@ -289,6 +289,11 @@ export class HistoryServer {
 
   private readonly bounds: ServerBounds
 
+  /** Whether a 401 turned the server off for the run: later calls send nothing. */
+  get off(): boolean {
+    return this.refused
+  }
+
   /** Whether the run has a token to send: with none it reads only. */
   get writes(): boolean {
     return hasToken(this.env)
@@ -305,8 +310,9 @@ export class HistoryServer {
       return Promise.resolve(held.jwt)
     }
     this.token ??= (async () => {
-      const ask = this.env.ACTIONS_ID_TOKEN_REQUEST_URL
-      if (ask === undefined || ask === '') return { jwt: this.env.VX_HISTORY_TOKEN ?? '', exp: 0 }
+      const ask = this.env['ACTIONS_ID_TOKEN_REQUEST_URL']
+      if (ask === undefined || ask === '')
+        return { jwt: this.env['VX_HISTORY_TOKEN'] ?? '', exp: 0 }
       const u = new URL(ask)
       u.searchParams.set('audience', new URL(this.url).origin)
       const res = await this.askGithub(u, signal)
@@ -361,11 +367,11 @@ export class HistoryServer {
 
   /** GitHub's OIDC endpoint: a 4xx is final. */
   private askGithub(ask: URL, signal?: AbortSignal): Promise<Response> {
-    this.sent.add(this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? '')
+    this.sent.add(this.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] ?? '')
     return this.tried(
       () =>
         this.fetchImpl(ask, {
-          headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ?? ''}` },
+          headers: { authorization: `bearer ${this.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] ?? ''}` },
           signal: deadline(this.bounds.timeoutMs, signal),
         }),
       (status) => status === undefined || status === 429 || status >= 500,
@@ -417,9 +423,9 @@ export class HistoryServer {
       // Off CI: the bare 401 said nothing of why or what to do.
       const err = await refusal(res, this.hidden)
       const fix =
-        this.env.GITHUB_ACTIONS === 'true'
+        this.env['GITHUB_ACTIONS'] === 'true'
           ? 'give the job `permissions: id-token: write`'
-          : this.env.GITLAB_CI === 'true'
+          : this.env['GITLAB_CI'] === 'true'
             ? 'name an id_tokens entry VX_HISTORY_TOKEN'
             : 'off CI, a server reads only with READ_ACCESS=public'
       throw new Error(`${err.message}: a read with no CI token was refused (${fix})`)
@@ -543,30 +549,38 @@ export class HistoryServer {
   /**
    * The run's timings, by task definition hash, and its outcomes, in
    * uploads the server takes; `stop` abandons them. `answered` hears each
-   * try's status, undefined as it is sent.
+   * try's status, undefined as it is sent; `landed`, each part the server
+   * took, so a failure after it sends that part no more.
    */
   async upload(
     timings: ReadonlyMap<string, ServerTiming>,
     stop?: AbortSignal,
     outcomes: readonly ServerOutcome[] = [],
     answered?: (status: number | undefined) => void,
+    landed?: (hashes: readonly string[], outcomes: readonly ServerOutcome[]) => void,
   ): Promise<void> {
     if ((timings.size === 0 && outcomes.length === 0) || this.refused) return
     const all = [...timings].map(([hash, t]) => ({ hash, ...t }))
     const at = Array.from({ length: Math.max(all.length, outcomes.length) }, (_, i) => i)
     // A refused upload folded nothing: sent again in parts, none counts twice.
     await this.guard(
-      this.parts(at, 'vx-max-upload-timings', false, (part, sized) => {
+      this.parts(at, 'vx-max-upload-timings', false, async (part, sized) => {
         const from = part[0] ?? 0
         const to = from + part.length
         const some = outcomes.slice(from, to)
-        return this.call(
+        const these = all.slice(from, to)
+        const res = await this.call(
           '/v1/timings/upload',
-          { timings: all.slice(from, to), ...(some.length > 0 ? { outcomes: some } : {}) },
+          { timings: these, ...(some.length > 0 ? { outcomes: some } : {}) },
           stop,
           sized,
           answered,
         )
+        landed?.(
+          these.map((t) => t.hash),
+          some,
+        )
+        return res
       }),
     )
   }

@@ -156,6 +156,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
       failedCount: s.failedCount,
       abortedCount: s.abortedCount,
       notRunCount: s.notRunCount,
+      notRun: s.notRun,
       tasks: s.tasks.map((t) => [t.taskId, t.status]),
     }).toEqual({
       exitOk: false,
@@ -164,6 +165,8 @@ describe('RunOptions.signal aborts a run in flight', () => {
       failedCount: 0,
       abortedCount: 1,
       notRunCount: 1,
+      // Named, so a sink can list it as the terminal counts it.
+      notRun: ['app#after'],
       tasks: [['app#slow', 'aborted']],
     })
   }, 30_000)

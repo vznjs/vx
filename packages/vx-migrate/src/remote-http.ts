@@ -17,6 +17,9 @@ import { isSecretUnavailable, type RemoteOpenContext, UserError } from '@vzn/vx'
  * plugins run such a repo unchanged.
  */
 export function checkRemoteUrl(url: string, from: string): void {
+  // A trailing blank kept the slash before it: each route went to `…/ /v8/…`.
+  if (url.trim() !== url)
+    throw new UserError(`${from} has blanks around it: ${JSON.stringify(url)}`)
   // With no scheme every request failed on its own, as a bare "Invalid URL".
   if (!/^https?:\/\//.test(url))
     throw new UserError(`${from} must be an http(s) URL, got ${JSON.stringify(url)}`)

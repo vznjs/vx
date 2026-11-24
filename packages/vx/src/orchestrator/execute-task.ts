@@ -193,6 +193,12 @@ export interface RunContext {
    */
   serverDiedUnder?: (node: TaskNode) => Promise<boolean>
   /**
+   * A server carried to the machine that ran a dependant died there
+   * (`ExecuteResult.deadServers`): from now on it counts as one that died
+   * here, for `serverDiedUnder` and the tasks not yet started.
+   */
+  carriedDied?: (id: string) => void
+  /**
    * Told once when an attempt's shell left a process running: it may still
    * write the outputs a dependent reads, so run.ts seeds the run's taint
    * with this task and nothing built on it is saved.

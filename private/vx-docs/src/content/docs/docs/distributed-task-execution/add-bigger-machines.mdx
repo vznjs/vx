@@ -61,7 +61,7 @@ Read the new size as: up to **2** machines of **16** cores and **64GB**, on the 
 
 ## Send each size to its runner
 
-Run `vx dte init` again. `vx-worker.yml` now maps each size to its runner:
+Run `vx dte init --force`: it writes both workflows again. `vx-worker.yml` now maps each size to its runner:
 
 ```yaml title=".github/workflows/vx-worker.yml"
     runs-on: ${{ fromJSON('{"linux.cpu4":"ubuntu-latest","linux.cpu16":"ubuntu-latest-16-cores"}')[inputs.size] }}
@@ -161,7 +161,7 @@ dte({ unmeasured: { cpu: 4, memory: '8GB' }, /* … */ }),
 | --- | --- | --- | --- |
 | `cpu` | Its cores. vx counts on them until the worker reports its real machine. Required. | none | `4` |
 | `memory` | Its memory, in bytes or as text. Required. | none | `'16GB'`, `'512MiB'` |
-| `max` | How many one run may start. | no cap | `8` |
+| `max` | How many may be in the run at once. One lost or failed to start is replaced. | no cap | `8` |
 | `platform` | `linux-x64`, `linux-arm64`, `darwin-x64` or `darwin-arm64`. A worker that joins on another is refused. | this machine's, not checked | `'darwin-arm64'` |
 | `runsOn` | The CI runner label `vx dte init` writes for it. | the platform's GitHub-hosted runner | `'ubuntu-latest-16-cores'` |
 

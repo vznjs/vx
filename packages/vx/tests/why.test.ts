@@ -754,6 +754,9 @@ describe('vx why (e2e) — the exact lines', () => {
           ),
           `  format    ${WHAT_TO_DO['format']}`,
         ])
+        // Back on an earlier vx, a task hits that version's entry: the same
+        // advice said every cached task misses once beside a hit.
+        expect(WHAT_TO_DO['format']).not.toContain('miss')
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
         back.run('UPDATE entry_inputs SET components = replace(components, ?, ?)', [
@@ -882,6 +885,41 @@ describe('vx why in a workspace that never ran (E-39)', () => {
       expect({ code: atRoot.code, err: atRoot.err }).toEqual({
         code: 1,
         err: '› vx why  no runs of build yet\n\n  fix  vx run build --all\n',
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+})
+
+// Its runs pruned, a task that ran read "no runs of app#build yet", and
+// --format json "nothing has run here yet": its entry said otherwise.
+describe('vx why of a task whose runs were pruned', () => {
+  it('says its runs are gone, not that it never ran', async () => {
+    const root = await makeWorkspace()
+    try {
+      expect((await vx(root, ['run', 'app#build'])).code).toBe(0)
+      const clean = await vx(root, ['cache', 'clean', '--max-size', '10G'], {
+        VX_HISTORY_RETENTION: '1ms',
+      })
+      expect(clean.code).toBe(0)
+      const why =
+        'its cache entry is stored: its runs were pruned (VX_HISTORY_RETENTION, 30 days by default) or ran in another worktree'
+      const app = path.join(root, 'packages', 'app')
+      for (const [cwd, target] of [
+        [root, 'app#build'],
+        [app, 'build'],
+      ] as const) {
+        const r = await vx(cwd, ['why', target])
+        expect({ code: r.code, err: r.err }).toEqual({
+          code: 1,
+          err: `› vx why  no runs of app#build recorded\n\n  ${why}\n\n  fix  vx run ${target}\n`,
+        })
+      }
+      const json = await vx(root, ['why', 'app#build', '--format', 'json'])
+      expect(JSON.parse(json.out).error).toMatchObject({
+        code: 'VX_E_NO_HISTORY',
+        message: `vx why: no runs of app#build recorded; ${why}; vx run app#build`,
       })
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1439,4 +1477,43 @@ describe('a bare name that ran in many projects', () => {
         '\n  … and 2 more (name one as <project>#build)',
     )
   })
+})
+
+describe('vx why — what to do names who keyed the component', () => {
+  async function setup(): Promise<string> {
+    const root = await makeWorkspaceRoot({ prefix: 'vx-why-todo-', git: false })
+    const dir = path.join(root, 'packages', 'app')
+    await mkdir(path.join(dir, 'src'), { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
+    await writeFile(path.join(dir, 'vx.config.mjs'), APP_CONFIG)
+    await writeFile(path.join(dir, 'src', 'input.txt'), 'v1\n')
+    gitIn(root)('init', '-q')
+    gitIn(root)('add', '-A')
+    return root
+  }
+  const todo = async (root: string, id: string): Promise<string[]> => {
+    const lines = (await vx(root, ['why', id])).out.split('\n')
+    return lines.slice(lines.findIndex((l) => l === '  What to do') + 1, -1)
+  }
+
+  it(
+    'a name that joined inputs.env is said to have joined, not to have moved',
+    async () => {
+      const root = await setup()
+      try {
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+        await writeFile(
+          path.join(root, 'packages', 'app', 'vx.config.mjs'),
+          APP_CONFIG.replace("files: ['src/**'] }", "files: ['src/**'], env: ['APP_MODE'] }"),
+        )
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+        expect((await todo(root, 'app#build')).find((l) => l.startsWith('  env'))).toBe(
+          '  env       a name joined inputs.env, which re-keys the task by design',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })

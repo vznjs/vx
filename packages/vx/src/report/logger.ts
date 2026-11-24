@@ -41,7 +41,7 @@ import {
   secretMask,
   tailText,
   type Tail,
-  envFlagOn,
+  ciProvider,
   relPosix,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -137,11 +137,13 @@ export interface DefaultLogger extends Logger {
   holdStatus(): () => void
   /** `vx watch` kept this server up from the cycle before: its frame closes `still running`. */
   serverKept(id: string): void
+  /** vx stopped this ready server at the run's end: its since-ready block closes `stopped`. */
+  serverStopped(id: string): void
 }
 
 /**
  * The default logger's per-task output policy, from `--output-logs`, else a
- * truthy `CI`, else the CLI's flow: full: frames for executed work, one-liners
+ * CI (`ciProvider`: any CI variable on), else the CLI's flow: full: frames for executed work, one-liners
  * for quiet hits; CI's and the programmatic default. errors-only: only failed
  * tasks print. none: no per-task output. hash-only: one line per task (outcome,
  * id, key), Turbo's parity; the summary still renders. focused: requested nodes
@@ -209,8 +211,11 @@ export function resolveOutputView(
   },
   env: Record<string, string | undefined> = process.env,
 ): OutputView {
-  const ci = envFlagOn(env['CI'])
-  const gha = envFlagOn(env['GITHUB_ACTIONS'])
+  // One rule for "on CI" (`ciProvider`): a Jenkins job, which sets no `CI`,
+  // got the laptop's flow while the rest of vx called it CI.
+  const provider = ciProvider(env)
+  const ci = provider !== null
+  const gha = provider === 'github'
   const mk = (mode: OutputView['mode']): OutputView => ({
     mode,
     ...(gha ? { gha: true } : {}),
@@ -262,6 +267,7 @@ export function defaultLogger(
   // `+=` is O(N²).
   const outputBuffers = new Map<string, OutputChunk[]>()
   const keptServers = new Set<string>()
+  const stoppedServers = new Set<string>()
   // Blocks are blank-line-delimited on both sides, so raw frame content never
   // touches a one-liner. A block leaves its trailing blank; a one-liner or
   // streamed output since needs a leading one.
@@ -431,6 +437,26 @@ export function defaultLogger(
       held.rest = ''
     }
   }
+  // Under errors-only a kept server's output after the summary waits in its
+  // tail: once the server has failed (its death in the keep-alive wait), the
+  // tail prints, before the line naming its exit.
+  const flushFailedKept = (): void => {
+    if (!flushedPersistent || view.mode !== 'errors-only') return
+    for (const t of persistentTails.values()) {
+      if (t.outcome?.status !== 'failed') continue
+      const block = formatPersistentTailBlock(
+        t.node,
+        t.outcome,
+        { stdout: tailText(t.out), stderr: tailText(t.err) },
+        { stdout: t.out.dropped, stderr: t.err.dropped },
+        colors,
+        forwardArgs,
+      )
+      resetTail(t.out)
+      resetTail(t.err)
+      if (block !== '') emitBlock(fenced(block))
+    }
+  }
   const printsKept = (tail: { outcome?: TaskOutcome }): boolean =>
     flushedPersistent && tail.outcome !== undefined && view.mode !== 'errors-only'
   // A server writing before this run started its task was left running by an
@@ -540,7 +566,9 @@ export function defaultLogger(
               ...(running > 0 ? { running } : {}),
               ...(scheduled > 0 ? { scheduled } : {}),
               ...(blockedCount > 0 && !tail && !stopping ? { blocked: blockedCount } : {}),
-              ...(etaMs !== undefined && !tail && !stopping
+              // No machine runs a task, only scheduled ones (a distributed run
+              // with no worker joined): the forecast timed them as begun now.
+              ...(etaMs !== undefined && !tail && !stopping && (running > 0 || scheduled === 0)
                 ? etaMs > 0
                   ? { etaMs }
                   : { overMs: -etaMs }
@@ -699,6 +727,8 @@ export function defaultLogger(
   // Live frames open now: a warning said inside one is a line of it, not a
   // panel (a "Warnings" header printed between a task's output and its close).
   let liveFrames = 0
+  /** Tasks whose live frame `taskStart` opened. */
+  const opened = new Set<string>()
   const emitFrameClose = (line: string): void => {
     liveFrames = Math.max(0, liveFrames - 1)
     taskWrite(`${line}\n\n`)
@@ -779,6 +809,7 @@ export function defaultLogger(
       // A kept server's held partial line is older than this line: held
       // past it, a server's last words printed below its own exit notice.
       flushKept()
+      flushFailedKept()
       // A live-streamed server keeps writing after its frame closes, so a
       // summary row or "exited with code" can follow its partial line.
       endStreamLine()
@@ -794,6 +825,7 @@ export function defaultLogger(
     },
     warn(line) {
       flushKept()
+      flushFailedKept()
       endStreamLine()
       if (!errColors.enabled || liveFrames > 0) {
         writer.writeTo(errOut, `${ui.tagged('warn', line, errColors)}\n`)
@@ -866,6 +898,7 @@ export function defaultLogger(
         // streams nothing (or the hit replays nothing).
         emitLine(formatFrameOpen(node, colors, forwardArgs))
         liveFrames++
+        opened.add(node.id)
       } else if (node.config.exec?.persistent !== undefined && !persistentTails.has(node.id)) {
         // Bound a persistent task's output from its FIRST chunk. Waiting for
         // its outcome would leave a never-ready one uncapped forever.
@@ -885,6 +918,7 @@ export function defaultLogger(
     },
     holdStatus: () => writer.hold(),
     serverKept: (id) => void keptServers.add(id),
+    serverStopped: (id) => void stoppedServers.add(id),
     forecast(graph, load) {
       if (statusDead || forecastTimer !== null) return
       graphForecast = graph
@@ -945,6 +979,7 @@ export function defaultLogger(
                   { stdout: t.out.dropped, stderr: t.err.dropped },
                   colors,
                   forwardArgs,
+                  stoppedServers.has(t.node.id),
                 ),
               ),
             )
@@ -1038,6 +1073,12 @@ export function defaultLogger(
         freeSlot(node.id)
         refresh(true)
         if (isGroupTask(node)) return
+        // A stop that reached it before its command (a slow key) still
+        // closes the frame its start opened.
+        if (neverStarted(outcome) && opened.has(node.id)) {
+          emitFrameClose(formatFrameClose(node, outcome, colors))
+          return
+        }
         // What it printed while stopping (a trap's cleanup) still reaches the
         // terminal: a task trapping Ctrl-C and exiting 0 is aborted, and its
         // frame is dropped. A list view prints a killed task's partial output

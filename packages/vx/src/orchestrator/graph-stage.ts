@@ -26,6 +26,8 @@ export async function applyGraphStage(
     projectMetas: readonly ProjectMeta[]
     warn: (message: string) => void
     rules?: GraphRules | undefined
+    /** A run's graph, which a hook may not clear (`applyGraphHooks`). */
+    refuseEmpty?: boolean
   },
 ): Promise<void> {
   // A hook edits each node's config in place, as `project` does, so the
@@ -78,6 +80,7 @@ export async function applyGraphStage(
       }
     },
     args.rules,
+    args.refuseEmpty,
   )
   // The last stage that edits a task config is over: a plugin that kept a
   // node wrote its config after the key read it, and ran a command the key

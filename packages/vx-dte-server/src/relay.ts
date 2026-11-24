@@ -58,7 +58,9 @@ export function negotiate(req: Request): { protocol?: string; version?: number }
     .filter((t) => t !== '')
   let version: number | undefined
   for (const t of offered) {
-    const v = t.startsWith(PROTOCOL) ? Number(t.slice(PROTOCOL.length)) : NaN
+    // The exact name: Number() read `switchboard.v01` or `.v0x1` as 1, answered
+    // with a name never offered, which fails its client's handshake unread.
+    const v = /^switchboard\.v([1-9]\d{0,8})$/.test(t) ? Number(t.slice(PROTOCOL.length)) : NaN
     if (VERSIONS.includes(v) && (version === undefined || v > version)) version = v
   }
   if (version !== undefined) return { protocol: `${PROTOCOL}${version}`, version }
@@ -154,7 +156,7 @@ interface Session {
 }
 
 /** A random (v4) UUID: no one can guess a session id to open it first or join it. */
-const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+export const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
 let room: Uint8Array | undefined
 /** Over MAX_BODY in UTF-8: a UTF-16 unit is 1 to 3 bytes, so 1 MiB of `€` is 3. */
@@ -164,6 +166,24 @@ function overMax(text: string): boolean {
   // No Buffer on Workers: encode into a fixed 1 MiB, which stops short of one that does not fit.
   room ??= new Uint8Array(MAX_BODY)
   return new TextEncoder().encodeInto(text, room).read < text.length
+}
+/** Far above any vx message; each level past it cost Bun's JSON CPU (3 to 7 s at 100k). */
+const MAX_DEPTH = 64
+/** Whether `text` nests arrays and objects past MAX_DEPTH, read without parsing it. */
+function nestsTooDeep(text: string): boolean {
+  let depth = 0
+  let inString = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    if (inString) {
+      if (c === 92) i++ // a backslash escapes the next unit
+      else if (c === 34) inString = false
+    } else if (c === 34) inString = true
+    else if (c === 91 || c === 123) {
+      if (++depth > MAX_DEPTH) return true
+    } else if (c === 93 || c === 125) depth--
+  }
+  return false
 }
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
@@ -198,13 +218,7 @@ export function createRelay(opts: RelayOptions): Relay {
    * relay's own notices (`notice`: joined, lost, closed) have no sender to
    * resend them, so they wait for the next socket.
    */
-  const deliver = (
-    session: Session,
-    p: Participant,
-    m: Message,
-    notice = false,
-    text?: string,
-  ): void => {
+  const deliver = (p: Participant, m: Message, notice = false, text?: string): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
       try {
         p.socket.send(text ?? JSON.stringify({ messages: [m] }))
@@ -233,7 +247,7 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 
   /** `socket` reaches the participant: what queued for it goes down it. */
-  const plug = (session: Session, p: Participant, socket: RelaySocket): void => {
+  const plug = (p: Participant, socket: RelaySocket): void => {
     p.socket = socket
     delete p.droppedAt
     if (p.hello !== undefined) {
@@ -278,7 +292,7 @@ export function createRelay(opts: RelayOptions): Relay {
         if (p.socket !== undefined) closeSocket(p.socket)
         continue
       }
-      deliver(session, p, { from: 'relay', body: { type: 'closed' } }, true)
+      deliver(p, { from: 'relay', body: { type: 'closed' } }, true)
       drop(session, p, false)
     }
     // A session is live while its host is, and only a live one is kept: a peer
@@ -310,7 +324,7 @@ export function createRelay(opts: RelayOptions): Relay {
       return
     }
     if (tell && session.host !== undefined && !session.closed) {
-      deliver(session, session.host, { from: 'relay', body: { type: 'left', id: p.id } }, true)
+      deliver(session.host, { from: 'relay', body: { type: 'left', id: p.id } }, true)
     }
   }
 
@@ -428,9 +442,8 @@ export function createRelay(opts: RelayOptions): Relay {
     if (p.role === 'host') {
       session.host = p
       session.cert = body.key as string
-      for (const a of session.byId.values())
-        if (a.role === 'peer') deliver(session, p, joined(a), true)
-    } else if (session.host !== undefined) deliver(session, session.host, joined(p), true)
+      for (const a of session.byId.values()) if (a.role === 'peer') deliver(p, joined(a), true)
+    } else if (session.host !== undefined) deliver(session.host, joined(p), true)
     return p
   }
 
@@ -449,15 +462,8 @@ export function createRelay(opts: RelayOptions): Relay {
           : undefined
     if (to === undefined || to === from) throw new HttpError(404, 'unknown to')
     const m = { from: from.role === 'host' ? 'host' : from.id, body: body.body }
-    // Serialized before the push: a body parsed but nested past what the
-    // runtime serializes threw in it, and that unplugged the receiver.
-    let text: string
-    try {
-      text = JSON.stringify({ messages: [m] })
-    } catch {
-      throw new HttpError(400, 'body nests too deep to pass')
-    }
-    deliver(session, to, m, false, text)
+    // A frame past MAX_DEPTH never got here, so this serializes.
+    deliver(to, m, false, JSON.stringify({ messages: [m] }))
   }
 
   const live = (key: string): Session => {
@@ -605,7 +611,7 @@ export function createRelay(opts: RelayOptions): Relay {
       // Plugged first: Bun runs the earlier socket's close handler inside
       // its close(), and that detach lost the participant (a redial on
       // the Bun relay ended its peer).
-      plug(session, p, socket)
+      plug(p, socket)
       if (earlier !== undefined && earlier !== socket) {
         try {
           closeSocket(earlier)
@@ -641,6 +647,11 @@ export function createRelay(opts: RelayOptions): Relay {
           if (k !== undefined) n = Number(k)
           throw new HttpError(413, 'body over 1 MiB')
         }
+        if (nestsTooDeep(text)) {
+          const k = /^\{"n":(\d+)[,}]/.exec(text)?.[1]
+          if (k !== undefined) n = Number(k)
+          throw new HttpError(400, `frame nests deeper than ${MAX_DEPTH}`)
+        }
         let body: {
           n?: unknown
           leave?: unknown
@@ -668,7 +679,7 @@ export function createRelay(opts: RelayOptions): Relay {
         // let go or never restored as its own left it deaf while its pings were
         // answered, and 13baaf6's host heard nothing for 8 min. Not closing the
         // other: a host may hand the same socket as another object.
-        if (socket !== undefined && p.socket !== socket) plug(session, p, socket)
+        if (socket !== undefined && p.socket !== socket) plug(p, socket)
         if (body.leave === true) drop(session, p)
         else if (body.remove !== undefined) removePeer(session, p, body.remove)
         else if (Array.isArray(body.sends)) {
@@ -833,6 +844,7 @@ async function authorize(
 }
 
 function parse(text: string): Record<string, unknown> {
+  if (nestsTooDeep(text)) throw new HttpError(400, `body nests deeper than ${MAX_DEPTH}`)
   try {
     const v: unknown = JSON.parse(text)
     if (typeof v === 'object' && v !== null && !Array.isArray(v))

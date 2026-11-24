@@ -320,19 +320,19 @@ starlight-toc a[aria-current='true']:hover {
 /* ───────────────────────────  Phones  ─────────────────────────── */
 
 @media (max-width: 40rem) {
-  /* A table never scrolls sideways on a phone: each row is a card, each
+  /* A table of 3+ columns never scrolls sideways on a phone: each row is a card, each
      value under its column's name (plugins/table-labels.ts writes it). The
      first cell heads the card. */
-  .sl-markdown-content .vx-table-scroll {
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) {
     overflow: visible;
     border: 0;
     background: none;
   }
-  .sl-markdown-content .vx-table-scroll :is(table, tbody, tr, td) {
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) :is(table, tbody, tr, td) {
     display: block;
     width: 100%;
   }
-  .sl-markdown-content .vx-table-scroll thead {
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) thead {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -340,33 +340,35 @@ starlight-toc a[aria-current='true']:hover {
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  .sl-markdown-content .vx-table-scroll tr {
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) tr {
     margin-bottom: 0.75rem;
     padding: 0.7rem 0.95rem;
     border: 1px solid var(--vx-border);
     border-radius: var(--vx-radius);
     background: color-mix(in srgb, var(--vx-surface) 45%, var(--vx-bg));
   }
-  .sl-markdown-content .vx-table-scroll tr:last-child {
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) tr:last-child {
     margin-bottom: 0;
   }
-  .sl-markdown-content .vx-table-scroll :is(tr:nth-child(even), tr:hover) td,
-  .sl-markdown-content .vx-table-scroll td {
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) :is(tr:nth-child(even), tr:hover) td,
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) td {
     padding: 0.2rem 0;
     border: 0;
     background: none;
     text-align: left;
     white-space: normal;
   }
-  .sl-markdown-content .vx-table-scroll td code {
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) td code {
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .sl-markdown-content .vx-table-scroll td:first-child {
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) td:first-child {
     padding-bottom: 0.4rem;
     font-weight: 600;
   }
-  .sl-markdown-content .vx-table-scroll td:not(:first-child)[data-label]::before {
+  .sl-markdown-content
+    .vx-table-scroll:has(th:nth-child(3))
+    td:not(:first-child)[data-label]::before {
     content: attr(data-label);
     display: block;
     font: 500 0.68rem / 1.6 var(--vx-mono);
@@ -374,7 +376,7 @@ starlight-toc a[aria-current='true']:hover {
     letter-spacing: 0.12em;
     color: var(--vx-muted);
   }
-  .sl-markdown-content .vx-table-scroll td:empty {
+  .sl-markdown-content .vx-table-scroll:has(th:nth-child(3)) td:empty {
     display: none;
   }
 

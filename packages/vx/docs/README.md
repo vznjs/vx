@@ -1,7 +1,8 @@
 # `@vzn/vx` — technical documentation
 
-vx is a task runner and content-addressed build cache for JavaScript
-monorepos, shipped as one self-contained binary. It runs your task
+vx is a task orchestrator with a content-addressed build cache, shipped
+as one self-contained binary. It is not tied to one language: JavaScript
+support comes from plugins, and any other system can hook in the same way. It runs your task
 graph in parallel, caches every result by content, and replays work it
 has already done — and it stops there: everything beyond running and
 caching is a plugin on a documented seam.
@@ -126,7 +127,7 @@ export default defineProject({
       // env is isolated, and a key that varies on a var the task
       // can't see is incoherent.
       exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
-      inputs: { files: ['src/**'], env: ['NODE_ENV'] },
+      inputs: { files: ['src/**', 'vite.config.*'], env: ['NODE_ENV'] },
       outputs: { files: ['dist/**'] },
       cache: true,
     },

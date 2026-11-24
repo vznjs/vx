@@ -318,8 +318,8 @@ describe('vx lock (e2e)', () => {
           await writeFile(
             file,
             bom +
-              `{"version":${LOCKFILE_VERSION}}\n#ttttttt\n${JSON.stringify(app.tasks.build)}\n` +
-              `app\t{"path":"packages/app","file":"vx.config.mjs"}\n\tbuild\n#ttttttt\n`,
+              `{"version":${LOCKFILE_VERSION}}\napp\t{"path":"packages/app","file":"vx.config.mjs"}\n` +
+              `#ttttttt\n${JSON.stringify(app.tasks.build)}\n\tbuild\n`,
           )
           const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
           expect(run.code).toBe(1)

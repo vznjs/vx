@@ -2,7 +2,7 @@
 // outside src/ui names a hue or writes an escape byte
 // (tests/ui-only-output.unsafe.test.ts); a component asks for a style.
 
-import { envFlagOn, type Style, type Tone } from '../util/index.js'
+import { ciProvider, type Style, type Tone } from '../util/index.js'
 
 export type { Style, Tone } from '../util/index.js'
 
@@ -79,6 +79,7 @@ const hues = new Map<string, string>()
  *   NO_COLOR non-empty → off (overrides FORCE_COLOR)
  *   FORCE_COLOR=0 or =false → off, even on a TTY
  *   FORCE_COLOR any other value → on (the empty string too)
+ *   CLICOLOR_FORCE set and not `0` → on (bixense.com/clicolors)
  *   any CI (`onCi`) → on: a CI log looks like the terminal
  *   else: on iff the stream is a TTY that is not `TERM=dumb`.
  * `0` and `false` are the convention's "off" (supports-color, chalk,
@@ -91,7 +92,7 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
     ? false
     : force !== undefined
       ? force !== '0' && force !== 'false'
-      : onCi() || (stream.isTTY === true && !dumbTerminal())
+      : clicolorForce() || onCi() || (stream.isTTY === true && !dumbTerminal())
   return {
     enabled,
     get columns() {
@@ -100,26 +101,14 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
   }
 }
 
-/**
- * The variables a CI sets, each on when non-empty and not `0`/`false`:
- * the generic `CI` most set, and the ones of CIs that set no `CI` (Azure
- * Pipelines' `TF_BUILD`, Jenkins' `JENKINS_URL`, TeamCity's
- * `TEAMCITY_VERSION`). A CI log gets the same colours as a terminal; one
- * whose viewer shows raw escapes is turned off with `NO_COLOR`.
- */
-const CI_VARS = [
-  'CI',
-  'GITHUB_ACTIONS',
-  'GITLAB_CI',
-  'BUILDKITE',
-  'CIRCLECI',
-  'TF_BUILD',
-  'JENKINS_URL',
-  'TEAMCITY_VERSION',
-] as const
+function clicolorForce(): boolean {
+  const v = process.env['CLICOLOR_FORCE']
+  return v !== undefined && v !== '' && v !== '0'
+}
 
+/** A CI log gets the same colours as a terminal; one whose viewer shows raw escapes is turned off with `NO_COLOR`. */
 function onCi(): boolean {
-  return CI_VARS.some((name) => envFlagOn(process.env[name]))
+  return ciProvider() !== null
 }
 
 /** `TERM=dumb` can neither paint nor move the cursor: vx prints to it as off a terminal. */
@@ -197,7 +186,7 @@ export function paint(style: Style, text: string, c: ColorSupport, bold = false)
 /** A meter's cells: 50, or fewer so the bar fits a narrower terminal. */
 export function barWidth(c: ColorSupport): number {
   const columns = c.columns
-  return columns === undefined ? BAR_MAX : Math.max(10, Math.min(BAR_MAX, columns - BAR_LABEL))
+  return columns === undefined ? BAR_MAX : Math.max(1, Math.min(BAR_MAX, columns - BAR_LABEL))
 }
 
 /** A rule's width: flush with the bars beside their labels. */

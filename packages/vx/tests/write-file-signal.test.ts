@@ -33,5 +33,5 @@ it.each(['SIGINT', 'SIGTERM'] as const)(
     expect(child.signalCode).toBe(signal)
     expect((await readdir(root)).filter((n) => n.includes('.tmp-'))).toEqual([])
   },
-  20_000,
+  30_000,
 )

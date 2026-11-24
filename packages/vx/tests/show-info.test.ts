@@ -140,7 +140,7 @@ describe('vx show (e2e)', () => {
   )
 
   it(
-    'no target with --format=json emits {name, dir, tags[], tasks[]} per project',
+    'no target with --format=json emits {name, dir, tags[], tasks[], defaultBuild} per project',
     async () => {
       const r = await vx(root, ['show', '--format=json'])
       expect(r.code).toBe(0)
@@ -149,6 +149,7 @@ describe('vx show (e2e)', () => {
         dir: string
         tags: string[]
         tasks: string[]
+        defaultBuild: boolean
       }[]
       const app = list.find((p) => p.name === 'app')
       expect(app).toEqual({
@@ -156,9 +157,16 @@ describe('vx show (e2e)', () => {
         dir: 'packages/app',
         tags: [],
         tasks: ['build', 'ci', 'dev', 'lint'],
+        defaultBuild: false,
       })
       const bare = list.find((p) => p.name === 'bare')
-      expect(bare).toEqual({ name: 'bare', dir: 'packages/bare', tags: [], tasks: [] })
+      expect(bare).toEqual({
+        name: 'bare',
+        dir: 'packages/bare',
+        tags: [],
+        tasks: [],
+        defaultBuild: false,
+      })
     },
     TIMEOUT,
   )
@@ -449,7 +457,8 @@ describe('vx show under a `project` plugin (e2e)', () => {
       // `(no vx config)` for a package `vx run` would happily run.
       const r = await vx(root, ['show'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('2 tasks from plugins (no vx config)')
+      // gen is the plugin's; build is the default, from no plugin.
+      expect(r.out).toContain('2 tasks, 1 from plugins, default build (no vx config)')
       expect(r.out).not.toMatch(/ {2}no vx config$/m)
       const one = await vx(root, ['show', 'one#gen'])
       expect(one.code).toBe(0)
@@ -460,10 +469,11 @@ describe('vx show under a `project` plugin (e2e)', () => {
       expect(list.map((e) => e.name)).toEqual(['one', 'two'])
       // The doctor counts through the same load, so its number is the
       // one a run would see, not the number of config files; a default
-      // build is no declared task, as `vx show` and `vx run build` say.
+      // build is no declared task, as `vx run build` says, and is named
+      // apart, so the total is `vx show`'s.
       const info = await vx(root, ['info'])
       expect(info.code).toBe(0)
-      expect(info.out).toMatch(/^  projects +2 \(2 tasks\)/m)
+      expect(info.out).toMatch(/^  projects +2 \(2 tasks, 2 default builds\)$/m)
       // The doctor names each plugin and the seams it fills, in pipeline
       // order.
       expect(info.out).toMatch(/^  plugins +2 — vx-test-packages \(discover\); gen \(project\)$/m)
@@ -866,6 +876,50 @@ describe.skipIf(process.platform !== 'linux' || !existsSync('/dev/shm'))(
   },
 )
 
+// 2026-11-24: a run refuses every sandboxed task in a workspace whose path
+// holds a backslash (Linux) or a line break, as under /dev; the doctor
+// called the sandbox available there.
+describe('vx info — a workspace path the sandbox cannot mount', () => {
+  let parent = ''
+  afterAll(async () => {
+    if (parent !== '') await rm(parent, { recursive: true, force: true })
+  })
+
+  it(
+    'calls the sandbox unavailable, and says why',
+    async () => {
+      parent = await mkdtemp(path.join(os.tmpdir(), 'vx-show-'))
+      const cases: [string, string][] = [
+        [
+          'line\nbreak',
+          "the workspace path holds a line break, which the sandbox runtime's reports cannot carry",
+        ],
+        ...(process.platform === 'linux'
+          ? ([
+              [
+                'back\\slash',
+                'the workspace path holds a backslash, which the Linux sandbox cannot resolve',
+              ],
+            ] as [string, string][])
+          : ([
+              [
+                'star*',
+                'the workspace path holds [, ], * or ?, which the macOS sandbox reads as a pattern, not a name',
+              ],
+            ] as [string, string][])),
+      ]
+      for (const [name, reason] of cases) {
+        const root = path.join(parent, name)
+        await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+        Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+        const facts = await collectInfo(root, { warn: () => {} })
+        expect(facts.sandbox).toEqual({ available: false, reason, declared: 0, untraced: null })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // Every row of the printout from literal facts: a real box shows one side of
 // each branch (a supported Bun, git present, a sandbox that starts), so the
 // other side is driven here or nowhere.
@@ -882,6 +936,7 @@ describe('vx info — the rendered rows', () => {
     workspaceRoot: '/w',
     projects: 3,
     tasks: 1,
+    defaultBuilds: 0,
     plugins: [],
     workers: { count: 4, source: 'cores', cores: 4, cpuQuota: null },
     memory: { usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: null },
@@ -902,6 +957,7 @@ describe('vx info — the rendered rows', () => {
     flakyTasks: [],
     lockfile: true,
     lockError: null,
+    workspaceError: null,
     sandbox: { available: true, reason: '', declared: 1, untraced: null },
   }
 
@@ -915,6 +971,29 @@ describe('vx info — the rendered rows', () => {
     )
     expect(row({ runs24h: 1, hits24h: 0, restored24h: 0 })).toBe(
       '  task runs (24h)   1 (0 cache hits)',
+    )
+  })
+
+  it('a refused concurrency is no worker count: a run stops on it', () => {
+    // The row read "4 — the CPU count" while `vx run` refused the variable.
+    const row = (f: Partial<InfoFacts>): string | undefined =>
+      renderInfo({ ...healthy, ...f })
+        .split('\n')
+        .find((l) => l.startsWith('  workers'))
+    expect(
+      row({
+        settings: {
+          'run.concurrency': {
+            value: 'abc',
+            source: 'env',
+            refused: 'VX_RUN_CONCURRENCY must be…',
+          },
+        },
+      }),
+    ).toBe('  workers           — (VX_RUN_CONCURRENCY is refused: a run stops there)')
+    // CONTROL: an accepted one keeps the count.
+    expect(row({ settings: { 'run.concurrency': { value: '2', source: 'env' } } })).toBe(
+      '  workers           4 — the CPU count',
     )
   })
 

@@ -64,6 +64,8 @@ export function findWorkspaceRoot(start: string, uid?: number): Promise<string>
 export function pathName(root: string, dir: string): string
 // Every directory holding a vx config, for `vx lock`; sorted by directory
 export function findProjectConfigs(root: string): Promise<ProjectConfigs>
+// The configs git lists in no locked directory, nested workspaces left out: an `--all` run refuses them
+export function configsOutsideLock(root: string, locked: ReadonlySet<string>): Promise<string[]>
 // The projects a lock records, named by the config's `name`, else by path
 export function lockedProjects(
   root: string,
@@ -155,7 +157,7 @@ checkout left it out (git asked only then)
 
 #### `findProjectConfigs(root)`
 
-`vx lock`'s walk; a run never walks. In git: `git ls-files` over the
+`vx lock`'s walk; a run never walks (an `--all` run's `configsOutsideLock` is one `git ls-files` of the names). In git: `git ls-files` over the
 config names, tracked and untracked, git's ignore rules applied, so a
 config git ignores is no project, and none under a `.vx` directory, at
 any depth, as the walk skips it (`.vx/workspace.*` still marks a nested
@@ -170,7 +172,10 @@ one, the lock failed `--check` on every other checkout. Outside git: a walk that
 as git lists `.github/actions/x`. A config at or under a nested
 `.vx/workspace.*` is that workspace's and is left out: any entry, a
 broken link or a directory too, as the root walk stops at one, but not a
-tracked one deleted from the worktree. Where a directory
+tracked one deleted from the worktree. A `discover` plugin adding a
+project at or under a nested workspace is refused by `vx lock`, naming
+the plugin: locked, it held no config, and every reader asked for the
+`vx lock` that had just run. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
 file (git lists a tracked config deleted from the worktree, skipped;
 one a sparse checkout left out, skip-worktree in the index, is
@@ -301,6 +306,7 @@ Two paths, chosen by whether this process has loaded that path before:
 ```ts
 export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 export async function loadWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig | null>
+export function stdoutToStderr(): () => void // JS routes to stdout → stderr until the release; ui.data still writes out (a core verb's --format json)
 
 // The batch form: one staged evaluation round for many configs. Every
 // config is evaluated; nothing is cached (runs read the lock). With `root`,
@@ -965,8 +971,8 @@ project:
 workspace one (rule 4 of
 `design/language-agnostic-core-2026-10.md`). Without one,
 `buildTaskGraph` refuses a `^task` (`VX_E_DEPENDS_ON`, "`<id>: ^<task>`
-needs project edges; add pnpm()/bun()/npm()/yarn() and install so its
-lockfile exists, or a plugin that returns `deps`", led on the default
+needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile
+to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns `deps`", led on the default
 build by "`<project>` declares no build, so it is the default build,
 whose"; a lockfile plugin
 whose lockfile is absent gives no edges), the default `build`'s `^build` included: every `^`
@@ -1245,6 +1251,8 @@ export interface AffectedChanges {
   configTasks?: ReadonlyMap<string, ReadonlySet<string>> // project → the tasks its config edit moved in .vx/projects.lock (not whole)
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
+/** The base side of a lockfile refusal under `--affected`: no install changes it, so name another base. */
+export const BASE_SIDE: string
 
 /** Default base when `--affected` has no value: the base branch's ref; refused on that branch. */
 export function defaultAffectedBase(
@@ -1986,35 +1994,41 @@ export function lockKey(root: string, dir: string): string
 ```
 
 On disk the lock is text, laid out for the parse first, then the size,
-then merges (2026-11-23): a header line, `{"version":9}` (with
-`nestedWorkspaces` when there is one), then each distinct task config
-once on two lines, its pointer (`#` and 7 base-36 characters) and its
-JSON (keys sorted), pointers sorted; then each project in xxh3-of-name
+then merges (2026-11-23): a header line, `{"version":10}` (with
+`nestedWorkspaces` when there is one), then each project in xxh3-of-name
 order, `<name>⇥{"path", "file" | "by", "config"}` (`file` left out for
 `vx.config.ts`, `null` for a project with neither file nor plugin;
 `config` without its tasks, left out when it held only tasks), and per
-task, in name order, a `⇥<task>` line and its pointer line. A pointer is
+task, in name order, its pointer line (`#` and 7 base-36 characters), its
+JSON (keys sorted) when no task above holds that pointer, then a
+`⇥<task>` line. A pointer is
 7 base-36 characters of the xxh3 of its JSON (salted in JSON order on a
 clash), so tasks with the same JSON share one entry and the same projects
 lock to the same text whatever lock was there (M, 2026-11-23: a pointer
 kept across `vx lock` let a clean merge hand a task another branch's
 edit). A name a tab could break, or that starts with `#`, `"` or `{`, is
 written as a JSON string (a task name: one with a tab or a leading `"`).
-This workspace's lock is 176 KB against version 8's 181 KB, read in the
+This workspace's lock is 177 KB against version 8's 181 KB, read in the
 same time. A name line seldom changes, so it sits between two branches'
 edits to neighbouring projects and git merges both; hashed order keeps two
-new projects apart. Of 1,080 two-branch merges (4, 25 and 500 projects)
-80% conflicted in version 8 and 18% here; another 10% merge cleanly to a
-pointer the pool lost (one branch dropped the last task with a JSON the
-other added), which a run refuses until `vx lock` rewrites the lock. No
+new projects apart. Version 9 kept every JSON in one pool above the
+projects, so two branches editing different projects edited neighbouring
+pool lines and conflicted (`lock-merge-conflict.test.ts`); version 10 keeps
+each JSON under its project, with its task's name line below it, so each edit
+sits between two name lines and a project added or removed beside it is
+a hunk of its own. Of 1,080 two-branch merges (4, 25 and 500 projects)
+80% conflicted in version 8 and 18% in version 9; a clean merge can still
+lose a pointer's JSON (one branch dropped or moved the task line that held
+a JSON the other kept), which a run refuses until `vx lock` rewrites the
+lock. No
 merge reads a task a branch did not write.
 
 `readLockfile` checks the shape only: the header an object of this
-`LOCKFILE_VERSION`, each pool pointer a line of 8 characters before a
-JSON line, each project line a key, a tab and a JSON object of
+`LOCKFILE_VERSION`, each project line a key, a tab and a JSON object of
 `{ path, file?, by?, config? }` (no other key; `by` only without `file`,
-`file` only with `config`), its task names in name order each before a
-pointer line, each name once, each `path` a directory
+`file` only with `config`), its task names in name order each after a
+pointer line of 8 characters (and its JSON line, if any; a pointer
+defined twice must hold the same JSON), each name once, each `path` a directory
 under the root as `lockKey` spells it (`.`, or a relative POSIX path
 with no empty, `.` or `..` segment: a run joins it onto the root, and
 `../x` ran a project outside the workspace), each task a `#id` with its
@@ -2099,18 +2113,20 @@ GitHub, which runs no merge driver. A run takes its edges from here and
 keys from those digests, after checking them against the claimant's own
 (`orchestrator/locked-digests.ts`, below).
 
-Text (2026-11-23), two lines per project keyed by its name, in
+Text (2026-11-23), three lines per project keyed by its name, in
 xxh3-of-name order:
 
 ```
-{"version":6,"files":["bun.lock"],"edges":true,"extras":{…}}
+{"version":7,"files":["bun.lock"],"edges":true,"extras":{…}}
+
 web
-	core,ui		_ty6mHZUMhA
+core,ui		_ty6mHZUMhA
+
 core
-			_ty6mHZUMhA
+		_ty6mHZUMhA
 ```
 
-The name, then `⇥deps⇥reach⇥digests`, each list comma-separated, the
+An empty line, the name, then `deps⇥reach⇥digests`, each list comma-separated, the
 digests in `files` order, empty trailing fields dropped. A list with an
 element a comma, tab or newline could break, or that starts with `[`, is
 a JSON array; a name a tab could break, or that starts with `"` or `{`,
@@ -2118,9 +2134,13 @@ a JSON string. A sixteen-hex-digit digest is its 8 bytes in base64url,
 any other is `=` and the string. A parse finds each name at once and
 decodes a project's fields only when asked: 2,016 projects in about
 1.6 ms for all, from 104 KB (version 5, a line per project: the same
-time, 102 KB). The name line sits between two branches' edits to
-neighbouring projects, so git merges both: of 1,320 two-branch merges
-51% conflicted in version 5, 14% here. Every list is sorted, so the same
+time, 102 KB). Each fields line sits between its name line and the next empty line,
+which seldom change, so git merges edits to neighbouring projects: of
+1,320 two-branch merges 51% conflicted in version 5, 14% in version 6.
+Version 7 adds the empty line, so a project added or removed beside an
+edit merges too (version 6 conflicted there,
+`vx-lockfile/tests/dependencies-lock-merge.test.ts`); it costs the byte
+the fields line's leading tab did. Every list is sorted, so the same
 workspace writes the same bytes. A broken line (an edge to no project, a
 bad digest) refuses when read, "invalid, run `vx lock`", never a raw
 TypeError at a lookup; a name twice, a name with no fields' line, or a

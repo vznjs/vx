@@ -111,6 +111,12 @@ describe('a run', () => {
       const tasks = lock.projects['packages/a']!.config!.tasks!
       tasks['b'] = tasks['a']!
       await writeLockfile(root, lock)
+      // The config says it too: a run evaluates a config with no stamp beside
+      // the lock, and refuses one that differs from it.
+      await writeFile(
+        path.join(root, 'packages', 'a', 'vx.config.mjs'),
+        `export default { tasks: { a: ${task(['dist/**'])}, b: ${task(['dist/**'])} } }\n`,
+      )
       // One run each: run together, the two raced on dist/o, and a's save
       // saw b's clean (`changed while it was saved`), which is no rule's.
       for (const t of ['a', 'b']) {

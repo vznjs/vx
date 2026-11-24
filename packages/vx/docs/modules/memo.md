@@ -298,44 +298,64 @@ export class IndexRemoteHits implements RemoteHits {}
 ### Purpose
 
 `vx lock` and a passing `vx lock --check` stamp each config file (size,
-mtime, xxh3 of its bytes) before evaluating it, and keep the stamps with
-the lock's digest in the cache dir's `config-stamps.json`. A run reads its
-configs from the lock, so `configsEditedSinceLock` names the in-scope
-config files whose bytes moved since: the run refuses them with "run
-`vx lock`". Asked only while the lock's bytes are the stamped ones and the
-stamps are this workspace's (a pull, a clone or a cache dir another
-checkout shares asks nothing). Once HEAD moved since the stamp, a config
-whose bytes are HEAD's blob came with the commit (a comment-only edit a
-pull brings keeps the lock's bytes) and is not refused: CI's
-`vx lock --check` judges a commit. Read once per version of the file. The stat match only ever skips the read; a
-refusal is decided by the file's bytes now, never by a memo (rule 9).
+mtime, xxh3 of its bytes, ctime, inode) before evaluating it, and keep the stamps with
+the lock's digest in the cache dir's `config-stamps.json`, one entry per
+workspace and lock, the last 8 used. A run reads its configs from the lock,
+so `stampsBesideLock(…).edited` names the in-scope config files whose bytes
+moved since, or that the entry lacks: the run refuses them with "run
+`vx lock`". A lock with no entry (a pull, a clone, a branch another
+`vx lock` left) returns undefined, and the run evaluates every config and
+every `project` plugin's mapping once, as `vx lock --check` does (the lock
+holds what the stage left: the bare config differed, and a fresh clone
+refused what the check passed); `restampConfigs` stamps those that match,
+with the files each mapping read, into a cache dir that
+exists only (a plan makes none). The config stamps are taken before the
+evaluation: one edited during it was stamped as the lock holds. The one entry held only the last lock's stamps, so after `vx lock`
+on a branch an unlocked edit on main ran the locked config, green. A commit since changes nothing: a config
+edit committed with no `vx lock` is refused, and so is a pulled one whose
+commit kept the lock. Read once per version of the file. The stat match only ever skips the read, and
+it holds ctime and the inode as the file-hash memo does: size and mtime alone
+skipped a same-length edit whose mtime was set back, and the run used the locked
+config. A stamp without them reads the bytes. A config `edited` names is
+evaluated before the refusal (`orchestrator/projects.ts`): one that evaluates as
+the lock holds runs, and `restampConfigs` stamps it again. The stamp held the
+last `vx lock`'s bytes, so a config restored with its lock (`git checkout`) was
+refused while `vx lock --check` passed. A refusal is decided by the file's
+bytes now, never by a memo (rule 9).
 
 ### Public surface
 
 ```ts
 export interface ConfigStamps {
   at: number // epoch ms before the first stat: the racy window runs from here
-  configs: Record<string, [number, number, string]>
-  head: string | null // the commit HEAD named when taken; null outside git
+  configs: Record<string, [number, number, string, number?, number?]> // size, mtime, xxh3, ctime, inode
+  reads?: Record<string, string[]> // the files a `project` plugin made each project's config from, by dir
 }
 export const CONFIG_STAMPS_FILE = 'config-stamps.json' // a cache clear deletes it
-export function takeConfigStamps(
-  root: string,
-  files: readonly string[],
-  head: string | null,
-): Promise<ConfigStamps>
+export function takeConfigStamps(root: string, files: readonly string[]): Promise<ConfigStamps>
 export function writeConfigStamps(
   root: string,
   cacheDir: string,
   stamps: ConfigStamps,
 ): Promise<void>
-export function configsEditedSinceLock(
+// The stamps beside the lock `lock`, one stat a load: undefined when none were taken here
+export interface LockStamps {
+  reads: Record<string, string[]> // the files a `project` plugin made each project's config from, by dir
+  present: (rel: string) => boolean // whether `rel` was there when `vx lock` ran
+  edited: (files: readonly ConfigStat[]) => Promise<string[]> // ConfigStat: { file, size, mtimeMs, ctimeMs, ino }
+}
+export function stampsBesideLock(
   root: string,
   cacheDir: string,
-  lock: string | undefined,
-  files: readonly { file: string; size: number; mtimeMs: number }[],
-  head: () => string | null,
-): Promise<string[]>
+  lock: string,
+): Promise<LockStamps | undefined>
+// Keep `taken` (taken before the evaluation) beside the stamps of lock `lock`: a run found them to evaluate as the lock holds
+export function restampConfigs(
+  root: string,
+  cacheDir: string,
+  lock: string,
+  taken: ConfigStamps,
+): Promise<void>
 ```
 
 ## `src/memo/lockfile-memo.ts` — a lockfile claimant's parse

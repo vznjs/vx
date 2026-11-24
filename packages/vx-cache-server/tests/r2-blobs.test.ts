@@ -84,3 +84,36 @@ it('makes no copy of a download the client left, and says how long it ran', asyn
   expect(said).toHaveLength(1)
   expect(said[0]).toMatch(/^vx-cache-server: a\/b\/c\/d \(3 bytes\) ended after \d+ ms: /)
 })
+
+// The S3 read guards a length it is not told (Number(null) is 0, and a
+// client held to vx-size 0 read every hit as a miss); the data center's
+// copy did not. One naming no length is skipped for R2's (2026-11-24).
+it("reads R2 when the data center's copy names no length", async () => {
+  const bytes = new TextEncoder().encode('artifact bytes')
+  const bucket: R2Bucket = {
+    put: async () => undefined,
+    head: async () => ({ size: bytes.byteLength, uploaded: new Date() }),
+    get: async () => ({
+      body: new Blob([bytes]).stream(),
+      size: bytes.byteLength,
+      uploaded: new Date(),
+    }),
+  }
+  const unsized = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(bytes)
+      c.close()
+    },
+  })
+  const cache = {
+    match: async () => new Response(unsized),
+    put: async () => undefined,
+    delete: async () => false,
+  }
+  const later: Promise<unknown>[] = []
+  const blobs = r2Blobs(bucket, Promise.resolve(cache), { waitUntil: (p) => void later.push(p) })
+  const got = await blobs.get('a/b/c/d')
+  expect(got?.size).toBe(bytes.byteLength)
+  expect(await new Response(got!.body).text()).toBe('artifact bytes')
+  await Promise.all(later)
+})

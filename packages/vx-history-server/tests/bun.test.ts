@@ -1,6 +1,7 @@
 // The Bun server: one SQLite file.
 
-import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { afterAll, beforeAll, expect, it, spyOn } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -532,6 +533,42 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
   ])
 })
 
+// A file another tool made, with a `timings` table of its own, started the
+// server; the first upload failed 500, after init had added a column to it.
+it('refuses a --db whose tables are not its own, and leaves them as they were', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'vx-history-foreign-'))
+  try {
+    const file = path.join(dir, 'other.sqlite')
+    const other = new Database(file, { create: true })
+    other.run('CREATE TABLE timings (task TEXT, ms INTEGER)')
+    other.close()
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', file],
+      {
+        env: {
+          ...process.env,
+          ALLOW: `${GITHUB}:${REPO}:ci.yml`,
+          AUDIENCE: 'https://h.example.com',
+        },
+        stderr: 'pipe',
+        timeout: 10_000,
+      },
+    )
+    expect([cli.exitCode, stderrOf(cli).split('\n')[0]]).toEqual([
+      2,
+      `--db ${file}: its table timings is not this server's: it has no column issuer, repository, ref, hash, duration_ms, cores, rss_bytes, runs, updated_at`,
+    ])
+    const after = new Database(file, { readonly: true })
+    expect(after.query('SELECT name FROM pragma_table_info(?1)').all('timings')).toEqual([
+      { name: 'task' },
+      { name: 'ms' },
+    ])
+    after.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}, 30_000)
+
 it('refuses an empty --port: Number of it is 0, a random port', () => {
   const cli = Bun.spawnSync(
     ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '', '--db', ':memory:'],
@@ -625,4 +662,98 @@ it('gives a table made before slow_ms the column, its rows read slow as their du
     durationMs: 790,
     slowMs: 1000,
   })
+})
+
+const PLACEHOLDER: Record<string, string> = {
+  ALLOW: 'https://token.actions.githubusercontent.com:acme/app:ci.yml',
+}
+
+// A user starts the image as its Dockerfile's header or the README shows:
+// the header's run set no AUDIENCE, which the server refuses to start
+// without, so it exited at once with a usage.
+it('starts with the variables each docker run the Dockerfile and README show sets', async () => {
+  const runs = await Promise.all(
+    ['Dockerfile', 'README.md'].map(async (f) => {
+      const text = await Bun.file(`${import.meta.dir}/../${f}`).text()
+      // A run continued over lines (`\` at a line's end) is one run.
+      const run = /docker run [^\n]*/.exec(text.replace(/^# {0,3}/gm, '').replace(/\\\n/g, ' '))
+      expect(run, f).not.toBeNull()
+      return Object.fromEntries(
+        [...run![0].matchAll(/-e ([A-Z_0-9]+)=('[^']*'|\S*)/g)].map((m) => [
+          m[1]!,
+          // A placeholder (…) stands for the user's own value.
+          m[2]!.replace(/^'|'$/g, '').replace('…', PLACEHOLDER[m[1]!] ?? 'x'),
+        ]),
+      )
+    }),
+  )
+  const said = async (env: Record<string, string>, i: number) => {
+    const proc = Bun.spawn(
+      [
+        process.execPath,
+        `${import.meta.dir}/../src/bun.ts`,
+        '--port',
+        '0',
+        '--host',
+        '127.0.0.1',
+        '--db',
+        path.join(dir, `docker-run-${i}.sqlite`),
+      ],
+      { env: { PATH: process.env['PATH'] ?? '', ...env }, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const reader = proc.stdout.getReader()
+    const { value } = await reader.read()
+    proc.kill()
+    await proc.exited
+    return (
+      Bun.stripANSI(new TextDecoder().decode(value)).split(' listening')[0]! ||
+      (await new Response(proc.stderr).text())
+    )
+  }
+  expect(await Promise.all(runs.map(said))).toEqual(runs.map(() => '✓ vx-history-server '))
+}, 30_000)
+
+// bun:sqlite waits for a lock on the server's one thread: while another
+// process held the file (a second node, a sqlite3 shell), each upload
+// stalled every request, reads too, for the 5 s busy timeout, past half a
+// client's 10 s deadline. A lock held longer than a fold takes fails the
+// upload soon, and the reads go on.
+it('fails an upload soon while another process holds the database, and goes on reading', async () => {
+  const file = path.join(dir, 'locked.sqlite')
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(file)),
+    authorize: oidcTokenAuth({ allow: allowOf(), fetchJson: iss.fetchJson }),
+  })
+  const ask = async (route: string, body: unknown) =>
+    handle(
+      new Request(`http://x.test/v1/timings/${route}`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${await iss.sign('main', 'http://x.test')}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }),
+    )
+  expect((await ask('upload', { timings: [{ hash: 'a', durationMs: 5 }] })).status).toBe(204)
+  const other = new Database(file)
+  other.run('BEGIN IMMEDIATE')
+  other.run('DELETE FROM sweeps')
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const t = performance.now()
+    const upload = await ask('upload', { timings: [{ hash: 'a', durationMs: 50 }] })
+    const took = performance.now() - t
+    const query = await ask('query', {
+      issuer: GITHUB,
+      repository: REPO,
+      refs: ['refs/heads/main'],
+      hashes: ['a'],
+    })
+    expect([upload.status, took < 2_500, query.status]).toEqual([500, true, 200])
+  } finally {
+    logged.mockRestore()
+    other.run('ROLLBACK')
+    other.close()
+  }
 })

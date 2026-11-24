@@ -42,7 +42,7 @@ export {
 } from './cache.js'
 export { historyRetentionMs } from './prune.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'
-export { behindLink, filesBehind } from './linked-inputs.js'
+export { behindLink, filesBehind, setLinkBounds } from './linked-inputs.js'
 export {
   addedInput,
   type InputListing,

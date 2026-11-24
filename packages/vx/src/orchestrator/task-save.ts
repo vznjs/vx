@@ -148,8 +148,8 @@ export async function applySave(
       return { saved: (await landed).saved === true }
     }
     case 'count':
-      // Nothing reads after it, so nothing to mark: only its row's `outputs`.
-      if (ran.exitCode !== 0) return { saved: false }
+      // Nothing reads after it, so nothing to mark: only its row's `outputs`,
+      // failed or not, as a failed task with a dependant marks them.
       return {
         saved: false,
         unsavedBytes: await unsavedOutputBytes({

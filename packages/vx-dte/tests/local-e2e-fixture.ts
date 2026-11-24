@@ -3,7 +3,7 @@
 // adapter's loopback relay. Its tests are split over two files, each a
 // task of its own, so neither is the run's longest.
 
-import { readdirSync, readFileSync, readlinkSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -82,11 +82,13 @@ export default { name: 'b', tasks: {
   },
   slow: { exec: { command: 'touch started && sleep 60' } },
   // Fails its first attempt and passes its retry, saying where each ran.
+  // The attempt fails once \`beside\` runs, so a second worker is there:
+  // one failing first, on a loaded machine, was retried where it failed.
   flake: { exec: {
-    command: 'pwd >> ' + ${JSON.stringify(path.join(root, 'flake.log'))} + ' && if [ ! -e ' + ${JSON.stringify(path.join(root, 'flaked'))} + ' ]; then touch ' + ${JSON.stringify(path.join(root, 'flaked'))} + '; sleep 1; exit 1; fi',
+    command: 'pwd >> ' + ${JSON.stringify(path.join(root, 'flake.log'))} + ' && if [ ! -e ' + ${JSON.stringify(path.join(root, 'flaked'))} + ' ]; then touch ' + ${JSON.stringify(path.join(root, 'flaked'))} + '; i=0; while [ ! -e ' + ${JSON.stringify(path.join(root, 'beside.started'))} + ' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done; exit 1; fi',
     retries: 1,
   } },
-  beside: { exec: { command: 'sleep 3' } },
+  beside: { exec: { command: 'touch ' + ${JSON.stringify(path.join(root, 'beside.started'))} + ' && sleep 3' } },
   once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
   env: { exec: {
     command: 'echo "shown=\${VX_E2E_SHOWN:-none} hidden=\${VX_E2E_HIDDEN:-none}"',
@@ -116,8 +118,10 @@ export default { name: 's', tasks: {
   after: { dependsOn: ['user'], exec: { command: gone } },
   // A server that keeps a core busy only while a dependant asks it (the
   // file busy), and a dependant that uses none of its own.
-  hot: { exec: { command: 'echo up && exec sh -c "while :; do [ -e busy ] || sleep 0.05; done"', persistent: { readyWhen: 'up' } } },
-  calm: { dependsOn: ['hot'], exec: { command: 'touch busy && sleep 4 && rm busy' } },
+  // The dependant holds it busy until it has burned 4 s of CPU, read off
+  // /proc: a 4 s wall on a loaded machine gave it too little to charge.
+  hot: { exec: { command: 'echo $$ > hot.pid && echo up && exec sh -c "while :; do [ -e busy ] || sleep 0.05; done"', persistent: { readyWhen: 'up' } } },
+  calm: { dependsOn: ['hot'], exec: { command: 'touch busy; p=$(cat hot.pid); c=$(($(getconf CLK_TCK) * 4)); n=0; while [ $n -lt 400 ] && read -r _ _ _ _ _ _ _ _ _ _ _ _ _ u s _ < /proc/$p/stat && [ $((u + s)) -lt $c ]; do sleep 0.1; n=$((n + 1)); done; rm busy' } },
 } }
 `,
     // Keys that fold a runtime probe: one every machine answers alike, one
@@ -201,7 +205,12 @@ export default { name: 'c', tasks: {
 }
 
 export async function teardown(): Promise<void> {
-  await rm(root, { recursive: true, force: true })
+  // A worker still ending writes under it while it goes, and the removal
+  // reports success with the tree still there: one root left per test.
+  for (let i = 0; i < 100 && existsSync(root); i++) {
+    await rm(root, { recursive: true, force: true }).catch(() => {})
+    if (existsSync(root)) await Bun.sleep(50)
+  }
 }
 
 /** `vx`, a distributed run when `run` names one; its id is a fresh UUID. */

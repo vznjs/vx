@@ -29,10 +29,17 @@ export function hookStarted(plugin: string, hook: string): () => void {
   return () => void pendingHooks.delete(entry)
 }
 
-/** Each hook still awaited, once: `plugin 'p' never settled its h hook`. */
+/**
+ * Each hook still awaited, once: `plugin 'p' never settled its h hook`, or
+ * `its command 'v'` for a plugin verb.
+ */
 export function unsettledHooks(): string[] {
   return [
-    ...new Set([...pendingHooks].map(([p, h]) => `plugin '${p}' never settled its ${h} hook`)),
+    ...new Set(
+      [...pendingHooks].map(
+        ([p, h]) => `plugin '${p}' never settled its ${h.startsWith('command ') ? h : `${h} hook`}`,
+      ),
+    ),
   ]
 }
 

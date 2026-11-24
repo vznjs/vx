@@ -275,6 +275,8 @@ it('keeps a workflow its owner changed unless --force, and says when it is up to
   expect(await readFile(path.join(root, WORKFLOW), 'utf8')).toBe('mine\n')
   expect(printed.join('')).toContain('── .github/workflows/vx-worker.yml ──\n')
   expect(await init({ workers: sizes, adapter: github() }, '--force')).toBe(0)
+  // Its header names the rewrite a size change needs: a plain init refuses it.
+  expect(await readFile(path.join(root, WORKFLOW), 'utf8')).toContain('run vx dte init --force')
   printed = []
   expect(await init({ workers: sizes, adapter: github() })).toBe(0)
   expect(printed.join('')).toContain('vx dte init: .github/workflows/vx-worker.yml is up to date')
@@ -527,12 +529,21 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { cpu: 2
       args,
       0,
       'Usage: vx dte worker | vx dte init [--dry] [--force]\n\n' +
-        "  vx dte init      Write the CI that spreads one vx run over this workspace's workers.\n" +
+        "  vx dte init      Write the CI that spreads one vx run over this workspace's\n" +
+        '                   workers.\n' +
         '      --dry        Print the files instead of writing them.\n' +
         '      --force      Overwrite files that exist.\n' +
-        '  vx dte worker    Join the run VX_DTE_RUN names, over VX_DTE_RELAY or dte({ relay }),\n' +
-        '                   and run the tasks it is handed. A CI job runs it after install.\n',
+        '  vx dte worker    Join the run VX_DTE_RUN names, over VX_DTE_RELAY or\n' +
+        '                   dte({ relay }), and run the tasks it is handed. A CI job runs\n' +
+        '                   it after install.\n',
     ])
+    // Core help is written at 80 columns; this ran to 86.
+    expect(
+      r.stdout
+        .toString()
+        .split('\n')
+        .filter((l) => l.length > 80),
+    ).toEqual([])
   }
 })
 
@@ -659,7 +670,7 @@ export default { plugins: [dte({ workers: { linux: { machines: { small: { cpu: 2
     said({}),
     said({ VX_DTE_RUN: crypto.randomUUID() }),
     said({ VX_DTE_RELAY: 'http://127.0.0.1:9' }),
-    // Empty is unset, as for VX_DTE_RUN, VX_DTE_SECRET and VX_DTE_WORKER.
+    // Empty is unset, as for VX_DTE_SECRET and VX_DTE_WORKER.
     said({ VX_DTE_RUN: crypto.randomUUID(), VX_DTE_RELAY: '' }),
   ]).toEqual([
     '✗ vx dte worker  needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',

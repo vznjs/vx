@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["dry", "source", "files", "kept", "replaced", "todos", "notes", "next"],
   "properties": {
-    "dry": { "const": true },
+    "dry": { "const": true, "description": "always true: the plan is printed only with --dry" },
     "source": {
       "type": "string",
       "description": "what the plan maps: package.json scripts, turbo.json, nx graph, lerna.json …"
@@ -18,7 +18,10 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["path", "contents"],
-        "properties": { "path": { "type": "string" }, "contents": { "type": "string" } }
+        "properties": {
+          "path": { "type": "string", "description": "root-relative, POSIX separators" },
+          "contents": { "type": "string", "description": "the file's whole text" }
+        }
       }
     },
     "kept": {
@@ -39,7 +42,7 @@
         "additionalProperties": false,
         "required": ["reason", "tasks"],
         "properties": {
-          "reason": { "type": "string" },
+          "reason": { "type": "string", "description": "what the mapping could not settle" },
           "tasks": { "type": "array", "items": { "type": "string" }, "description": "project#task" }
         }
       }

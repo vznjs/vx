@@ -161,7 +161,7 @@ saying what to fix:
 ```
 
 A JSON body without `Content-Type: application/json` is `400`; an unknown
-route `404`; a route's wrong method `405` with `Allow`; a bucket that
+route `404`; a route's wrong method `405` with `Allow`; `HEAD` on a `GET` route answers as `GET`, with no body; a bucket that
 cannot be read or written `502` (an upload whose client left before
 its body ended is `400`, and logs nothing), and a failure the server
 did not expect `500`, each `message` what failed. Turbo's `teamId`

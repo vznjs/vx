@@ -241,12 +241,12 @@ describe('discover stage', () => {
     [
       'a padded name',
       () => [{ dir: 'tools/gen', name: ' gen' }],
-      '" gen": the name has surrounding whitespace',
+      '" gen" at tools/gen: the name has surrounding whitespace',
     ],
     [
       'a name with "#"',
       () => [{ dir: 'tools/gen', name: 'g#en' }],
-      '"g#en": the name holds "#" — vx addresses a task as <name>#<task>',
+      '"g#en" at tools/gen: the name holds "#" — vx addresses a task as <name>#<task>',
     ],
     [
       'the root\'s name "//" away from the root',

@@ -326,10 +326,17 @@ export async function pinArtifact(
 }
 
 function pastCeiling(ix: StoreIndex, size: number): Error {
+  const [packed, ceiling] = sizesPast(size, ix.artifactCeiling)
   return new Error(
-    `not sent to a remote: its outputs pack to ${formatBytes(size)}, past the ` +
-      `${formatBytes(ix.artifactCeiling)} cache.artifactCeiling a remote hit enforces; this machine keeps it`,
+    `not sent to a remote: its outputs pack to ${packed}, past the ` +
+      `${ceiling} cache.artifactCeiling a remote hit enforces; this machine keeps it`,
   )
+}
+
+/** A size and the ceiling it passed; in bytes too where they print alike (`1.0 GB, past the 1.0 GB`). */
+function sizesPast(size: number, ceiling: number): [string, string] {
+  const [a, b] = [formatBytes(size), formatBytes(ceiling)]
+  return a === b ? [`${a} (${size} bytes)`, `${b} (${ceiling} bytes)`] : [a, b]
 }
 
 export async function ingest(
@@ -440,6 +447,8 @@ export async function packSavedBytes(ix: StoreIndex, args: PackArgs): Promise<Ui
   try {
     // `stdout` is always present, even empty, so the layout is predictable.
     const plan = await planWithin(ix, args)
+    // No local entry to count them from: the row's `outputs` said `—`.
+    ix.savedBytes.set(args.hash, plan.held?.reduce((n, h) => n + h.size, 0) ?? 0)
     if (plan.size <= STREAM_DECODE_FROM) return await zstdCompress(await packArtifactBytes(plan))
     return await bytesOf(packArtifactStream(plan).pipeThrough(zstdEncoder()))
   } catch (err) {
@@ -472,17 +481,18 @@ function unreadableOutput(err: unknown, args: PackArgs): unknown {
  * and called the task's own outputs corrupt.
  */
 async function planWithin(ix: StoreIndex, args: PackArgs): Promise<ArtifactPlan> {
-  const plan = await planOutputs(ix, args)
+  const plan = await planOutputs(args)
   if (plan.size > ix.artifactCeiling) {
+    const [packed, ceiling] = sizesPast(plan.size, ix.artifactCeiling)
     throw new Error(
-      `${args.entry.taskId} is not cached: its outputs pack to ${formatBytes(plan.size)}, past the ` +
-        `${formatBytes(ix.artifactCeiling)} cache.artifactCeiling a restore enforces — narrow outputs.files or raise it`,
+      `${args.entry.taskId} is not cached: its outputs pack to ${packed}, past the ` +
+        `${ceiling} cache.artifactCeiling a restore enforces — narrow outputs.files or raise it`,
     )
   }
   return plan
 }
 
-export function planOutputs(ix: StoreIndex, args: PackArgs): Promise<ArtifactPlan> {
+export function planOutputs(args: PackArgs): Promise<ArtifactPlan> {
   return planArtifact({
     key: args.hash,
     stdout: args.entry.stdout ?? '',
@@ -547,7 +557,7 @@ async function packForSave(
   // No ceiling: a tree is this machine's own files, never decoded. The
   // ceiling bounds what a remote makes a hit write, so an upload meets it
   // (`pinArtifact`); a 2.1 GB Next.js standalone build was never cached.
-  const plan = await planOutputs(ix, args)
+  const plan = await planOutputs(args)
   if (ix.store.embeddings > 0 && plan.size <= ix.store.embeddings) {
     const tar = await packArtifactBytes(plan)
     return { compressed: await zstdCompress(tar), tar }

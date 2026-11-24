@@ -1930,6 +1930,27 @@ describe('plugin-host, called directly', () => {
     ).toBeNull()
   })
 
+  // A hook that cleared the graph left the run saying "no tasks to run",
+  // naming nothing: the user looked for a typo in the task name.
+  it("a graph hook that removes every task of a run's graph is named", async () => {
+    const graph = nodes()
+    const passer = testPlugin('org/pass', { graph: () => {} })
+    const clearer = testPlugin('org/clear', { graph: (g) => g.clear() })
+    expect(
+      await applyGraphHooks([clearer, passer], graph, {} as never, undefined, undefined, true).then(
+        () => 'ok',
+        (e: Error) => e.message,
+      ),
+    ).toBe("plugin 'org/clear' failed in graph: it removed every task, so nothing is left to run")
+    // CONTROL: the lock's graph may be cleared.
+    expect(
+      await applyGraphHooks([clearer], nodes(), {} as never).then(
+        () => 'ok',
+        (e: Error) => e.message,
+      ),
+    ).toBe('ok')
+  })
+
   it('three parts named alike are numbered #2 and #3, in value order', async () => {
     const twin = (v: string): VxPlugin => testPlugin('org/twin', { key: () => ({ v }) })
     const graph = nodes()

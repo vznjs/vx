@@ -291,6 +291,15 @@ export function conformance(name: string, target: Target): void {
         maxQueryRefs: 8,
       })
       expect((await call('/v1/capabilities', {}, null)).status).toBe(401)
+      // HEAD is GET without the body, as HTTP has it: a 405 refused it.
+      const head = await call('/v1/capabilities', { method: 'HEAD' })
+      expect([
+        head.status,
+        head.headers.get('content-type')?.split(';')[0],
+        await head.text(),
+      ]).toEqual([200, 'application/json', ''])
+      const put = await call('/v1/capabilities', { method: 'PUT' })
+      expect([put.status, put.headers.get('allow')]).toEqual([405, 'GET, HEAD'])
       const get = await call('/v1/timings/query')
       expect([get.status, get.headers.get('allow'), await get.json()]).toEqual([
         405,

@@ -159,6 +159,8 @@ export const moon: Adapter = {
   pkg: '@moonrepo/cli',
   bins: [],
   lacks: {
+    'folder-output':
+      'moon’s `outputs` take files and folders alike; its docs give a trailing slash no meaning of its own, so `dist/` is not declared a folder.',
     'idle-timeout': 'moon has no limit on how long a task may print nothing.',
     'output-checksum': 'moon has no way to pin an output’s bytes to a checksum.',
     'determinism-check': 'No moon run rebuilds a cached task to compare its bytes.',

@@ -530,6 +530,31 @@ export function directVersions(
   return out
 }
 
+/**
+ * Each workspace's direct dependencies that resolve to one `patch:` entry:
+ * workspace dir → name → that entry's locator. A pull that adds a patch
+ * leaves the unpatched copy installed where Yarn installs the patched one,
+ * at the same version, and the lockfile lists both entries.
+ */
+export function directPatches(
+  lock: Lockfile,
+  catalogs: Catalogs,
+): ReadonlyMap<string, ReadonlyMap<string, string>> {
+  const out = new Map<string, Map<string, string>>()
+  for (const [dir, id] of lock.workspaces) {
+    const deps = new Map<string, string>()
+    for (const [name, range] of lock.entries.get(id)!.installed) {
+      const targets = resolveDescriptor(lock, id, name, range, catalogs)
+      if (targets.length !== 1) continue
+      const e = lock.entries.get(targets[0]!)!
+      const locator = e.resolution.slice(0, e.resolution.indexOf('\0'))
+      if (/^.[^@]*@patch:/.test(locator)) deps.set(name, locator)
+    }
+    out.set(dir, deps)
+  }
+  return out
+}
+
 /** `.yarnrc.yml`'s catalogs: name (`''` for `catalog`) → package → range. */
 export type Catalogs = ReadonlyMap<string, ReadonlyMap<string, string>>
 

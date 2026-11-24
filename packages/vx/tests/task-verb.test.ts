@@ -213,7 +213,7 @@ describe('a task typed as a verb', () => {
     try {
       const dir = await addProject(empty, 'a', `export default { tasks: {} }`)
       const said = noticed(
-        'vx run: no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`\n',
+        'vx run: no tasks declared in any project. Declare one under `tasks` in a vx.config, then run `vx lock`; or run `bunx @vzn/vx-migrate` to make them from package.json scripts\n',
       )
       for (const cwd of [empty, dir])
         for (const args of [['run'], ['run', '--all']]) expect(vx(cwd, ...args)).toEqual([1, said])

@@ -5,7 +5,7 @@
   "description": "Code vx's servers and plugins share, never core: first, the CI OIDC token check.",
   "keywords": [
     "vx",
-    "monorepo",
+    "task-orchestrator",
     "oidc",
     "ci"
   ],

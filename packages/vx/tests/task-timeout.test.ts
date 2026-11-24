@@ -82,6 +82,10 @@ describe('task timeout — precedence', () => {
       expect(r.ok).toBe(false)
       expect(r.outcomes[0]!.status).toBe('failed')
       expect(fixture.err.join('')).toContain('timed out after 250ms')
+      // It said how long, not whose limit or how to raise it.
+      expect(fixture.err.join('')).toContain(
+        "the run's timeout (--timeout, VX_RUN_TIMEOUT or run.timeout); raise it, or set the task's exec.timeout",
+      )
     },
     TIMEOUT,
   )
@@ -143,6 +147,7 @@ describe('task timeout — precedence', () => {
       expect(r.ok).toBe(false)
       // The per-task 250ms fired, not any of the 30s defaults.
       expect(fixture.err.join('')).toContain('timed out after 250ms')
+      expect(fixture.err.join('')).toContain("the task's exec.timeout; raise it to give it longer")
     },
     TIMEOUT,
   )
@@ -384,7 +389,7 @@ describe('task timeout — classification + escalation', () => {
       // And the line names the signal that did it: it said SIGTERM over an
       // exit 137 (item 1063). signal-death.test.ts holds the SIGTERM case.
       expect(fixture.err.join('')).toContain(
-        '[vx] timed out after 1000ms — killed (SIGKILL after the SIGTERM grace)',
+        "[vx] timed out after 1000ms — killed (SIGKILL after the SIGTERM grace); the task's exec.timeout; raise it to give it longer",
       )
     },
     TIMEOUT,
@@ -409,7 +414,7 @@ describe('task timeout — classification + escalation', () => {
       })
       expect(r.outcomes[0]!.status).toBe('failed')
       expect(fixture.err.join('').match(/\[vx\] timed out .*/g)).toEqual([
-        '[vx] timed out after 1000ms — killed (SIGKILL after the SIGTERM grace)',
+        "[vx] timed out after 1000ms — killed (SIGKILL after the SIGTERM grace); the task's exec.timeout; raise it to give it longer",
       ])
     },
     TIMEOUT,

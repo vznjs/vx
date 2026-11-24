@@ -52,7 +52,11 @@ export function parsePs(text: string): Ps {
     if (ms === undefined) continue
     // macOS prints the path it ran; Linux a name, a kernel thread's with a
     // slash in it (`kworker/0:1`).
-    const name = /^[./]/.test(m[4]!) ? m[4]!.split('/').pop()! : m[4]!
+    // A kworker's name ends in the work queue it serves now
+    // (`kworker/0:1-events`): the thread is the name.
+    const name = /^[./]/.test(m[4]!)
+      ? m[4]!.split('/').pop()!
+      : m[4]!.replace(/^(kworker\/[^-\s]+)-.*$/, '$1')
     table.set(Number(m[1]), { name, ms })
     parents.set(Number(m[1]), Number(m[2]))
   }

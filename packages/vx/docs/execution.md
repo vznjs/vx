@@ -480,8 +480,9 @@ wire forwarders attach beside it). What renders:
   output raw and live and silences successful dependencies; BROAD
   (`--all` / `--filter` / `--affected`) prints news only — one grid
   one-liner per executed task, failure frames replayed at run end,
-  silence for cache hits; truthy `CI` env (and the programmatic
-  default) keeps full grouped output. `--output-logs` overrides
+  silence for cache hits; on CI (any CI variable on, `CI`,
+  `GITHUB_ACTIONS`, `JENKINS_URL`…) only failed tasks print, and the
+  programmatic default keeps full grouped output. `--output-logs` overrides
   everything. Full table in [`cli.md`](./cli.md#output).
 - **The task grid.** Reported task lines share one column grid:
   `<status> <cache> <±usual> <time> <cpu> <mem> <outputs> <blocks>
@@ -594,7 +595,9 @@ waited for: the task is saved with its outputs as they stood at exit,
 and a hit replays that. Such a process would equally be a shared daemon
 the task started for the next build (sccache, Gradle's, Bazel's server),
 so a task that ends on its own leaves it running, and so does one that
-timed out, as the run goes on and another task may be using it. A task
+timed out, as the run goes on and another task may be using it. A shell
+killed by a signal it did not get from vx (`kill -9`, a crash) takes its
+process group with it at once, SIGKILLed (`tests/dead-shell-group.test.ts`). A task
 vx stops (Ctrl-C, `--fail-fast`, a server stopped at the run's end or by
 a `vx watch` restart) takes it down too: every spawn carries
 `VX_RUN_TREE` in its environment, each descendant inherits it, and the

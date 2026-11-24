@@ -299,7 +299,12 @@ the task's own (`VX_E_NESTED_INPUT`, `VX_E_NESTED_OUTPUT`), or an
 `workspace`, named by its root-relative dir; `VX_E_NESTED_OUTPUT`): the
 boundary drops every file it can match, so an input keys nothing and an
 output saves nothing. An input still reaches into a nested workspace
-(`tests/nested-input.test.ts`).
+(`tests/nested-input.test.ts`). `refuseReach` refuses, under the same
+codes, an alternative whose fixed prefix lies above a nested project but
+whose segments can match a path inside it (`*/d.txt`, a root project's
+`packages/**/*.log`): the boundary would drop those files without a
+word. A leading `**` (the project's own files) and a `!` entry that
+takes the nested project back are not refused.
 
 ### Inputs that read outputs
 
@@ -468,7 +473,7 @@ export interface InputChanges {
 }
 
 export interface OutcomeTiming { // on the run's clock
-  queuedMs?: number // how long it waited ready for a worker, any admission hold included
+  queuedMs?: number // how long it waited ready for a worker, any admission hold and an executor's wait for a machine included
   admissionHeldMs?: number // how long an `admit` policy held a ready task with a free worker
   startNs?: bigint // hrtime span relative to run t=0
   endNs?: bigint

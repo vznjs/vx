@@ -21,6 +21,8 @@ export const turbo: Adapter = {
   // A task always keys on its dependencies' hashes, and nothing keeps a
   // command from the files, network or home it never declared.
   lacks: {
+    'folder-output':
+      'Turborepo’s `outputs` are globs; its docs give a trailing slash no meaning of its own, so `dist/` is not declared a folder.',
     mutex:
       'No Turborepo setting keeps two tasks from running at the same time; only `--concurrency`.',
     'idle-timeout': 'Turborepo has no limit on how long a task may print nothing.',

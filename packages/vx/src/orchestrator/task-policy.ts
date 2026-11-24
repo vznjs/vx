@@ -32,6 +32,8 @@ export interface TaskPolicy {
   readonly wsOutputs: readonly string[]
   readonly forwardArgs: readonly string[]
   readonly timeout: number | undefined
+  /** Whose `timeout` it is: the task's `exec.timeout`, else the run's. */
+  readonly timeoutFromTask: boolean
   /** Its outputs overlap an upstream's: stamped, never cleaned by glob. */
   readonly additive: boolean
   /** `outputs.clean: false`: the first attempt finds its last outputs. */
@@ -133,6 +135,7 @@ export function taskPolicy(args: ExecuteArgs): TaskPolicy {
     forwardArgs: node.requested ? (args.run.forwardArgs ?? []) : [],
     // `exec.timeout` beats `run.timeout` (flag, variable, workspace).
     timeout: taskTimeoutMs(exec) ?? args.run.timeout,
+    timeoutFromTask: taskTimeoutMs(exec) !== undefined,
     additive,
     // `outputs.clean: false` leaves the outputs to the first attempt's
     // command and saves whatever they hold after it: the user opted out of

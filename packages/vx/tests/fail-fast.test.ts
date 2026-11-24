@@ -9,6 +9,7 @@ import { afterEach, expect, it } from 'bun:test'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
+import type { RunSummaryRecord } from '../src/orchestrator/index.js'
 
 const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 let root: string | undefined
@@ -80,3 +81,47 @@ it('CONTROL: without --fail-fast the sibling finishes and its dependant runs', a
   expect(result.ok).toBe(false)
   expect(existsSync(join(root, 'packages/app/after.ran'))).toBe(true)
 }, 60_000)
+
+// `late` exits on its own and leaves a child holding its output pipe, so vx
+// is still draining it when `first` fails. `first` waits until `late`'s shell
+// is gone (reaped by vx), so the order holds without a timer. The stop reached
+// a command that had already exited: its exit is its own, never the stop's
+// abort. The pid lands by a rename: written in place, `first` could read
+// the file created and still empty, and fail before `late` exited.
+for (const [code, said] of [
+  [3, 'failed 3'],
+  [0, 'success 0'],
+] as const) {
+  it(`--fail-fast: a task that exited ${code} before the stop reads ${said}, not aborted`, async () => {
+    root = await makeWorkspace({ prefix: 'vx-fail-fast-own-' })
+    await addProject(
+      root,
+      'first',
+      `export default { tasks: { go: { exec: { command: 'while [ ! -f ../../late.pid ]; do :; done; p=$(cat ../../late.pid); while kill -0 $p 2>/dev/null; do :; done; exit 1' } } } }`,
+    )
+    await addProject(
+      root,
+      'late',
+      `export default { tasks: { go: { exec: { command: 'echo $$ > ../../late.tmp && mv ../../late.tmp ../../late.pid; (sleep 2) & exit ${code}' } } } }`,
+    )
+    gitInitCommit(root, 'init')
+    let summary: RunSummaryRecord | undefined
+    const result = await run({
+      cwd: root,
+      tasks: ['first#go', 'late#go'],
+      concurrency: 2,
+      failFast: true,
+      log: silent,
+      handleSignals: false,
+      telemetrySinks: [{ onRunSummary: (s) => (summary = s) }],
+    })
+    const want = { 'first#go': 'failed 1', 'late#go': said }
+    expect(
+      Object.fromEntries(result.outcomes.map((o) => [o.node.id, `${o.status} ${o.exitCode}`])),
+    ).toEqual(want)
+    expect(
+      Object.fromEntries(summary!.tasks.map((t) => [t.taskId, `${t.status} ${t.exitCode}`])),
+    ).toEqual(want)
+    expect(summary!.abortedCount).toBe(0)
+  }, 60_000)
+}

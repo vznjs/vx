@@ -62,6 +62,33 @@ describe('vx run interactive picker', () => {
     }
   })
 
+  it('pads an id only to line up a description: a bare row ends at its id', async () => {
+    // Every row was padded to the longest id, so one id wider than the
+    // terminal wrapped every row into a blank second line.
+    await writeFile(
+      path.join(root, 'packages', 'alpha', 'vx.config.mjs'),
+      `export default { tasks: { ['${'x'.repeat(90)}']: { exec: { command: 'true' } } } }`,
+    )
+    await writeFile(
+      path.join(root, 'packages', 'beta', 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'true' } }, test: { exec: { command: 'true' }, description: 'beta test' } } }",
+    )
+    const input = new PassThrough()
+    const output = new PassThrough()
+    let menu = ''
+    output.on('data', (c) => (menu += String(c)))
+    const picking = pick(root, { input, output })
+    while (!menu.includes('Pick a task')) await Bun.sleep(5)
+    input.write('\n')
+    await picking
+    const rows = menu.split('\n').filter((l) => /^ +\d+\. /.test(l))
+    expect(rows).toEqual([
+      `  1. alpha#${'x'.repeat(90)}`,
+      '  2. beta#build',
+      `  3. beta#test${' '.repeat(90 + 6 - 'beta#test'.length)}  beta test`,
+    ])
+  })
+
   it('says when no project declares a task, instead of an empty menu', async () => {
     for (const name of ['alpha', 'beta']) {
       await writeFile(
@@ -79,7 +106,7 @@ describe('vx run interactive picker', () => {
     expect(await pick(root, { input: new PassThrough(), output })).toBeNull()
     expect(stderr).toBe(
       noticed(
-        'vx run: no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`\n',
+        'vx run: no tasks declared in any project. Declare one under `tasks` in a vx.config, then run `vx lock`; or run `bunx @vzn/vx-migrate` to make them from package.json scripts\n',
       ),
     )
   })

@@ -2,15 +2,14 @@
 // lockfile plugin (`@vzn/vx-lockfile`'s `npm()`) claims its lockfile, for a
 // fixture that must not read another package.
 
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 
+// Its name's package.json, committed: one written to TMPDIR per process was
+// one per `vx` a test spawned, never removed.
+const dir = path.join(import.meta.dir, 'origins', 'claim-file')
+
 export function claimFile(...files: string[]): VxPlugin {
-  const dir = path.join(tmpdir(), `vx-migrate-test-claim-${process.pid}`)
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'vx-test-claim-file' }))
   return definePlugin({ dir }, { fingerprint: { files, affected: () => undefined } })
 }
 

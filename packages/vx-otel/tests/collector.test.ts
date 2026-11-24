@@ -92,13 +92,13 @@ afterAll(async () => {
 })
 
 /** A sink wired to the real transport, collecting what it warns. */
-function sinkAgainst(warnings: string[]): OtelSink {
+function sinkAgainst(warnings: string[], headers: Record<string, string> = {}): OtelSink {
   return new OtelSink({
     tracesUrl: `${url}/v1/traces`,
     metricsUrl: `${url}/v1/metrics`,
     logsUrl: `${url}/v1/logs`,
     serviceName: 'vx',
-    headers: {},
+    headers,
     metricsEnabled: false,
     logsEnabled: false,
     timeoutMs: 2_000,
@@ -158,6 +158,25 @@ describe('the OTLP transport reports a collector that refuses the export', () =>
     expect(warnings[0]).toContain('/v1/traces')
     expect(warnings[0]).toContain('HTTP 401')
     expect(warnings[0]).toContain('invalid token')
+  })
+
+  // A header is often the vendor's key, and a collector that echoes what it
+  // refused put it in the warning: the key's variable is no secret by name
+  // (`OTEL_EXPORTER_OTLP_HEADERS`), so core's mask never saw it.
+  it('hides a header value the collector echoes', async () => {
+    reply = {
+      status: 401,
+      body: 'bad key collector-key-123456 or bearer bearer-cred-987654',
+    }
+    const warnings: string[] = []
+    const sink = sinkAgainst(warnings, {
+      'x-api-key': 'collector-key-123456',
+      authorization: 'Bearer bearer-cred-987654',
+    })
+    driveOneTask(sink)
+    await sink.flush()
+    expect(warnings.length).toBe(1)
+    expect(warnings[0]).toEndWith('HTTP 401: bad key *** or bearer ***')
   })
 
   it('a 500 with no body still names the status', async () => {

@@ -105,19 +105,20 @@ export interface MigrateArgs {
 }
 
 const USAGE =
-  'usage: vx-migrate [--from turbo|nx|vite-task|scripts] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
+  'usage: vx-migrate [--from turbo|nx|vite-task|scripts] [--native|--keep]\n' +
+  '                  [--no-install] [--dry [--format json]] [--force] [--mjs]'
 
 const HELP = [
   USAGE,
   '',
   'Write vx config from turbo.json, an Nx graph, Vite Task or package.json scripts.',
-  '  --from <source>  turbo | nx | vite-task | scripts, when several are checked in.',
+  '  --from <source>  turbo | nx | vite-task | scripts, if several are checked in.',
   '  --native         Write a vx.config.ts per package (no question).',
-  '  --keep           Turbo or Nx: only .vx/workspace.ts, declaring turbo() or nx().',
+  '  --keep           Turbo or Nx: only .vx/workspace.ts, with turbo() or nx().',
   '  --no-install     Install nothing and skip vx lock.',
   '  --dry            Print the files instead of writing them.',
   '  --format json    With --dry: the plan as one JSON document.',
-  '  --force          Overwrite existing vx.config.* files.',
+  '  --force          Overwrite an existing .vx/workspace.* and vx.config.*.',
   '  --mjs            Write .mjs files (no type import) instead of .ts.',
 ].join('\n')
 
@@ -274,7 +275,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   }
   if (bare && parsed.mode === 'keep') {
     throw new UserError(
-      '--keep: nx() is a plugin to install, and this Nx repo has no package.json to install it in; drop --keep to write vx.config files',
+      '--keep: nx() is a plugin to install, and this Nx workspace has no package.json to install it in; drop --keep to write vx.config files',
     )
   }
   const mode =
@@ -304,13 +305,14 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     source = 'vite.config run.tasks'
     plan = await migrateViteTask(root, metas, format)
   } else if (runner === 'nx') {
-    if (hasGraph) {
+    // Nx 24 leaves its last graph in workspace-data as a cache: read with nx
+    // installed, a target edited since was migrated as it had been.
+    if (hasGraph && !hasNx(root)) {
       source = NX_GRAPH_REL
       plan = await migrateNx(root, metas, format, undefined, writesWorkspace, bare)
     } else {
-      // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
-      // when exported. The workspace's own nx exports it, as `nx()` does, into
-      // a temp file.
+      // The workspace's own nx exports the graph as it is now, as `nx()`
+      // does, into a temp file.
       // A fresh clone: the export's own reason names the plugin's `graph`
       // option, which the CLI does not take.
       if (!hasNx(root)) {
@@ -380,6 +382,14 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       headerNotes: plan.headerNotes.filter(
         (n) => !n.includes('from @vzn/vx-lockfile') && !n.includes(' still declares '),
       ),
+      // `--no-install` with no lockfile: the `vx lock` the report names
+      // refused every `^build` written here.
+      ...(bare || plugins.some((p) => p.pkg === '@vzn/vx-lockfile')
+        ? {}
+        : {
+            projects: pathNamed(root, plan.projects),
+            notes: plan.projects.some(readsUpstream) ? [...plan.notes, EDGELESS_NOTE] : plan.notes,
+          }),
       extraFiles:
         existingWorkspace === undefined
           ? [...plan.extraFiles, { relPath: `.vx/workspace.${format}`, contents: workspaceText }]
@@ -846,10 +856,8 @@ async function scripts(
   const edgeless = plugins.length === 0 && !ownWorkspace
   const lone = plan.projects.length === 1 && metas.every((m) => m.dir === root)
   if ((edgeless || lone) && plan.projects.length === 1) dropUpstreamEdges(plan.projects[0]!)
-  else if (edgeless && plan.projects.some(readsUpstream))
-    plan.notes.push(
-      'no lockfile here, so .vx/workspace.ts declares no lockfile plugin and `^build` has no project edges: install with the package manager, declare its pnpm() / bun() / npm() / yarn() from @vzn/vx-lockfile in .vx/workspace.ts, then run `vx lock`',
-    )
+  else if (edgeless && plan.projects.some(readsUpstream)) plan.notes.push(EDGELESS_NOTE)
+  if (edgeless) plan.projects = pathNamed(root, plan.projects)
   const empty = plan.projects.length === 0
   // Single-project mode with packages the root's missing `workspaces` never
   // reaches: the scripts exist, the globs do not.
@@ -1001,6 +1009,19 @@ function upstream(task: Record<string, unknown> | null): string[] | undefined {
   return Array.isArray(deps) ? (deps as string[]) : undefined
 }
 
+const EDGELESS_NOTE =
+  'no lockfile here, so .vx/workspace.ts declares no lockfile plugin and `^build` has no project edges: install with the package manager, declare its pnpm() / bun() / npm() / yarn() from @vzn/vx-lockfile in .vx/workspace.ts, then run `vx lock`'
+
+/**
+ * The names vx gives `projects` when no plugin names them from their
+ * manifests: the report's `project#task` is then one `vx run` takes.
+ */
+function pathNamed(root: string, projects: GeneratedProject[]): GeneratedProject[] {
+  return projects.map((p) =>
+    p.writeName === true ? p : { ...p, name: relPosix(root, p.dir) || '//' },
+  )
+}
+
 function readsUpstream(project: GeneratedProject): boolean {
   return project.tasks.some((t) => upstream(t.task)?.some((d) => d.startsWith('^')) === true)
 }
@@ -1064,7 +1085,7 @@ async function unreadWorkspaces(root: string, globs: readonly string[]): Promise
   const pkg = list.filter((g): g is string => typeof g === 'string')
   if ([...pkg].sort().join('\0') === [...globs].sort().join('\0')) return []
   return [
-    `pnpm-workspace.yaml's \`packages\` lists the members, as pnpm reads them; package.json's \`workspaces\` (${pkg.map((g) => `"${g}"`).join(', ')}) is not read: if bun, npm or yarn installs this repo, copy those globs into pnpm-workspace.yaml's \`packages\`, or delete that key so package.json decides`,
+    `pnpm-workspace.yaml's \`packages\` lists the members, as pnpm reads them; package.json's \`workspaces\` (${pkg.map((g) => `"${g}"`).join(', ')}) is not read: if bun, npm or yarn installs this workspace, copy those globs into pnpm-workspace.yaml's \`packages\`, or delete that key so package.json decides`,
   ]
 }
 

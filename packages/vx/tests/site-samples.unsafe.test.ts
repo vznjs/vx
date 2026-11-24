@@ -90,7 +90,7 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
 // local hit, ui blocks two). The sample came from a run with history, so
 // its `usual` times and `predicted` line are read past.
 describe('the Running tasks page shows what --dry prints', () => {
-  it('its plan is formatPlanText on one local hit and three misses', () => {
+  it('its plan is formatPlanText on four misses', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
     const task = (id: string, cacheStatus: 'miss' | 'hit-local', deps: string[] = []) => ({
       node: {
@@ -107,7 +107,7 @@ describe('the Running tasks page shows what --dry prints', () => {
       tasks: [
         task('@demo/admin#build', 'miss', ['@demo/ui#build']),
         task('@demo/ui#build', 'miss'),
-        task('@demo/api#build', 'hit-local'),
+        task('@demo/api#build', 'miss'),
         task('@demo/web#build', 'miss', ['@demo/ui#build']),
       ],
     } as unknown as RunPlan
@@ -1193,7 +1193,8 @@ describe('the caching guide lists what the cache never reads', () => {
       .join('\n')
     const names = [...entries.matchAll(/'([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
     expect(names.length).toBe(11)
-    const excluded = /^- \*\*Always excluded:\*\*.*$/m.exec(page)
+    // The bullet and the two after it, which split its list of vx's files.
+    const excluded = /^- \*\*Always excluded:\*\*.*(\n- .*){2}$/m.exec(page)
     expect(excluded).not.toBeNull()
     for (const name of names) expect(excluded![0]).toContain(name)
   })
@@ -1240,7 +1241,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
       path.resolve(import.meta.dir, '..', 'docs', 'schema.md'),
       'utf8',
     ).replace(/\s+/g, ' ')
-    expect(contract).toContain('Editing a description therefore costs one re-run')
+    expect(contract).toContain('Editing it costs one re-run: it is in the cache key')
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('editing even `description` re-runs the task once')
   })
@@ -1254,10 +1255,9 @@ describe('cli.md lists the fields `vx show` prints', () => {
     const added = new Set([...src.matchAll(/add\(\s*'([\w.]+)'/g)].map((m) => m[1]!))
     expect(added.size).toBeGreaterThan(5)
     const cli = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
-    const para = cli.slice(
-      cli.indexOf('`vx show <project>` prints a block per task'),
-      cli.indexOf('Fields the\ntask does not set are not printed.'),
-    )
+    // The paragraph and its Details list, which names every field.
+    const start = cli.indexOf('`vx show <project>` prints a block per task')
+    const para = cli.slice(start, cli.indexOf('\n</details>', start))
     expect(para.length).toBeGreaterThan(100)
     for (const name of ['remote', 'sandbox', 'persistent', 'retries', 'timeout']) {
       expect(added).toContain(name)
@@ -1337,17 +1337,58 @@ describe.each(['pnpm', 'bun'])(
 )
 
 describe('the plugins guide rosters every hook a shipped plugin fills', () => {
-  it('@vzn/vx-history is named on all three of its hooks', () => {
-    const src = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-history', 'src', 'index.ts'),
-      'utf8',
-    )
-    for (const hook of ['async schedule(', 'hooks.admit =', 'commands: {']) {
-      expect(src).toContain(hook)
+  // The column named three of vx-dte's seven hooks and none of the setup,
+  // teardown or measures several fill. Each factory is called, under the
+  // env and options that make it answer, and the keys it returns are its row.
+  it("each row's hooks are every hook its factories return, and no other", async () => {
+    const pkg = (name: string): Promise<Record<string, (o?: unknown) => unknown>> =>
+      import(path.resolve(import.meta.dir, '..', '..', name, 'src', 'index.ts'))
+    const ci = {
+      GITHUB_ACTIONS: process.env['GITHUB_ACTIONS'],
+      GITLAB_CI: process.env['GITLAB_CI'],
     }
-    const page = readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(page).toContain('`@vzn/vx-history` fills three at once')
-    for (const hook of ['`schedule`', '`admit`', '`commands`']) expect(page).toContain(hook)
+    process.env['GITHUB_ACTIONS'] = 'true'
+    process.env['GITLAB_CI'] = 'true'
+    const oidc = { issuer: 'https://token.actions.githubusercontent.com', repository: 'a/b' }
+    const lockfile = await pkg('vx-lockfile')
+    const migrate = await pkg('vx-migrate')
+    const dte = await pkg('vx-dte')
+    const ciPkg = await pkg('vx-ci')
+    const made: Record<string, unknown[]> = {
+      '@vzn/vx-lockfile': ['pnpm', 'bun', 'npm', 'yarn'].map((f) => lockfile[f]!()),
+      '@vzn/vx-cache': [(await pkg('vx-cache'))['vxCache']!({ url: 'https://c.dev', ...oidc })],
+      '@vzn/vx-otel': [(await pkg('vx-otel'))['otel']!()],
+      '@vzn/vx-ci': [ciPkg['github']!(), ciPkg['gitlab']!()],
+      '@vzn/vx-dte': [
+        dte['dte']!({
+          relay: 'https://r.dev',
+          adapter: dte['local']!(),
+          workers: { linux: { machines: { s: { cpu: 2, memory: '8GB', max: 1 } } } },
+        }),
+      ],
+      '@vzn/vx-history': [(await pkg('vx-history'))['vxHistory']!()],
+      '@vzn/vx-reapi': [(await pkg('vx-reapi'))['reapi']!({ endpoint: 'grpc://localhost:1' })],
+      '@vzn/vx-migrate': ['turbo', 'nx', 'turboCache', 'nxCache'].map((f) => migrate[f]!()),
+    }
+    for (const [k, v] of Object.entries(ci)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+    const page = readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8')
+    const section = /## Plugins that ship\n([\s\S]*?)\n## /.exec(page)![1]!
+    const rows: Record<string, string[]> = {}
+    for (const m of section.matchAll(/^\| \[?`(@vzn\/[\w-]+)`[^|]*\| ([^|]*) \|/gm)) {
+      const named = [...m[2]!.matchAll(/`(\w+)`/g)].map((n) => n[1]!)
+      rows[m[1]!] = named.filter((h) => (PLUGIN_HOOKS as readonly string[]).includes(h)).sort()
+    }
+    const filled: Record<string, string[]> = {}
+    for (const [name, plugins] of Object.entries(made)) {
+      const hooks = new Set<string>()
+      for (const p of plugins as Record<string, unknown>[])
+        for (const k of Object.keys(p)) if (k !== 'name' && p[k] !== undefined) hooks.add(k)
+      filled[name] = [...hooks].sort()
+    }
+    expect(Object.fromEntries(Object.keys(made).map((n) => [n, rows[n]]))).toEqual(filled)
   })
   // An install of any plugin answered 404 while the guide told readers to
   // run one (J-92); the note's count is every public package but core.
@@ -1945,7 +1986,7 @@ describe('the sandbox post judges a violation against the grants', () => {
     // The Troubleshooting page (#2470) said the sandbox refuses a read you
     // did not declare, of a file missing from the inputs (J2-37); the row is Caching's now.
     const trouble = readFileSync(path.join(GUIDES, 'caching.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(trouble).toContain('with reads granted no wider than the inputs, refuses that read')
+    expect(trouble).toContain('with reads granted no wider than the inputs: it refuses that read')
   })
 })
 

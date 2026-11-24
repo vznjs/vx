@@ -255,6 +255,10 @@ export function locallyPlaced(placements: Placements): (id: string) => boolean {
   return (id) => placements.executors.get(id)?.capabilities?.remote !== true
 }
 
+/** Why an `exclusive` executor refuses persistent `id`, and what to ask for instead. */
+const serverAlone = (id: string): string =>
+  `it starts a server only beside a task that needs it: ask for a task that depends on it, not ${id}`
+
 /** Why `e`, which runs every task, takes none of this one's: no platform or worker type of it fits. */
 function unrouted(
   e: TaskExecutor,
@@ -346,7 +350,7 @@ export function placeTasks(
         node.config.exec?.persistent !== undefined &&
         !(sole.capabilities?.servers === true && carriable(node, true))
       )
-        refuse(node.id, 'it starts a server only beside a task that needs it')
+        refuse(node.id, serverAlone(node.id))
   for (const node of nodes.values()) {
     delete node.platform
     delete node.worker
@@ -432,7 +436,7 @@ export function placeTasks(
     for (const s of servers) if (!heldHere.has(s.id)) placements.carried.add(s.id)
   for (const node of nodes.values()) {
     if (node.config.exec?.persistent === undefined || placements.carried.has(node.id)) continue
-    if (sole !== undefined) refuse(node.id, 'it starts a server only beside a task that needs it')
+    if (sole !== undefined) refuse(node.id, serverAlone(node.id))
     here(node)
   }
   markBelowNoop(nodes, placements)
@@ -490,6 +494,7 @@ export async function planExecutorOf(
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
       warn: warnOf(log),
+      status: (line) => log.status(line),
       concurrency: machineParallelism(),
       artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
       cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),

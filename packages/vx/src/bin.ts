@@ -1,4 +1,4 @@
-#!/usr/bin/env -S bun --no-env-file --no-install
+#!/usr/bin/env -S bun --no-env-file --no-install --config=/dev/null
 // Wrapped in an explicit async main so `bun build --compile` accepts
 // the file. The compile target doesn't allow top-level await.
 import { handOff, localVx, retierJit, upgradesOnlyItself, vxPath } from './handoff.js'
@@ -221,10 +221,26 @@ function cwdGone(err: unknown): boolean {
 // verdict; what was going to the reader goes nowhere. Same for stderr (`2>&1 |
 // head`). Here and not in the logger: an embedder's streams are the embedder's.
 // Set up past `--version`, which never touches the Node streams.
+//
+// Any other refusal of stdout (ENOSPC, EIO) lost the output under a run that
+// exited 0 with nothing said. As coreutils does: one line on stderr, and a
+// verdict of 0 becomes 1.
 function listenForReadersGone(): void {
-  for (const stream of [process.stdout, process.stderr]) {
-    stream.on('error', () => {})
-  }
+  let failed: NodeJS.ErrnoException | undefined
+  process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EPIPE' || failed !== undefined) return
+    failed = err
+    const full = err.code === 'ENOSPC' || err.code === 'EDQUOT'
+    const ui = require('./ui/index.js') as typeof import('./ui/index.js')
+    ui.say(
+      'error',
+      `vx: write error on stdout: ${err.message}${full ? ' — the disk it goes to is full' : ''}\n`,
+    )
+  })
+  process.stderr.on('error', () => {})
+  process.on('exit', (code) => {
+    if (failed !== undefined && code === 0) process.exitCode = 1
+  })
 }
 
 void main()

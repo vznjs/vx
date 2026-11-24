@@ -109,9 +109,11 @@ function explicitEnv(
   gap: (entry: string, literal: string | null) => void,
   live?: readonly string[],
   spelled?: { readonly names: readonly string[]; readonly used: (entry: string) => void },
+  matched?: (entry: string, names: readonly string[]) => void,
 ): string[] {
   const out: string[] = []
   const excluded: RegExp[] = []
+  const matches: [string, string[]][] = []
   // Literal runs split at each unescaped `*`; one run is a literal name.
   const runs = (p: string): string[] => p.split(/(?<!\\)\*/).map((r) => r.replaceAll('\\*', '*'))
   const regex = (parts: readonly string[]): RegExp =>
@@ -131,7 +133,9 @@ function explicitEnv(
       // Turbo matches a `*` name against the environment it runs in; so
       // does a live mapping, and the names it finds are keyed and passed.
       const re = regex(parts)
-      out.push(...live.filter((n) => re.test(n) && keyable(n)).sort())
+      const hits = live.filter((n) => re.test(n) && keyable(n)).sort()
+      out.push(...hits)
+      matches.push([e, hits])
     } else if (spelled !== undefined) {
       // A written config cannot ask the run's environment: the names the
       // package's files spell stand in for it (clerk's root `E2E_*`), the
@@ -146,8 +150,19 @@ function explicitEnv(
       }
     } else gap(e, null)
   }
-  return out.filter((n) => !excluded.some((re) => re.test(n)))
+  const kept = (n: string): boolean => !excluded.some((re) => re.test(n))
+  for (const [e, hits] of matches) matched?.(e, hits.filter(kept))
+  return out.filter(kept)
 }
+
+/**
+ * A `*` env name a live mapping (`turbo()`) matched where `vx lock` ran:
+ * Turbo matches each run's environment, and a variable set after the lock
+ * was neither passed nor keyed, unsaid. Reported once, with its tasks.
+ */
+const lockMatched = (field: string, entry: string, names: readonly string[]): string =>
+  `${field} ${JSON.stringify(entry)} matched ${names.length === 0 ? 'no variable' : names.join(', ')} ` +
+  'where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again'
 
 /**
  * The literal names of Turbo's builtin pass-through list, the same under
@@ -419,12 +434,12 @@ function keyIgnored(
     const kept = list.filter((e) => typeof e !== 'string' || !entries.has(e))
     // Exclusions left alone narrow nothing core will take.
     const left = kept.some((e) => typeof e !== 'string' || !e.startsWith('!')) ? kept : []
-    if (kind === 'files') inputs.files = left
-    else if (left.length > 0) inputs.workspaceFiles = left
-    else delete inputs.workspaceFiles
+    if (kind === 'files') inputs['files'] = left
+    else if (left.length > 0) inputs['workspaceFiles'] = left
+    else delete inputs['workspaceFiles']
   }
-  const probes = (inputs.workspaceRuntime as unknown[] | undefined) ?? []
-  inputs.workspaceRuntime = [...probes, ignoredFilesProbe(hits.map(([rel]) => rel))]
+  const probes = (inputs['workspaceRuntime'] as unknown[] | undefined) ?? []
+  inputs['workspaceRuntime'] = [...probes, ignoredFilesProbe(hits.map(([rel]) => rel))]
 }
 
 /**
@@ -796,7 +811,7 @@ function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]
   })
   let from = 0
   for (let i = defs.length - 1; i > 0; i--) {
-    if (defs[i]?.extends === false) {
+    if (defs[i]?.['extends'] === false) {
       from = i
       break
     }
@@ -806,7 +821,7 @@ function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]
   for (const d of defs.slice(from)) {
     if (d === undefined) continue
     const own: TurboTask = { ...d }
-    delete own.extends
+    delete own['extends']
     if (Array.isArray(own.inputs)) {
       const found = dependencyOutputsOf(own.inputs)
       if (found !== null || !own.inputs.includes(TURBO_EXTENDS)) fromDeps = found
@@ -948,7 +963,7 @@ const TURBO_EXTENDS = '$TURBO_EXTENDS$'
  * definition not inherited.
  */
 function optedOut(def: TurboTask | undefined): boolean {
-  return def?.extends === false && Object.keys(def).length === 1
+  return def?.['extends'] === false && Object.keys(def).length === 1
 }
 
 /**
@@ -1061,6 +1076,9 @@ export async function mapTurboWorkspace(
   // the var re-keyed nothing.
   const globalDeps = rootCfg.globalDependencies ?? []
   const notes: string[] = []
+  // `interruptible: true` maps to nothing (KNOWN_TASK_KEYS): a written
+  // config names it; `turbo()` at `vx lock` stays quiet, as it acts the same.
+  const interruptible: string[] = []
   // Loose mode hands every task the whole environment; vx's is isolated,
   // so a task that reads an undeclared variable ran without it, and said
   // nothing (a build baking a URL from the env built without one).
@@ -1099,6 +1117,8 @@ export async function mapTurboWorkspace(
       (e, literal) =>
         notes.push(envGap(field, e, literal, ' in vx env names — list explicit names')),
       opts.envNames,
+      undefined,
+      (e, hits) => notes.push(lockMatched(field, e, hits)),
     )
   // Turbo 1's `globalDotEnv` files are hashed as `globalDependencies` are. A
   // `.env`-shaped one is gitignored as a rule, and a glob over git's files
@@ -1631,6 +1651,7 @@ export async function mapTurboWorkspace(
           pnp,
           runsScriptHooks(meta.dir, hookMemo) !== null,
         )
+      if (defFor(name)!['interruptible'] === true) interruptible.push(`${meta.name}#${name}`)
       const mapped = buildTask(
         literals,
         name,
@@ -1777,6 +1798,11 @@ export async function mapTurboWorkspace(
       `env ${JSON.stringify(entry)}: the configs list the names the files of each task's ` +
         `package and its workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add ` +
         'any other a task reads to inputs.env and exec.env.passThrough',
+    )
+  if (opts.ownOnly && interruptible.length > 0)
+    notes.push(
+      `interruptible (${interruptible.join(', ')}): maps to nothing; \`vx watch\` keeps a ` +
+        'persistent task up across cycles and restarts it only when its config changes or it dies',
     )
   literalEnvGapsOnce(projects, notes)
   nestedOutputs(root, projects)
@@ -1933,7 +1959,10 @@ function literalEnvGapsOnce(projects: readonly TurboMappedProject[], notes: stri
   for (const p of projects)
     for (const t of p.tasks)
       t.todos = t.todos.filter((todo) => {
-        if (!/^(env|passThroughEnv) ".*": Turbo reads this as the one variable /s.test(todo))
+        if (
+          !/^(env|passThroughEnv) ".*": Turbo reads this as the one variable /s.test(todo) &&
+          !/^(env|passThroughEnv) ".*" matched .* where `vx lock` ran: /s.test(todo)
+        )
           return true
         counts.set(todo, (counts.get(todo) ?? 0) + 1)
         return false
@@ -2308,12 +2337,14 @@ function buildTask(
       ),
     opts.envNames,
     spelled,
+    (e, hits) => todos.push(lockMatched('env', e, hits)),
   )
   const passNames: string[] = explicitEnv(
     def.passThroughEnv ?? [],
     (e, literal) => todos.push(envGap('passThroughEnv', e, literal, ' — list explicit names')),
     opts.envNames,
     spelled,
+    (e, hits) => todos.push(lockMatched('passThroughEnv', e, hits)),
   )
 
   // A name that is no shell identifier never reached a task (`sh` drops it)
@@ -2324,16 +2355,16 @@ function buildTask(
   ).filter((n) => typeof n !== 'string' || SHELL_NAME.test(n))
 
   const exec: Record<string, unknown> = { command }
-  if (passThrough.length > 0) exec.env = { passThrough }
+  if (passThrough.length > 0) exec['env'] = { passThrough }
   if (persistent) {
-    exec.persistent = {}
+    exec['persistent'] = {}
     todos.push(opts.persistentTodo)
   }
-  if (interactive) exec.interactive = true
+  if (interactive) exec['interactive'] = true
 
   const task: Record<string, unknown> = { exec }
-  if (typeof def['description'] === 'string') task.description = def['description']
-  if (deps.length > 0) task.dependsOn = deps
+  if (typeof def['description'] === 'string') task['description'] = def['description']
+  if (deps.length > 0) task['dependsOn'] = deps
 
   const files: unknown[] = []
   // `.env` files Turbo hashes although git ignores them; a glob over git's
@@ -2453,10 +2484,10 @@ function buildTask(
     inline ? [] : hidden('inputs'),
   )
   const inputs: Record<string, unknown> = { files: withoutTakenBack(files) }
-  if (allWs.length > 0) inputs.workspaceFiles = withoutTakenBack(allWs)
-  if (keyEnv.length > 0) inputs.env = keyEnv
-  if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
-  if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]
+  if (allWs.length > 0) inputs['workspaceFiles'] = withoutTakenBack(allWs)
+  if (keyEnv.length > 0) inputs['env'] = keyEnv
+  if (pkgDotenv) inputs['runtime'] = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
+  if (wsDotenv.length > 0) inputs['workspaceRuntime'] = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]
   const globs = new Map<string, 'files' | 'workspaceFiles'>()
   for (const [rel, [kind]] of rels)
     if (!isLiteral(rel)) {
@@ -2471,7 +2502,7 @@ function buildTask(
   literals.tasks.push({ inputs, rels, globs, taken, own: ownOut, pkgDir: atRoot ? '' : pkgDir })
   // Turbo keys every task on its inputs, cached or not, and a dependant
   // folds that key: an uncached task's inputs still move its dependants.
-  task.inputs = inputs
+  task['inputs'] = inputs
   if (!cacheEnabled) return { name, todos, task, uses }
 
   const outFiles: string[] = []
@@ -2575,8 +2606,8 @@ function buildTask(
   // inputs, so those `!` entries come in this order too (`sortOrderFree`).
   const outputs: Record<string, unknown> = { files: takingBack(outFiles).sort(negationsLast) }
   const ws = takingBack(wsOutFiles).sort(negationsLast)
-  if (ws.length > 0) outputs.workspaceFiles = ws
-  task.outputs = outputs
+  if (ws.length > 0) outputs['workspaceFiles'] = ws
+  task['outputs'] = outputs
   // A path a `!` output takes back is still written by the task, often
   // not gitignored (`dist/skip`): as its own input it changed after the
   // key was taken, so no run was saved, and no dependant's either. One
@@ -2595,11 +2626,11 @@ function buildTask(
     )
     if (list !== undefined && negs.length > 0) inputs[field] = withoutTakenBack([...list, ...negs])
   }
-  subtract('files', outputs.files as string[])
+  subtract('files', outputs['files'] as string[])
   subtract('workspaceFiles', ws)
-  task.cache = true
+  task['cache'] = true
   // In place: the ignored-path passes hold this object.
-  if (rewritesManifest) inputs.stability = { strategy: 'mutable' }
+  if (rewritesManifest) inputs['stability'] = { strategy: 'mutable' }
 
   return { name, todos, task, uses }
 }

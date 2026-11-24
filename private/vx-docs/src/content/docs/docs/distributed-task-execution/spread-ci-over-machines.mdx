@@ -75,6 +75,10 @@ export default defineWorkspace({
       adapter: github(),
     }),
   ],
+  pipelines: {
+    pr: { tasks: ['lint', 'test', 'build'], affected: true },
+    main: { tasks: ['lint', 'test', 'build'] },
+  },
 })
 ```
 
@@ -90,6 +94,8 @@ vx dte init
 ```
 
 ```ansi
+Tasks to run on main (such as build test): lint test build
+Tasks to run on a pull or merge request [lint test build]: 
 [1m[38;2;6;182;212mvx dte init:[0m[2m wrote .github/workflows/ci.yml[0m
 [1m[38;2;6;182;212mvx dte init:[0m[2m wrote .github/workflows/vx-worker.yml[0m
 
@@ -101,11 +107,11 @@ vx dte init
 [38;2;6;182;212m  How a run spreads over workers: https://vznjs.github.io/vx/docs/distributed-task-execution/[0m
 ```
 
-Two files appear:
+It asks which tasks main runs, then which a pull request runs (main's by default). Two files appear:
 
 | File | What it does |
 | --- | --- |
-| `ci.yml` | your CI job: runs `vx run`, which starts workers as needed |
+| `ci.yml` | your CI job: runs `vx run` with those tasks, which starts workers as needed |
 | `vx-worker.yml` | one worker's job: check out, install, `vx dte worker` |
 
 <Takeaway>get both workflows written for you, with nothing to edit.</Takeaway>
@@ -124,7 +130,7 @@ Two files appear:
 
 No secret goes into your repository: workers prove who they are with GitHub's own token.
 
-The run's log and job summary name the worker beside each task, as in [the local run](../try-on-your-machine/#watch-a-run-spread).
+The run's log and job summary name the worker beside each task, as in [the local run](../try-on-your-machine/#watch-a-run-on-workers).
 
 <Quiz q="You push a commit that changes only README.md. How many workers start?">
   None, if no task reads README.md. Every task is a cache hit, and a hit needs no worker.
@@ -199,7 +205,7 @@ Each machine's fields (`max`, `cpu`, `memory`, `platform`, `runsOn`): [Give heav
 
 #### What `vx dte init` writes
 
-- `ci.yml` runs `vx run`; `vx-worker.yml` runs each worker. Run it again after you change `workers`.
+- `ci.yml` runs `vx run`; `vx-worker.yml` runs each worker. Run it again with `--force` after you change `workers`.
 - It prints the `ALLOW` line naming both workflows. The relay accepts only them.
 
 </Deeper>

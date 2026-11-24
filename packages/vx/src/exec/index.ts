@@ -13,6 +13,7 @@ export {
   runCommand,
   restoreTerminalModes,
   runPersistent,
+  serverExited,
   PersistentReadyError,
   withForwardArgs,
   shellQuote,
@@ -29,6 +30,7 @@ export {
 export {
   holdGroups,
   killTree,
+  sweepDeadShell,
   markStopped,
   pauseTree,
   runTime,
@@ -56,6 +58,7 @@ export {
   type TaskPlacement,
   type ResolvedSandboxConfig,
   type SandboxViolation,
+  type OutputsMissingFacts,
 } from './executor.js'
 
 export { primeSpares, warmSpares } from './warm-shell.js'

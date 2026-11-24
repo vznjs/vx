@@ -16,7 +16,7 @@
 // wait for room, or a new worker asked one warm-up before it is needed. A
 // filler placed before a task whose ready time has spread pays the lateness
 // its overrun adds. When every open time is a fact, restarts draw each
-// start within its slack and keep the best plan. Past `BIG` open tasks one
+// start within its slack and keep the best plan. Past `BIG` open tasks times workers one
 // forward pass (`plan4`, list scheduling with backfill) plans instead, so a
 // million tasks plan in about a second and a half. Every constant here bounds
 // the solver's own work; none is a guess about the world.
@@ -135,9 +135,11 @@ const clarkMean = (a: number, va: number, b: number, vb: number): number => {
   return a * Phi(al) + b * Phi(-al) + th * phi(al)
 }
 
-/** Past this many open tasks a decide plans forward once (plan4): the insertion plan (plan3) checks each task
- * against every worker's room over time, and at ten thousand a decide takes about half a second. */
-const BIG = 10_000
+/** Past this many open tasks times live workers a decide plans forward once (plan4): the insertion plan (plan3)
+ * checks each task against every worker's room over time, so a run's decides cost open × workers each, and a
+ * replay of 2,000 tasks on 16 workers took 63 s against plan4's 2.3 s. Set where plan3's time saved outweighs
+ * plan4's longer plan (the commit that set it holds the table). */
+const BIG = 2_000
 /** Restarts a decide draws, and their budget in tasks planned: the solver's time per decide, with the best order
  * found carried to the next decide. */
 const RESTARTS = 16
@@ -345,7 +347,7 @@ export class Engine {
   private readonly avail: Float64Array
 
   constructor(
-    private readonly g: EngineGraph,
+    g: EngineGraph,
     private readonly sizes: readonly EngineSize[],
     opts: EngineOptions = {},
   ) {
@@ -2324,9 +2326,14 @@ export class Engine {
     let keepUntil = Infinity
     let open = 0
     for (let i = 0; i < n; i++) if (state[i] !== DONE) open++
-    // a large graph is planned forward, once a decide: an insertion plan checks each task against every
-    // worker's room over time, which past BIG open tasks passes half a second
-    const big = open > BIG
+    // a large plan is made forward, once a decide: an insertion plan checks each task against every
+    // worker's room over time, open × workers a decide
+    // the workers it plans on: those live, or, of a size with no max (a replay's), one a task: the
+    // count search asks as many as end the run sooner, and planned on them all a replay of 1,000 tasks
+    // took minutes
+    let room = this.live().length
+    if (this.sizes.some((z) => z.max === Infinity)) room = Math.max(room, open)
+    const big = open * Math.max(1, room) > BIG
     let soon = false
     const P = (extra: readonly number[] = [], eager = false): Plan =>
       big ? this.plan4(t, D, fits, Dv) : this.plan3(t, D, fits, extra, eager, soon, Dv)

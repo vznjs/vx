@@ -5,7 +5,7 @@
   "description": "The task timings a vx scheduler asks for, one folded row per task, that you host: on Bun with SQLite, on Cloudflare Workers with D1, or as a Docker image.",
   "keywords": [
     "vx",
-    "monorepo",
+    "task-orchestrator",
     "scheduler",
     "history-server"
   ],

@@ -36,7 +36,7 @@ describe('turboCache() repairs an entry its own get could not use', () => {
         {},
       )!
       const c = new TurboRemoteCache(config, fetchImpl, tmpdir())
-      if (signed) await expect(c.get('aa')).rejects.toThrow(/did not verify/)
+      if (signed) await expect((await c.get('aa'))!.body.bytes()).rejects.toThrow(/did not verify/)
       else await (await c.get('aa'))!.body.arrayBuffer()
       await c.put('aa', new Blob(['good']), { durationMs: 1 })
       expect(sent).toEqual(['GET /v8/artifacts/aa', 'PUT /v8/artifacts/aa'])

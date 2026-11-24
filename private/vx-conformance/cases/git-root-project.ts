@@ -131,6 +131,51 @@ export default [
   }),
 
   defineCase({
+    id: 'outputs/root-output-into-member-not-dropped',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A workspace-root output glob over a member’s folder is restored or refused, never dropped',
+    why: 'A root task may name an output glob that passes through a member’s folder, such as `packages/**/*.log`. If the member boundary quietly drops those files from the saved output, a cache hit restores the rest and reports success while the member’s file is missing. Restoring it or refusing the glob is right; a silent gap is not.',
+    from: ['root-project'],
+    workspace: {
+      projects: {
+        root: {
+          dir: '.',
+          tasks: {
+            build: {
+              command:
+                'mkdir -p out packages/a && cat tools/gen.txt > out/gen.txt && cat tools/gen.txt > packages/a/gen.log',
+              inputs: ['tools/**'],
+              outputs: ['out/**', 'packages/**/*.log'],
+            },
+          },
+          files: { 'tools/gen.txt': 'one\n' },
+        },
+        a: { tasks: {}, files: { 'src/a.txt': 'a\n' } },
+      },
+    },
+    steps: [
+      {
+        run: 'build',
+        projects: ['root'],
+        expect: { exit: 0, orRefused: true, ran: ['root#build'] },
+      },
+      { write: { 'out/gen.txt': null, 'packages/a/gen.log': null } },
+      {
+        run: 'build',
+        projects: ['root'],
+        expect: {
+          exit: 0,
+          orRefused: true,
+          notRan: ['root#build'],
+          files: { 'out/gen.txt': 'one\n', 'packages/a/gen.log': 'one\n' },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'affected/root-file-selects-root-project',
     category: 'affected',
     kind: 'correctness',

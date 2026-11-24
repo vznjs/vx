@@ -90,7 +90,11 @@ export function formatTaskBlock(
   const header = serving(node, outcome)
     ? paint('info', 'running', colors)
     : formatBlockHeader(outcome, colors)
-  const lines: string[] = [`${corner('┌─')} ${mark}${idPainted} ${corner('>')} ${header}`]
+  const close = `${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, false)}`
+  const edgeId = cutTaskId(node, colors, [`${mark} ${corner('>')} ${header}`, `${mark}${close}`])
+  const lines: string[] = [`${corner('┌─')} ${mark}${edgeId} ${corner('>')} ${header}`]
+  // The edges cut the id: the body says it whole, once.
+  if (edgeId !== idPainted) lines.push('', idPainted)
 
   // The command section shows what ran. Hits skip it, unless `forceCommand`.
   if (forceCommand || ranCommand(outcome)) {
@@ -113,10 +117,7 @@ export function formatTaskBlock(
 
   lines.push(...violationSection(outcome, colors))
 
-  lines.push(
-    `${corner('└─')} ${mark}${idPainted}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, false)}`,
-    '',
-  )
+  lines.push(`${corner('└─')} ${mark}${edgeId}${close}`, '')
   // Not `+ '\n'`: a rope over a 100 MB frame was flattened into a copy.
   return lines.join('\n')
 }
@@ -228,6 +229,57 @@ function pushBodyLines(lines: string[], text: string): void {
 
 function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolean } = {}): string {
   return idParts(node.projectName, node.projectName, node.taskName, colors, opts)
+}
+
+/**
+ * The id a frame's edge has room for beside `rest` (each edge's other
+ * text, painted): a terminal too narrow for an edge wrapped it. The
+ * project's name gives way first, cut in its middle, then the task's end;
+ * off a terminal the id stays whole.
+ */
+function cutTaskId(node: TaskNode, colors: ColorSupport, rest: readonly string[]): string {
+  const whole = paintTaskId(node, colors, { bold: true })
+  if (colors.columns === undefined) return whole
+  // `┌─ ` / `└─ ` lead each edge.
+  const room = colors.columns - 3 - Math.max(...rest.map((r) => Bun.stringWidth(Bun.stripANSI(r))))
+  const width = Bun.stringWidth(node.id)
+  if (width <= room) return whole
+  const task = node.taskName
+  const projectRoom = room - 1 - Bun.stringWidth(task)
+  const [project, taskText] =
+    projectRoom >= 5
+      ? [cutMiddle(node.projectName, projectRoom), task]
+      : [cutMiddle(node.projectName, 5), cutEnd(task, Math.max(2, room - 6))]
+  return idParts(node.projectName, project, taskText, colors, { bold: true })
+}
+
+/** `text` at most `room` columns, its middle given to `…`. */
+function cutMiddle(text: string, room: number): string {
+  const chars = Array.from(text)
+  if (Bun.stringWidth(text) <= room) return text
+  const head = Math.ceil((room - 1) / 2)
+  let a = ''
+  for (const ch of chars) {
+    if (Bun.stringWidth(a + ch) > head) break
+    a += ch
+  }
+  let b = ''
+  for (const ch of chars.reverse()) {
+    if (Bun.stringWidth(a + ch + b) + 1 > room) break
+    b = ch + b
+  }
+  return `${a}…${b}`
+}
+
+/** `text` at most `room` columns, its end given to `…`. */
+function cutEnd(text: string, room: number): string {
+  if (Bun.stringWidth(text) <= room) return text
+  let out = ''
+  for (const ch of Array.from(text)) {
+    if (Bun.stringWidth(out + ch) + 1 > room) break
+    out += ch
+  }
+  return `${out}…`
 }
 
 // ── Reported-line grid: status · cache · usual · time · … · name ──────── No
@@ -371,7 +423,54 @@ export function formatTaskRow(
     const worker = workerName(cells.worker || UNKNOWN)
     row += `${placeCell(worker, colors)}${pad(WORKER_COL - worker.length)} `
   }
-  return `${row}${cells.critical === true ? paint('warn', CRITICAL_MARK, colors) : ' '} ${paintedId}`
+  const lead = `${row}${cells.critical === true ? paint('warn', CRITICAL_MARK, colors) : ' '} `
+  // With every optional column gone a 50-column terminal still left a name
+  // 11 columns, and the row wrapped: there the name gives way in its middle.
+  // Under 8 columns a cut name says nothing (`…`): it goes under the row.
+  if (colors.columns !== undefined && colors.columns < FULL_ROW + NAME_ROOM) {
+    const room = colors.columns - Bun.stringWidth(lead)
+    if (Bun.stringWidth(paintedId) <= room) return `${lead}${paintedId}`
+    if (room >= NAME_MIN) return `${lead}${cutPaintedMiddle(paintedId, room)}`
+    const under = colors.columns - GUTTER
+    const name = Bun.stringWidth(paintedId) > under ? cutPaintedMiddle(paintedId, under) : paintedId
+    return `${lead.trimEnd()}\n${ROW_LEAD}${name}`
+  }
+  return `${lead}${paintedId}`
+}
+
+// oxlint-disable-next-line no-control-regex
+const ESCAPE = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/y
+
+/**
+ * Painted `text` at most `room` columns, its middle given to `…`; every
+ * escape is kept, so each half keeps its colour and every style ends.
+ */
+function cutPaintedMiddle(text: string, room: number): string {
+  const head = Math.ceil((room - 1) / 2)
+  const tail = room - 1 - head
+  const total = Bun.stringWidth(text)
+  let at = 0
+  let out = ''
+  let marked = false
+  for (let i = 0; i < text.length;) {
+    ESCAPE.lastIndex = i
+    const esc = ESCAPE.exec(text)
+    if (esc !== null) {
+      out += esc[0]
+      i += esc[0].length
+      continue
+    }
+    const ch = String.fromCodePoint(text.codePointAt(i)!)
+    const w = Bun.stringWidth(ch)
+    if (at + w <= head || at >= total - tail) out += ch
+    else if (!marked) {
+      out += '…'
+      marked = true
+    }
+    at += w
+    i += ch.length
+  }
+  return out
 }
 
 /** The grid's optional columns, each shown or left out. */
@@ -407,6 +506,8 @@ const COL_WIDTH: Record<keyof Grid, number> = {
 }
 /** What a name gets before its row wraps: most ids fit. */
 const NAME_ROOM = 24
+/** The least a cut task name keeps beside its row (`pac…ld`). */
+const NAME_MIN = 8
 const FULL_ROW =
   GUTTER +
   STATUS_COL +
@@ -586,6 +687,8 @@ export interface RecordedRow {
   blocks: number | null
   /** Its key was not derived: no command ran and no cache was asked. */
   keyNotDerived?: boolean
+  /** Its run's policy read and wrote no cache (`--no-cache`). */
+  cacheOff?: boolean
 }
 
 /**
@@ -613,6 +716,7 @@ export function formatRecordedRow(
       ? { restoreFailed: true }
       : {}),
     cache: {
+      ...(r.cacheOff === true ? { off: true } : {}),
       ...(r.restored !== null ? { restored: r.restored } : {}),
       ...(r.outputBytes !== null ? { outputBytes: r.outputBytes } : {}),
     },
@@ -632,7 +736,7 @@ export function formatRecordedRow(
         : isCacheHit(o.status)
           ? formatTaskHitLine(node, o, colors, false, blocks)
           : formatTaskExecutedLine(node, o, colors, false, blocks, usualMs)
-  return note === '' ? row : `${row}  ${paint('muted', note, colors)}`
+  return withNote(row, node.id, note, colors).join('\n')
 }
 
 /**
@@ -696,19 +800,26 @@ export function planList(rows: readonly PlannedRow[]): ui.Block {
             worker: r.worker,
           },
         )
-        if (r.note === '') return [row]
-        // A terminal too narrow for the reason beside the row (an `--affected`
-        // chain runs past 130 columns) wraps it into the next row: it goes on
-        // its own line, under the task's name where it fits there, else at the
-        // gutter, where a field's value starts. Off a terminal it stays beside.
-        const width = Bun.stringWidth(Bun.stripANSI(row))
-        if (c.columns === undefined || width + 2 + Bun.stringWidth(r.note) <= c.columns)
-          return [`${row}  ${paint('muted', r.note, c)}`]
-        const name = width - Bun.stringWidth(r.node.id)
-        const under = name + Bun.stringWidth(r.note) <= c.columns ? name : GUTTER
-        return [row, `${' '.repeat(under)}${paint('muted', r.note, c)}`]
+        return withNote(row, r.node.id, r.note, c)
       }),
   }
+}
+
+/**
+ * A row's dim note (a `--dry` reason, `vx last`'s `exit 3`) beside it. A
+ * terminal too narrow for it there (an `--affected` chain runs past 130
+ * columns) wraps it into the next row: it goes on its own line, under the
+ * task's name where it fits there, else at the gutter, where a field's value
+ * starts. Off a terminal it stays beside.
+ */
+function withNote(row: string, id: string, note: string, c: ColorSupport): string[] {
+  if (note === '') return [row]
+  const width = Bun.stringWidth(Bun.stripANSI(row))
+  if (c.columns === undefined || width + 2 + Bun.stringWidth(note) <= c.columns)
+    return [`${row}  ${paint('muted', note, c)}`]
+  const name = width - Bun.stringWidth(id)
+  const under = name + Bun.stringWidth(note) <= c.columns ? name : GUTTER
+  return [row, `${' '.repeat(under)}${paint('muted', note, c)}`]
 }
 
 /** Compact one-liner for a cache hit with nothing to replay. */
@@ -965,16 +1076,19 @@ export function formatFrameClose(
   outcome: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
   kept = false,
+  stopped = false,
 ): string {
   const corner = (t: string) => paint('muted', t, colors)
   const mark = persistentMark(node, colors)
-  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, kept)}`
+  // The opening edge, above the output, named the id whole.
+  const tail = `${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, kept, stopped)}`
+  const close = `${corner('└─')} ${mark}${cutTaskId(node, colors, [`${mark}${tail}`])}${tail}`
   const violations = violationSection(outcome, colors)
   return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
 }
 
 /** What ran: a requested task gets the args after `--`, as execute-task.ts appends them. */
-function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
+export function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
   const exec = node.config.exec
   return maskedCommand(
     withForwardArgs(exec?.command ?? '', node.requested ? forwardArgs : []),
@@ -995,11 +1109,21 @@ function serving(node: TaskNode, o: TaskOutcome): boolean {
   )
 }
 
-/** The frame's close after its id: ` (<dur>) <status>`, `running` for a ready server, `still running` for a kept one. */
-function closeTail(node: TaskNode, o: TaskOutcome, colors: ColorSupport, kept: boolean): string {
+/**
+ * The frame's close after its id: ` (<dur>) <status>`, `running` for a ready
+ * server, `still running` for a kept one, `stopped` for one vx stopped.
+ */
+function closeTail(
+  node: TaskNode,
+  o: TaskOutcome,
+  colors: ColorSupport,
+  kept: boolean,
+  stopped = false,
+): string {
   if (!serving(node, o)) return formatBlockFooter(o, colors)
   if (kept) return ` ${paint('info', 'still running', colors)}`
-  return ` ${paint('muted', `(${formatElapsed(o.durationMs)})`, colors)} ${paint('info', 'running', colors)}`
+  const dur = paint('muted', `(${formatElapsed(o.durationMs)})`, colors)
+  return ` ${dur} ${stopped ? paint('muted', 'stopped', colors) : paint('info', 'running', colors)}`
 }
 
 /**
@@ -1016,6 +1140,8 @@ export function formatPersistentTailBlock(
   dropped: { stdout?: number; stderr?: number } = {},
   colors: ColorSupport = NO_COLOR,
   forwardArgs: readonly string[] = [],
+  /** vx stopped it before this block printed: it closes `stopped`, not `running`. */
+  stopped = false,
 ): string {
   const stdout = body.stdout ?? ''
   const stderr = body.stderr ?? ''
@@ -1023,7 +1149,7 @@ export function formatPersistentTailBlock(
   const lines: string[] = [formatFrameOpen(node, colors, forwardArgs)]
   pushStreamSection(lines, stdout, 'STDOUT (since ready)', 'ok', dropped.stdout ?? 0, colors)
   pushStreamSection(lines, stderr, 'STDERR (since ready)', 'error', dropped.stderr ?? 0, colors)
-  lines.push(formatFrameClose(node, outcome, colors))
+  lines.push(formatFrameClose(node, outcome, colors, false, stopped))
   return lines.join('\n') + '\n'
 }
 
@@ -1068,6 +1194,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // Footer: ` (<dur>) <status>`. The duration is what this run spent; for a
   // hit, probe and restore, not the stored exec time
   // (`TaskOutcome.cache.stored.durationMs`).
+  if (neverStarted(o)) return ` ${paint('notRun', 'not run', colors)}`
   const dur = paint('muted', `(${formatElapsed(o.durationMs)})`, colors)
   const tag = formatStatusTag(o, colors)
   return ` ${dur} ${tag}${flakyNote(o, colors)}`

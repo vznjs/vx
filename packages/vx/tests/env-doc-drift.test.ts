@@ -50,7 +50,7 @@ describe('docs/cli.md § Environment variables names the CI variables core reads
     const read = new Set(
       Array.from(view.slice(0, view.indexOf('\n}\n')).matchAll(/env\['(\w+)'\]/g), (m) => m[1]!),
     )
-    const ctx = src('orchestrator/run-context.ts')
+    const ctx = src('util/env-flag.ts')
     const list = ctx.slice(
       ctx.indexOf('const CI_PROVIDERS'),
       ctx.indexOf('\n]\n', ctx.indexOf('const CI_PROVIDERS')),

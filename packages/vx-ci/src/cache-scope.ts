@@ -24,11 +24,22 @@ import { type BranchFacts, branchCacheScope } from '@vzn/vx'
 export async function githubBranch(
   env: Readonly<Record<string, string | undefined>>,
   baseBranch?: string,
+  warn: (message: string) => void = () => {},
 ): Promise<BranchFacts> {
   if (env['GITHUB_ACTIONS'] !== 'true') return {}
-  const event = await eventOf(env['GITHUB_EVENT_PATH'])
-  const refs = githubRefs(env, event, baseBranch)
-  const facts = scopeOf(env, event, baseBranch)
+  // The runner sets every one; a step that passes only some lost the rest.
+  warnMissing(env, RUNNER_VARS, 'github()', warn)
+  const event = await eventOf(env['GITHUB_EVENT_PATH'], warn)
+  // GitHub runs a schedule only on the default branch, and its payload is
+  // `{ schedule }` alone: its ref names the default branch.
+  const trunk =
+    baseBranch ??
+    (env['GITHUB_EVENT_NAME'] === 'schedule' &&
+    stringOf(event?.repository?.default_branch) === undefined
+      ? /^refs\/heads\/(.+)$/.exec(env['GITHUB_REF'] ?? '')?.[1]
+      : undefined)
+  const refs = githubRefs(env, event, trunk)
+  const facts = scopeOf(env, event, trunk)
   return refs.length === 0 ? facts : { ...facts, refs }
 }
 
@@ -180,13 +191,44 @@ function prRun(
     : undefined
 }
 
-/** The event payload the runner writes; undefined when it cannot be read. */
-async function eventOf(eventPath: string | undefined): Promise<ActionsEvent | undefined> {
+const RUNNER_VARS = [
+  'GITHUB_REF',
+  'GITHUB_REF_NAME',
+  'GITHUB_REPOSITORY',
+  'GITHUB_EVENT_NAME',
+  'GITHUB_EVENT_PATH',
+]
+
+/** Names the variables of `keys` the job lacks, which the CI always sets. */
+export function warnMissing(
+  env: Readonly<Record<string, string | undefined>>,
+  keys: readonly string[],
+  plugin: string,
+  warn: (message: string) => void,
+): void {
+  const missing = keys.filter((k) => !env[k])
+  if (missing.length === 0) return
+  const names =
+    missing.length === 1
+      ? `${missing[0]} is`
+      : `${missing.slice(0, -1).join(', ')} and ${missing.at(-1)} are`
+  warn(`[vx] vx-ci: ${names} not set, so ${plugin} cannot name the branch`)
+}
+
+/** The event payload the runner writes; undefined, and warned, when it cannot be read. */
+async function eventOf(
+  eventPath: string | undefined,
+  warn: (message: string) => void,
+): Promise<ActionsEvent | undefined> {
   if (eventPath === undefined || eventPath === '') return undefined
   try {
     const event = JSON.parse(await readFile(eventPath, 'utf8')) as unknown
-    return typeof event === 'object' && event !== null ? (event as ActionsEvent) : undefined
+    if (typeof event === 'object' && event !== null) return event as ActionsEvent
   } catch {
-    return undefined
+    // warned below
   }
+  warn(
+    `[vx] vx-ci: GITHUB_EVENT_PATH ${eventPath} cannot be read, so github() names no pull request or default branch from it`,
+  )
+  return undefined
 }

@@ -141,7 +141,9 @@ it('each verb runs the config stage once', () => {
   expect(verbs.map((v) => [v.join(' '), count(v)])).toEqual(verbs.map((v) => [v.join(' '), 1]))
   // From the project's directory the selection pass places the cwd first.
   expect(count(['run', 'build', '--dry'], path.join(root, 'pkgs', 'app'))).toBe(1)
-})
+  // 22 vx processes, ~0.3 s each alone and 9 s together at load 21: the
+  // default 5 s timed out under a loaded machine.
+}, 60_000)
 
 // vercel/turborepo#2067: "Remote computation caching enabled" printed on
 // stdout ahead of the JSON. A remote layer that answers and one that fails
@@ -220,3 +222,84 @@ it('--dry --format json plans three servers at --concurrency 1, off a TTY', () =
   const plan = JSON.parse(p.stdout.toString()) as { tasks: { id: string }[] }
   expect(plan.tasks.map((t) => t.id).sort()).toEqual(['app#a', 'app#b', 'app#c'])
 })
+
+// A plugin hook's `console.log` (or `process.stdout.write`) reached stdout
+// ahead of the JSON: a config's own was moved to stderr, a hook's was not.
+it('a plugin hook printing to stdout leaves every --format json stdout parsing', async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/printer',
+        `{ config(ws) { console.log('hook log'); process.stdout.write('hook write\\n'); return ws } }`,
+      ),
+    ]),
+  )
+  // Locked and committed first, by this vx: the helper's own lock audit
+  // loads the plugin too.
+  const env = { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' }
+  const lock = Bun.spawnSync({ cmd: ['bun', BIN, 'lock'], cwd: root, env, stdout: 'pipe' })
+  expect(lock.exitCode).toBe(0)
+  gitInitCommit(root, 'locked')
+  const verbs = [
+    ['run', 'build', '--all', '--dry', '--format', 'json'],
+    ['show', '--format', 'json'],
+    ['info', '--format', 'json'],
+    ['lock', '--check', '--format=json'],
+  ]
+  const outcome = verbs.map((args) => {
+    const p = Bun.spawnSync({
+      cmd: ['bun', BIN, ...args],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env,
+    })
+    const out = p.stdout.toString()
+    let parsed = true
+    try {
+      JSON.parse(out)
+    } catch {
+      parsed = false
+    }
+    return {
+      args: args[0],
+      code: p.exitCode,
+      parsed,
+      onStderr: p.stderr.toString().includes('hook log'),
+    }
+  })
+  expect(outcome).toEqual(
+    verbs.map((args) => ({ args: args[0], code: 0, parsed: true, onStderr: true })),
+  )
+  // CONTROL: pretty output still reaches stdout.
+  const pretty = Bun.spawnSync({
+    cmd: ['bun', BIN, 'show'],
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env,
+  })
+  expect(pretty.stdout.toString()).toContain('app')
+}, 60_000)
+
+// A plugin verb owns its stdout: its `console.log` is its output.
+it('a plugin verb printing its own JSON still reaches stdout', async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/verb',
+        `{ commands: { echo: { description: 'echo', run() { console.log(JSON.stringify({ ok: 1 })); return 0 } } } }`,
+      ),
+    ]),
+  )
+  const p = Bun.spawnSync({
+    cmd: ['bun', BIN, 'echo', '--format', 'json'],
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+  })
+  expect([p.exitCode, p.stdout.toString()]).toEqual([0, '{"ok":1}\n'])
+}, 30_000)

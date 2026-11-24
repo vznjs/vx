@@ -55,7 +55,7 @@ export interface WorkspaceConfig {
  * `WorkspaceConfig.pipelines[name]`: a saved `vx run` over every project.
  * Each key is its `vx run` flag in camelCase (`cachePolicy` is
  * `--cache-policy`); a flag given to `vx pipeline` beats it, and so does
- * the flag's `VX_*` variable.
+ * the flag's `VX_*` variable. No typed flag turns off a saved `true`.
  */
 export interface Pipeline {
   /** The tasks, in every project that declares each (`'pkg#task'` names one); their order is `dependsOn`'s. */
@@ -118,7 +118,8 @@ export interface RunSettings {
    */
   killGrace?: Duration
   /**
-   * How long one plugin's end-of-run flush or teardown may take; `'0ms'`
+   * How long one plugin's end-of-run flush or teardown may take, and a
+   * remote download may wait for its answer or between bytes; `'0ms'`
    * waits for nothing not already done. Omitted → `'3s'`.
    */
   pluginTimeout?: Duration
@@ -177,7 +178,8 @@ export interface CacheSettings {
   /**
    * Which layers a run reads and writes (`'local:rw,remote:r'`; a layer it
    * leaves out stays on); `--no-cache` and `--force` still apply on top.
-   * Omitted → every layer reads and writes. The local layer is always read
+   * Omitted → every layer reads and writes on CI; off CI the remote is read
+   * only. The local layer is always read
    * first, then each remote in declared order.
    */
   policy?: string

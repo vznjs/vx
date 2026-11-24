@@ -57,15 +57,18 @@ over (in order):
    against e.g. `pkg-a#build` accidentally cache-hitting on a
    `pkg-b#build` entry.
 3. **Task config hash** — `xxh3(JSON.stringify(hashableConfig(node.config)))`
-   of the _evaluated_ task config. The projection is one field wide:
-   `exec.remote` is dropped, because it says WHERE a task runs and not
-   what it does (§ What's NOT in the key). Its keys are sorted all the
+   of the _evaluated_ task config. The projection drops only
+   `exec.remote` and `exec.worker`, because they say WHERE a task runs
+   and not what it does (§ What's NOT in the key). Its keys are sorted all the
    way down, so the order a config or a plugin spells them in moves no
    key; `vx lock` writes them sorted, so a run only checks. So are the
    lists that are sets: env names, input and output globs (a `!`
    subtracts in any order) and `dependsOn`, so reordering one replays.
    Captures:
-   - `exec` block (command, env declarations, timeout, persistent).
+   - `exec` block (command, env declarations, timeout, persistent,
+     sandbox). Turning `exec.sandbox` on or off, or widening a grant
+     (a `fix:` line applied), re-keys the task: an entry saved under one
+     sandbox is never replayed under another.
    - `dependsOn` and `inputs.tasks` declarations.
    - `outputs.files`, `inputs.files`, `inputs.env`,
      `inputs.runtime` / `workspaceRuntime` declarations (the
@@ -95,8 +98,7 @@ over (in order):
    key so `vx run test -- --watch` doesn't cache-hit a previous
    `vx run test`. Scoped to the user-requested tasks only — dependsOn-
    pulled deps don't see them (their cache identity stays clean) — and
-   to a command: a requested default `build` runs none and folds none
-   (X-119).
+   to a command: a requested default `build` runs none and folds none.
 5. **`inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current
@@ -194,7 +196,7 @@ over (in order):
     (dirty tracked paths, the untracked files and the ignored ones) and
     `git var -l` (the clean-filter gate's config) — so deriving these hashes
     costs zero file reads and zero per-file stats. Each trusted OID's
-    blob must be the size the index recorded for the file (A-60): `git
+    blob must be the size the index recorded for the file: `git
 add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     stores the LF blob of a CRLF file, and once the filter is gone git
     holds that stat-clean entry clean without re-reading it, so status
@@ -238,7 +240,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     content. `--no-renames`, because status pairs a deleted file with a
     similar unmerged path (a conflict mid-resolve) as its rename source
     and prints only `UU <path>`: the deletion went unsaid, the file kept
-    its index OID, and the run hit the output built with it (A-59).
+    its index OID, and the run hit the output built with it.
 
     Ref storage is not a key input: every ref vx reads comes from a git
     command, so a repository in reftable storage (git 2.45) keys every
@@ -261,7 +263,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     `.git` (a submodule never initialised, or one whose `.git` was
     removed to vendor its files, the gitlink left in the index) has no
     repository to ask and `git status` says nothing of it: its files
-    are listed by a walk and hash by content (A-61), so an empty one
+    are listed by a walk and hash by content, so an empty one
     folds nothing. `--affected` follows the
     same shape — git reports the nested repository as one changed path,
     and every project under it is selected.
@@ -377,7 +379,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     `core.trustctime=false`, or `core.checkStat=minimal` (whole-second
     mtime and size) — no index OID is trusted at all: a same-size
     rewrite that keeps its mtime (`cp -p`, `tar -x`) reads clean to
-    git, and until 2026-09-27 (A-6) kept the old bytes' key. Every file
+    git, and until 2026-09-27 kept the old bytes' key. Every file
     is then hashed through the memo below, which keys on ctime and
     inode. `core.ignorecase=true` on a disk that does not fold case (a
     `.git` copied from macOS to Linux) made `git status` take a new
@@ -408,8 +410,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     file system that keeps whole seconds writes it (ext3, HFS+,
     FAT/exFAT, some NFS), widens that window by a second, and an even
     second by two, since FAT32 keeps even seconds; a rewrite later in
-    the same stamp keeps it (`racyWindowMs`; until 2026-09-27, A-2 and
-    A-38, such a rewrite of the same size was a hit on the first bytes'
+    the same stamp keeps it (`racyWindowMs`; until 2026-09-27, such a rewrite of the same size was a hit on the first bytes'
     output). Every such window compares a file's stamp, on its file
     system's clock, with a moment vx read from its own, so a run first
     measures how far the file system runs behind (one file written and
@@ -447,8 +448,18 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     it, as Nx reads a linked file where it points: a file's identity, or
     for a directory every file beneath it at any depth, tracked or not
     (`.git`, `node_modules`, `.vx/cache` and `.yarn/cache` aside, as Nx's walker skips them), a link
-    among them followed in turn. The target may be anywhere: in the
-    project, elsewhere in the workspace, outside it. Retargeting a link
+    among them followed in turn. The target may be in the project,
+    elsewhere in the workspace or outside it, but an `inputs.files` link
+    is never followed into another project. When a task its `dependsOn`
+    reaches there declares the target in its `inputs.files` or `outputs`,
+    the link keys its target string alone and a linked
+    directory's walk skips that project: what the task reads there
+    reaches its key as that task's input keys. Otherwise the run
+    refuses it (`VX_E_NESTED_INPUT`), as it refuses a glob into another
+    project. Followed, `b/src/a -> ../../a` keyed `a`'s git-ignored
+    `dist`, so `a`'s restore re-keyed `b`, which was never saved
+    (2026-11-24). An `inputs.workspaceFiles` link has no boundary and
+    is followed anywhere. Retargeting a link
     changes the key, to equal bytes too; an edit behind it changes the
     key. A dangling link, or a loop of links, keys its target string
     alone. `--affected` selects a link whose target changed (a file
@@ -635,7 +646,7 @@ transitive dependant of one with it (their up-front keys fold a
 preliminary key); a glob with no literal prefix reaches every project.
 Before item 584 one such declaration emptied the tier graph-wide.
 `vx lock` refuses a task whose input globs can match another task's
-declared outputs (X-54, no opt-out), unless git ignores those outputs
+declared outputs (no opt-out), unless git ignores those outputs
 whole (and the entry does not start inside them) or the producer is a
 dependency its key does not fold, whose bytes it then hashes after the
 producer ran, so the clauses on declared outputs fire only for such a
@@ -955,7 +966,7 @@ is on):
    partial one — and bytes and rows go live together: the rename waits
    for the write lock, so no other writer's rows land beside it, and a
    commit that fails takes the artifact back out (the key then misses).
-   Until 2026-09-27 (A-3) the rename came first, and a commit refused
+   Until 2026-09-27 the rename came first, and a commit refused
    past the busy timeout left the new bytes beside the old rows: every
    later hit on the key failed the task as a corrupt artifact.
    A `--force` save of a key the index already holds replaces it: the
@@ -1014,8 +1025,10 @@ back a committed output of a dependency while its dependant runs, or a
 sibling task or another process that rewrites an ignored `dist`, would
 file bytes no key names. The save checks each dependency's outputs against
 the stamps its save or restore left, and withholds the entry when one
-moved: `[vx] app#build: an output of lib#build changed while it ran (a
-checkout, a stash, another process) — …`. Each output is `lstat`ed once
+moved: `[vx] app#build: an output of lib#build changed while it ran (the
+task itself, a checkout, a stash, another process) — …`. A dependant
+that deletes or rewrites a dependency's output is withheld the same way,
+on every run. Each output is `lstat`ed once
 per dependant's save, and not again for a dependant whose command ended
 before the last check found them held. So are the inputs of every task the key folds, dependencies of
 dependencies too (`inputs.tasks` decides which): an editor's save or a
@@ -1046,7 +1059,7 @@ ran, but not its bytes or mtime …``) and names the ways out: copy instead
 of linking, or `inputs.stability: { strategy: 'mutable' }`. A task
 left remote (`--cache-download=none`) is held to the same checks: a moved
 key still lets a local consumer fetch its outputs, but the fetch saves
-no entry; until X-123 it saved them under the old key. A task
+no entry; an earlier vx saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
 is not saved either: its write cannot be told from an edit reverted
 mid-run, so it pays a re-run each time rather than risk a stale entry.
@@ -1096,7 +1109,7 @@ during the run (an editor, a checkout) and that the next run runs on it.
 A file listed but gone before the key hashes it (an upstream that
 deletes a file its dependant's globs match) is keyed as absent, not
 read: the dependant failed as `internal error … ENOENT` on every run
-until A-55. Absent stays unmoved while it stays gone. So is a
+in earlier versions. Absent stays unmoved while it stays gone. So is a
 declared path under a parent that is now a file (`conf/b.txt` with
 `conf` a file, a tracked directory replaced by a file): its `lstat`
 answers ENOTDIR, which failed the key as an internal error until
@@ -1104,12 +1117,12 @@ answers ENOTDIR, which failed the key as an internal error until
 Its dependants whose keys fold its key save nothing either,
 transitively: that key does not name the bytes they built from (`[vx] app#use: ran
 over app#gen's outputs, which its key no longer describes — …`). Until
-2026-09-27 (A-12) they saved, and once the input was put back they hit
+2026-09-27 they saved, and once the input was put back they hit
 the edit's output.
 A claimed root file a task rewrote since the run read it (§ Cache key
 derivation, step 9) withholds the save the same way, and no key
 taken before it is probed or restored: a hit the up-front probe found
-goes back to the scheduler and runs once its deps are done. Until X-124
+goes back to the scheduler and runs once its deps are done. Earlier,
 that hit restored the old install's bytes.
 
 A miss that ran here and saves **nothing** — it failed, the cache
@@ -1145,8 +1158,10 @@ app#build: outputs matched no files (dist/index.js) — the command exited 0
 but never wrote it, so the task fails and nothing is cached: write it, or
 fix the pattern`. The line names the likely cause when it applies: a
 sandboxed task with no `exec.sandbox.allow.write`, whose writes never
-reached disk, or an undeclared state file that survived the clean
-(below). A failed task is retried as any failure is.
+reached disk, an undeclared state file that survived the clean
+(below), or, when no output's folder exists either, an output written only
+sometimes (Nx and Turbo cache whichever outputs exist; a test target's
+`coverage/` written only with coverage on cannot be declared here). A failed task is retried as any failure is.
 A remote executor checks the outputs where they landed, by the same
 rule, and names what matched nothing (`ExecuteResult.outputsMissing`;
 `@vzn/vx-dte`'s workers and `@vzn/vx-reapi` do): the task fails the same
@@ -1243,7 +1258,7 @@ Declared `outputs.files` are wiped in two distinct places:
   stayed after a hit of A, which left it 0755).
   Hand-edits to output files don't persist through a cache replay. When
   the hit's own check walked the output globs to find the tree stale,
-  the removal uses that walk's list instead of walking again (X-161).
+  the removal uses that walk's list instead of walking again.
 
 Both use the same helpers (`cleanOutputs`, `cleanOutputPaths` in
 `src/cache/inputs.ts`) with the same boundary rules, and vx's own paths stay off the wipe
@@ -1259,7 +1274,7 @@ or Next standalone's under `.next/standalone/**`, is saved, restored and
 cleaned like the rest (until 2026-11-12 the save dropped it, and a hit
 restored a server missing its imports); a project's installed one, reached
 only by a wildcard (`**/*.js`) or by any `workspaceFiles` glob, never is.
-Until 2026-09-27 (A-13) `**/*.js` cleaned every
+Until 2026-09-27 `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
 No clean deletes a file git tracks (2026-10-14). Under an output
 glob it is still an output: the task may rewrite it (TanStack Router's
@@ -1301,7 +1316,7 @@ nothing, so no list is taken: that opt-out keeps this gap.
 A committed file under `outputs.workspaceFiles` is keyed only where
 `inputs.workspaceFiles` reaches it. Until then the
 clean deleted a committed file under an output, and a reader with no edge
-to its producer failed naming only the file (A-48, vueuse's
+to its producer failed naming only the file (vueuse's
 `metadata/index.json`). Untracked files under the glob are cleaned as
 before. Paths compare as
 git compares them: case-folded under `core.ignorecase` where the disk
@@ -1310,7 +1325,7 @@ file inside a submodule counts as committed. A file past a committed
 symbolic link (`dist -> real`) does not: git tracks none through one, so
 it is asked by its target's name (`real/x`).
 Workspace outputs take the same rules, and a path an output `!` entry
-takes back (A-44) is off the wipe, the artifact and the restore alike.
+takes back is off the wipe, the artifact and the restore alike.
 Skipped when:
 
 - `outputs.files` is empty (nothing declared as output).
@@ -1367,7 +1382,7 @@ build: any path both could write counts, so `build/{a,b}.js` meets
 `build/*.js`, and `out/**` meets a glob for each `.d.ts` one level down
 at `out/types/x.d.ts`. By default that holds even when one depends on the other: the
 workspace rule `run.rules.exclusiveOutputs` (on unless set to `false` in
-`.vx/workspace.ts`, X-53) keeps one path to one task, and its refusal says
+`.vx/workspace.ts`) keeps one path to one task, and its refusal says
 how to turn it off. The shape below is correct, only slower: a stamp
 before every run, a diff after, and a clean by rows. Give each task its
 own output path where you can (`dist-individual` beside `dist`).
@@ -1382,7 +1397,7 @@ With the rule off, an edge fixes the order, and the dependant is
   declared outputs — the outputs are stamped (size, mtime, inode, ctime) before the
   run and diffed after, the same proof a hit's "already current" check
   trusts — and only that set is saved; `outputs.workspaceFiles` are
-  stamped the same way (until A-43 its miss cleaned them by glob, deleting
+  stamped the same way (earlier, its miss cleaned them by glob, deleting
   a same-tree upstream's root-anchored files before it read them);
 - a file it **found and left alone** is its own too when a save or
   restore of this task left it exactly so (a row of one of its entries,
@@ -1393,7 +1408,7 @@ With the rule off, an edge fixes the order, and the dependant is
 - a run that **removes** a file it found (a bundler deleting the
   upstream's intermediate) saves nothing: an artifact holds what a run
   wrote, never what it took away, and the upstream's restore puts the
-  file back, so the dependant runs again on every warm run (X-32). Any
+  file back, so the dependant runs again on every warm run. Any
   task that removes a committed file under its outputs saves nothing
   the same way (Strict output ownership);
 - before a **retry**, what the failed attempt added is removed, so its
@@ -1418,7 +1433,7 @@ workspace outside the run whose outputs overlap the upstream's is a
 dependant (an upstream would be in the run, and `vx lock` refuses an
 unordered pair), so the run loads every project's config to find them. A file the dependant rewrites in place (refine's
 `types` regenerating `build`'s `.d.ts`) counts as the dependant's own
-(its ctime moved, even where a tool stamps the size and mtime back; X-33),
+(its ctime moved, even where a tool stamps the size and mtime back),
 which is correct and costs the upstream a restore on
 the next warm run; the design note keeps that shape out of scope.
 
@@ -1435,7 +1450,7 @@ A task's cache becomes invalid when any of these change:
 | Edit `package.json`'s `workspaces` field                                                                                                 | membership: a project that joins or leaves changes which projects exist and which nested dirs its parent's globs exclude (step 11)                                                                      |
 | Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 11 — an input file of every cached task when `@vzn/vx-lockfile` is declared (it adds `package.json` to `inputs.files`), or when a task lists it; **NOT a trigger** otherwise                       |
 | Edit the task's `vx.config.ts`                                                                                                           | step 3 (task config hash)                                                                                                                                                                               |
-| Edit a config file that the task config imports                                                                                          | step 3 (configHash sees the resolved object after Bun evaluates imports)                                                                                                                                |
+| Edit a config file that the task config imports                                                                                          | step 3 once `vx lock` evaluates it again: a run reads the lock and checks no imported file                                                                                                              |
 | Change CLI `forwardArgs` (after `--`)                                                                                                    | step 4                                                                                                                                                                                                  |
 | Change a `inputs.env` host value                                                                                                         | step 5                                                                                                                                                                                                  |
 | Change the combined stdout+stderr of a `inputs.runtime` command (resolved at hash time)                                                  | step 6                                                                                                                                                                                                  |
@@ -1461,13 +1476,12 @@ directories (projects rooted inside this one) once per `vx run`. A
 workspace package a `discover` plugin lists (a lockfile plugin such as
 `bun()`) counts whether or not it has a vx config: it is the
 project `--affected` gives its files to, and its default `build` keys
-them (X-57). The same set fences the output clean, so a root
+them. The same set fences the output clean, so a root
 `outputs.files: ['**/*.js']` never removes a member's source. Core reads
 no `package.json`, so with no such plugin a directory with no vx config is
 no project: it is the root's, its files are the root's inputs, and a root
 output glob (`**/*.tsbuildinfo`) cleans its untracked matches. Every
-glob pass drops a path under one of them (an ancestor lookup,
-A-11). A nested workspace (a directory holding its own
+glob pass drops a path under one of them (an ancestor lookup). A nested workspace (a directory holding its own
 `.vx/workspace.*`, which `vx lock` records in the lock) joins the set for
 outputs only: the clean before a run deleted its untracked files. Inputs
 still fold its files, as a task may read them (a git worktree checked out
@@ -1616,7 +1630,7 @@ it: an answer taken before the upstream ran costs a spurious miss on the
 run after the output changes, never a stale hit, and the answer stays
 shared. When it does not (`tasks: []`, a filter that leaves it out, an
 uncached writer, whose writes its key does not follow, transitively), nothing
-covered it until X-34: the save filed bytes built from the new state
+covered it in earlier versions: the save filed bytes built from the new state
 under the old answer, and a later run that started from the old state
 hit them. Now such a task (`probesAfterWrites`, stable-keys.ts) takes no
 key up front and is never restore-tier, and its probes run for it alone,
@@ -1627,7 +1641,7 @@ spelling: files are re-checked, answers are not.
 
 A probe runs in its own process group. One still running when vx exits
 — a Ctrl-C, or a refusal, while a hung `git` or `node -e …` answers — is
-SIGKILLed with its whole tree; until 2026-09-27 (A-9) it ran on under
+SIGKILLed with its whole tree; until 2026-09-27 it ran on under
 init. A `kill -9` of vx runs no exit hook, and leaves it.
 
 So a run loads the frozen command strings from the lock but still
@@ -1658,7 +1672,7 @@ The cache itself was always safe (SQLite waits on its lock, artifacts
 land by rename; a transaction that reads before it writes takes the
 lock at BEGIN, since SQLite answers its later write `database is locked`
 at once: a run's history was lost so in 13 of 48 runs on one shared
-cache dir, X-105); a task's OUTPUT TREE was not — both runs cleaned and
+cache dir); a task's OUTPUT TREE was not — both runs cleaned and
 restored the same `dist/`, and a clean landing while the other run's
 restore was staging took its files out from under it. The lock is an
 atomic directory under the temp directory, keyed by the workspace root
@@ -1712,10 +1726,10 @@ healthy key (`tests/vanished-artifact.test.ts`).
 A local artifact whose bytes are wrong (a failed checksum, a torn
 write, one past the artifact ceiling, an entry missing a recorded
 output, a tree entry missing one of its files, a name that now reads
-unsafe, X-115) is a miss the same way: `[vx] <id>: cache: corrupt artifact
+unsafe) is a miss the same way: `[vx] <id>: cache: corrupt artifact
 for <hash>: …; dropped it — running it`. The entry is dropped, so the
 task's save stores the key again; it failed the task as an internal
-error on every run until `--force` before A-52. A cache the run may
+error on every run until `--force` in earlier versions. A cache the run may
 only read keeps the entry (`…; left it (this cache is read-only)`).
 A failure that is another process re-saving the key since the probe
 (its rows changed) restores the new entry instead, or is a plain miss
@@ -1728,7 +1742,7 @@ a cache baked read-only into a CI image) serves its hits: the run says
 `[vx] cache directory <path> is not writable (EACCES: …) — serving hits
 from it; this run saves nothing and records no history` once, before
 any task, then restores what it holds and runs the rest without saving
-it. An empty one has nothing to serve and fails the run before any task:
+it. As with `--no-cache`, a miss's outputs are not cleaned before it runs. An empty one has nothing to serve and fails the run before any task:
 `cache directory <path> is not writable (EACCES: …)`, with
 `--cache-dir <path>` as the way out. `vx cache clean` is refused the
 same way (its `--dry` only reads, and reads). The readers (`vx show`, `why`,
@@ -1757,20 +1771,19 @@ A process out of file descriptors (`EMFILE`, `ENFILE`) is named the
 same way: a save is `[vx] cache save failed: <task>: save of <hash> could not
 open a file (EMFILE: …) — … raise the limit (ulimit -n 4096) and
 re-run`, and a restore fails the task with that hint, never as a
-corrupt artifact (A-39). Opening the index is named the same way: SQLite reports a
+corrupt artifact. Opening the index is named the same way: SQLite reports a
 descriptor it could not get as `unable to open database file`, and vx
-says `the cache index <path> could not be opened (…) — …raise the limit`
-(A-56). A path SQLite will not open, past 504 bytes (its 512 less the
+says `the cache index <path> could not be opened (…) — …raise the limit`. A path SQLite will not open, past 504 bytes (its 512 less the
 `-journal` it may add), says its length and to point the cache at a
 shorter directory (`--cache-dir`, `VX_CACHE_DIR`).
 A restore that cannot READ its artifact (a cache directory another
 user owns) names the cache, not the outputs: `restore of <hash> could
 not read its artifact (EACCES: …). Make the cache directory readable
-by this user, or point cacheDir / --cache-dir at one that is.` (A-40).
+by this user, or point cacheDir / --cache-dir at one that is.`
 An input the key must hash that this user cannot read fails its task
 naming the read: `<path> is not readable by this user (EACCES), and vx
 reads it to derive a cache key. Make it readable, or, for a task input,
-take it out of inputs.files.` (A-50). An input directory this user may
+take it out of inputs.files.` An input directory this user may
 enter but not list (`chmod 111`) refuses the run by name: git cannot
 list it, so the files a task reads there by name were in no key, and an
 edit to one was a stale hit. One it may not enter is left out, as no task
@@ -1904,9 +1917,11 @@ staging in `.vx/tmp/` (output bytes), and the probes a run writes and
 removes at once (`.vx-clock-<pid>`, the watch stamps). A hit needs
 `.vx/tmp/` writable even where `--cache-dir` points elsewhere: a
 read-only checkout mounts one over it. A failed run's
-task output is `failures` rows (one per task: `output` plain text, ANSI
-stripped, secrets masked, the first 8 KiB and last 56 KiB; `locations`
-and `sandbox_fix` JSON), written at run end only when a task failed with
+task output is `failures` rows in `cache.db`, not files (one per task: `output` plain text, ANSI
+stripped, secrets masked, the first 8 KiB and last 56 KiB; `dir`, its
+project's directory from the root, `.` for the root; `input_moved`, the
+input that changed while it ran; `locations` and `sandbox_fix` JSON),
+written at run end only when a task failed with
 output or a moved input; the newest 50 failed runs are kept. A refused
 write (a full disk) costs only that output, never the run's verdict.
 
@@ -1930,7 +1945,7 @@ noise). Ingest lists entries through the reader without materialising
 a byte, and **restore streams it**: the zstd
 frame is decoded and the tar read as it arrives — ustar name/prefix
 (the prefix under POSIX `ustar\0` magic only: old GNU's `ustar  ` keeps
-atime there, A-29),
+atime there),
 pax `path`/`size`, GNU long names, header checksums, truncation; an
 extended header (read whole) past 1 MiB or a pax `size` that is not a
 whole number is refused as corrupt, since a 1 GiB pax header costs 2 GiB
@@ -1971,7 +1986,7 @@ writes — vx's own saves above 4 MiB) is always decoded as a stream, so
 a sizeless bomb has nowhere to expand and vx's artifacts ingest
 anywhere. So is a body that is not exactly one frame: the declaration is
 the first frame's alone, while the one-call decoder decodes every frame,
-so until 2026-09-27 (A-5) a 100-byte frame with a large one appended
+so until 2026-09-27 a 100-byte frame with a large one appended
 expanded whole in memory (2 GiB from a 32 KB body) before its length was
 checked. The frame's blocks are walked by their own sizes to tell.
 The ceiling bounds bytes that are decoded. The default store keeps this
@@ -1988,7 +2003,8 @@ is compressed — the run stays green, one status line names the task
 (`[vx] cache save failed: <task> is not cached: its outputs pack to …,
 past the 1.0 GB cache.artifactCeiling a restore enforces — narrow
 outputs.files or raise it`), and nothing is
-stored for a later run to hit and fail to restore. Left to the scan, a
+stored for a later run to hit and fail to restore. Where the two sizes
+print alike (`1.0 GB`), each line names both in bytes too. Left to the scan, a
 2.2 GB output paid the whole compress and a decode (6 to 14 s) to learn
 the same thing and called the task's outputs a corrupt artifact.
 
@@ -1997,7 +2013,7 @@ its name, a NUL, then its body) as 8 hex digits. Tar sums its headers
 only and neither zstd writer asks for a frame checksum, so a byte flipped
 in a raw zstd block (incompressible output: an image, a wasm, a tarball)
 decoded clean and a hit replayed the wrong bytes: 1,141 of 1,141 flips in
-a random 8 KB body went unseen (L-19). Scan and restore hash every entry
+a random 8 KB body went unseen. Scan and restore hash every entry
 as they read it and refuse an artifact whose sum is absent, wrong, or
 followed by another entry, before anything it holds lands; the refusal
 is a corrupt artifact, so a restore degrades to a miss and an ingest
@@ -2019,9 +2035,8 @@ tree form's; a restore dates a file it writes now (§ Cache lookup → restore).
 Both hold at their edges too: a mode of
 000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`), one before 1970, whose
 tar header carries 0 since ustar's field holds no sign, and one past
-March 2242, whose header carries the field's 11-digit maximum (X-114:
-the save failed `value … does not fit a 12-byte field`). Until 2026-09-27
-(A-4) the first two were skipped, so the file came back 0644 and
+March 2242, whose header carries the field's 11-digit maximum (the save
+failed `value … does not fit a 12-byte field`). Until 2026-09-27 the first two were skipped, so the file came back 0644 and
 stamped now and every later hit restored it again, and the third wrote
 a header the reader refused, so its task never saved. `exec` (`{ cpuMs?, peakRssBytes? }`,
 2026-09-12) is what the PRODUCING execution used: it rides the artifact
@@ -2085,7 +2100,7 @@ same gate (`restorableOutput`). On the save side a
 **symlinked output** is stored as the link, as Turbo and Nx keep it: a
 link to a file, to a directory or to nothing comes back as that link,
 and no byte of its target is read, so a link a sandboxed task planted to
-a file it could not read packs nothing of it (L-23). An absolute link
+a file it could not read packs nothing of it. An absolute link
 into the workspace is stored, and rewritten on disk, as the relative link
 that lands on the same path (Next 16's `.next/node_modules` copy of a
 server external package keeps its bin link absolute), so the entry hits
@@ -2103,21 +2118,24 @@ file, symlink, FIFO, socket and device the output globs cover (a link is unlinke
 followed). An output directory that is a symlink (`dist -> real-out`) is
 followed by the clean as by the save and restore, named by a glob
 (`dist/**`) or a literal (`dist`) alike, so its target is the
-output and an entry holds only what its run wrote (X-88); one that
+output and an entry holds only what its run wrote; one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5); so does one, in either scope, that
+nothing is deleted through it; so does one, in either scope, that
 resolves into a directory an entry of the task's own `inputs.files` or
 `inputs.workspaceFiles` can match below (`dist -> src` under `src/**` or
-`**/*.ts`: the clean deleted every untracked source, X-55; `dist ->
+`**/*.ts`: the clean deleted every untracked source; `dist ->
 build-out` under `src/**` stays an output), and so does an
 `outputs.workspaceFiles` directory that resolves outside the workspace
-(it saved an empty entry under a warning, M-65). So does one, in either scope, that
+(it saved an empty entry under a warning). So does one, in either scope, that
 resolves into the root's own `.git` (any case) or its `.vx`: for the root
 project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
 under `dist/**` had the clean delete the repository. A recorded row
 reached through such a link is never removed either. The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
-task writes there), so a task whose
+task writes there; a glob with no fixed directory, Turbo's `**/dist/**`,
+prunes the directories it matches, so `dist/old` goes and `dist` stays:
+until 2026-11-23 it pruned none, a miss saved the emptied `dist/old` as
+an output and a stray tree there made every later hit restore), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
 next — restores either entry over the other's tree; a stray the globs
 do not cover, or an empty directory where the entry holds a file, that
@@ -2171,8 +2189,8 @@ hand takes the inline artifacts with it. A `.tmp-*` a crashed save
 left is never a hit. `vx cache clean` sweeps row-less files. A
 row-less artifact may be in use: two vx versions share one store, and
 each open drops the other's rows. So the policy judges it as it judges a
-row, its file time standing for `accessed_at`: past `olderThan` it goes,
-and under `maxSize` it counts, oldest use first with the rows. A hit
+row, its file time standing for `accessed_at`: past `--older-than` it goes,
+and under `--max-size` it counts, oldest use first with the rows. A hit
 renews a file time over an hour old, so the last use is read as the file
 time plus an hour. An inline artifact with no row is judged the same
 way, its `at` standing for the file time, and `vx info` counts it with
@@ -2186,7 +2204,7 @@ A row's `accessed_at` is renewed the same way: a hit renews it only once
 it is over an hour old (2026-10-08). Renewing every hit rewrote
 2,180 rows at a warm 1,090-package run's close, ~30 ms. So the policy
 reads a row's last use as `accessed_at` plus an hour too: an entry used
-within `olderThan` is never pruned, and one may stay up to an hour past
+within `--older-than` is never pruned, and one may stay up to an hour past
 it (`tests/cache.test.ts` › "an entry used within the age limit is never
 pruned").
 Captured stdout is stored twice on purpose: in the artifact (so it
@@ -2199,7 +2217,7 @@ hit replays it with pure SQL, never decompressing the artifact).
 `SCHEMA_VERSION`, earlier or newer, is reset by the first run that opens
 it (pre-alpha: no migrations; the index is an inventory,
 2026-10-06): every table but `schema_meta` is dropped and recreated,
-so each comes back in its current shape (A-54: `output_dirs` kept an
+so each comes back in its current shape (`output_dirs` kept an
 earlier vx's columns). The check, drop, re-create
 and stamp are one write transaction, so another version's open waits
 rather than landing between them; an index already current is opened
@@ -2212,7 +2230,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/index-db/schema.ts (SCHEMA_VERSION = 'v58')
+-- src/index-db/schema.ts (SCHEMA_VERSION = 'v59')
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -2310,7 +2328,7 @@ CREATE TABLE run_ids (
 -- out as its `runs` rows, ids `first_id` on, which the run reserved, and
 -- the flaky record's first hit of a key; every reader of `runs` calls it
 -- first, `vx last` and `vx why` on opening. A plan reads `hit_keys` where
--- it lies.
+-- it lies. A failing run reads none of them: see `task_outcomes`.
 CREATE TABLE run_hits (
   run        INTEGER PRIMARY KEY,  -- the run's run_ids row
   first_id   INTEGER NOT NULL,     -- the runs id of its first hit
@@ -2378,7 +2396,7 @@ CREATE TABLE fold_memo (
 );
 
 -- The size of each index blob the enumeration checked against the
--- worktree size git recorded (§ Cache key derivation, A-60): fixed for
+-- worktree size git recorded (§ Cache key derivation): fixed for
 -- its OID, so a warm run asks git for none. Swept with file_hashes by
 -- seen_at, the time the row was written. v38: in the store, so a worktree
 -- reads what another learned.
@@ -2389,7 +2407,7 @@ CREATE TABLE blob_sizes (
 );
 
 -- v30: the paths an index distrusts, by a hash of the index file and the
--- pathspecs (A-60): a warm run reads one row, not one per blob. Swept
+-- pathspecs: a warm run reads one row, not one per blob. Swept
 -- with file_hashes.
 CREATE TABLE blob_verdicts (
   digest  TEXT PRIMARY KEY,
@@ -2464,12 +2482,13 @@ CREATE TABLE invocations (
   up_to_date_count       INTEGER NOT NULL DEFAULT 0, -- v31: hits that restored nothing
   restored_local_count   INTEGER NOT NULL DEFAULT 0, -- v31: hits that restored, local layer
   restored_remote_count  INTEGER NOT NULL DEFAULT 0, -- v31: hits that restored, remote layer
+  aborted_count     INTEGER NOT NULL DEFAULT 0, -- v59: tasks a stop or --fail-fast killed once started
   exit_ok           INTEGER NOT NULL,         -- 1 if the run's `ok`
   commit_sha        TEXT,                     -- nullable: not a git repo / probe failed
   branch            TEXT,
   dirty             INTEGER,                  -- 1 if worktree had uncommitted changes
   ci                INTEGER NOT NULL,         -- 1 if a CI env was detected
-  ci_provider       TEXT,                     -- 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'generic'
+  ci_provider       TEXT,                     -- 'github' | 'gitlab' | 'buildkite' | 'circleci' | 'azure' | 'jenkins' | 'teamcity' | 'generic'
   host              TEXT,                     -- os.hostname()
   os                TEXT,                     -- process.platform
   arch              TEXT,                     -- process.arch
@@ -2586,7 +2605,13 @@ CREATE UNIQUE INDEX task_durations_remote
 -- executed success or failure that names its key (keyed, cached, not run
 -- behind a failure), and a key's first hit: a later hit replays a pass on
 -- record, so a warm run on passed keys writes no row (one index probe,
--- ~1 ms per 1,000 hits). Pruned by age with the run history.
+-- ~1 ms per 1,000 hits). A local hit is written when a reader writes the
+-- kept hits out; until then its entry stands for it: a failure, and an
+-- entry being deleted, write the key's entry as a pass at its created_at
+-- where the key has none (`recordEntryPasses`). A remote hit, whose entry
+-- may not be saved here, is written as the run keeps it. A key's rows are
+-- read in recorded_at order: worktrees write them late. Pruned by age with
+-- the run history.
 CREATE TABLE task_outcomes (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   project     TEXT NOT NULL,
@@ -2726,7 +2751,12 @@ moat.
   command output is resolved live at hash time, so it stays correct
   under the lock. Avoid baking versions via
   `define: { X: execSync(...) }` — that value freezes into the config
-  object at lock time and goes stale.
+  object at lock time and goes stale. The tool a command names is not
+  in the key either: one replaced at the same path, or a version
+  manager (nvm, Volta, mise) switching it, replays the old output unless a
+  probe asks it. A shim picks its version by directory, so a project
+  with its own pin probes in `runtime`, which runs in the project; a
+  `workspaceRuntime` probe runs at the root.
 - **Another language's manifests and lockfiles.** A lockfile plugin
   keys JS dependencies only; name the rest in `inputs.files`: Go's
   `go.mod` and `go.sum`, Rust's `Cargo.toml` and `Cargo.lock`, Python's
@@ -2739,7 +2769,7 @@ moat.
   `--affected` change sets. So are the files `vx lock` and `vx init`
   write beside it: each project's `vx.lock.json` review copy,
   `.vx/.gitattributes`, `.vx/.gitignore` and `.vx/dependencies.lock`.
-- **`exec.remote`.** Pure PLACEMENT: it decides _where_ a task runs,
+- **`exec.remote` and `exec.worker`.** Pure PLACEMENT: it decides _where_ a task runs,
   never what it produces, so pinning a task to this machine does not
   bust its cache. It must not — the
   whole contract of a remote executor is that the same command over the
@@ -2823,6 +2853,10 @@ breaking footer).
 
 ### History
 
+- **`SCHEMA_VERSION` v58 → v59** (2026-11-24), `CACHE_VERSION` unmoved:
+  `invocations` gained `aborted_count`, the tasks `--fail-fast` killed,
+  which have no `runs` row: `vx last` read such a run as fewer tasks than
+  its footer, and said nothing of them. The index resets once.
 - **`SCHEMA_VERSION` v57 → v58** (2026-11-23), `CACHE_VERSION` unmoved:
   `failures` gained `dir`, the failed task's project directory, so
   `vx last --format json` says where its output's relative paths start.
@@ -2840,8 +2874,7 @@ breaking footer).
 - **v54 → v55**: stored bytes wrong under a key the change does not move
   (2026-11-11). No clean deletes a committed file, so a hit cannot replay
   a run that removed one under its outputs: the restore left it, and the
-  tree differed from the run's on every hit. Such a run now saves nothing
-  (X-32); a v54 entry may be one, so it is never read.
+  tree differed from the run's on every hit. Such a run now saves nothing; a v54 entry may be one, so it is never read.
 - **v53 → v54**: stored bytes wrong under a key the change does not move
   (2026-11-11). An additive task (item 588) saved only what its run
   added or changed, so an incremental emitter's entry lacked the files
@@ -2910,29 +2943,28 @@ breaking footer).
 - **v41 → v42**: the stored output became both streams in the order
   the run printed them (`orchestrator/output-log.ts`), so a hit replays
   stderr too. A v41 entry holds stdout alone.
-- **v40 → v41**: stored bytes wrong under an unchanged key (X-88). An
+- **v40 → v41**: stored bytes wrong under an unchanged key. An
   output directory linked inside its project was never cleaned, so an
   entry could hold files a run of another key left there. The fix
   cannot reach an entry already saved that way.
-- **v39 → v40**: stored bytes wrong under an unchanged key (X-32, X-33,
-  X-34). An additive task's entry a hit replayed over a file the task
+- **v39 → v40**: stored bytes wrong under an unchanged key. An additive task's entry a hit replayed over a file the task
   had removed, one that missed a same-size rewrite, and a runtime probe
   answered before its upstream wrote.
-- **v38 → v39**: stored bytes wrong under an unchanged key (A-61). A
+- **v38 → v39**: stored bytes wrong under an unchanged key. A
   gitlink whose directory had lost its `.git` but held files listed
   none of them, so an entry built from them sits under the key the
   same directory empty derives.
-- **v37 → v38**: stored bytes wrong under an unchanged key (A-60). A
+- **v37 → v38**: stored bytes wrong under an unchanged key. A
   file added under a clean filter that was later removed kept its LF
   index blob, git held it clean by its stat, and the key folded that
   blob while the task read the CRLF bytes. The blob-size check cannot
   reach an entry already saved that way.
-- **v36 → v37**: stored bytes wrong under an unchanged key (A-59).
+- **v36 → v37**: stored bytes wrong under an unchanged key.
   `git status` paired a deleted file with a similar unmerged path as its
   rename source and printed only `UU <path>`, so the file kept its index
   OID and the key folded it while the task ran without it. The fix
   (`--no-renames`) cannot reach an entry already saved that way.
-- **v35 → v36**: the container changes (L-19). Every artifact ends in a
+- **v35 → v36**: the container changes. Every artifact ends in a
   `.vx-sum` entry, a CRC-32 over the entries before it, and scan and
   restore refuse one whose sum is absent or wrong: a byte flipped in a
   raw zstd block restored as a hit, undetected. A v35 artifact carries no

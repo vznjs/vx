@@ -316,6 +316,8 @@ export interface InputFact {
    * untouched, so the re-check compares this rather than the link's ctime.
    */
   behind?: string
+  /** For a link, the task whose input it is: what `behindLink` bounds it by. */
+  task?: string
 }
 
 /**
@@ -361,7 +363,8 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
   const behind = new Map<string, string>()
   await Promise.all(
     sorted.map(async (f, i) => {
-      if (digests[i]!.startsWith('120000:')) behind.set(f, await behindLink(f, hashFile))
+      if (digests[i]!.startsWith('120000:'))
+        behind.set(f, await behindLink(f, hashFile, args.node.id))
     }),
   )
   // The key folds these same digests: asked again, each file was a second
@@ -387,7 +390,10 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
     const ctimeMs = ctimes.get(f)
     if (ctimeMs !== undefined) fact.ctimeMs = ctimeMs
     const linked = behind.get(f)
-    if (linked !== undefined) fact.behind = linked
+    if (linked !== undefined) {
+      fact.behind = linked
+      fact.task = args.node.id
+    }
     return fact
   })
   // Groups expanded: this describes the input root, not the key, and a group
@@ -517,7 +523,8 @@ export async function movedInput(
   // followed again (links are rare, so a task without one pays nothing).
   const hashFile = (file: string): Promise<string> => cache.memo.hashFile(file)
   for (const f of facts) {
-    if (f.behind !== undefined && (await behindLink(f.path, hashFile)) !== f.behind) return f.path
+    if (f.behind !== undefined && (await behindLink(f.path, hashFile, f.task)) !== f.behind)
+      return f.path
   }
   return undefined
 }

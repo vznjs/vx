@@ -76,6 +76,14 @@ describe('isDiskFull and the refusal hint', () => {
     expect(fsRefusalHint(errno('EACCES'))).toBe('a path vx must write is not writable by this user')
   })
 
+  // `vx init` in a read-only checkout said "not writable by this user", which
+  // sent the user to chmod a mount no user can write.
+  it('a read-only file system is called one, not a permission', () => {
+    expect(fsRefusalHint(errno('EROFS'))).toBe(
+      'the file system that path is on is read-only; mount a writable one there',
+    )
+  })
+
   // `vx info --cache-dir=/proc` read: "EACCES: permission denied, scandir
   // '/proc/1/task/1/fdinfo' — a path vx must write is not writable".
   it('a refused listing or stat is a read, and is called one', () => {

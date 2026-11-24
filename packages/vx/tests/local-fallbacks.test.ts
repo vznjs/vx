@@ -16,6 +16,7 @@ const baseCtx = {
   workspaceRoot: '/ws',
   cacheDir: '/ws/.vx/cache',
   warn: () => undefined,
+  status: () => undefined,
   scope: undefined,
   refs: [],
   artifacts: {

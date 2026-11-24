@@ -55,6 +55,7 @@ import {
   type Digest,
   type FileBlob,
   type Directory,
+  isBlobIntegrityError,
   MAX_TIMER_MS,
   type Operation,
   type ReapiClient,
@@ -1260,7 +1261,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       materialised.catch(() => undefined)
       const [stdout, stderr] = await logs.catch(async (err: unknown) => {
         await materialised.catch(() => undefined)
-        throw err
+        throw unfetched(err)
       })
       // DELIVERY is unconditional; `capture` governs RETENTION only. Core
       // sets `capture: { stdout: willWrite, stderr: false }` meaning "do not
@@ -1409,7 +1410,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       // Both settle before a restore failure is thrown: the record is still
       // written when the outputs cannot come down, as it was in turn.
       const [, restored] = await Promise.allSettled([recording, materialised])
-      if (restored.status === 'rejected') throw restored.reason
+      if (restored.status === 'rejected') throw unfetched(restored.reason)
 
       return {
         exitCode: result.exit_code ?? 0,
@@ -1488,7 +1489,12 @@ function namedRefusal(taskId: string, err: unknown): unknown {
   if (isUserError(err) || !(err instanceof Error)) return err
   const status = err as Error & { code?: unknown; details?: unknown }
   if (typeof status.code !== 'number' || typeof status.details !== 'string') return err
-  return new UserError(`${taskId}: the remote server failed the call — ${err.message}`)
+  // grpc-js names a code it does not know `undefined` ("42 undefined: …").
+  const unnamed = `${status.code} undefined: `
+  const said = err.message.startsWith(unnamed)
+    ? `gRPC code ${status.code}: ${err.message.slice(unnamed.length)}`
+    : err.message
+  return new UserError(`${taskId}: the remote server failed the call — ${said}`)
 }
 
 /**
@@ -1514,6 +1520,29 @@ async function fetchServerLogs(
   return parts.join('')
 }
 
+/** Errors for a blob an ActionResult names and the CAS does not hold. */
+const casMissing = new WeakSet<Error>()
+
+function missingFromCas(message: string): UserError {
+  const err = new UserError(message)
+  casMissing.add(err)
+  return err
+}
+
+/**
+ * An execution's outputs or logs that do not come down as the server named
+ * them (another digest's bytes, a lying size, a blob the CAS lacks): the
+ * bytes stay refused and the task is given back, so vx runs it here. Failed
+ * with the integrity error, the task named no next step, though the action
+ * may have built fine.
+ */
+function unfetched(err: unknown): unknown {
+  if (!(err instanceof Error) || (!isBlobIntegrityError(err) && !casMissing.has(err))) return err
+  return executorFallback(
+    `its outputs or logs could not be fetched as the server named them: ${err.message}`,
+  )
+}
+
 /**
  * stdout/stderr arrive inline OR as a CAS digest; servers choose.
  *
@@ -1534,7 +1563,7 @@ async function readStream(
   if (digest !== undefined && digest !== null && digest.size_bytes > 0) {
     const bytes = await client.readBlob(digest)
     if (bytes === null) {
-      throw new UserError(`${what} ${digest.hash.slice(0, 12)} is missing from the CAS`)
+      throw missingFromCas(`${what} ${digest.hash.slice(0, 12)} is missing from the CAS`)
     }
     return new TextDecoder().decode(bytes)
   }
@@ -1758,7 +1787,7 @@ export async function materialiseOutputs(
   // short tree under the key.
   const missing = (what: string, hash: string, abs?: string): void => {
     if (!wholeTreeCapture || req.replay === true || (abs !== undefined && isDeclared(abs))) {
-      throw new UserError(
+      throw missingFromCas(
         `${req.taskId} declared output ${what} is missing from the CAS (${hash.slice(0, 12)}) — re-run it (e.g. --force)`,
       )
     }

@@ -44,8 +44,14 @@ export interface TaskHistory {
   runs: number
   /** Wall-clock p50 (ms), a crowded run's as if alone. Cache-hit rows excluded so this reflects work actually done. */
   p50DurationMs: number | undefined
-  /** Wall-clock p99 (ms). Same exclusion. */
+  /** Wall-clock p99 (ms) of the window's executed successes. */
   p99DurationMs: number | undefined
+  /**
+   * Wall-clock p99 (ms) of the timings `p50DurationMs` reads: `vx last
+   * --stats` prints both from one set. The window's p99 skips a hit's
+   * producer timing the forecast counts, and fell below the p50.
+   */
+  forecastP99DurationMs?: number
   /** Success rate over the recent window ([0, 1]). */
   successRate: number
   /** Cache hit rate over the recent window ([0, 1]). */
@@ -293,6 +299,7 @@ export class LocalHistoryProvider implements LocalHistory {
         runs: total,
         p50DurationMs: p50s.get(key),
         p99DurationMs: durations ? pickPercentile(durations, 0.99) : undefined,
+        ...(this.p99s.has(key) ? { forecastP99DurationMs: this.p99s.get(key)! } : {}),
         successRate: row.successes / total,
         hitRate: row.hits / total,
         failureMode: failureModeOf(counts, () => mixed.get(key) ?? 0),
@@ -326,6 +333,8 @@ export class LocalHistoryProvider implements LocalHistory {
 
   /** Each task's slow duration as the last forecast read found it (`slowDurationMs`). */
   private slows = new Map<string, number>()
+  /** Each task's p99 of the timings the last forecast read (`forecastP99DurationMs`). */
+  private p99s = new Map<string, number>()
   /** A history server's slow durations, as the last `importTimings` of this process carried them. */
   private importedSlows = new Map<string, number>()
 
@@ -445,6 +454,7 @@ export class LocalHistoryProvider implements LocalHistory {
     const out = new Map<string, number>()
     this.lackedBranchHistory = false
     this.slows = new Map()
+    this.p99s = new Map()
     if (wanted.size === 0) return out
     // A store that has timed nothing answers no tier: one probe, not one per
     // task (20 ms of 8,002 on a cold run).
@@ -499,6 +509,7 @@ export class LocalHistoryProvider implements LocalHistory {
           .map(Number)
           .sort((x, y) => x - y)
         out.set(id, pickPercentile(durations, 0.5))
+        this.p99s.set(id, pickPercentile(durations, 0.99))
         this.slows.set(
           id,
           tier.where === `source = 'remote'`

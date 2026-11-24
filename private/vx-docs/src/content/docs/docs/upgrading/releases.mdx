@@ -18,6 +18,26 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
+### Both locks have new versions, and vx lock refuses more
+
+`.vx/projects.lock` is version 10 and `.vx/dependencies.lock` version 7: each project's lines sit together, so branches that edit different projects merge cleanly. Run `vx lock` once and commit both locks.
+
+`vx lock` refuses:
+
+- `exec.persistent.readyWhen: ''`, which matched any line. Omit `readyWhen` to be ready once the task starts.
+- a name listed twice in `inputs.env`, `exec.env.passThrough`, `exec.env.secret` or `tags`. Keep one of each.
+- a dependency rule whose only list is `deny: []`. Delete the rule.
+- an `inputs.files` or `outputs.files` glob that reaches into a nested project past its fixed folder, such as a root `packages/**/*.log`. Let the member's task own them, or take them back with `!packages/a/**`.
+- a project named with a leading `-`, which `vx run -web#build` read as a flag. Rename the project.
+
+A run refuses an `inputs.files` link into another project (`VX_E_NESTED_INPUT`) unless a task it depends on there declares the target in `inputs.files` or `outputs`.
+
+Declare it there, or take the link back (`!src/a`) and name its files in `inputs.workspaceFiles`.
+
+A plugin's `setup` that returns a value fails, and a `teardown` that returns one is warned. Close it in `teardown` and return nothing.
+
+ui.Column's object form has an optional `align`: a plugin that reads `column.align` handles `undefined`.
+
 ### Locks, lock problems, dry runs and edited configs
 
 `.vx/projects.lock` is version 9 and `.vx/dependencies.lock` version 6. Run `vx lock` once to rewrite both.

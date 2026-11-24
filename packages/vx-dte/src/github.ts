@@ -480,7 +480,9 @@ export async function githubRelayToken(relay: string): Promise<string | undefine
   if (!url || !bearer) return undefined
   // Loaded when asked: a run that is not distributed loads none of it.
   const { oidcToken } = await import('./seal.js')
-  return oidcToken(url, bearer, relay).catch((err: unknown) => {
+  // As the relay is dialed (wire.ts) and as a Worker relay names its
+  // audience: with a trailing slash, every token was "wrong audience".
+  return oidcToken(url, bearer, relay.replace(/\/+$/, '')).catch((err: unknown) => {
     throw new UserError(
       `dte(): ${err instanceof Error ? err.message : String(err)} (for the relay)`,
     )

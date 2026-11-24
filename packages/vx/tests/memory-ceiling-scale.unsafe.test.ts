@@ -2,8 +2,11 @@
 // tests/helpers/memory-ceiling.ts). Each ceiling is about three times
 // today's reading over the floor, cold and warm.
 
-import { beforeAll, describe, expect, it } from 'bun:test'
-import { floor, linux, run, TIMEOUT, workspace } from './helpers/memory-ceiling.js'
+import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
+import { floor, linux, removeScratch, run, TIMEOUT, workspace } from './helpers/memory-ceiling.js'
+
+// 5,000 projects' files take minutes to remove on a loaded disk.
+afterEach(removeScratch, TIMEOUT * 3)
 
 const cached = (deps = '') =>
   `{ ${deps}exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true }`

@@ -44,20 +44,10 @@ import type {
   VxPlugin,
   ConfigContext,
 } from './plugin.js'
+import { describeValue } from './plugin.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import { extraHashesOf, hashExtra } from './lockfile-claim.js'
 import { readOnly, readOnlyNodes } from './read-only.js'
-
-/** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
-function describeValue(v: unknown): string {
-  if (v === null) return 'null'
-  if (Array.isArray(v)) return 'an array'
-  const t = typeof v
-  if (t !== 'object') return `a ${t}`
-  const proto: unknown = Object.getPrototypeOf(v)
-  if (proto === Object.prototype || proto === null) return 'an object'
-  return `a ${(v as object).constructor?.name || 'class instance'}`
-}
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   if (typeof v !== 'object' || v === null) return false
@@ -200,7 +190,9 @@ export async function applyConfigHooks(
     reading(plugin, 'config', () =>
       assertEditedInPlace(plugin, 'config', returned, workspace, 'the workspace config'),
     )
-    afterEach?.(plugin)
+    // The re-validation reads what the plugin left: a proxy whose trap
+    // throws there is the plugin's failure, not vx's stack.
+    if (afterEach !== undefined) reading(plugin, 'config', () => afterEach(plugin))
   }
 }
 
@@ -302,15 +294,27 @@ export async function applyGraphHooks(
   /** Runs after EACH plugin's edit, so a refused task config names the plugin that wrote it. */
   afterEach?: (plugin: VxPlugin) => void,
   rules?: GraphRules,
+  /** A run's graph: a hook that clears it is named. The lock's may be cleared. */
+  refuseEmpty = false,
 ): Promise<void> {
   let last: VxPlugin | undefined
   for (const plugin of plugins) {
     if (plugin.graph === undefined) continue
+    const had = nodes.size
     const returned = await safe(plugin, 'graph', () => plugin.graph!(nodes, ctx))
     reading(plugin, 'graph', () =>
       assertEditedInPlace(plugin, 'graph', returned, nodes, 'the task graph'),
     )
     await safe(plugin, 'graph', () => checkNodeShapes(nodes))
+    // The run said only "no tasks to run": the user hunted a typo in the
+    // task name, not the plugin that cleared the graph.
+    if (refuseEmpty && had > 0 && nodes.size === 0) {
+      throw pluginFailure(
+        plugin,
+        'graph',
+        new UserError('it removed every task, so nothing is left to run'),
+      )
+    }
     afterEach?.(plugin)
     last = plugin
   }
@@ -923,6 +927,17 @@ export function nameExecutorFailure(executor: TaskExecutor, err: unknown): unkno
 }
 
 /**
+ * `running`, a plugin executor's `execute`, marked as its plugin's until it
+ * settles: one that never does strands the run, and the exit names it.
+ */
+export function watchedExecute<T>(executor: TaskExecutor, running: T | Promise<T>): Promise<T> {
+  const plugin = executorPlugin.get(executor)
+  if (plugin === undefined) return Promise.resolve(running)
+  const settled = hookStarted(plugin, 'execute')
+  return Promise.resolve(running).finally(settled)
+}
+
+/**
  * The executor a task's error says failed it, if a plugin's did: the task
  * was placed there, and its row read `local` with no `where` to show.
  */
@@ -1210,9 +1225,19 @@ export async function teardownPlugins(
     if (plugin.teardown === undefined) continue
     const ms = teardownTimeoutMs()
     try {
+      let returned: unknown
       const settled = await step(`${plugin.name}:teardown`, () =>
-        settleWithin(Promise.resolve(plugin.teardown?.(report)), ms),
+        settleWithin(
+          Promise.resolve(plugin.teardown?.(report)).then((r: unknown) => {
+            returned = r
+          }),
+          ms,
+        ),
       )
+      // A returned disposer was never called, and no word of it.
+      if (returned !== undefined) {
+        throw new Error(`returned ${describeValue(returned)}, which core ignores`)
+      }
       // Same rule as the flush above. A teardown that never settles has left
       // whatever it owns un-released, and the run exits anyway — silence would
       // present that as a clean shutdown.

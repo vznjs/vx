@@ -41,17 +41,29 @@ export function vitest(): VxPlugin {
 
 ## Write one
 
-Follow the plugin above from a file to a task that runs. Take `test` out of `packages/ui` and `packages/web`; both keep their `vite.config.ts`.
+Follow the plugin above from a file to a task that runs. Take `test` out of `ui`, `admin` and `api`, which have a `vite.config.ts`. `web` has none and keeps its own `test`.
+
+Save the plugin as `plugins/vitest.ts`. A plugin's name is its package's, so give the folder a `package.json` with a name:
+
+```sh
+echo '{ "name": "vitest-plugin", "private": true }' > plugins/package.json
+```
 
 <Walkthrough title="From one file to a new task">
 <Frame title="1. List it in the workspace">
 
-```ts title=".vx/workspace.ts" ins={3,5}
-import type { WorkspaceConfig } from '@vzn/vx/config'
-import { bun } from '@vzn/vx-lockfile'
+```ts title=".vx/workspace.ts" ins={2,7}
+import { defineWorkspace } from '@vzn/vx/config'
 import { vitest } from '../plugins/vitest.ts'
+// …the imports you have
 
-export default { plugins: [bun(), vitest()] } satisfies WorkspaceConfig
+export default defineWorkspace({
+  plugins: [
+    vitest(),
+    // …the plugins you have
+  ],
+  // …the pipelines you have
+})
 ```
 
 </Frame>
@@ -62,7 +74,7 @@ vx lock
 ```
 
 ```ansi
-[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m2 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
+[38;2;34;197;94m✓[0m [1mvx lock[0m  [38;2;203;213;225m4 project configs → .vx/projects.lock, .vx/dependencies.lock[0m
 ```
 
 A `project` hook runs under `vx lock`. Every run reads the tasks it added from the lock, so it never pays for the hook.
@@ -71,12 +83,12 @@ A `project` hook runs under `vx lock`. Every run reads the tasks it added from t
 <Frame title="3. See the task it made">
 
 ```sh
-vx show @demo/web#test
+vx show @demo/admin#test
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250m@demo/web#test[0m[4m[58;2;110;118;129m[0m
-  [2mdir          [0m  [38;2;203;213;225mpackages/web[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250m@demo/admin#test[0m[4m[58;2;110;118;129m                                                                                  [0m
+  [2mdir          [0m  [38;2;203;213;225mpackages/admin[0m
   [2mcommand      [0m  [38;2;203;213;225mvitest run[0m
   [2minputs.files [0m  [38;2;203;213;225msrc/**, vite.config.ts[0m
   [2moutputs.files[0m  [38;2;203;213;225mnone[0m
@@ -93,23 +105,26 @@ vx run test --all --output-logs hash-only
 ```
 
 ```ansi
-[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mf5228f9ea784753f[0m
-[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m [2mcc50f28bab6377d4[0m
+[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m [2m048c3a3df13acfff[0m
+[38;2;34;197;94msuccess[0m [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;96;165;250mtest[0m [2m1c09a5f4d994f153[0m
+[38;2;34;197;94msuccess[0m [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m [2m7c800308333aff09[0m
+[38;2;34;197;94msuccess[0m [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m [2mf2e3ed39aa51d4d8[0m
+[38;2;34;197;94msuccess[0m [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2m8102e204a87550a4[0m
 
 
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mSummary[0m[4m[58;2;110;118;129m                                                                                                       [2mvx 0.0.0[0m
   [2mprojects[0m  [38;2;234;179;8m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;234;179;8m2 in run[0m [2m·[0m [2m2 total[0m
+            [38;2;234;179;8m4 in run[0m [2m·[0m [2m4 total[0m
   [2mtasks   [0m  [38;2;34;197;94m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [38;2;34;197;94m2 success[0m [2m·[0m [2m2 total[0m
+            [38;2;34;197;94m5 success[0m [2m·[0m [2m5 total[0m
   [2mcache   [0m  [38;2;56;189;248m▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰[0m
-            [2mlocal[0m [38;2;56;189;248m2↑[0m
+            [2mlocal[0m [38;2;56;189;248m5↑[0m
 
-  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20a09-4742-7001-8f91-73beaf210c39
-  [2mtime    [0m  601ms [2m·[0m [2mmax 568ms[0m [2m·[0m [2mavg 536ms[0m [2m·[0m [2mmin 504ms[0m
+  [2minfo    [0m  4 workers [2m·[0m local cache [2m·[0m run 01a20af3-3ce3-73c6-bbf3-84aaad6a3c6e
+  [2mtime    [0m  2.64s [2m·[0m [2mmax 1.75s[0m [2m·[0m [2mavg 1.48s[0m [2m·[0m [2mmin 773ms[0m
 ```
 
-Each line reads: status, task, cache key. Both projects ran `vitest run`, cached like a task you write by hand.
+Each line reads: status, task, cache key. `ui`, `admin` and `api` ran the plugin's `vitest run`, cached like a task you write by hand. `web` ran its own `test`, after the `ui#build` it waits on.
 
 </Frame>
 </Walkthrough>
@@ -264,7 +279,7 @@ With no plugin returning `deps`, a `^build` is refused.
 
 ### Run e2e after every build
 
-`graph` sees every task the run holds. Add to `node.deps` to make one wait for another:
+`graph` sees every task the run holds. Add to `node.deps` to make one wait for another. The builds must be in the same run, `vx run build e2e --all`: `vx run e2e` holds no build to wait for.
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -361,18 +376,22 @@ export function toolVersions(): VxPlugin {
 Bump Node in `.tool-versions`, build again, and ask why it ran:
 
 ```ansi title="vx why @demo/web#build"
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m[0m
-  [2mrun     [0m  [38;2;203;213;225m01a20a06-2475-7075-a986-2a057eccef34[0m
-  [2mthis run[0m  [38;2;203;213;225m2026-11-23T20:08:24.461Z · success · executed · key 17c6bdc3ca86253d[0m
-  [2mprevious[0m  [38;2;203;213;225m2026-11-23T20:08:24.258Z · cache-hit · up-to-date · key d0a028d591da6448[0m
-  [2mverdict [0m  [38;2;234;179;8mcache key changed: plugin demo/.tool-versions[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhy[0m[4m[58;2;110;118;129m [2m@demo/web#build[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mrun     [0m  [38;2;203;213;225m01a20ae3-738a-743f-b053-7cd1fb12c5e7[0m
+  [2mthis run[0m  [38;2;203;213;225m2026-11-24T00:10:08.430Z · success · executed · key bad37b0158a1c092[0m
+  [2mprevious[0m  [38;2;203;213;225m2026-11-24T00:10:07.764Z · cache-hit · up-to-date · key b030c1fda30fa573[0m
+  [2mverdict [0m  [38;2;234;179;8mcache key changed: plugin demo/.tool-versions, upstream @demo/ui#build[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m1 of 10[0m[4m[58;2;110;118;129m[0m
-  [2mchange   kind    name                 before → after[0m
-  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mplugin[0m  [1mdemo/.tool-versions[0m  [38;2;203;213;225mf9ef645a651460f2 → d2f66ea3a8f3a14d[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat changed[0m[4m[58;2;110;118;129m [2m2 of 8[0m[4m[58;2;110;118;129m                                                                                                   [0m
+  [2mchange   kind      name                 before → after[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mplugin[0m    [1mdemo/.tool-versions[0m  [38;2;203;213;225m847216d73acfcd07 → 2556dc31bae7dc73[0m
+  [38;2;234;179;8mchanged[0m  [38;2;203;213;225mupstream[0m  [1m@demo/ui#build[0m       [38;2;203;213;225mac0ae9aed514ad77 → a93fbe2ede60cdb2[0m
 
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m[0m
-  [2mplugin  [0m  [38;2;203;213;225ma key plugin's material changed; that plugin decides what goes into the key[0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mRoot cause[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ← [0m[1mplugin demo/.tool-versions[0m
+
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mWhat to do[0m[4m[58;2;110;118;129m                                                                                                            [0m
+  [2mplugin  [0m  [38;2;203;213;225mdemo keys on .tool-versions: what this task reads of it moved; that plugin decides what goes into the key[0m
 ```
 
 Read **What changed**: `vx why` names your plugin and the key part it added.
@@ -488,7 +507,7 @@ vx asks often, so keep it cheap and synchronous. Hits, pooled tasks and groups a
 | `running` | the tasks holding a worker here now, read-only |
 | `concurrency` | the run's worker count |
 
-**`measures(nodes)`** names work your plugin times that is no task: a map of `<plugin>#<name>` to a definition hash. vx asks before `schedule`.
+**`measures(nodes)`** names work your plugin times that is no task: a map of `<plugin>#<name>` to a definition hash. vx asks before `schedule`, and only when some plugin has a `schedule` hook: with none, nothing reads them.
 
 Report each one from `setup` with `ctx.measure({ id, def, durationMs, cores? })`. `def` is its definition hash. History keeps the last of each id.
 
@@ -516,7 +535,7 @@ export function taskLog(): VxPlugin {
 }
 ```
 
-A throw in `setup` stops the run before any task starts. A throw in `teardown` leaves the run's result as it was.
+A throw in `setup` stops the run before any task starts. A throw in `teardown` leaves the run's result as it was. Release in `teardown` what `setup` holds: a function `setup` returns is refused, not called.
 
 <Takeaway>do something before the first task, on every task and after the last one.</Takeaway>
 
@@ -691,7 +710,7 @@ export function hello(): VxPlugin {
 [32m✓[39m hello, [1m[35mweb[39m[22m
 ```
 
-The verb's exit code is the process's. `vx help` lists the verb under **Plugin commands**, beside your plugin's name.
+The verb's exit code is the process's. `vx help` lists the verb under **Plugin commands**, beside your plugin's name. If `.vx/workspace.ts` fails to load, `vx help` lists no verb and prints why.
 
 <Takeaway>give your team a `vx` verb of its own.</Takeaway>
 
@@ -860,7 +879,9 @@ A task with `exec.sandbox` is offered only to an executor whose `capabilities` s
 
 ### Give a task back
 
-Reject with `executorFallback(reason)`, from `@vzn/vx`, to hand a task back. vx runs it on this machine and prints `reason` once.
+A `remote` executor rejects with `executorFallback(reason)`, from `@vzn/vx`, to hand a task back. vx runs it on this machine and prints `reason` once.
+
+From an executor that is not `remote`, the task fails and the error says so.
 
 ### Many machines
 
@@ -879,6 +900,7 @@ vx asks `executor(ctx)` once per run. Per task, the first executor whose `accept
 | `workspaceRoot`, `cacheDir`, `warn` | as above |
 | `concurrency` | the run's worker count |
 | `artifacts` | task results by key, for a task another machine ran |
+| `status(line)` | say a line that is no warning, such as a wait for a machine |
 | `cacheFacts()` | what a machine running this run's tasks reads the cache under: refs and lent access. Ask again before it expires |
 
 | Executor field | What it does |
@@ -925,6 +947,7 @@ vx asks `executor(ctx)` once per run. Per task, the first executor whose `accept
 | `outputs` | where they are: `disk` (default), `deferred` with `materialize()`, or `trailing` with `landed` |
 | `changed` | files the command changed where it ran, which this disk cannot see |
 | `where`, `machine` | which machine ran it, and its `cores`, `memoryBytes` and `cpuShare` |
+| `queuedMs` | how long it held the task before a machine took it (a worker's warm-up, or room on one): vx counts it as queue time, not run time |
 
 `distribution` hooks, each optional:
 
@@ -950,9 +973,13 @@ A layer needs the three `RemoteCacheLayer` methods, `has`, `get` and `put`:
 | `get(hash)` | `{ body, durationMs }`, `null` for a miss, or `undefined` when your layer is off and asked nothing: a miss that keeps what earlier runs found |
 | `put(hash, body, meta)` | stores it; resolves `false` when it sent nothing (no token, writes off), so no upload is counted |
 | `hasMany(hashes)` | optional: only when your server answers many keys in one call |
-| `missing(hash)` | optional: called before a `put` with a key no remote had, so check nothing first |
+| `missing(hash)` | optional: called before a `put` when vx already knows no remote holds the key (a `hasMany` probe, a DTE worker), so check nothing first. A `get` that missed does not call it |
 
-An entry never changes: a `put` of a key the remote holds keeps the stored bytes. A remote error is a miss and one warning. vx bounds no call, so give every request a deadline:
+Off CI a run only reads a remote. To try your `put` on your machine, run with `--cache-policy local:rw,remote:rw`.
+
+An entry never changes: a `put` of a key the remote holds keeps the stored bytes. A remote error is a miss and one warning.
+
+vx bounds only how long a download waits, for its answer and then between bytes (`run.pluginTimeout`, then a miss), so give every request a deadline of its own:
 
 ```ts
 import { definePlugin, defineWorkspace, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
@@ -1142,7 +1169,7 @@ It covers a task's config once the `graph` stage ends. A project config a `proje
 | Throws | What vx does |
 | --- | --- |
 | `telemetry` hook or sink, `ctx.on` handler, `admit`, `output` hook or `Logger` | switches it off for the run, with one warning |
-| `measures` | leaves its measures out, with one warning |
+| `measures` | leaves its measures out, with one warning. Asked only when a plugin has `schedule` |
 | `teardown` | leaves the run's result as it was |
 | a verb | fails in one line |
 | a remote cache call | a miss |
@@ -1151,6 +1178,8 @@ It covers a task's config once the `graph` stage ends. A project config a `proje
 </Deeper>
 
 A throw in any other hook stops the run, or `vx lock`, with one line naming your plugin and the hook.
+
+`setup` and `teardown` return nothing. A value they return, such as a function to call later, counts as a throw: vx never calls it.
 
 <Quiz q="Your telemetry sink throws on every record. Does the build fail?">
   No. vx switches that sink off for the run and prints one warning. Observing never breaks a run.

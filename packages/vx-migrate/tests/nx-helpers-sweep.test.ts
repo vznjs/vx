@@ -17,6 +17,14 @@ function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
 }
 
 describe('expandNxInputs', () => {
+  // A named input and the target both naming one variable listed it twice,
+  // and vx lock refuses a name twice in inputs.env and passThrough.
+  it('names an env variable once, however many inputs name it', () => {
+    expect(inputs([{ env: 'A' }, 'base'], { base: [{ env: 'A' }, { env: 'B' }] }).envNames).toEqual(
+      ['A', 'B'],
+    )
+  })
+
   // Nx runs a runtime command as written, at the workspace root, and
   // hashes its stdout and stderr whatever it exits: `cat {workspaceRoot}/x`
   // hashed cat's error, and vx's probe failed the task on its exit 1
@@ -497,8 +505,20 @@ describe('mapNxDeps', () => {
     ).toEqual({
       deps: ['build', '@acme/ui#build'],
       todos: [
+        'dependsOn {"target":"build","projects":"self"}: Nx 24 refuses `projects: "self"` (run `nx repair`); vx reads it as older Nx did',
         'dependsOn {"target":"build","projects":7} not representable in vx',
         'dependsOn {"projects":"self"} has no target — dropped',
+      ],
+    })
+  })
+
+  // Nx 24.0.6 refuses a run over `projects: "self"` or `"dependencies"`
+  // (`assertNotLegacyProjectsString`); nx() ran it unsaid (probed).
+  it('names the legacy projects strings Nx 24 refuses', () => {
+    expect(deps([{ target: 'build', projects: 'dependencies' }])).toEqual({
+      deps: ['^build'],
+      todos: [
+        'dependsOn {"target":"build","projects":"dependencies"}: Nx 24 refuses `projects: "dependencies"` (run `nx repair`); vx reads it as older Nx did',
       ],
     })
   })
@@ -518,7 +538,13 @@ describe('mapNxDeps', () => {
         'build',
         'ui:build',
       ]),
-    ).toEqual({ deps: ['build', '@acme/ui#build'], todos: [] })
+    ).toEqual({
+      deps: ['build', '@acme/ui#build'],
+      // The legacy form's own line, not the missing target's.
+      todos: [
+        'dependsOn {"target":"codegen","projects":"self"}: Nx 24 refuses `projects: "self"` (run `nx repair`); vx reads it as older Nx did',
+      ],
+    })
   })
 
   // An inferred target's name holds a colon (`rsbuild:typecheck`); split

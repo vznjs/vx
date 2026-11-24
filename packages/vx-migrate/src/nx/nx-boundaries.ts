@@ -82,7 +82,9 @@ function mapConstraints(constraints: unknown[]): DependencyRule[] {
     >
     if (typeof sourceTag !== 'string' || sourceTag === '' || sourceTag.startsWith('/')) continue
     const allow = tags(onlyDependOnLibsWithTags)
-    const deny = tags(notDependOnLibsWithTags)
+    // An empty deny says nothing, and alone it is a rule vx lock refuses.
+    const denied = tags(notDependOnLibsWithTags)
+    const deny = denied?.length === 0 ? undefined : denied
     if (allow === undefined && deny === undefined) continue
     out.push({
       from: sel(sourceTag),

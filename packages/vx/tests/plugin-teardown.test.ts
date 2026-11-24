@@ -160,6 +160,25 @@ describe('teardownPlugins — a dropped result is reported', () => {
   })
 })
 
+it('a teardown that returns a value is told, and the run goes on', async () => {
+  // Core reads nothing a teardown returns: a disposer it returned was never
+  // called, and no word of it.
+  const warnings: string[] = []
+  await teardownPlugins(
+    [
+      testPlugin('org/ret', { teardown: (() => () => {}) as never }),
+      testPlugin('org/async', { teardown: (async () => true) as never }),
+      // CONTROL: nothing returned.
+      testPlugin('org/fine', { teardown: async () => {} }),
+    ],
+    (m) => warnings.push(m),
+  )
+  expect(warnings).toEqual([
+    "[vx] plugin 'org/ret' failed in teardown: returned a function, which core ignores; the run's verdict stands",
+    "[vx] plugin 'org/async' failed in teardown: returned a boolean, which core ignores; the run's verdict stands",
+  ])
+})
+
 describe('the lifecycle is reached on a run that FAILED', () => {
   let root: string
 
@@ -386,7 +405,10 @@ describe('the lifecycle is reached on a run a signal stops', () => {
       const lockRoot = uid === undefined ? tmp : path.join(tmp, `vx-runs-${uid}`)
       expect({
         lifecycle: await lifecycle(),
-        left: readdirSync(lockRoot).filter((n) => n.startsWith('vx-run-')),
+        // `<lock>-files` is holdLockFiles' SQLite file: it stays, as a lock file must.
+        left: readdirSync(lockRoot).filter(
+          (n) => n.startsWith('vx-run-') && !/-files(-journal)?$/.test(n),
+        ),
       }).toEqual({ lifecycle: ['setup', 'teardown'], left: [] })
     } finally {
       rmSync(tmp, { recursive: true, force: true })
@@ -401,6 +423,8 @@ describe('the lifecycle is reached on a run a signal stops', () => {
     ['a setup', 'async setup()', 'SIGTERM', 143],
     ['an executor factory', 'executor()', 'SIGINT', 130],
     ['a schedule hook', 'schedule()', 'SIGINT', 130],
+    ['a key hook', 'key()', 'SIGINT', 130],
+    ['a cache factory', 'cache()', 'SIGTERM', 143],
   ] as const) {
     it(`one ${signal} during ${hook} that hangs tears every plugin down and exits ${code}`, async () => {
       const file = (name: string): string => JSON.stringify(path.join(root, name))

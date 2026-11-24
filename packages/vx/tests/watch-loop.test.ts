@@ -190,12 +190,17 @@ describe('vx watch loop (e2e)', () => {
     await initialOnly(w, f.log)
 
     // The config's command changes; the lock still holds the old one, so
-    // the cycle this edit starts is a hit and executes nothing.
+    // the cycle this edit starts refuses and executes nothing.
     const config = path.join(f.dir, 'vx.config.mjs')
     const before = await readFile(config, 'utf8')
     await writeFile(config, before.replace('cat src/*.txt', 'cat src/*.txt src/*.txt'))
     await until(() => w.cycles() === 1, 'the cycle the config edit starts')
-    await Bun.sleep(SETTLE_MS)
+    // Past the cycle's refusal, not a sleep: a loaded host had printed the
+    // hint and not yet the refusal (load 40, 2026-11-24).
+    await until(
+      () => w.err().includes('changed since the last `vx lock` — run `vx lock`'),
+      "the cycle's refusal",
+    )
     expect(await executions(f.log)).toBe(1)
     // Said, or the cycle read as the edit applied: it printed `changed` and
     // no row, the same as an edit that changed nothing.
@@ -204,6 +209,8 @@ describe('vx watch loop (e2e)', () => {
       'warn',
     )
     expect(w.err()).toContain(hint)
+    // The cycle refuses the edited config, as a run does, until a re-lock.
+    expect(w.err()).toContain('changed since the last `vx lock` — run `vx lock`')
 
     // The re-lock is the edit that changes what a cycle runs.
     lock(f.root)

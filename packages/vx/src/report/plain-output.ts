@@ -1,5 +1,5 @@
 import type { TaskNode } from '../graph/index.js'
-import { stripEscapes } from '../util/index.js'
+import { keepStyleEscapes, stripEscapes } from '../util/index.js'
 import type { Logger } from './logger.js'
 
 // A prefix that may yet complete as a CSI, string (OSC, DCS, SOS, PM, APC)
@@ -18,6 +18,19 @@ const HOLD_MAX = 4096
  * own output is plain: a pipe, CI, `NO_COLOR`.
  */
 export function plainOutput(sink: Logger): Logger {
+  return filteredOutput(sink, stripEscapes)
+}
+
+/**
+ * `sink` with a task's escapes cut to its colours and links: where vx's
+ * own output is coloured, a task's cursor moves, erases, modes and titles
+ * would rewrite vx's lines or outlive the run (`keepStyleEscapes`).
+ */
+export function terminalOutput(sink: Logger): Logger {
+  return filteredOutput(sink, keepStyleEscapes)
+}
+
+function filteredOutput(sink: Logger, stripEscapes: (text: string) => string): Logger {
   const held = new Map<string, string>()
   const strip = (key: string, chunk: string): string => {
     const prior = held.get(key)

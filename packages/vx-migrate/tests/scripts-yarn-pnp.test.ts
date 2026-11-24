@@ -45,7 +45,7 @@ it("names Plug'n'Play when Yarn 2+ installs with it", async () => {
           configPath: null,
         },
       ]).notes
-      rows[label] = notes.some((n) => n.startsWith("Yarn Plug'n'Play installs this repo"))
+      rows[label] = notes.some((n) => n.startsWith("Yarn Plug'n'Play installs this workspace"))
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

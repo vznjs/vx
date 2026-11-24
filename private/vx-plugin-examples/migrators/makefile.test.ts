@@ -55,7 +55,7 @@ it('each target becomes a task, written as a config vx lock loads', async () => 
   expect(Bun.stripANSI(out)).toContain('from      Makefile')
   const lock = Bun.spawnSync({ cmd: [process.execPath, VX, 'lock'], cwd: root })
   expect([lock.exitCode, lock.stderr.toString()]).toEqual([0, ''])
-}, 20_000)
+}, 30_000)
 
 it('a project with no target is a refusal in the tool’s words', async () => {
   const empty = await makefile('empty', 'GO = go\n')

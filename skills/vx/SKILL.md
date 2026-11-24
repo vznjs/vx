@@ -1,11 +1,11 @@
 ---
 name: vx
-description: Run, inspect and debug tasks in a vx monorepo (vx.config.ts, .vx/workspace.ts). Use to build or test projects, find what a change affects, read why a task failed or re-ran, and query the cache as JSON.
+description: Run, inspect and debug tasks in a vx workspace (vx.config.ts, .vx/workspace.ts). Use to build or test projects, find what a change affects, read why a task failed or re-ran, and query the cache as JSON.
 ---
 
 # vx
 
-vx is the workspace's task runner and build cache. Run tasks through it, not
+vx is the workspace's task orchestrator and build cache. Run tasks through it, not
 through package scripts, so results are cached and ordered by their
 dependencies.
 
@@ -56,7 +56,7 @@ One forwarded argument list reaches one task:
 
 ```sh
 vx show --format json                          # projects and their tasks
-vx show app --format json                      # one project's tasks as a run reads them
+vx show @acme/app --format json                # one project's tasks as a run reads them
 vx run test --affected=origin/main --dry --format json  # what would run, cache hit or miss, and why
 ```
 

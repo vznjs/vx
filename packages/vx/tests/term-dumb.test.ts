@@ -52,3 +52,11 @@ it('CONTROL: another TERM keeps the live region', () => {
   expect(detectColors({ isTTY: true } as NodeJS.WriteStream).enabled).toBe(true)
   expect(createOutputWriter(tty()).enabled).toBe(true)
 })
+
+// docs/cli.md § Colors: `TERM` unset counts as a terminal that can paint
+// and redraw; only `dumb` turns both off.
+it('TERM unset keeps the colour and the live region', () => {
+  delete process.env['TERM']
+  expect(detectColors({ isTTY: true } as NodeJS.WriteStream).enabled).toBe(true)
+  expect(createOutputWriter(tty()).enabled).toBe(true)
+})

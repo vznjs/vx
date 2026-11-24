@@ -41,6 +41,7 @@ export function killTree(
   signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL',
   escapees?: boolean,
 ): void
+export function sweepDeadShell(child: Child, escapees: boolean): void // a shell dead of no vx signal: SIGKILL its group at once
 export function pauseTree(child: Child, signal: 'SIGSTOP' | 'SIGCONT'): void // Ctrl-Z, fg: the group, never the channel
 export function markStopped(stopped: boolean): void // Ctrl-Z, fg: a task's timeout skips the time stopped
 export function runTime(): number // performance.now() less the time stopped: the clock a task's duration reads
@@ -370,7 +371,7 @@ export function taskEnvSource(): NodeJS.ProcessEnv // util/essential-env.ts; pro
 export const VX_RUN_WORKSPACE_ENV = 'VX_RUN_WORKSPACE' // set on every task's env by execute-task: the workspace root
 export const VX_RUN_TASK_ENV = 'VX_RUN_TASK' // and the task id — a `vx run` inside its own workspace reads them and refuses
 export const PM_EXEC_ENV = 'npm_execpath' // set by execute-task unless a layer gives it
-export function packageManagerPath(root: string): string | null // the root's manager binary, memoized per root
+export function packageManagerPath(root: string): string | null // the root's manager binary: its name read once per root, its path looked up per task
 ```
 
 ### Composition
@@ -547,12 +548,15 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
   and at the end (a bad shape shows none); `ExecuteResult.where`
   is shown on the task's row and frame after its id, as `<id>@<where>`
   — `machines()` returns a `MachineReport` per machine it ran tasks on
-  (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
+  (`{ name; status; cores; memoryBytes; done; failed; aborted?; onlineMs; busyMs;
 cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   once at the end for the run summary when a telemetry sink is on;
   `ExecuteResult.machine` (`{ cores; memoryBytes; cpuShare? }`) is the size of the
   machine `where` names, which the run history keeps, and the share of a
-  core the task's threads got there (history divides its CPU by it)
+  core the task's threads got there (history divides its CPU by it);
+  `ExecuteResult.queuedMs` is how long it held the task before a machine
+  took it (a worker's warm-up, or room on one): core adds it to the task's
+  `queuedMs` and starts the task's span after it, so the wait is not run time
   — `idealMs()` is the end no run of these tasks could beat with the
   workers it may start: its longest chain, each task as long as it took,
   or later where a platform's work fills all the cores it may start (the
@@ -595,7 +599,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   abort, a 0 included, is recorded `timedOut` and fails (X-125); one that has not returned within the
   kill grace of the abort is abandoned, the attempt settled without it,
   its `where` the executor's name; a `timedOut` it reports on its own
-  clock fails the same, the line saying its executor reported it),
+  clock fails the same, the line saying its executor reported it, or,
+  when it reports the `signal` it stopped the child with, `killed
+(SIGTERM)` as a run here says),
   `liveChildren?`, `onSpawn?` (an executor that runs the command as a
   process on this machine calls it with the pid, so a telemetry sink can
   sample the tree's CPU and memory; absent when nothing samples),
@@ -652,7 +658,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations; outputs?; changed?; outputsMissing?; where? }` —
+- `ExecuteResult extends RunResult { violations; outputs?; changed?; outputsMissing?; outputsMissingFacts?; deadServers?; where?; queuedMs? }` —
   `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
   (outputs left remote, fetched only if a local consumer needs them), or,
   to a `trailing` request alone, `{ kind: 'trailing'; landed }`: on their
@@ -661,7 +667,17 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   A `remote` executor checks the declared outputs where they were written
   (`missingOutputs`, core's rule) and returns the globs that matched
   nothing as `outputsMissing`: core fails the task naming them, as it
-  does for one run here.
+  does for one run here. `outputsMissingFacts` (`OutputsMissingFacts
+{ wroteNone?; folderAsFile?; bracket? }`, from `outputsMissingFacts()`
+  read there) says why, as a run here does: this machine's disk lacks
+  what the command wrote.
+  A `servers` executor names in `deadServers` each server of the request
+  that failed where it ran (`{ taskId, exitCode, began }`): core fails
+  that server's row, and with `began: false` (it died or never became
+  ready before the command began) skips the task blocked by it and says
+  why as a warning, as a server here skips its dependants; with `true`
+  the task's own exit stands and neither it nor what builds on it is
+  saved, as when a server here dies under it.
   `spawnFailed: true` says the command never started (its 127 is the
   executor's, so no "command not found" line follows; A-41).
   `leftRunning: true` says a process the command left still ran when
@@ -735,7 +751,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   (its own timeout) on the local executor. A task placed
   `remote: 'only'` fails naming `reason` instead, as does one an
   `exclusive` executor took. A non-remote executor's
-  fallback is an ordinary failure (B-100; `executor-fallback.test.ts`).
+  fallback fails the task, saying only a `remote` executor can give one
+  back (B-100; `executor-fallback.test.ts`).
   `@vzn/vx-reapi`'s `queueTimeoutMs` is its consumer.
 
 ### Rules

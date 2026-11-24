@@ -5,7 +5,7 @@
 // reads the lock only for each task's definition.
 
 import type { Database } from 'bun:sqlite'
-import { indexDb, indexError, Cache } from '../cache/index.js'
+import { cachesNothing, indexDb, indexError, Cache, parseCachePolicy } from '../cache/index.js'
 import {
   expandHits,
   type FailureMode,
@@ -47,8 +47,10 @@ import {
   formatElapsed,
   nearMatches,
   parseDecimalInt,
+  printable,
   refusal,
   splitTaskId,
+  isUserError,
   UserError,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -383,7 +385,7 @@ async function printStats(
       taskId,
       runs: h.runs,
       p50DurationMs: h.p50DurationMs ?? null,
-      p99DurationMs: h.p99DurationMs ?? null,
+      p99DurationMs: h.forecastP99DurationMs ?? null,
       successRate: h.successRate,
       hitRate: h.hitRate,
       failureMode: h.failureMode,
@@ -391,6 +393,23 @@ async function printStats(
       maxCpuParallelism: h.maxCpuParallelism ?? null,
     }))
   if (stats.length === 0 && target !== undefined) {
+    // The window may hold runs of the task under another definition, or of a
+    // task gone from the lock: "no recorded run" denied runs `vx last` lists.
+    const older =
+      defs === undefined
+        ? []
+        : [...(await new LocalHistoryProvider(db, undefined, branch).loadAll())].filter(([id]) =>
+            matches(id),
+          )
+    if (older.length > 0) {
+      const runs = older.reduce((n, [, h]) => n + h.runs, 0)
+      throw new UserError(
+        older.some(([id]) => defs!.has(id))
+          ? `vx last: ${target} has no run since its command or env.define changed; the last ${provider.recent} runs hold ${runs} of the old one`
+          : `vx last: ${target} is no task now (removed or renamed); the last ${provider.recent} runs hold ${runs} of it`,
+        'VX_E_NO_HISTORY',
+      )
+    }
     throw new UserError(
       `vx last: no recorded run of ${target} in the last ${provider.recent} runs`,
       'VX_E_NO_HISTORY',
@@ -404,42 +423,72 @@ async function printStats(
     ui.print('out', ui.status('info', 'vx last', 'no runs yet'))
     return 0
   }
+  ui.print('out', ui.section('Task stats', formatStats(stats)))
+  return 0
+}
+
+/**
+ * `vx last --stats`'s table. On a terminal too narrow for every column, cpu,
+ * peak rss, p99, hit, failure mode and runs go, in that order: the task, its
+ * p50 and its pass rate stay.
+ */
+export function formatStats(stats: readonly TaskStats[]): ui.Block {
   const pct = (r: number): string => `${Math.round(r * 100)}%`
   // The run grid's units and its unknown mark, so one number reads alike
   // in both: cpu `127%` (was `1.3×`), mem `3.6MB` (was `3.6 MB`), `—`.
   const ms = (v: number | null): string => (v === null ? UNKNOWN : fmtMs(v))
-  const right = (title: string): ui.Column => ({ title, align: 'right' })
-  ui.print(
-    'out',
-    ui.section(
-      'Task stats',
-      ui.table(
-        [
-          'task',
-          right('runs'),
-          right('p50'),
-          right('p99'),
-          right('pass'),
-          right('hit'),
-          'failure mode',
-          right('peak rss'),
-          right('cpu'),
-        ],
-        stats.map((s) => [
-          ui.id(s.taskId),
-          String(s.runs),
-          ms(s.p50DurationMs),
-          ms(s.p99DurationMs),
-          pct(s.successRate),
-          pct(s.hitRate),
-          s.failureMode,
-          s.maxPeakRssBytes === null ? UNKNOWN : formatSize(s.maxPeakRssBytes),
-          s.maxCpuParallelism === null ? UNKNOWN : pct(s.maxCpuParallelism),
-        ]),
-      ),
-    ),
+  const right = (title: string, drop?: number): ui.Column =>
+    drop === undefined ? { title, align: 'right' } : { title, align: 'right', drop }
+  return ui.table(
+    [
+      'task',
+      right('runs', 6),
+      right('p50'),
+      right('p99', 3),
+      right('pass'),
+      right('hit', 4),
+      { title: 'failure mode', drop: 5 },
+      right('peak rss', 2),
+      right('cpu', 1),
+    ],
+    stats.map((s) => [
+      ui.id(s.taskId),
+      String(s.runs),
+      ms(s.p50DurationMs),
+      ms(s.p99DurationMs),
+      pct(s.successRate),
+      pct(s.hitRate),
+      s.failureMode,
+      s.maxPeakRssBytes === null ? UNKNOWN : formatSize(s.maxPeakRssBytes),
+      s.maxCpuParallelism === null ? UNKNOWN : pct(s.maxCpuParallelism),
+    ]),
   )
-  return 0
+}
+
+/** The most rows `--sql`'s table holds; JSON streams, with no bound. */
+const MAX_TABLE_ROWS = 100_000
+
+/** `{ rows }` a piece at a time, each piece many rows: one write per row cost the stream its speed. */
+function* jsonRows(
+  first: IteratorResult<unknown>,
+  rest: Iterator<unknown>,
+  refused: (err: unknown) => never,
+): Generator<string> {
+  let piece = '{"rows":['
+  let row = first
+  for (let n = 0; row.done !== true; n++) {
+    piece += `${n === 0 ? '' : ','}${JSON.stringify(row.value)}`
+    if (piece.length >= 65_536) {
+      yield piece
+      piece = ''
+    }
+    try {
+      row = rest.next()
+    } catch (err) {
+      refused(err)
+    }
+  }
+  yield `${piece}]}\n`
 }
 
 /**
@@ -451,7 +500,7 @@ async function printStats(
  * the statement hides (`WITH … DELETE`); it does not stop ATTACH, which
  * creates a file, hence only SELECT or WITH may lead.
  */
-function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): number {
+async function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): Promise<number> {
   if (!/^\s*(select|with)\b/i.test(sql)) {
     throw new UserError(
       `vx last: --sql reads only: one SELECT (or WITH … SELECT) over the history`,
@@ -483,15 +532,7 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
       'VX_E_USAGE',
     )
   }
-  // Read by position: a join's `SELECT *` names `run_id` twice, and rows
-  // keyed by name kept one value per name.
   const columns = stmt.columnNames
-  let values: unknown[][]
-  try {
-    values = stmt.values() as unknown[][]
-  } catch (err) {
-    return refused(err)
-  }
   if (format === 'json') {
     const twice = columns.find((c, i) => columns.indexOf(c) !== i)
     if (twice !== undefined) {
@@ -500,11 +541,45 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
         'VX_E_USAGE',
       )
     }
-    const rows = values.map((v) => Object.fromEntries(columns.map((c, i) => [c, v[i]])))
-    ui.data('out', `${JSON.stringify({ rows })}\n`)
+    // Each row as SQLite yields it: a query whose rows never end (a
+    // recursive CTE with no stop) held every row in memory until the
+    // machine ran out. It now streams until its reader leaves. The first
+    // row is stepped before a byte prints, so a query SQLite refuses to
+    // run is refused whole.
+    const rows = stmt.iterate()
+    let first: IteratorResult<unknown>
+    try {
+      first = rows.next()
+    } catch (err) {
+      return refused(err)
+    }
+    await ui.dataPieces('out', jsonRows(first, rows, refused))
     return 0
   }
-  if (values.length === 0) return 0
+  // Read by position: a join's `SELECT *` names `run_id` twice, and rows
+  // keyed by name kept one value per name. Counted first, by stepping: the
+  // table's widths need every row, so it holds a bounded number.
+  let values: unknown[][]
+  try {
+    let rows = 0
+    for (const _ of stmt.iterate()) {
+      if (++rows > MAX_TABLE_ROWS) {
+        throw new UserError(
+          `vx last: --sql: the table holds at most ${MAX_TABLE_ROWS} rows, since its column widths need every row first — add a LIMIT, or use --format json, which streams`,
+          'VX_E_USAGE',
+        )
+      }
+    }
+    values = stmt.values() as unknown[][]
+  } catch (err) {
+    if (isUserError(err)) throw err
+    return refused(err)
+  }
+  if (values.length === 0) {
+    // Printed nothing before: an empty table read as a query never run.
+    sayNotice('info', 'vx last', 'the query selected no rows')
+    return 0
+  }
   // A column's value as SQLite returns it: TEXT, a number, NULL or a BLOB.
   const cell = (v: string | number | bigint | Uint8Array | null): string =>
     v === null || v === undefined
@@ -828,6 +903,8 @@ export function formatTaskRows(
   usual?: ReadonlyMap<string, number>,
   /** Task id → the output globs its exit 0 left matching nothing, from the run's kept warnings. */
   unwritten: ReadonlyMap<string, readonly string[]> = new Map(),
+  /** The run read and wrote no cache (`--no-cache`): its rows say `no-cache`, as it did. */
+  cacheOff = false,
 ): ui.Block[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
@@ -863,7 +940,11 @@ export function formatTaskRows(
     ).trim()
     const id = `${t.project}#${t.task}`
     const usualMs = usual === undefined ? undefined : (usual.get(id) ?? null)
-    const row = noKey ? { ...t, keyNotDerived: true } : t
+    const row = {
+      ...t,
+      ...(noKey ? { keyNotDerived: true } : {}),
+      ...(cacheOff ? { cacheOff } : {}),
+    }
     return (c: ui.ColorSupport) => formatRecordedRow(row, c, note, usualMs)
   })
   const blocks = [taskList(rows)]
@@ -914,12 +995,20 @@ export function formatRunList(
       | 'upToDateCount'
       | 'restoredLocalCount'
       | 'restoredRemoteCount'
-    >
+    > &
+      Partial<Pick<InvocationDetail, 'abortedCount'>>
     id: string
   }[],
 ): ui.Block {
   return ui.table(
-    ['', 'when', 'run', 'tasks', { title: 'time', align: 'right' }, 'command'],
+    [
+      '',
+      { title: 'when', drop: 1 },
+      'run',
+      { title: 'tasks', drop: 2 },
+      { title: 'time', align: 'right' },
+      { title: 'command', under: true },
+    ],
     runs.map(({ inv, id }) => [
       inv.exitOk ? ui.tone('ok', 'ok') : ui.tone('error', 'FAILED'),
       fmtWhen(inv.startedAt),
@@ -927,9 +1016,11 @@ export function formatRunList(
       [
         ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
         ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
+        ...((inv.abortedCount ?? 0) > 0 ? [ui.tone('warn', ` · ${inv.abortedCount} aborted`)] : []),
       ],
       fmtMs(inv.totalDurationMs),
-      ui.cmd(inv.command),
+      // One row per run: a forwarded `$'a\nb'` broke the table in two.
+      ui.cmd(printable(inv.command)),
     ]),
   )
 }
@@ -977,7 +1068,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         { code: 'VX_E_NO_HISTORY', message: 'vx last: no recorded runs yet — run something first' },
       )
 
-    if (parsed.sql !== undefined) return printQuery(db, parsed.sql, parsed.format)
+    if (parsed.sql !== undefined) return await printQuery(db, parsed.sql, parsed.format)
 
     if (parsed.stats === true) {
       if (noRuns()) throw noRunsYet()
@@ -992,7 +1083,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       )
     }
 
-    if (parsed.log !== undefined) return await printLog(db, at, { ...parsed, log: parsed.log })
+    if (parsed.log !== undefined)
+      return await printLog(db, at, { ...parsed, log: parsed.log }, noRuns, noRunsYet)
 
     if (parsed.list !== undefined) return printRunList(db, { ...parsed, list: parsed.list }, noRuns)
 
@@ -1013,6 +1105,8 @@ async function printLog(
   db: Database,
   at: VerbWorkspace,
   parsed: LastArgs & { log: string },
+  noRuns: () => boolean,
+  noRunsYet: () => UserError,
 ): Promise<number> {
   const runId =
     parsed.runId === undefined
@@ -1020,6 +1114,9 @@ async function printLog(
       : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
   const log = taskLog(db, await bareTaskId(db, await rootSpelled(at, parsed.log), at), runId)
   if (log === null) {
+    // Asked only after the lookup: a stopped run keeps its task rows but
+    // no invocations header (item 854), so its log must still be found.
+    if (noRuns() && new LocalHistoryProvider(db).recentTaskIds().length === 0) throw noRunsYet()
     // The id's form is hinted only when it lacks one: a task that
     // never ran was told how to spell a task id. A typo of one that
     // ran is named, as `vx why` names it: by its matcher, which offers
@@ -1228,6 +1325,7 @@ function printRun(
           [
             ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
             ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
+            ...(inv.abortedCount > 0 ? [ui.tone('warn', ` · ${inv.abortedCount} aborted`)] : []),
           ],
         ],
       ]),
@@ -1250,7 +1348,13 @@ function printRun(
   // with: `+0ms` claimed a baseline the live row rightly showed as `—`.
   for (const id of history.timedOnlySince(ranIds, inv.startedAt)) usual.delete(id)
   const warnings = keptWarnings(db, inv.runId)
-  const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual, unwrittenOutputs(warnings))
+  const taskRows = formatTaskRows(
+    detail?.tasks ?? [],
+    moved,
+    usual,
+    unwrittenOutputs(warnings),
+    cachesNothing(parseCachePolicy(inv.cachePolicy)),
+  )
   if (taskRows.length > 0)
     blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))
   const stepRows = formatStepRows(keptSteps(db, inv.runId))

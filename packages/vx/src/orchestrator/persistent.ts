@@ -8,6 +8,7 @@ import { killGraceMs } from '../util/index.js'
 import {
   holdGroups,
   killTree,
+  serverExited,
   signalExitCode,
   type TaskExecutor,
   untilGroupsGone,
@@ -364,7 +365,7 @@ export function onServerExit(child: Child, slot: string, fn: (code: number) => v
     const own = new Map<string, (code: number) => void>()
     exitSlots.set(child, own)
     slots = own
-    void child.exited.then((code) => {
+    void serverExited(child).then((code) => {
       for (const f of own.values()) f(code)
     })
   }
@@ -442,7 +443,7 @@ export function sessionEnd(keepAlive: KeepAlive): Promise<{ code: number; i: num
   return new Promise((resolve) => {
     let left = keepAlive.children.length
     keepAlive.children.forEach((c, i) => {
-      void c.exited.then((code) => {
+      void serverExited(c).then((code) => {
         left--
         const n = keepAlive.nodes[i]!
         if (code !== 0 || n.requested || n.surfaced === true || left === 0) resolve({ code, i })
@@ -457,6 +458,8 @@ export interface HoldArgs {
   keyOf: (id: string) => string | undefined
   /** Where a held server's output, and the notice of its death, go. */
   outOf: (id: string) => HeldServer['out']
+  /** The run's own stop signalled its servers: a stop landing after it chose to hold them. */
+  stopped: () => boolean
 }
 
 /** The kept servers handed to the caller (`RunOptions.hold`) instead of waited on. */
@@ -504,7 +507,7 @@ function heldServerMap(
       handOver: () => void handed.add(child),
     })
     // One that died during the graph was said then.
-    if (!hasEnded(child)) sayHeldExit(child, n.id, out, state, handed)
+    if (!hasEnded(child)) sayHeldExit(child, n.id, out, state, handed, args.stopped)
   }
   return servers
 }
@@ -520,9 +523,10 @@ function sayHeldExit(
   out: HeldServer['out'],
   state: { stopping: boolean },
   handed: ReadonlySet<Child>,
+  stopped: () => boolean,
 ): void {
   onServerExit(child, 'held', (code) => {
-    if (!state.stopping && !handed.has(child) && code !== 0)
+    if (!state.stopping && !stopped() && !handed.has(child) && code !== 0)
       for (const line of [`vx: ${id} exited with code ${code}`, ...takeExitNotes(child, code)])
         out.bus.emit({ kind: 'run:status', line, warn: true })
   })
@@ -540,11 +544,23 @@ export function failServer(
   outcomes: ReadonlyMap<string, TaskOutcome>,
   id: string,
   code: number | string,
+  child?: Child,
 ): void {
   const o = outcomes.get(id)
   if (o === undefined) return
   o.status = 'failed'
   o.exitCode = typeof code === 'number' ? code : signalExitCode(code)
+  // Its outcome was timed to ready: a server up 1.5 s read 17ms in the
+  // footer and `vx last`. It ran until it died.
+  const lived = child === undefined ? undefined : liveTimes.get(child)
+  if (lived !== undefined) o.durationMs = lived()
+}
+
+const liveTimes = new WeakMap<Child, () => number>()
+
+/** How to time `child` if it dies on its own: from its spawn to its exit (`PersistentSpawn.liveMs`). */
+export function timeServer(child: Child, liveMs: () => number): void {
+  liveTimes.set(child, liveMs)
 }
 
 function holdAll(
@@ -602,12 +618,12 @@ export async function disposeServers(args: {
   const crashed = (
     await shutdownPersistent(registry, keepAlive.children, undefined, serverUsers(args.nodes))
   ).filter((c) => endedBeforeStop?.has(registry.get(c.id)!) ?? true)
-  for (const c of crashed) failServer(outcomes, c.id, c.code)
+  for (const c of crashed) failServer(outcomes, c.id, c.code, registry.get(c.id))
   keepAlive.nodes.forEach((n, i) => {
     const child = keepAlive.children[i]!
     if (!hasEnded(child) || child.exitCode === 0) return
     if (endedBeforeStop !== undefined && !endedBeforeStop.has(child)) return
-    failServer(outcomes, n.id, child.exitCode ?? child.signalCode ?? 'unknown')
+    failServer(outcomes, n.id, child.exitCode ?? child.signalCode ?? 'unknown', child)
   })
   return { keepAlive, crashed }
 }

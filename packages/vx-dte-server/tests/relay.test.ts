@@ -784,13 +784,19 @@ describe('a host that keeps runs and holds websockets', () => {
       error: 'frame is not a JSON object',
     })
     // `n` is echoed: one nested past JSON.stringify's stack ended the relay.
+    // A deep one is refused before it is parsed.
     const deep = '['.repeat(60_000) + ']'.repeat(60_000)
-    for (const text of [`{"n":${deep},"sends":[]}`, `{"n":${deep}}`, '{"n":"7","leave":true}'])
+    for (const text of [`{"n":${deep},"sends":[]}`, `{"n":${deep}}`])
       expect(JSON.parse(c.relay.frame(K, a, text)!)).toEqual({
         n: null,
         status: 400,
-        error: 'n is a whole number',
+        error: 'frame nests deeper than 64',
       })
+    expect(JSON.parse(c.relay.frame(K, a, '{"n":"7","leave":true}')!)).toEqual({
+      n: null,
+      status: 400,
+      error: 'n is a whole number',
+    })
     expect((await c.frame(R, a, { sends: [null, 7] })).results).toEqual([
       { status: 400, error: 'a send is an object' },
       { status: 400, error: 'a send is an object' },
@@ -1005,6 +1011,26 @@ it('reads ALLOW and AUDIENCE from the environment, as the other servers do, and 
     "✗ vx-dte-server  Unknown option '--allow'",
   ])
 })
+
+// An AUDIENCE no token can name (`not a url`, `ftp://x`) started a relay
+// that refused every token, as the cache and history servers refuse to.
+it('refuses to start with an AUDIENCE that is no http(s) URL', () => {
+  const ALLOW = 'https://token.actions.githubusercontent.com:acme/app:ci.yml'
+  for (const audience of ['not a url', 'ftp://relay.example.com']) {
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0'],
+      {
+        env: { PATH: process.env.PATH ?? '', ALLOW, AUDIENCE: audience },
+        stderr: 'pipe',
+        timeout: 10_000,
+      },
+    )
+    expect([cli.exitCode, Bun.stripANSI(cli.stderr.toString()).split('\n')[0]]).toEqual([
+      2,
+      `✗ vx-dte-server  AUDIENCE: the URL clients reach this relay at (https://relay.example.com), not ${audience}`,
+    ])
+  }
+}, 30_000)
 
 it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {

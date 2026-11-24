@@ -11,6 +11,7 @@ export {
   KEYED_RUNS_SQL,
   lazyStatement,
   pruneHistoryRows,
+  recordEntryPasses,
   RUNS_VIEW,
   SCHEMA_VERSION,
   SQLITE_FCNTL_PERSIST_WAL,

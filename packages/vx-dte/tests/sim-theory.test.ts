@@ -1,8 +1,14 @@
 // The planner on graph families, not on vx's own runs: a run should end
 // at its longest chain after one warm-up, the critical path never
 // waiting for a worker, on the least worker time that allows. Exact history; seeded, so each number is fixed.
-import { expect, it } from 'bun:test'
+import { expect, it, setDefaultTimeout } from 'bun:test'
 import { layered, random, run, trap, type Task } from './families.js'
+
+// Each test replays the planner on a simulated clock and asserts only on
+// that clock, so no load changes an answer; the planner's CPU does change
+// the wall time, and a replay took 38 s on 4 cores at load 45, past the
+// task's 30 s. The timeout guards a hang, nothing else.
+setDefaultTimeout(300_000)
 
 // Over ten graphs a family, each ends by its chain and one warm-up, not a
 // second later, and its worker time on its floor (all its work on

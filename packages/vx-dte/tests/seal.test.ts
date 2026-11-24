@@ -552,7 +552,7 @@ it('reads GitHub’s keys again for a token signed by one it has not seen, once 
       true,
       ['sign', 'verify'],
     )) as CryptoKeyPair
-  const [k1, k2] = [await rsa(), await rsa()]
+  const [k1, k2, k3] = [await rsa(), await rsa(), await rsa()]
   const ISS = 'https://token.actions.githubusercontent.com'
   const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
   let signer = { kid: 'k1', key: k1 }
@@ -589,9 +589,14 @@ it('reads GitHub’s keys again for a token signed by one it has not seen, once 
     expect(reads).toBe(2)
     signer = { kid: 'k2', key: k2 }
     published = [{ ...(await crypto.subtle.exportKey('jwk', k2.publicKey)), kid: 'k2' }]
-    // Within 30 s of the last read: refused, and GitHub not asked.
+    // The first set may have come from a cache: read again at once.
+    expect(await proof.check!(await proof.sign!(parts), parts)).toBe(true)
+    expect(reads).toBe(3)
+    signer = { kid: 'k3', key: k3 }
+    published = [{ ...(await crypto.subtle.exportKey('jwk', k3.publicKey)), kid: 'k3' }]
+    // Within 30 s of that fresh read: refused, and GitHub not asked.
     expect(await proof.check!(await proof.sign!(parts), parts)).toBe(false)
-    expect(reads).toBe(2)
+    expect(reads).toBe(3)
     setSystemTime(new Date(Date.now() + 31_000))
     expect(await proof.check!(await proof.sign!(parts), parts)).toBe(true)
   } finally {
@@ -766,4 +771,67 @@ it("says GitHub's own words when it refuses a token, and an answer that holds no
   await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow(
     "GitHub's OIDC token: no token in its answer",
   )
+})
+
+/** A participant whose relay is a script: `inbox` is what each poll hands over. */
+function scripted(id: string) {
+  const inbox: RelayMessage[][] = []
+  const sent: { to: string; body: unknown }[] = []
+  const removed: string[] = []
+  const p: Participant = {
+    id,
+    heartbeatMs: 1000,
+    online: true,
+    resumed: () => {},
+    quiet: () => {},
+    send: async (to, body) => void sent.push({ to, body }),
+    poll: async () => inbox.shift() ?? [],
+    remove: async (w) => void removed.push(w),
+    leave: async () => {},
+  }
+  return { p, inbox, sent, removed }
+}
+
+// The relay is not trusted: a join it delivers again, under its id or a new
+// one, admitted a worker no one could speak for, and the second hello ended
+// the real one.
+it('admits a worker’s join once: the relay replaying it, under any id, adds no worker', async () => {
+  const w = scripted('w1')
+  let info: Record<string, unknown> = {}
+  const worker = await sealWorker(async (i) => ((info = i), w.p), R, secretProof('s'), { v: 1 })
+  const o = scripted('o')
+  const orch = sealOrchestrator(o.p, R, secretProof('s'))
+  const joined = (id: string): RelayMessage => ({
+    from: 'relay',
+    body: { type: 'joined', id, info },
+  })
+  o.inbox.push([joined('w1')], [joined('w1'), joined('w2')])
+  expect((await orch.poll()).map((m) => (m.body as { id: string }).id)).toEqual(['w1'])
+  expect(await orch.poll()).toEqual([])
+  const hellos = o.sent.filter((s) => (s.body as { type?: string }).type === 'hello')
+  expect(hellos.map((s) => s.to)).toEqual(['w1'])
+  expect(o.removed).toEqual(['w2'])
+  // The worker opens the one hello, and the orchestrator its first body.
+  w.inbox.push([{ from: 'orchestrator', body: hellos[0]!.body }])
+  expect(await worker.poll()).toEqual([])
+  await worker.send('orchestrator', { type: 'ran', task: 't' })
+  o.inbox.push([{ from: 'w1', body: w.sent.at(-1)!.body }])
+  expect(await orch.poll()).toEqual([{ from: 'w1', body: { type: 'ran', task: 't' } }])
+})
+
+it('refuses a worker sealed for another run, whatever run its relay names', async () => {
+  const { r } = { r: relay() }
+  const o = sealOrchestrator(
+    await join(r.url, R, 'orchestrator', null, undefined),
+    R,
+    secretProof('s'),
+  )
+  const a = await sealWorker(
+    (info) => join(r.url, R, 'worker', info, undefined),
+    R2,
+    secretProof('s'),
+    { v: 1 },
+  )
+  expect(await o.poll()).toEqual([])
+  expect((await until(a)).map((m) => (m.body as { type: string }).type)).toEqual(['refused'])
 })

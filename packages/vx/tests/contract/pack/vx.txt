@@ -258,6 +258,7 @@ src/util/hash.ts
 src/util/hidden-prompt.ts
 src/util/hide-env.ts
 src/util/index.ts
+src/util/json-position.ts
 src/util/memo-parts.ts
 src/util/notice.ts
 src/util/num.ts

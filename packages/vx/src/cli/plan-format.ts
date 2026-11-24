@@ -105,6 +105,12 @@ export function planReport(plan: RunPlan): ui.Block {
     ])
   }
 
+  // The args after `--` change what runs: the command as it would run.
+  for (const t of real) {
+    if (t.forwarded === true && t.command !== undefined)
+      facts.push(['command', [ui.id(t.node.id), ` $ ${printable(t.command)}`]])
+  }
+
   // Time prediction — only when history gave us something to say: at least
   // one would-run task has a p50 (an all-unknown prediction is pure noise).
   const p = plan.predicted
@@ -205,6 +211,7 @@ export interface PlanTaskJson {
   hash: string
   cacheStatus: CacheStatus
   deps: readonly string[]
+  command?: string
   p50Ms?: number
   executor?: string
   download?: 'deferred'
@@ -231,6 +238,7 @@ export function formatPlanJson(
           hash: t.hash,
           cacheStatus: t.cacheStatus,
           deps: t.deps,
+          ...(t.command !== undefined ? { command: t.command } : {}),
           ...(t.p50Ms !== undefined ? { p50Ms: t.p50Ms } : {}),
           ...(t.executor !== undefined ? { executor: t.executor } : {}),
           ...(t.download !== undefined ? { download: t.download } : {}),

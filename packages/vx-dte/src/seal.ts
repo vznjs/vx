@@ -417,6 +417,12 @@ export function sealOrchestrator(
 ): Participant {
   const unsent = (what: string, to: string) => unsentBy((m) => warn(`[vx] ${m}`), what, to)
   const sessions = new Map<string, Session>()
+  /**
+   * Each admitted worker's first message: the relay delivering one again, under
+   * its id or another, admitted a worker no one speaks for, and the second
+   * hello ended the real one. A rejoin names its id instead (wire.ts).
+   */
+  const admitted = new Set<string>()
   /** A worker's first message, read: its info, and this side's answer. */
   const admit = async (
     info: Record<string, unknown>,
@@ -466,12 +472,16 @@ export function sealOrchestrator(
           const b = m.body as { type?: string; id?: string; info?: Record<string, unknown> | null }
           if (b.type === 'joined') {
             const id = b.id!
+            if (sessions.has(id)) continue
+            const first = b.info?.['noise']
             // A check that could not run (GitHub's keys unreachable) is no
             // mismatch: it was refused as one, and the cause never said.
-            const got = await admit(b.info ?? {}).catch(
-              (err: unknown) =>
-                `its token could not be checked: ${err instanceof Error ? err.message : String(err)}`,
-            )
+            const got = admitted.has(first as string)
+              ? 'its join was the relay’s replay of another worker’s'
+              : await admit(b.info ?? {}).catch(
+                  (err: unknown) =>
+                    `its token could not be checked: ${err instanceof Error ? err.message : String(err)}`,
+                )
             if (got === undefined || typeof got === 'string') {
               const reason = got ?? `its key is not the run’s: ${proof.mismatch}`
               warn(`[vx] dte: refused a worker: ${reason}`)
@@ -480,6 +490,7 @@ export function sealOrchestrator(
               continue
             }
             sessions.set(id, got.session)
+            admitted.add(first as string)
             await me.send(id, got.hello).catch(unsent('hello', id))
             out.push({ from: 'relay', body: { ...b, info: got.info } })
             continue

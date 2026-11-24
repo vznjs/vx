@@ -1631,7 +1631,7 @@ describe('nx() under vx lock', () => {
   // A run asked Nx for its graph each time, and the live graph's edges
   // decided it: an edge added without `vx lock` changed what ran.
   it(
-    'a run follows the locked edges and exports nothing until vx lock',
+    'a run refuses an edited package.json and exports nothing until vx lock',
     async () => {
       expect(vx('lock').code).toBe(0)
       const g = structuredClone(GRAPH)
@@ -1643,8 +1643,10 @@ describe('nx() under vx lock', () => {
         JSON.stringify({ name: 'app', version: '1.0.0' }),
       )
       const stale = vx('run', 'build', '--filter', 'app', '--dry')
-      expect({ code: stale.code, err: stale.err }).toEqual({ code: 0, err: '' })
-      expect(stale.out).toContain('lib#build')
+      expect(stale.code).toBe(1)
+      expect(stale.err).toContain(
+        'packages/app/package.json changed since the last `vx lock` — run `vx lock`',
+      )
       expect(await nxCalls(root)).toBe(1)
       const check = vx('lock', '--check')
       expect(check.code).toBe(1)

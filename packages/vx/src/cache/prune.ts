@@ -10,6 +10,7 @@ import {
   RUNS_VIEW,
   isIndexFull,
   EXECUTED_RUNS_SQL,
+  recordEntryPasses,
 } from '../index-db/index.js'
 import { diskBytes, limitSetting } from '../util/index.js'
 import {
@@ -242,6 +243,7 @@ async function pruneIndex(
     const { test, params } = inHashes(rows)
     const deleteRows = ix.db.transaction(() => {
       ix.db.prepare(`DELETE FROM artifacts WHERE hash ${test}`).run(...params)
+      recordEntryPasses(ix.db, rows)
       ix.db.prepare(`DELETE FROM entries WHERE hash ${test}`).run(...params)
       ix.outputs.forget(rows)
     })

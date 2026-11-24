@@ -501,11 +501,20 @@ function missingCrossTargetError(
     owner === undefined
       ? `no project is named ${project}`
       : `${project} declares no task ${task}${meant === undefined && tasks.length > 0 ? ` (its tasks: ${tasks.join(', ')})` : ''}`
+  // Nothing near and no such project: the projects there are, as the
+  // refusal of a run's unknown project lists them, and the way out.
+  const names = [...projects.keys()].sort()
+  const known =
+    names.length > 12
+      ? `${names.slice(0, 12).join(', ')} and ${names.length - 12} more`
+      : names.join(', ')
   const fix = remove
     ? ` — remove ${target} from dependsOn`
-    : meant === undefined
-      ? ''
-      : `. Did you mean ${meant}?`
+    : meant !== undefined
+      ? `. Did you mean ${meant}?`
+      : owner === undefined
+        ? ` (projects: ${known}) — name one of them, or remove ${target} from dependsOn`
+        : ''
   return new UserError(`${node.id}: dependsOn ${target}, but ${what}${fix}`, 'VX_E_DEPENDS_ON')
 }
 
@@ -696,7 +705,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
     // would fold into no key.
     if (!packageGraph.edgeSource) {
       throw new UserError(
-        `${id}: ${isDefaultBuild(node.config) ? `${projectName} declares no build, so it is the default build, whose ` : ''}^${task} needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns \`deps\``,
+        `${id}: ${isDefaultBuild(node.config) ? `${projectName} declares no build, so it is the default build, whose ` : ''}^${task} needs project edges; add pnpm()/bun()/npm()/yarn() from @vzn/vx-lockfile to plugins in .vx/workspace.ts and install so its lockfile exists, or a plugin that returns \`deps\``,
         'VX_E_DEPENDS_ON',
       )
     }
@@ -914,17 +923,23 @@ function refuseNestedGlobs(
     const inner = nested.get(n.projectName)
     if (inner === undefined || inner.length === 0 || isGroupTask(n)) continue
     for (const side of ['inputs', 'outputs'] as const) {
-      for (const g of positives(n.config[side]?.files)) {
+      const globs = n.config[side]?.files
+      const back = (globs ?? [])
+        .filter((g) => g.startsWith('!'))
+        .flatMap((g) => braceAlternatives(g.slice(1).replace(/^\.\//, '')))
+      for (const g of positives(globs)) {
         for (const alt of braceAlternatives(g)) {
           const prefix = staticPrefix(alt)
-          if (prefix === '.' || prefix === '') continue
-          const abs = path.join(n.projectDir, prefix)
+          const abs = path.join(n.projectDir, prefix === '.' ? '' : prefix)
           const hit = inner.find(
             (p) =>
               (side === 'outputs' || p.workspace !== true) &&
               (abs === p.dir || abs.startsWith(p.dir + path.sep)),
           )
-          if (hit === undefined) continue
+          if (hit === undefined) {
+            refuseReach(n, side, g, alt, inner, back)
+            continue
+          }
           const rel =
             workspaceRoot === undefined
               ? hit.name
@@ -942,11 +957,11 @@ function refuseNestedGlobs(
             side === 'inputs'
               ? `${n.id} reads ${JSON.stringify(g)} in inputs.files, which lies inside the project ` +
                   `${hit.name}: a project's globs never reach another project's files, so it keys ` +
-                  `nothing. Depend on a ${hit.name} task, or name the files in inputs.workspaceFiles ` +
+                  `nothing. Depend on a task of ${hit.name}, or name the files in inputs.workspaceFiles ` +
                   `(${JSON.stringify(rel)}).`
               : `${n.id} writes ${JSON.stringify(g)} in outputs.files, which lies inside the project ` +
                   `${hit.name}: a project's globs never reach another project's files, so it saves ` +
-                  `nothing. Let a ${hit.name} task write them, or name them in outputs.workspaceFiles ` +
+                  `nothing. Let a task of ${hit.name} write them, or name them in outputs.workspaceFiles ` +
                   `(${JSON.stringify(rel)}).`,
             side === 'inputs' ? 'VX_E_NESTED_INPUT' : 'VX_E_NESTED_OUTPUT',
           )
@@ -954,6 +969,53 @@ function refuseNestedGlobs(
       }
     }
   }
+}
+
+/**
+ * Refuse a glob whose fixed prefix lies above a nested project but whose
+ * pattern reaches into it (`*\/d.txt`, root `packages/**\/*.log`): the
+ * boundary would drop those files without a word. A leading `**` is the
+ * project's own "every file" and stays allowed, as does a `!` entry that
+ * takes the nested project back.
+ */
+function refuseReach(
+  n: TaskNode,
+  side: 'inputs' | 'outputs',
+  g: string,
+  alt: string,
+  inner: ReadonlyArray<{ name: string; dir: string; workspace?: boolean }>,
+  back: readonly string[],
+): void {
+  const segs = alt.replace(/^\.\//, '').split('/')
+  if (segs[0] === '**') return
+  for (const p of inner) {
+    if (p.workspace === true) continue
+    const rel = relPosix(n.projectDir, p.dir)
+    if (!reachesDir(segs, rel.split('/'))) continue
+    const probe = `${rel}/vx-probe`
+    if (back.some((b) => new Bun.Glob(b).match(probe))) continue
+    throw new UserError(
+      side === 'inputs'
+        ? `${n.id} reads ${JSON.stringify(g)} in inputs.files, which reaches into the project ` +
+            `${p.name}: a project's globs never reach another project's files, so those would key ` +
+            `nothing. A task of ${p.name} owns them: depend on it, or take them back ` +
+            `with "!${rel}/**".`
+        : `${n.id} writes ${JSON.stringify(g)} in outputs.files, which reaches into the project ` +
+            `${p.name}: a project's globs never reach another project's files, so those would ` +
+            `never be saved. A task of ${p.name} owns them: let it write them, or take ` +
+            `them back with "!${rel}/**".`,
+      side === 'inputs' ? 'VX_E_NESTED_INPUT' : 'VX_E_NESTED_OUTPUT',
+    )
+  }
+}
+
+/** Whether a glob's segments can match a path under the directory `dir`. */
+function reachesDir(glob: readonly string[], dir: readonly string[]): boolean {
+  if (dir.length === 0) return glob.length > 0
+  if (glob.length === 0) return false
+  const [g, ...rest] = glob
+  if (g === '**') return true
+  return new Bun.Glob(g!).match(dir[0]!) && reachesDir(rest, dir.slice(1))
 }
 
 /** The ids of the tasks that reach `target` along `deps`, itself included. */

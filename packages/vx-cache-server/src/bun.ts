@@ -13,10 +13,19 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
                   (README.md § CI tokens); only their jobs' OIDC tokens are taken
   AUDIENCE        the aud a CI token names: the origin clients reach this server at
   READ_ACCESS     public: a request with no token reads a repository ALLOW names
-  S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
-                  S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
+  S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID,
+                  S3_SECRET_ACCESS_KEY and S3_SESSION_TOKEN (or AWS_…) as Bun's
+                  S3 client reads them
   MAX_CHECK_HASHES  lookups one check makes, hashes × scopes (default ${DEFAULT_LIMITS.maxCheckHashes})
   MAX_UPLOAD_BYTES  the largest upload, one artifact (default ${DEFAULT_LIMITS.maxUploadBytes})`
+
+/**
+ * S3's answers that ask to be sent again (500 InternalError, 503 SlowDown):
+ * a read is asked up to three times, 50 then 100 ms apart, as the Worker
+ * asks R2 again. On the first, a check or a download failed 502.
+ */
+const AGAIN_STATUS = new Set([500, 503])
+const S3_TRIES = 3
 
 /**
  * An S3-compatible bucket through Bun's S3 client. Reads go through a
@@ -26,21 +35,50 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
  */
 export function s3Blobs(client: Bun.S3Client): Blobs {
   const ask = async (name: string, method: 'GET' | 'HEAD'): Promise<Response | null> => {
-    // Identity: Bun's fetch asks for gzip and inflates it, and a
-    // compressed answer's Content-Length is not the artifact's size.
-    const res = await fetch(client.presign(name, { method }), {
-      method,
-      headers: { 'accept-encoding': 'identity' },
-    })
+    let res: Response
+    for (let attempt = 1; ; attempt++) {
+      // Identity: Bun's fetch asks for gzip and inflates it, and a
+      // compressed answer's Content-Length is not the artifact's size.
+      res = await fetch(client.presign(name, { method }), {
+        method,
+        headers: { 'accept-encoding': 'identity' },
+      })
+      if (attempt === S3_TRIES || !AGAIN_STATUS.has(res.status)) break
+      await res.body?.cancel()
+      await Bun.sleep(50 * attempt)
+    }
     if (res.status === 404) {
       await res.body?.cancel()
       return null
     }
     if (!res.ok) {
-      await res.body?.cancel()
-      throw new Error(`the bucket answered ${method} ${res.status}`)
+      const said = method === 'GET' ? await res.text() : (await res.body?.cancel(), await why(name))
+      throw new Error(`the bucket answered ${method} ${res.status}${reasonOf(said)}`)
     }
     return res
+  }
+  /**
+   * A HEAD's refusal has no body; a GET of its first byte names why. A
+   * skewed clock (RequestTimeTooSkewed) read as a wrong key did, 403.
+   */
+  const why = async (name: string): Promise<string> => {
+    try {
+      const res = await fetch(client.presign(name), { headers: { range: 'bytes=0-0' } })
+      return res.ok ? (await res.body?.cancel(), '') : await res.text()
+    } catch {
+      // quiet: only the reason is lost; the HEAD's own refusal is still said
+      return ''
+    }
+  }
+  /** Its size, off a HEAD: null when the bucket has none. */
+  const sizeOf = async (name: string): Promise<number | null> => {
+    const res = await ask(name, 'HEAD')
+    if (res === null) return null
+    // Number(null) is 0: a HEAD naming no length is no size, not an empty artifact.
+    const length = res.headers.get('content-length')
+    const size = length === null || length.trim() === '' ? Number.NaN : Number(length)
+    if (!isCount(size)) throw new Error('the bucket answered HEAD with no Content-Length')
+    return size
   }
   return {
     async put(name, body, size) {
@@ -62,21 +100,28 @@ export function s3Blobs(client: Bun.S3Client): Blobs {
     async get(name) {
       const res = await ask(name, 'GET')
       if (res === null) return null
-      return {
-        body: res.body ?? new Blob([]).stream(),
-        size: Number(res.headers.get('content-length')),
-      }
-    },
-    async size(name) {
-      const res = await ask(name, 'HEAD')
-      if (res === null) return null
-      // Number(null) is 0: a HEAD naming no length is no size, not an empty artifact.
       const length = res.headers.get('content-length')
-      const size = length === null || length.trim() === '' ? Number.NaN : Number(length)
-      if (!isCount(size)) throw new Error('the bucket answered HEAD with no Content-Length')
-      return size
+      const named = length === null || length.trim() === '' ? Number.NaN : Number(length)
+      if (isCount(named)) return { body: res.body ?? new Blob([]).stream(), size: named }
+      // Sent chunked: Number(null) named it 0 bytes in vx-size, and a client
+      // holding the download to that read every one as a miss.
+      await res.body?.cancel()
+      const size = await sizeOf(name)
+      if (size === null) return null
+      const again = await ask(name, 'GET')
+      return again === null ? null : { body: again.body ?? new Blob([]).stream(), size }
     },
+    size: sizeOf,
   }
+}
+
+/** ` <Code>: <Message>` of an S3 error document, or nothing. */
+function reasonOf(xml: string): string {
+  const tag = (t: string) => new RegExp(`<${t}>([^<]{1,400})</${t}>`).exec(xml)?.[1]
+  const code = tag('Code')
+  if (code === undefined) return ''
+  const said = tag('Message')
+  return ` ${code}${said === undefined ? '' : `: ${said}`}`
 }
 
 /**
@@ -107,7 +152,7 @@ function main(argv: string[]): void {
     return
   }
   const env = Bun.env
-  if (env.S3_BUCKET === undefined || env.S3_BUCKET === '') fail(`set S3_BUCKET\n${USAGE}`)
+  if (env['S3_BUCKET'] === undefined || env['S3_BUCKET'] === '') fail(`set S3_BUCKET\n${USAGE}`)
   // Digits only: Number('') is 0, a random port for `--port "$PORT"` with
   // PORT unset, and Number read 0x50 as 80 and 1e1 as 10.
   const port = /^\d+$/.test(values.port) ? Number(values.port) : Number.NaN
@@ -118,7 +163,7 @@ function main(argv: string[]): void {
   let allow
   let limits
   try {
-    allow = parseAllow(env.ALLOW ?? '')
+    allow = parseAllow(env['ALLOW'] ?? '')
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
@@ -129,7 +174,16 @@ function main(argv: string[]): void {
   } catch (err) {
     fail((err as Error).message)
   }
-  const client = new Bun.S3Client({ bucket: env.S3_BUCKET })
+  // Bun's client signs for any endpoint: `ftp://x` as https://x, and one no
+  // URL can hold for a host no request reaches, each request then a 502.
+  for (const name of ['S3_ENDPOINT', 'AWS_ENDPOINT']) {
+    const said = env[name]?.trim() ?? ''
+    if (said === '') continue
+    const url = URL.parse(said.includes('://') ? said : `https://${said}`)
+    if (url === null || !/^https?:$/.test(url.protocol) || url.hostname === '')
+      fail(`${name}: an http(s) URL or a host such as s3.example.com, not ${env[name]}`)
+  }
+  const client = new Bun.S3Client({ bucket: env['S3_BUCKET'] })
   try {
     // Signs offline: refuses missing credentials now, not every request 502.
     client.presign('vx-cache-server')
@@ -138,7 +192,7 @@ function main(argv: string[]): void {
   }
   // Unset, the audience would be the origin a request names: its Host
   // header, which the client picks. Workers know their own hostnames.
-  const audience = env.AUDIENCE?.trim() ?? ''
+  const audience = env['AUDIENCE']?.trim() ?? ''
   if (audience === '')
     fail(
       `set AUDIENCE: the aud a CI token names, the origin clients reach this server at\n${USAGE}`,
@@ -147,7 +201,7 @@ function main(argv: string[]): void {
     blobs: s3Blobs(client),
     authorize: oidcAuth({
       allow,
-      readAccess: env.READ_ACCESS,
+      readAccess: env['READ_ACCESS'],
       audience,
     }),
     limits,

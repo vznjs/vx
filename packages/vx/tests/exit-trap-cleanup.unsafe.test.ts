@@ -2,7 +2,7 @@
 // Under `set -e` a trap command that fails ends the script 1: `docker rm
 // -f` of a container `--rm` had already removed failed the relay's smoke
 // after every test in it passed. Unsafe: it reads every package's scripts.
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -37,8 +37,9 @@ describe('every test script with an EXIT trap', () => {
         cwd: dir,
         env: { ...process.env, PATH: `${dir}:${process.env['PATH']}` },
       })
-      expect(run.exitCode).toBe(3)
       const ran = readFileSync(calls, 'utf8').trim().split('\n')
+      rmSync(dir, { recursive: true, force: true })
+      expect(run.exitCode).toBe(3)
       expect(ran.length).toBe((trap.match(/docker /g) ?? []).length)
     })
   }

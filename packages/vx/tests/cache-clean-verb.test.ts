@@ -84,6 +84,21 @@ describe('vx cache clean', () => {
     TIMEOUT,
   )
 
+  // A refusal the clean did not draw itself (a workspace config that throws)
+  // was labelled `vx cache`, the first word typed.
+  it(
+    'a workspace config that throws is refused as vx cache clean, its code kept',
+    async () => {
+      await writeFile(path.join(root, '.vx', 'workspace.ts'), 'throw new Error("boom")\n')
+      const r = await vx(root, ['cache', 'clean'])
+      expect({ code: r.code, out: r.out }).toEqual({ code: 1, out: '' })
+      expect(r.err).toStartWith('✗ vx cache clean  config refused\n')
+      const json = await vx(root, ['cache', 'clean', '--format', 'json'])
+      expect(JSON.parse(json.out).error.code).toBe('VX_E_CONFIG')
+    },
+    TIMEOUT,
+  )
+
   it(
     'outside a workspace it exits 1 naming why',
     async () => {
@@ -92,6 +107,11 @@ describe('vx cache clean', () => {
         const r = await vx(bare, ['cache', 'clean', '--max-size', '1G'])
         expect({ code: r.code, out: r.out }).toEqual({ code: 1, out: '' })
         expect(r.err).toStartWith('✗ vx cache clean  no .vx/workspace.ts in ')
+        // Drawn as every verb draws it, the fix on its own line: it read
+        // `… — run \`vx init\` to create one`, the JSON document's wording.
+        const show = await vx(bare, ['show'])
+        expect(r.err).toBe(show.err.replace('vx show', 'vx cache clean'))
+        expect(r.err).toContain('fix  vx init')
       } finally {
         await rm(bare, { recursive: true, force: true })
       }

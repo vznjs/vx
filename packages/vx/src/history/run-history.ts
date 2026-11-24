@@ -4,7 +4,7 @@
 // its statements over the store's handle; `Cache` delegates.
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
-import { lazyStatement } from '../index-db/index.js'
+import { lazyStatement, recordEntryPasses } from '../index-db/index.js'
 import { decodeHits, hitRecords, type PackedHits } from './hit-rows.js'
 
 import { isMeasure, splitTaskId } from '../util/index.js'
@@ -156,12 +156,12 @@ export class RunHistory {
         run_id, command, requested_tasks, cache_policy, concurrency, flow,
         started_at, ended_at, total_duration_ms,
         task_count, failed_count, hit_count, hit_local_count, hit_remote_count,
-        up_to_date_count, restored_local_count, restored_remote_count,
+        up_to_date_count, restored_local_count, restored_remote_count, aborted_count,
         exit_ok,
         commit_sha, branch, dirty, ci, ci_provider,
         host, os, arch, vx_version
       )
-      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?)
       ON CONFLICT(run_id) DO NOTHING
     `,
     )
@@ -197,7 +197,10 @@ export class RunHistory {
    * that pass out past the failure and read a relapse as a recovery.
    */
   private beforeFailures(runs: readonly RunRecord[]): void {
-    if (runs.some((r) => r.status === 'failed' && keyed(r))) expandHits(this.db)
+    recordEntryPasses(
+      this.db,
+      runs.filter((r) => r.status === 'failed' && keyed(r)).map((r) => r.hash!),
+    )
   }
 
   /**
@@ -225,6 +228,20 @@ export class RunHistory {
         'INSERT INTO main.run_hits(run, first_id, started_at, keys, nums) VALUES (?, ?, ?, ?, ?)',
       )
       .run(this.runKey(hits.runId), last + 1, hits.startedAtMs, keys, hits.nums)
+    if (hits.remote.length > 0)
+      this.insertOutcomes(
+        hits.remote.map(
+          ([project, task, hash, startMs]) =>
+            ({
+              project,
+              task,
+              hash,
+              status: 'cache-hit-remote',
+              cacheHit: true,
+              startedAt: hits.startedAtMs + startMs,
+            }) as RunRecord,
+        ),
+      )
   }
 
   /**
@@ -473,6 +490,13 @@ export class RunHistory {
       })
       .immediate()
   }
+
+  /** The run's end, once its uploads drained after its rows went in. */
+  recordRunEnd(runId: string, endedAt: number, totalDurationMs: number): void {
+    this.db
+      .query('UPDATE main.invocations SET ended_at = ?, total_duration_ms = ? WHERE run_id = ?')
+      .run(endedAt, totalDurationMs, runId)
+  }
 }
 
 /** A RunRecord as one value per `RUN_COLUMNS` entry, in its order. */
@@ -550,6 +574,7 @@ function bindInvocation(inv: InvocationRecord): SQLQueryBindings[] {
     inv.upToDateCount,
     inv.restoredLocalCount,
     inv.restoredRemoteCount,
+    inv.abortedCount ?? 0,
     inv.exitOk ? 1 : 0,
     inv.commitSha,
     inv.branch,
@@ -672,6 +697,8 @@ export interface InvocationRecord {
   upToDateCount: number
   restoredLocalCount: number
   restoredRemoteCount: number
+  /** Tasks a stop or `--fail-fast` killed: counted by the footer, no `runs` row (v59). */
+  abortedCount?: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null
@@ -710,6 +737,7 @@ export interface HistoryWrites {
     hits?: RunHits
   }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
+  recordRunEnd(runId: string, endedAt: number, totalDurationMs: number): void
 }
 
 const writers = new WeakMap<Cache, HistoryWrites>()
@@ -745,5 +773,7 @@ function historyWrites(cache: Cache): HistoryWrites {
     },
     recordRunBundle: (bundle) => write(() => history.recordRunBundle(bundle)),
     recordRemoteErrors: (runId, errors) => write(() => history.recordRemoteErrors(runId, errors)),
+    recordRunEnd: (runId, endedAt, totalMs) =>
+      write(() => history.recordRunEnd(runId, endedAt, totalMs)),
   }
 }

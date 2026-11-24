@@ -10,10 +10,10 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it } from 'bun:test'
+import { afterAll, afterEach, expect, it } from 'bun:test'
 import {
   changedTracked,
   crowdShare,
@@ -51,6 +51,17 @@ import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
+
+// A worker that ends with an error leaves its log in a `vx-dte-logs-*`
+// under TMPDIR, the user's to read: here, under a TMPDIR of this file's.
+const tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'vx-dte-units-'))
+const savedTmp = process.env['TMPDIR']
+process.env['TMPDIR'] = tmpRoot
+afterAll(() => {
+  if (savedTmp === undefined) delete process.env['TMPDIR']
+  else process.env['TMPDIR'] = savedTmp
+  rmSync(tmpRoot, { recursive: true, force: true })
+})
 
 const dirs: string[] = []
 afterEach(async () => {
@@ -915,6 +926,109 @@ it('a worker stopped by a signal stops its tasks before it exits', async () => {
   }
 })
 
+// A worker whose keyed runtime fact differs runs nothing of the run: it
+// says so once and the orchestrator refuses it (a failed task there failed
+// the run while workers that answered alike sat idle).
+it('a worker whose runtime probe answers otherwise says so and runs nothing more', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, 'worker-child.ts'), served.url, R, root],
+      { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, NO_COLOR: '1' } },
+    )
+    const order = (task: string, runtime?: RunOrder['runtime']): RunOrder => ({
+      task,
+      key: `k-${task}`,
+      runKey: runKey(R, task),
+      deps: [],
+      nested: [],
+      command: `echo ${task} >> runs.txt`,
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+      ...(runtime === undefined ? {} : { runtime }),
+    })
+    const said: { type: string; reason?: string }[] = []
+    for (let i = 0; i < 100 && !said.some((m) => m.type === 'differs'); i++)
+      for (const { from, body } of flat(await o.poll())) {
+        const m = body as { type: string; id?: string; reason?: string }
+        if (from === 'relay') {
+          if (m.type !== 'joined') continue
+          await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          await o.send(m.id!, {
+            type: 'batch',
+            n: 1,
+            root,
+            realRoot: root,
+            tasks: [order('t', [{ command: 'echo 1.4.3', output: '1.4.4' }])],
+          })
+          continue
+        }
+        said.push(m)
+        if (m.type === 'differs') {
+          // A batch already on its way: nothing of it runs.
+          await o.send(from, { type: 'batch', n: 2, root, realRoot: root, tasks: [order('u')] })
+          await o.send(from, { type: 'refused', reason: m.reason! })
+        }
+      }
+    const [code, err] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect(
+      said.filter((m) => ['start', 'ran', 'end', 'fault', 'differs'].includes(m.type)),
+    ).toEqual([
+      expect.objectContaining({
+        type: 'differs',
+        task: 't',
+        reason:
+          '`echo 1.4.3` answers "1.4.3" on this worker, "1.4.4" on the run\'s machine, whose answer its key holds',
+      }),
+    ])
+    expect([code, err]).toEqual([1, expect.stringContaining('refused: `echo 1.4.3` answers')])
+    expect(existsSync(path.join(root, 'runs.txt'))).toBe(false)
+  } finally {
+    await served.stop()
+  }
+})
+
+// A warm run ended before it took the workers started by hand for it: each
+// exited 0 and said nothing, so the terminals read as if nothing happened.
+it('a worker started by hand that the run ends before taking says so', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, 'worker-child.ts'), served.url, R, root],
+      { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, NO_COLOR: '1' } },
+    )
+    let joined = false
+    for (let i = 0; i < 100 && !joined; i++)
+      for (const { from, body } of flat(await o.poll()))
+        if (from === 'relay' && (body as { type: string }).type === 'joined') joined = true
+    expect(joined).toBe(true)
+    await o.leave()
+    const [code, err] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect([code, err]).toEqual([
+      0,
+      expect.stringContaining(`run ${R} ended before it took this worker: nothing was left for it`),
+    ])
+  } finally {
+    await served.stop()
+  }
+})
+
 it('gives failed worker starts three more workers, then fails the run', async () => {
   const served = servedRelay()
   const url = served.url
@@ -1071,6 +1185,7 @@ async function harness(
     sent?: Map<string, number>
     pinWaitMs?: number
     warn?: (m: string) => void
+    status?: (m: string) => void
     learnedOther?: (size: string) => number | undefined
     warmUp?: (size: string) => number | undefined
     starts?: Map<string, number>
@@ -1308,7 +1423,14 @@ const node = (id: string, deps: string[] = [], platform?: string) =>
 // each: 2000 queued down one chain spent 4 million walks a pump (2026-10-25).
 it('pumps a long queue in time that does not grow with its upstreams', async () => {
   const ids = Array.from({ length: 2000 }, (_, i) => `t${i}`)
-  const h = await harness(new Map(ids.map((id, i) => node(id, i === 0 ? [] : [`t${i - 1}`]))))
+  // The worker shares this process's event loop, which 2000 hand-overs hold
+  // for seconds on a loaded machine: at the 2 s default, three lost beats
+  // read as "the orchestrator went silent" (2026-11-24).
+  const h = await harness(
+    new Map(ids.map((id, i) => node(id, i === 0 ? [] : [`t${i - 1}`]))),
+    undefined,
+    60_000,
+  )
   try {
     const a = await h.worker(1)
     await Bun.sleep(50)
@@ -1462,6 +1584,32 @@ it('books a worker the cores of a task from its start to its command’s end', a
   expect(booked).toBeLessThan(0.3)
 })
 
+// A local() run's job summary read online 324ms, idle 35ms, booked 1.6 for
+// a worker its footer read online 0.4s, idle 0.1s, booked 1.4: the summary
+// took the figures before teardown, the footer after.
+it('the job summary and the footer read one snapshot of each worker', async () => {
+  const h = await harness(new Map([node('t1')]))
+  const a = await h.worker(2)
+  await Bun.sleep(50)
+  void h.o.execute(h.req('t1'))
+  expect(await a.batches()).toEqual([['t1']])
+  await a.say({ type: 'ran', task: 't1' })
+  await Bun.sleep(50)
+  // As the job summary asks: the figures it is sent are the ones kept.
+  const [m] = h.o.machines(true)
+  await Bun.sleep(300)
+  await h.stop()
+  expect(h.o.machines()).toEqual([m!])
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  const s = (ms: number) => `${(ms / 1000).toFixed(1)}s`
+  expect(rows.find((r) => r.includes('online '))).toContain(
+    `online ${s(m!.onlineMs)} · busy ${s(m!.busyMs)} · idle ${s(m!.onlineMs - m!.busyMs)}`,
+  )
+  expect(rows.find((r) => r.includes('booked avg'))).toContain(
+    `booked avg ${m!.bookedAvg!.toFixed(1)}`,
+  )
+})
+
 it('says each worker’s machine busy average from the loads it sent', async () => {
   const h = await harness(new Map([node('t1')]))
   const a = await h.worker(4)
@@ -1553,6 +1701,30 @@ it('says a task waited on a worker that never joined, once the run is over', asy
   expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
     ['workers', 'none joined: a task waited on one'],
   ])
+})
+
+// A run with no adapter and no worker yet sat silent on a pipe, and its
+// live footer said `4 workers` (this machine's pool) (2026-11-23).
+it('says once, as a status line, that it waits for a worker to join, and counts none joined', async () => {
+  const said: string[] = []
+  const warned: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    status: (m) => said.push(m),
+    warn: (m) => warned.push(m),
+  })
+  try {
+    void h.o.execute(h.req('t1'))
+    await Bun.sleep(50)
+    expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
+      ['workers', '0 joined · waiting for a worker to join the relay'],
+    ])
+    expect(said).toEqual([])
+    await Bun.sleep(1_500)
+    expect(said).toEqual([`[vx] waiting for a worker to join run ${R} on the relay…`])
+    expect(warned).toEqual([])
+  } finally {
+    await h.stop()
+  }
 })
 
 // A worker on another tree was refused while a task waited: only the
@@ -2117,6 +2289,46 @@ it('a worker that left is not failed or replaced when its job then ends', async 
   }
 })
 
+// A Ctrl-C's worker read `0` tasks on the job summary: the one the stop
+// killed was in no count the summary is given.
+it("a worker's report counts the task the stop killed as aborted", async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    const w = await h.worker(4)
+    await Bun.sleep(50)
+    const runs = ['t1', 't2', 't3'].map((id) => h.o.execute(h.req(id)))
+    await w.batches()
+    await w.finish('t1')
+    await w.finish('t2', 'k-t2', { exitCode: 2, durationMs: 1 })
+    await w.finish('t3', 'k-t3', { exitCode: 130, signal: 'SIGTERM', durationMs: 1 })
+    await Promise.allSettled(runs)
+    const [m] = h.o.machines()
+    expect([m!.done, m!.failed, m!.aborted]).toEqual([1, 1, 1])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Its span read 1.7 s for a 0.4 s task behind a worker's warm-up, queued
+// 1 ms: the wait for a worker is the task's queue time.
+it('says how long a task waited for a worker to join', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const at = performance.now()
+    const run = h.o.execute(h.req('t1'))
+    await Bun.sleep(300)
+    const w = await h.worker(1)
+    await w.batches()
+    const sent = performance.now() - at
+    await w.finish('t1')
+    const r = await run
+    expect(r.queuedMs).toBeGreaterThanOrEqual(300)
+    expect(r.queuedMs).toBeLessThanOrEqual(Math.ceil(sent))
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-10-23: "we need the ideal time possible taking into account actual run numbers".
 it('the perfect end is the longest chain of what each task took', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
@@ -2197,6 +2409,91 @@ it('advises the workers that would have run it best, from the same replay', asyn
   }
 })
 
+// Cut by its time budget, the advice is no number at all, and the footer
+// says it was not worked out: a fleet cut short read as no better fleet,
+// and `any` named the cheapest of those that finished as if exact.
+it('says the advice was not worked out when its replays ran out of time', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const sizes = [{ name: 'small', max: 2, cpu: 4, memory: 1e10 }]
+    h.o.asked(1, 2, 2, 400, [])
+    const w = await h.worker(4)
+    await Bun.sleep(50)
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await w.batches()
+    const done = { exitCode: 0, durationMs: 200, cpuMs: 200 }
+    await w.finish('t1', 'k-t1', done)
+    await w.finish('t2', 'k-t2', done)
+    await Promise.all(runs)
+    await h.stop()
+    expect(h.o.advice(() => [], sizes, 0)).toEqual([])
+    const rows = h.o
+      .footer(undefined, undefined, () => h.o.advice(() => [], sizes, 0))
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.filter((r) => /^(best|more|any) /.test(r))).toEqual([
+      'best      not worked out: replaying the run on each fleet took past its 2s',
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Workers that joined on their own, none asked for: the footer hid its
+// ideal, perfect and advice, kept for a run that asked (2026-11-24). The
+// workers that joined stand for the sizes: one 1-core worker ends two
+// 1-core tasks no sooner than one after the other.
+it('works out ideal, perfect and advice from the workers that joined unasked', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const w = await h.worker(1)
+    await Bun.sleep(50)
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await w.batches()
+    const done = { exitCode: 0, durationMs: 200, cpuMs: 200 }
+    await w.finish('t1', 'k-t1', done)
+    await w.finish('t2', 'k-t2', done)
+    await Promise.all(runs)
+    await h.stop()
+    const perfect = h.o.perfectMs(() => [])!
+    expect(h.o.idealMs(() => [], [])! - perfect).toBeGreaterThanOrEqual(200)
+    const rows = h.o
+      .footer(
+        () => h.o.idealMs(() => [], []),
+        () => h.o.perfectMs(() => []),
+        () => h.o.advice(() => [], []),
+      )
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.map((r) => /^(\w+) /.exec(r)?.[1]).filter((k) => k !== undefined)).toEqual(
+      expect.arrayContaining(['ideal', 'perfect', 'best']),
+    )
+  } finally {
+    await h.stop()
+  }
+})
+
+// No task ran on a worker: nothing to replay, and the footer says so
+// rather than leave the rows out.
+it('says ideal is not worked out when no task ran on a worker', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    await h.worker(1)
+    await Bun.sleep(50)
+    await h.stop()
+    const rows = h.o
+      .footer(
+        () => h.o.idealMs(() => [], []),
+        () => h.o.perfectMs(() => []),
+        () => h.o.advice(() => [], []),
+      )
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.filter((r) => r.startsWith('ideal'))).toEqual([
+      'ideal     not worked out: no task ran on a worker',
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-11-20: advice's eight replays took 15 s of one core on a
 // 200-task run once the uncapped fleets planned again; played side by
 // side they must say what one thread says.
@@ -2218,6 +2515,29 @@ it('advises the same from replays played side by side', () => {
   expect(one.more).toBeDefined()
   expect(one.any).toBeDefined()
   expect(advise(tasks, sizes, warm, playAside(tasks, warm))).toEqual(one)
+})
+
+// A 1,000-project run (2,000 tasks) printed every task and then never
+// exited: the footer's replays grow faster than the run, and held its end
+// for good (12 min, killed). Past its deadline a replay ends as one that
+// cannot finish: the advice it would give is left out.
+it('advises nothing past its deadline, rather than hold the run’s end', () => {
+  const tasks: PlanTask[] = Array.from({ length: 24 }, (_, i) => ({
+    id: `t${i}`,
+    ms: 1000 + 137 * i,
+    cores: 1,
+    memory: 1e9,
+    deps: i < 4 ? [] : [`t${i % 4}`],
+    platform: 'linux-x64',
+  }))
+  const sizes: Size[] = [{ name: 'small', max: 3, cpu: 4, memory: 16e9, platform: 'linux-x64' }]
+  const warm = (): number => 500
+  expect(advise(tasks, sizes, warm, playAside(tasks, warm)).declared).toBeDefined()
+  expect(advise(tasks, sizes, warm, playAside(tasks, warm, Date.now() - 1))).toEqual({
+    declared: undefined,
+    more: undefined,
+    any: undefined,
+  })
 })
 
 // Main 5c2463f: the least held read 14.9 core-min, its tasks and one
@@ -2501,6 +2821,29 @@ it('the final summary names the tasks of a worker that ran few', async () => {
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
   expect(rows.find((r) => r.includes('done'))).toMatch(/1 done · t1$/)
+})
+
+// A worker lost (Ctrl-C, a crash) while it ran a task read `busy 0.0s ·
+// idle 6.1s`: only a task it finished counted, so the time it spent on the
+// one it lost read as idle.
+it('counts a task a worker was lost in as busy', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, 60_000)
+  const a = await h.worker(1)
+  await Bun.sleep(50)
+  const t1 = h.o.execute(h.req('t1'))
+  expect(await a.batches()).toEqual([['t1']])
+  await Bun.sleep(300)
+  await a.leave()
+  // Lost, its task runs again on the next worker.
+  const b = await h.worker(1)
+  expect(await b.batches()).toEqual([['t1']])
+  await b.finish('t1')
+  await t1
+  await h.stop()
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  const at = rows.findIndex((r) => /^worker#1 +lost/.test(r))
+  const busy = /busy (\d+\.\d)s/.exec(rows.slice(at).find((r) => r.includes('busy'))!)![1]
+  expect(Number(busy)).toBeGreaterThanOrEqual(0.3)
 })
 
 // Live, the workers that left are one line, so the rows that run fit.
@@ -4758,6 +5101,11 @@ it('refuses options it does not read and workers it cannot start', () => {
       dte({ workers: { linux: { machines: { s: { cpu: 2, memory: '8GB' } } } }, adapter }),
     ),
   ).toBe('taken')
+  // An adapter passed as workers was walked as worker types:
+  // `dte() option "workers.relay": options must be an object …; got a function`.
+  expect(refusal(() => dte({ workers: local() as never }))).toBe(
+    'dte() option "workers" got an adapter: pass it as adapter, as in dte({ adapter: local(), workers: { linux: { machines: { small: { cpu: 2, memory: \'8GB\' } } } } })',
+  )
   expect(refusal(() => local({ prepar: 'x' } as never))).toContain(
     'local() has unknown option "prepar"',
   )
@@ -5595,17 +5943,20 @@ it('a worker’s reason is its error line, not the hint after it', () => {
 // Main fd9afe0: a Mac's tasks' exits said 1.8 cores and they ran at half
 // their share; the machine's busy cores beside its tasks' trees say where.
 it('reads each running task’s process tree every look: the cores its tree used since the last', async () => {
-  let cpu = 0
+  // One and a half cores of CPU for t1 since it was watched, by the clock:
+  // a fixed 30 ms a look read under a core once a loaded machine's timer
+  // stretched the 20 ms looks past 60 ms.
+  let from = 0
   const trees = treeMeter(async (roots) => {
-    cpu += 30
+    const cpu = 1.5 * (performance.now() - from)
     return new Map(roots.map((r) => [r, { cpuMs: r === 7 ? cpu : 0, rssBytes: 0 }]))
   }, 20)
   try {
+    from = performance.now()
     trees.watch('t1', 7)
     trees.watch('t2', 8)
-    await Bun.sleep(130)
-    // 30 ms of CPU each 20 ms look: about one and a half cores, all t1's.
-    expect(trees.now()).toBeGreaterThan(0.5)
+    for (let i = 0; i < 500 && trees.now() === 0; i++) await Bun.sleep(20)
+    expect(trees.now()).toBeGreaterThan(1)
     trees.drop('t1')
     expect(trees.now()).toBe(0)
   } finally {
@@ -6705,3 +7056,59 @@ it('local() makes no worktree folder for a worker asked after close', async () =
   }
   expect(await readdir(dir)).toEqual([])
 })
+
+// A stop or timeout cancels a sent task; a worker slow to answer it held it
+// past core's grace, and core's retry went to that worker again. The worker
+// drops an order for a task it still runs, and its end of the cancelled
+// attempt was taken as the retry's: the retry ended with the cancel's exit
+// and never ran.
+it('a retry waits for the worker still holding its cancelled attempt, and runs after its end', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(2)
+    const stop = new AbortController()
+    const first = h.o.execute({ ...h.req('t'), signal: stop.signal })
+    expect(await a.batches()).toEqual([['t']])
+    stop.abort()
+    expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't' }])
+    const second = h.o.execute({ ...h.req('t'), attempt: 2 } as ExecuteRequest)
+    // Sent nothing while it holds the first: the end that comes is the first's.
+    await a.finish('t', 'k-t', { exitCode: 143, durationMs: 1 })
+    expect((await first).exitCode).toBe(143)
+    expect(await a.batches()).toEqual([['t']])
+    await a.finish('t', 'k-t', { exitCode: 0, durationMs: 1 })
+    expect((await second).exitCode).toBe(0)
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
+// A cancelled attempt's end that comes after its retry ran elsewhere laid
+// the cancelled attempt's files over the retry's, and dependants were sent
+// its key for their upstream's files.
+it('a cancelled attempt that ends after its retry lays nothing and leaves the retry its key', async () => {
+  const h = await harness(new Map([node('t'), node('d', ['t'])]))
+  try {
+    const a = await h.worker(1)
+    const stop = new AbortController()
+    const first = h.o.execute({ ...h.req('t'), signal: stop.signal })
+    expect(await a.batches()).toEqual([['t']])
+    stop.abort()
+    expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't' }])
+    const b = await h.worker(1)
+    const second = h.o.execute({ ...h.req('t'), attempt: 2 } as ExecuteRequest)
+    expect(await b.batches()).toEqual([['t']])
+    await b.finish('t', 'k-retry')
+    expect((await second).exitCode).toBe(0)
+    await a.finish('t', 'k-cancelled', { exitCode: 143, durationMs: 1 })
+    expect((await first).exitCode).toBe(143)
+    expect(h.store.restored).not.toContain('k-cancelled')
+    void h.o.execute(h.req('d'))
+    await Promise.race([a.batches(), b.batches()])
+    const sent = [...a.orders, ...b.orders].find((o) => o.task === 'd')
+    expect(sent).toBeDefined()
+    expect(sent!.deps.map((d) => d.key)).not.toContain('k-cancelled')
+  } finally {
+    await h.stop()
+  }
+}, 30_000)

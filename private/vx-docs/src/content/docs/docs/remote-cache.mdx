@@ -78,10 +78,10 @@ You need vx running on [CI](../ci/) and a Cloudflare account. To host it on Bun 
 
 <Steps>
 
-1. **Deploy the server.** Install it in a folder of its own:
+1. **Deploy the server.** Install it in a folder of its own, outside your workspace. Inside it, `bun add` would add it to the workspace's `package.json`:
 
    ```sh
-   mkdir vx-cache-server && cd vx-cache-server
+   mkdir ~/vx-cache-server && cd ~/vx-cache-server
    bun add @vzn/vx-cache-server
    ```
 
@@ -118,7 +118,7 @@ You need vx running on [CI](../ci/) and a Cloudflare account. To host it on Bun 
 
    Seeing `ALLOW is empty` instead? Fill in `ALLOW` and deploy again.
 
-3. **Point vx at it.**
+3. **Point vx at it.** Back in your workspace, from its root:
 
    ```sh
    bun add -d @vzn/vx-cache
@@ -340,11 +340,11 @@ Each plugin's options are on its page: [`@vzn/vx-migrate`](../../plugins/vx-migr
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| `url` | The server's URL, without `/v1`. `https` only; `http` only to `127.0.0.1`, `::1` or `localhost`. No `?query` or `#fragment`. | `VX_CACHE_URL` |
+| `url` | The server's URL, without `/v1`. `https` only; `http` only to `127.0.0.1`, `::1` or `localhost`. No `?query` or `#fragment`, no blanks around it. | `VX_CACHE_URL` |
 | `issuer` | Your CI's token issuer: `https://token.actions.githubusercontent.com`, `https://gitlab.com` or your GitLab's URL. | required |
 | `repository` | The repository, `org/name`, as `ALLOW` names it. | required |
-| `timeoutMs` | How long a read or check waits for an answer, in ms. A download then must bring at least 1 MiB a second. | `30000` |
-| `uploadTimeoutMs` | The same for an upload: at least 1 MiB a second, then an answer within this time. | `60000` |
+| `timeoutMs` | How long a read or check waits for an answer, in ms; one unanswered is asked once more before the remote turns off. A download then must bring at least 1 MiB a second. Such as `10000`. | `30000` |
+| `uploadTimeoutMs` | The same for an upload: at least 1 MiB a second, then an answer within this time. Such as `120000`. | `60000` |
 | `retries` | How many times a request answered `5xx` or `429`, or cut off, is sent again (0 to 10), 1 s, 2 s, … apart. | `2` |
 | `headers` | Headers sent on every request, for a proxy in front of the server. An unset value is left out. `authorization`, `content-type`, `content-length` and `vx-*` are refused. | none |
 
@@ -361,14 +361,16 @@ In `.vx/workspace.ts`, under `cache`:
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| `policy` | Which layers a run reads and writes, such as `'local:rw,remote:r'`. Same as `--cache-policy` or `VX_CACHE_POLICY`. | every layer reads and writes |
+| `policy` | Which layers a run reads and writes, such as `'local:rw,remote:r'`. Same as `--cache-policy` or `VX_CACHE_POLICY`. | CI: every layer reads and writes. Off CI: the remote is read only |
 | `artifactCeiling` | The largest entry, unpacked, a remote stores or a hit unpacks. Same on every machine. `VX_CACHE_ARTIFACT_CEILING`. | `'1GiB'` |
 | `upload.failures` | Which runs keep a failed task's log and outputs in the remote: `'ci'`, `'local'` or `'always'`. | `'ci'` |
 | `concurrency.download` | Downloads at once. `--cache-concurrency-download`. | min(96, max(cores × 3, 64)) |
 | `concurrency.upload` | Uploads at once, per remote. `--cache-concurrency-upload`. | min(96, max(cores × 3, 64)) |
 | `download` | Which results of tasks run on other machines land here. See [Remote execution](../remote-execution/). | `'all'` |
 
-Off CI (`CI` unset), vx never writes the remote unless `--cache-policy`, `VX_CACHE_POLICY` or `cache.policy` names it. Each setting is also in the [workspace reference](../../schema/workspace/#settings).
+Off CI (no `CI` variable on, nor a CI's own such as `GITHUB_ACTIONS` or `JENKINS_URL`), vx never writes the remote unless `--cache-policy`, `VX_CACHE_POLICY` or `cache.policy` names it.
+
+Each setting is also in the [workspace reference](../../schema/workspace/#settings).
 
 ### Cache scopes and tokens
 
@@ -383,7 +385,7 @@ On CI, `github()` or `gitlab()` ([`@vzn/vx-ci`](../../plugins/vx-ci/)) names the
 | merge queue into `main` | `refs/heads/main` |
 | laptop on `feat-x` | `refs/heads/feat-x, refs/heads/main` |
 
-`vxCache()` sends each branch as a hash, so no branch name leaves the machine. `turboCache()` sends them in `x-artifact-read-scopes`.
+`vxCache()` sends each branch as its ref, percent-encoded (`refs%2Fheads%2Fmain`); the server's bucket names it only by its hash. `turboCache()` sends them in `x-artifact-read-scopes`.
 
 For a server that ignores that header (Vercel), `turboCache({ scope: 'key' })` adds the branch to each key. Branches stay apart, but nothing enforces it.
 
@@ -394,7 +396,7 @@ For a server that ignores that header (Vercel), `turboCache({ scope: 'key' })` a
 vx says what went wrong once, then runs on without the remote:
 
 ```ansi
-[1m[38;2;234;179;8m[vx][0m plugin '@vzn/vx-cache': download e04649970f18ba23 from https://vx-cache-server.acme.workers.dev failed: HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run
+[1m[38;2;234;179;8m[vx][0m[2m plugin '@vzn/vx-cache': probe of 2 artifacts at http://127.0.0.1:28461 failed: HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run[0m
 ```
 
 | Message | Cause | Fix |

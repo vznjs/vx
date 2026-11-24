@@ -113,6 +113,12 @@ export function secretMask(
     // A value with a `'` reaches a printed command spelled as shellQuote spells
     // it (`'\''`), which the plain value does not match.
     if (value.includes("'")) values.add(value.replaceAll("'", `'\\''`))
+    // As a tool encodes it: a token's `/+=` in a query string, a quote,
+    // backslash or newline inside a JSON string. Either printed it whole.
+    const url = encodeURIComponent(value)
+    if (url !== value) values.add(url)
+    const json = JSON.stringify(value).slice(1, -1)
+    if (json !== value) values.add(json)
     // A multi-line value (a PEM key) is also masked line by line, as GitHub
     // Actions does: a tool that indents or reflows it prints no copy of the
     // whole value, and every line leaked.

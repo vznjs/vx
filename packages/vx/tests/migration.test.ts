@@ -27,7 +27,10 @@ const cacheTodo = (outputs: string): string =>
 let root: string
 let stdout: string
 beforeEach(() => {
-  root = mkdtempSync(path.join(os.tmpdir(), 'vx-migration-'))
+  // One level down in a directory of its own: the escape rows write beside the
+  // root when they fail, and a shared temp dir kept another run's `x.ts`.
+  root = path.join(mkdtempSync(path.join(os.tmpdir(), 'vx-migration-')), 'ws')
+  mkdirSync(root)
   writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'root' }))
   stdout = ''
   vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
@@ -37,7 +40,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.restoreAllMocks()
-  rmSync(root, { recursive: true, force: true })
+  rmSync(path.dirname(root), { recursive: true, force: true })
 })
 
 const task = (name: string, body: Record<string, unknown> | null, todos: string[] = []) =>

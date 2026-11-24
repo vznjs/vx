@@ -423,6 +423,25 @@ describe('vx last tells a restored hit from an up-to-date one (e2e)', () => {
   )
 })
 
+// The run's row said `no-cache`; the replay read the task's config alone
+// and called it a miss, a lookup the run never made.
+describe('vx last of a --no-cache run (e2e)', () => {
+  it(
+    'says no-cache, as the run did',
+    async () => {
+      const root = await makeWorkspace()
+      try {
+        expect((await vx(root, ['run', 'app#build', '--no-cache'])).code).toBe(0)
+        const r = await vx(root, ['last'])
+        expect(r.out).toMatch(/success no-cache .* app#build$/m)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 // The run printed its rows as they finished; the replay read the history
 // newest first and listed a dependency below the task that waited on it.
 describe('vx last lists rows in the order the run recorded them (e2e)', () => {
@@ -806,6 +825,16 @@ describe('vx last --list rows', () => {
       c,
     ).slice(1)
     expect(row).toContain(ui.paint('error', ' · 2 failed', c))
+  })
+
+  // `vx run t -- $'a\nb'` recorded a command holding a newline, and its row
+  // broke the table in two.
+  it('keeps a forwarded arg holding a newline on its row', () => {
+    const lines = L(
+      formatRunList([{ inv: inv({ command: "vx run a#t -- 'line1\nline2'" }), id: 'r' }]),
+    )
+    expect(lines).toHaveLength(2)
+    expect(lines[1]).toContain("vx run a#t -- 'line1\\x0aline2'")
   })
 
   it('aligns the counts, duration and command across runs whose counts differ', () => {

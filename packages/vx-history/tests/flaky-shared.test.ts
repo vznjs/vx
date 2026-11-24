@@ -15,6 +15,7 @@ describe('a flaky record on the history server', () => {
   let flaky = true
   const uploads: { outcomes?: { hash: string; key: string; outcome: string }[] }[] = []
   const token = Bun.env.VX_HISTORY_TOKEN
+  const ci = Bun.env.CI
   beforeAll(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'vx-history-flaky-'))
     srv = Bun.serve({
@@ -81,12 +82,15 @@ describe('a flaky record on the history server', () => {
       ],
     ])
       Bun.spawnSync({ cmd, cwd: root })
-    // A token makes the run write: the fake server checks none.
+    // A token on CI makes the run write: the fake server checks none.
     Bun.env.VX_HISTORY_TOKEN = 'token'
+    Bun.env.CI = 'true'
   })
   afterAll(async () => {
     if (token === undefined) delete Bun.env.VX_HISTORY_TOKEN
     else Bun.env.VX_HISTORY_TOKEN = token
+    if (ci === undefined) delete Bun.env.CI
+    else Bun.env.CI = ci
     await srv.stop(true)
     await rm(root, { recursive: true, force: true })
   })

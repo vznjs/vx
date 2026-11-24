@@ -10,7 +10,7 @@ import type {
   TaskOutcome,
 } from '../graph/index.js'
 import { warnOf } from '../report/index.js'
-import type { Attempts } from './attempt.js'
+import { type Attempts, queuedTiming } from './attempt.js'
 import type { KeyCheck } from './input-recheck.js'
 import type { MissRun } from './miss-run.js'
 import { failedOutputLog } from './output-log.js'
@@ -42,11 +42,13 @@ export function missOutcome(
         `describes — the result stands, but is not saved`,
     )
   }
-  // The footer counted it `not saved` and nothing else said why.
-  if (keylessBy !== undefined && policy.write && exitCode === 0) {
+  // The footer counted it `not saved` and nothing else said why. Once a
+  // run per keyless task: a fact about it, not each dependant (four lines
+  // for one fix).
+  if (keylessBy !== undefined && policy.write && exitCode === 0 && firstSaid(args.run, keylessBy)) {
     warnOf(log)(
       `[vx] ${node.id}: not saved — its key folds ${keylessBy}, which declares no \`inputs\`, ` +
-        `so no later run derives it; declare inputs on ${keylessBy}`,
+        `so no later run derives it, nor any other task's that folds it; declare inputs on ${keylessBy}`,
     )
   }
 
@@ -78,7 +80,7 @@ export function missOutcome(
             ? { outputsMissing: m.outputsMissing }
             : {}),
         }
-  outcome.timing = { startNs: wallclock.startNs, endNs: wallclock.endNs }
+  outcome.timing = queuedTiming(wallclock, ran.firstQueuedMs, ran.queuedMs)
   if (ran.attempts > 1 || ran.failedAttempts.length > 0) {
     const attempts: OutcomeAttempts = {}
     if (ran.attempts > 1) attempts.count = ran.attempts
@@ -150,4 +152,15 @@ export function missOutcome(
     outcome.sandbox = sandbox
   }
   return outcome
+}
+
+/** The keyless tasks a run has named, so each is said once. */
+const keylessSaid = new WeakMap<object, Set<string>>()
+
+function firstSaid(run: object, keylessBy: string): boolean {
+  let said = keylessSaid.get(run)
+  if (said === undefined) keylessSaid.set(run, (said = new Set()))
+  if (said.has(keylessBy)) return false
+  said.add(keylessBy)
+  return true
 }

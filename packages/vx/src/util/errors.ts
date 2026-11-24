@@ -111,6 +111,13 @@ export function wantsJson(argv: readonly string[]): boolean {
 }
 
 /**
+ * Where a redirected `process.stdout.write` keeps the write it replaced:
+ * under `--format json` every other route to stdout goes to stderr, and
+ * the document still goes out through this.
+ */
+export const REAL_STDOUT_WRITE: unique symbol = Symbol.for('vx.stdout.realWrite')
+
+/**
  * The JSON a verb that answers JSON prints for a refusal: one line. A
  * core code (`VX_E_…`) links its section of cli.md, which says the fix;
  * `vx docs <code>` prints the same section. A plugin's code has none.
@@ -223,9 +230,12 @@ const READ_SYSCALLS = new Set(['scandir', 'stat', 'lstat', 'readlink', 'read', '
 
 /** The one-line hint after a refusal's path. */
 export function fsRefusalHint(err: NodeJS.ErrnoException): string {
-  const { syscall } = err
+  const { syscall, code } = err
   if (isDiskFull(err)) return DISK_FULL_HINT
   if (isNameTooLong(err)) return 'that path is longer than the file system allows; shorten it'
+  // No user can write a read-only mount: "by this user" sent them to chmod.
+  if (code === 'EROFS')
+    return 'the file system that path is on is read-only; mount a writable one there'
   // A listing told to be a write sent the user to chmod the wrong thing.
   return READ_SYSCALLS.has(syscall ?? '') ? READ_PERMISSION_HINT : PERMISSION_HINT
 }

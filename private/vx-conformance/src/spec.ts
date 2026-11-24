@@ -192,6 +192,8 @@ export type Step =
       stop?: Stop
       /** The runner's input stream is a pipe left open and never written, as a terminal nobody types in is. */
       openStdin?: true
+      /** The runner's output stream is a full disk (`/dev/full`): every write it makes fails. */
+      fullStdout?: true
       expect: Expect
     }
   /** Write files (workspace-relative); `null` deletes. */
@@ -342,6 +344,10 @@ export type Feature =
   | 'determinism-check'
   /** Holding a persistent task's dependants until it accepts connections on a port. */
   | 'ready-port'
+  /** An output path whose trailing slash (`dist/`) declares it a folder. */
+  | 'folder-output'
+  /** A glob that names a folder holding a nested project, which skips that project's files. */
+  | 'glob-into-nested-project'
   /**
    * A package manager's workspace: dependencies named in package.json, a
    * lockfile, packages installed into node_modules and the programs they link.

@@ -9,6 +9,7 @@ const AUD = 'https://cache.example.com'
 
 let sign: (iss: string, claims?: JWTPayload, kid?: string) => Promise<string>
 let signWith: (key: CryptoKey, kid: string) => Promise<string>
+let signFor: (aud: string) => Promise<string>
 let fetchJson: (url: string) => Promise<unknown>
 
 beforeAll(async () => {
@@ -30,6 +31,18 @@ beforeAll(async () => {
       .setIssuedAt()
       .setExpirationTime('5m')
       .sign(key)
+  signFor = (aud) =>
+    new SignJWT({
+      project_path: 'group/app',
+      ci_config_ref_uri: 'gitlab.example.com/group/app//.gitlab-ci.yml@refs/heads/main',
+      ref_path: 'refs/heads/main',
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
+      .setIssuer(GITLAB)
+      .setAudience(aud)
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(privateKey)
   sign = (iss, claims = {}) =>
     new SignJWT({
       project_path: 'group/app',
@@ -131,6 +144,38 @@ describe('oidcTokenAuth', () => {
       ).toThrow(
         `AUDIENCE: the origin clients reach this server at (https://cache.example.com), not ${audience}`,
       )
+  })
+  // A GitLab id_token's aud is written by hand: `https://c/` beside an
+  // AUDIENCE of `https://c` (or the other way) is the same URL, and was
+  // refused as another.
+  it('takes the audience with or without a trailing slash, and no other', async () => {
+    const access = { issuer: GITLAB, repository: 'group/app', write: 'refs/heads/main' }
+    const named = { issuer: GITLAB, repository: 'group/app' }
+    for (const audience of [AUD, `${AUD}/`, undefined])
+      for (const aud of [AUD, `${AUD}/`]) {
+        const auth = oidcTokenAuth({
+          allow: parseAllow(`${GITLAB}:group/app:.gitlab-ci.yml`),
+          ...(audience === undefined ? {} : { audience }),
+          fetchJson,
+        })
+        expect([audience, aud, await auth(req(await signFor(aud)), named)]).toEqual([
+          audience,
+          aud,
+          access,
+        ])
+      }
+    const auth = oidcTokenAuth({
+      allow: parseAllow(`${GITLAB}:group/app:.gitlab-ci.yml`),
+      audience: AUD,
+      fetchJson,
+    })
+    for (const aud of ['https://cache.example.org', `${AUD}/v1`])
+      expect(
+        await auth(req(await signFor(aud)), named).then(
+          () => 'taken',
+          (err: unknown) => (err as Refusal).status,
+        ),
+      ).toBe(401)
   })
   // A key set the issuer broke (two keys answering one kid, or no set at
   // all) is the issuer's fault: it read 401 "not a JWT", a token refused,

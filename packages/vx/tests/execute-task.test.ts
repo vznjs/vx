@@ -20,7 +20,7 @@ import { existsSync, readdirSync, utimesSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, gitInit, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { Cache, GitFilesCache, type CacheEntry, type CacheLayer } from '../src/cache/index.js'
 import { localExecutor } from '../src/orchestrator/local-executor.js'
@@ -64,8 +64,13 @@ const capturingLogger = (f: Fixture): Logger => ({
 
 /** `git init` is not optional: vx defers to git for the input file set and
  *  raises a UserError outside a work tree. */
+// Every root, whatever removes it first: some tests make one past their hooks.
+const roots: string[] = []
+afterAll(() => Promise.all(roots.map((r) => rm(r, { recursive: true, force: true }))))
+
 async function makeWorkspace(): Promise<Fixture> {
   const root = await makeWorkspaceRoot({ prefix: 'vx-exec-task-' })
+  roots.push(root)
   return { root, out: [], err: [] }
 }
 

@@ -209,6 +209,8 @@ export type ToOrchestrator =
   | { type: 'together'; messages: ToOrchestrator[] }
   /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
   | { type: 'fault'; task: string; reason: string; load?: Load }
+  /** A runtime fact a task's key holds answers otherwise here: refuse this worker, as another tree. */
+  | { type: 'differs'; task: string; reason: string }
   /** It ran the task and saved it under `key`; its output is in that entry. */
   | ({
       type: 'end'

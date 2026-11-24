@@ -380,7 +380,7 @@ export function fileDeps(lock: Lockfile): string[] {
   )
   const add = (dir: string, deps: ReadonlyMap<string, string>): void => {
     for (const version of deps.values()) {
-      const target = linkTarget(lock, dir, version)
+      const target = linkTarget(dir, version)
       if (target !== undefined && importerAt(lock, target) === undefined) out.add(target)
     }
   }
@@ -459,7 +459,7 @@ function injectedCopies(lock: Lockfile, dir: string, name: string, version: stri
   return own === root ? [own] : [own, root]
 }
 
-function linkTarget(lock: Lockfile, dir: string, version: string): string | undefined {
+function linkTarget(dir: string, version: string): string | undefined {
   return version.startsWith('link:') ? resolvePosix(dir, version.slice('link:'.length)) : undefined
 }
 
@@ -491,7 +491,7 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   }
   const link = (from: number, by: string, dir: string, name: string, version: string): void => {
     if (version.startsWith('link:')) {
-      const target = linkTarget(lock, dir, version)
+      const target = linkTarget(dir, version)
       const importer = target === undefined ? undefined : importerAt(lock, target)
       if (importer !== undefined) edges[from]!.push(index.get(importerNode(importer))!)
       else {

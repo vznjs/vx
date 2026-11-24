@@ -6,7 +6,7 @@
 export { networkPatternRefusal, probeSandbox, releaseBridges, resetSandbox } from './session.js'
 export { runSandboxed, wrapSandboxedCommand } from './runtime.js'
 export { untracedReason } from './trace.js'
-export { atOrUnder, replacedBySandbox, sandboxReads, toRealPath, wildcardAt } from './paths.js'
+export { atOrUnder, sandboxReads, toRealPath, unmountable, wildcardAt } from './paths.js'
 export { keyedOutsideGrants } from './binds.js'
 export {
   commandWriteReach,

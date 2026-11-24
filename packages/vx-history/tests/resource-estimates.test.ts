@@ -3,18 +3,25 @@
 // scheduler already reads; the pins here are the rounding, the headroom,
 // the thresholds, the packing rule and the one rule that matters most — a
 // declared reservation is never overridden.
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it, spyOn } from 'bun:test'
+import { afterAll, describe, expect, it, spyOn } from 'bun:test'
 import { Cache, type HistoryTable, type TaskHistory, type TaskNode } from '@vzn/vx'
 import { admits, resourceEstimates, vxHistory, withDeclared } from '../src/index.js'
 
 const MB = 1024 * 1024
 
+const made: string[] = []
+afterAll(() => {
+  for (const d of made) rmSync(d, { recursive: true, force: true })
+})
+
 /** A local cache whose history read fails: closed, so the read throws. */
 function noHistory(): Cache {
-  const cache = new Cache(path.join(mkdtempSync(path.join(os.tmpdir(), 'vx-history-')), 'cache'))
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-history-'))
+  made.push(dir)
+  const cache = new Cache(path.join(dir, 'cache'))
   cache.close()
   return cache
 }

@@ -19,6 +19,9 @@ const BANNED =
 // quoted message passes.
 const INTERNAL =
   /\bseams?\b|\bfloor\b|\bchain(s|ed)?\b|\bclaim(s|ed|ing)?\b|\badmits|\badmitt(ed|ing)\b|\badmission\b|\btaint(s|ed)?\b|\bplacement\b|\bfold(s|ed|ing)?\b|\bstaged\b|\bmemo(s|ized)?\b|\blayered cache\b|\bremote layer\b/i
+// A decision or item number a reader cannot look up (M 2026-11-23, on the
+// config reference: "What human can or will read that").
+const ID = /\b(?:W?D|X|H|M|A|L|C|B)-\d{1,3}\b|\bitem \d{3,4}\b|\(#\d{3,5}\)/
 // Stage names belong on the plugin reference only.
 const STAGE = /\bfingerprints?\b|\badmit\b/i
 const PLUGIN_REFERENCE = 'docs/writing-plugins.mdx'
@@ -29,7 +32,7 @@ const SHELL_BANNED =
 const ESC = String.fromCharCode(27)
 
 // Pages these rules reach.
-const ROOTS = ['docs', 'quickstart.mdx', 'glossary.mdx']
+const ROOTS = ['docs', 'concepts', 'compare', 'quickstart.mdx', 'glossary.mdx']
 // The control page: a long paragraph and an internal word, outside the site.
 const CONTROL = '../../../tests/fixtures/unreadable.md'
 
@@ -65,6 +68,8 @@ function problems(rel: string): string[] {
     const p = prose(line)
     const internal = INTERNAL.exec(p) ?? (rel === PLUGIN_REFERENCE ? null : STAGE.exec(p))
     if (internal) out.push(`${rel}:${i + 1} internal "${internal[0]}"`)
+    const id = ID.exec(p)
+    if (id) out.push(`${rel}:${i + 1} internal id "${id[0]}"`)
   }
   lines.forEach((line, i) => {
     if (front) {
@@ -94,10 +99,16 @@ function problems(rel: string): string[] {
       return
     }
     words(line, i)
-    const isProse = line.trim() && !/^\s*([#|<>\-*+:]|\d+\.|import |export |\{)/.test(line)
+    // A list item is a unit of its own: five phone lines, as a paragraph.
+    const item = /^\s*([-*+]|\d+\.)\s+\S/.test(line)
+    const isProse =
+      item || (line.trim() && !/^\s*([#|<>\-*+:]|\d+\.|import |export |\{)/.test(line))
     if (!isProse) return flush()
+    if (item) flush()
     if (!para.length) start = i + 1
-    para.push(line.trim())
+    // A message quoted word for word heads its item: vx's words, not the
+    // page's, so only the explanation after it counts.
+    para.push(item ? line.trim().replace(/^([-*+]|\d+\.)\s+(``.*?``|`[^`]*`)/, '$1') : line.trim())
   })
   flush()
   return out

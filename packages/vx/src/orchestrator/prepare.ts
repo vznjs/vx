@@ -39,6 +39,7 @@ import {
   checkBlobSizes,
   lazyGitEnumeration,
   DEFAULT_STORE,
+  setLinkBounds,
 } from '../cache/index.js'
 import { clockDir, measureFsClockLag } from '../memo/index.js'
 import {
@@ -311,6 +312,9 @@ export async function prepareRunLocked(
     const graph = await buildGraph(options, log, ws, scope, load, asked, hashCache, cache)
     if (graph === 'none-affected') return emptyRun('none-affected')
     const { nodes } = graph
+    // A link input into another project needs a dependsOn path there (linked-inputs.ts).
+    let keyedOnly: ReadonlyMap<string, TaskNode> | undefined
+    setLinkBounds(workspaceRoot, projectMetas, (id) => nodes.get(id) ?? keyedOnly?.get(id))
     const git = await enumerateGit(options, ws, store, asked, graph, hashCache, countDependents)
     const keyOnly = await applyKeyStages(
       options,
@@ -324,6 +328,7 @@ export async function prepareRunLocked(
       hashCache,
       cache,
     )
+    keyedOnly = keyOnly
     const access = pluginAccess(log, ws, store, layer, nodes)
     return {
       ...held,
@@ -703,7 +708,9 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
       const at = t.indexOf('#')
       return at > 0 && !projects.has(t.slice(0, at))
     }) ||
-    (unresolvedTasks.some((t) => !t.includes('#')) && !declaresAny(projects))
+    (unresolvedTasks.some((t) => !t.includes('#')) && !declaresAny(projects)) ||
+    // A typo in a partial load: its nearest name may be declared outside it.
+    (partialLoad && unresolvedTasks.some((t) => !t.includes('#') && !declaredElsewhere.includes(t)))
   ) {
     try {
       hintProjects = (await everyProject()).projects
@@ -745,6 +752,9 @@ async function openLayer(options: CoreRunOptions, log: Logger, ws: Workspace, st
   const refs = options.remoteCache
     ? []
     : cacheRefs(workspaceRoot, ws.baseBranch, ws.branchFacts.refs)
+  // A factory that hangs strands the run, or a signal ends it: the
+  // factories that ran are owed their teardown.
+  const unowe = owedIfStranded(() => teardownPlugins(plugins, warnOf(log)))
   try {
     cache = options.remoteCache
       ? new LayeredCache(localCache, remotes, options.uploadConcurrency)
@@ -767,6 +777,8 @@ async function openLayer(options: CoreRunOptions, log: Logger, ws: Workspace, st
     await teardownPlugins(plugins, warnOf(log))
     localCache.close()
     throw err
+  } finally {
+    unowe()
   }
   // Ask the layer, don't infer: identity against `localCache` is true for any
   // pass-through decorator with no remote, skipping the clamp below.
@@ -834,6 +846,7 @@ async function buildGraph(
       projectMetas,
       warn: warnOf(log),
       rules: graphRules,
+      refuseEmpty: true,
     })
   // `--affected` selects over the final graph: a `graph` hook's edge or input
   // moves a key, so hooks run first over every candidate.
@@ -1307,8 +1320,14 @@ async function refuseUnlockedConfig(
       (metas.some((m) => m.name === name)
         ? undefined
         : await unlockedDir(name, metas, workspaceRoot))
-    if (config === undefined) continue
-    throw new UserError(`${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`, 'VX_E_LOCK')
+    if (config !== undefined)
+      throw new UserError(
+        `${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`,
+        'VX_E_LOCK',
+      )
+    if (entry !== undefined || metas.some((m) => m.name === name)) continue
+    const renamed = await renamedSinceLock(name, metas, workspaceRoot)
+    if (renamed !== undefined) throw new UserError(`${spec}: ${renamed}`, 'VX_E_LOCK')
   }
 }
 
@@ -1360,6 +1379,37 @@ function unlockedConfig(
   if (typeof meta.configPath === 'string' && meta.configPath !== '') return undefined
   const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(meta.dir, n)))
   return config === undefined ? undefined : path.join(meta.dir, config)
+}
+
+/**
+ * The locked project whose package.json took `name` since the lock: the
+ * `discover` stage is locked, so it keeps its old name until `vx lock`.
+ * A project named by its path took no name from its package.json. Asked only
+ * on a refusal.
+ */
+export async function renamedSinceLock(
+  name: string,
+  metas: ReadonlyArray<{ name: string; dir: string }>,
+  workspaceRoot: string,
+): Promise<string | undefined> {
+  const named = metas.filter(
+    (m) => m.name !== name && m.name !== relPosix(workspaceRoot, m.dir) && m.dir !== workspaceRoot,
+  )
+  const found = await Promise.all(
+    named.map(async (m) => {
+      try {
+        const pkg = (await Bun.file(path.join(m.dir, 'package.json')).json()) as { name?: unknown }
+        return pkg.name === name ? m : undefined
+      } catch {
+        // No package.json, or not JSON: no package name to match.
+        return undefined
+      }
+    }),
+  )
+  const m = found.find((x) => x !== undefined)
+  if (m === undefined) return undefined
+  const file = relPosix(workspaceRoot, path.join(m.dir, 'package.json'))
+  return `${file} names it "${name}", the lock "${m.name}" — run \`vx lock\``
 }
 
 /**

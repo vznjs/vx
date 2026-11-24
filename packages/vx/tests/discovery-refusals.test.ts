@@ -53,21 +53,29 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
     expect(await refusal({ dir: 'packages/a', reach: [1] })).toBe(
       `plugin 'p' named project {"dir":"packages/a","reach":[1]}${expected}`,
     )
+    // JSON cannot say a BigInt: the refusal was vx's own TypeError and stack.
+    expect(await refusal({ dir: 1n, name: undefined })).toBe(
+      `plugin 'p' named project { dir: 1n }${expected}`,
+    )
   })
 
   it('a name no task spec can address', async () => {
     expect(await refusal({ dir: 'packages/b', name: ' b' })).toBe(
-      `plugin 'p' named project " b": the name has surrounding whitespace`,
+      `plugin 'p' named project " b" at packages/b: the name has surrounding whitespace — rename it in the manifest plugin 'p' reads there`,
     )
     expect(await refusal({ dir: 'packages/b', name: 'b#1' })).toBe(
-      `plugin 'p' named project "b#1": the name holds "#" — vx addresses a task as <name>#<task>`,
+      `plugin 'p' named project "b#1" at packages/b: the name holds "#" — vx addresses a task as <name>#<task> — rename it in the manifest plugin 'p' reads there`,
     )
     // Printed raw by the status line and summary, `ESC ]0;` retitled the terminal.
     expect(await refusal({ dir: 'packages/b', name: 'b\x1b]0;x\x07' })).toBe(
-      `plugin 'p' named project "b\\u001b]0;x\\u0007": the name holds a control character`,
+      `plugin 'p' named project "b\\u001b]0;x\\u0007" at packages/b: the name holds a control character — rename it in the manifest plugin 'p' reads there`,
     )
     expect(await refusal({ dir: 'packages/b', name: '!b' })).toBe(
-      `plugin 'p' named project "!b": the name starts with '!', which a filter reads as an exclusion`,
+      `plugin 'p' named project "!b" at packages/b: the name starts with '!', which a filter reads as an exclusion — rename it in the manifest plugin 'p' reads there`,
+    )
+    // A package.json `name` of `-b`: `vx run -b#build` was refused as a flag.
+    expect(await refusal({ dir: 'packages/b', name: '-b' })).toBe(
+      `plugin 'p' named project "-b" at packages/b: the name starts with '-', which the CLI reads as a flag — rename it in the manifest plugin 'p' reads there`,
     )
   })
 
@@ -92,7 +100,7 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
 
   it('a directory outside the workspace', async () => {
     expect(await refusal({ dir: '../out', name: 'out' })).toBe(
-      `plugin 'p' named project "out" at ${path.dirname(root)}/out: outside the workspace root`,
+      `plugin 'p' named project "out" at ${path.dirname(root)}/out: outside the workspace root — move it under the root, or leave it out of what plugin 'p' discovers (a workspaces glob)`,
     )
   })
 

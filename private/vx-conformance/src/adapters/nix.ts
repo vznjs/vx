@@ -374,6 +374,8 @@ export const nix: Adapter = {
     return out.trim().split(' ').at(-1)!
   },
   lacks: {
+    'folder-output':
+      'A derivation’s output is its whole `$out`; there is no output path to declare as a folder.',
     mutex:
       'Nix has no setting that keeps two builds from running at the same time, only `--max-jobs` for all.',
     'ready-port': 'A derivation is a build that ends: nothing waits for a port.',

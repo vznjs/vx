@@ -299,6 +299,30 @@ it('a restore from a remote keeps the task as the entry and refuses a file it do
   expect([row?.taskId, row?.command]).toEqual(['app#build', 'build ***'])
 })
 
+// A run restoring what a worker ran (DTE) stored the row's command masked by
+// vx's own environment only: a value the task's define or env.secret marks
+// was kept whole in cache.db, though the worker's save masked it.
+it("a restore masks the row's command by the task's define and env.secret", async () => {
+  const remote = memoryRemote()
+  const agent = await machine('agent', remote.layer)
+  const task = (root: string) => ({
+    id: 'app#build',
+    projectDir: path.join(root, 'app'),
+    command: 'build define-secret-value pat-secret-value',
+    outputs: { files: [], workspaceFiles: [] },
+  })
+  await agent.artifacts.save(KEY, task(agent.root), { output: [], durationMs: 1 })
+  const here = await machine('here', remote.layer)
+  const restored = await here.artifacts.restore(KEY, {
+    ...task(here.root),
+    env: { API_KEY: 'define-secret-value', GH_PAT: 'pat-secret-value' },
+    secret: ['GH_PAT'],
+  })
+  expect(restored).toEqual([])
+  const row = await here.local.getIngested(KEY)
+  expect(row?.command).toBe('build *** ***')
+})
+
 it('output keeps what it read, so a later restore downloads nothing', async () => {
   // A deferred task's output is read first and its files laid only when a
   // task here needs them: that second read must not fetch the entry again.

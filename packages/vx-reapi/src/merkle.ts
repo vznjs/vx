@@ -646,9 +646,6 @@ const DIGEST_FUNCTION = {
 } as const
 export type DigestFunctionName = keyof typeof DIGEST_FUNCTION
 
-/** REAPI `Compressor.Value`. */
-const COMPRESSOR = { IDENTITY: 0, ZSTD: 1, DEFLATE: 2, BROTLI: 3 } as const
-
 /** Node.js hash names for the digest functions we can actually compute. */
 const HASH_ALGO: Partial<Record<DigestFunctionName, string>> = {
   SHA256: 'sha256',
@@ -694,12 +691,6 @@ export interface NodeProperties {
   /** Modification time in ms since the epoch. */
   mtimeMs?: number
 }
-
-const OUTPUT_DIRECTORY_FORMAT = {
-  TREE_ONLY: 0,
-  DIRECTORY_ONLY: 1,
-  TREE_AND_DIRECTORY: 2,
-} as const
 
 interface CommandSpec {
   arguments: readonly string[]

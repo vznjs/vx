@@ -5,6 +5,7 @@
 
 import path from 'node:path'
 import { settingEnv } from '../settings.js'
+import { VERSION } from '../version.js'
 import fs from 'node:fs'
 import {
   affectedChanges,
@@ -13,6 +14,7 @@ import {
   applyFilters,
   buildPackageGraph,
   configuredBaseBranch,
+  configsOutsideLock,
   defaultAffectedBase,
   findProjectConfigs,
   findWorkspaceRoot,
@@ -49,6 +51,7 @@ import {
   fingerprintClaims,
   hashExtra,
   hasHook,
+  renamedSinceLock,
   unlockedDir,
   withExtraHashes,
 } from '../orchestrator/index.js'
@@ -230,6 +233,31 @@ export async function findCwdSelection(
 }
 
 /**
+ * The discovery an `--all` run takes every project from, refused while a
+ * config is on disk that the lock holds no project for: the run left it
+ * out, green. One git spawn, paid by `--all` alone.
+ */
+export async function findAllSelection(
+  cwd: string,
+  load: CliLoadOptions = {},
+): Promise<{ root: string; projects: ProjectMeta[] }> {
+  const root = await findWorkspaceRoot(cwd)
+  const projects = await discoverCliProjects(root, load)
+  const locked = new Set(
+    projects.flatMap((p) =>
+      typeof p.configPath === 'string' ? [relPosix(root, path.dirname(p.configPath))] : [],
+    ),
+  )
+  const unlocked = await configsOutsideLock(root, locked)
+  if (unlocked.length > 0)
+    throw new UserError(
+      `${listed(unlocked, 5)} ${unlocked.length === 1 ? 'is' : 'are'} not in the lock yet — run \`vx lock\``,
+      'VX_E_LOCK',
+    )
+  return { root, projects }
+}
+
+/**
  * A config `vx lock` would find between the cwd and its placing project:
  * written after the lock it is no project yet, and a run there ran the project
  * above or said "not inside a project". One readdir per directory between them.
@@ -385,6 +413,8 @@ function emptySelection(
   changedAny: ReadonlySet<ReturnType<typeof parseFilter>>,
   /** What each include that matched found on the walk it asked for: nothing. */
   emptyWalks: readonly string[],
+  /** Each `[<since>]` filter's changed projects. */
+  affectedByFilter: ReadonlyMap<ReturnType<typeof parseFilter>, ReadonlySet<string>>,
 ): FilterResolution {
   const includes = parsed.filter((f) => !f.negate)
   // Every pattern matched and an exclusion took them all back: "no
@@ -395,6 +425,16 @@ function emptySelection(
   if (includes.length > 0 && includes.every((f) => f.gitSince !== undefined)) {
     if (includes.every((f) => emptyDiffs.has(f))) {
       const refs = [...new Set(includes.map((f) => f.gitSince))].join(', ')
+      // The diff reached projects the selectors left out: "nothing affected"
+      // denied a change the run can see.
+      const elsewhere = includes.flatMap((f) => [...(affectedByFilter.get(f) ?? [])])
+      if (elsewhere.length > 0) {
+        const sels = includes.map((f) => f.raw).join(', ')
+        return {
+          empty: `nothing ${sels} ${includes.length > 1 ? 'select' : 'selects'} changed since ${refs}; the change reached ${listed(elsewhere)}`,
+          discovered: { root, projects },
+        }
+      }
       // A base that is HEAD (a single-branch clone whose `origin/HEAD` is the
       // branch under test) can mark nothing; say so.
       const self = includes.map((f) => headBase(root, f.gitSince!)).find((b) => b !== undefined)
@@ -624,12 +664,14 @@ export async function resolveFilters(
     const unlocked = await unlockedFilter(root, parsed, unmatched, projects)
     if (unlocked !== undefined) {
       return {
-        error: `filter "${unlocked.filter}": ${relPosix(root, unlocked.config)} is not in the lock yet — run \`vx lock\``,
+        error: `filter "${unlocked.filter}": ${unlocked.line}`,
         code: 'VX_E_LOCK',
       }
     }
     const hint =
-      bracedHint(root, parsed, unmatched, projects, graph) ?? didYouMean(unmatched, projects, tags)
+      bracedHint(root, parsed, unmatched, projects, graph) ??
+      rootRelativeHint(root, cwd, parsed, unmatched, projects, graph) ??
+      didYouMean(unmatched, projects, tags)
     // Quoted: bare, `apq...` and the hint's
     // full stop read `apq....` in the flat message `--format json` carries.
     return {
@@ -637,7 +679,15 @@ export async function resolveFilters(
     }
   }
   if (selected.size === 0)
-    return emptySelection(root, parsed, projects, emptyDiffs, changedAny, emptyWalks)
+    return emptySelection(
+      root,
+      parsed,
+      projects,
+      emptyDiffs,
+      changedAny,
+      emptyWalks,
+      affectedByFilter,
+    )
   // Each include is a union: `--filter other` runs its tasks whether or not the
   // `--affected` diff reaches them; an exclude still removes.
   const others = parsed.filter((f) => f.negate || f.raw !== affected?.filter)
@@ -678,9 +728,13 @@ interface PickedTask {
   description?: string
 }
 
-/** What a workspace with no task yet says, picker or not. */
-export const NO_TASKS_DECLARED =
-  'no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`'
+/** The line that sends a scripts workspace to vx-migrate, at this vx's version: `bun x` may answer a bare name from its cache. */
+export function migrateHint(mjs: boolean, running = VERSION): string {
+  return `bunx @vzn/vx-migrate${running === '0.0.0' ? '' : `@${running}`}${mjs ? ' --mjs' : ''}`
+}
+
+/** What a workspace with no task yet says, picker or not: `vx init` writes no task, so the scripts route is vx-migrate's. */
+export const NO_TASKS_DECLARED = `no tasks declared in any project. Declare one under \`tasks\` in a vx.config, then run \`vx lock\`; or run \`${migrateHint(false)}\` to make them from package.json scripts`
 
 /**
  * The task the user picks from a numbered menu; null when nothing was
@@ -736,8 +790,10 @@ export async function pickTask(
   entries.forEach((e, i) => {
     const n = String(i + 1).padStart(numW, ' ')
     const name = `${e.project}#${e.task}`
-    const id = name + ' '.repeat(idW - Bun.stringWidth(name))
+    // Padded only to line up a description: trailing spaces past the
+    // terminal's width wrapped every bare row into a blank line.
     const desc = e.description ? `  ${e.description}` : ''
+    const id = desc === '' ? name : name + ' '.repeat(idW - Bun.stringWidth(name))
     out.write(`  ${n}. ${id}${desc}\n`)
   })
   // Imported here, the picker's one use: a run that never asks paid ~0.7 ms
@@ -787,6 +843,7 @@ export async function pickTask(
 /**
  * The first unmatched include naming (by path, dir name or package name) a
  * config `vx lock` would make a project: written after the lock it is none yet.
+ * Or a locked project's new package.json name, which it takes at `vx lock`.
  * No-match path only.
  */
 async function unlockedFilter(
@@ -794,7 +851,7 @@ async function unlockedFilter(
   parsed: readonly ReturnType<typeof parseFilter>[],
   unmatched: readonly string[],
   projects: readonly ProjectMeta[],
-): Promise<{ filter: string; config: string } | undefined> {
+): Promise<{ filter: string; line: string } | undefined> {
   for (const f of parsed) {
     if (f.negate || f.tag === true || !unmatched.includes(f.raw)) continue
     if (
@@ -804,7 +861,14 @@ async function unlockedFilter(
     )
       continue
     const config = await unlockedDir(f.matcher, projects, root)
-    if (config !== undefined) return { filter: f.raw, config }
+    if (config !== undefined)
+      return {
+        filter: f.raw,
+        line: `${relPosix(root, config)} is not in the lock yet — run \`vx lock\``,
+      }
+    if (f.isPath) continue
+    const renamed = await renamedSinceLock(f.matcher, projects, root)
+    if (renamed !== undefined) return { filter: f.raw, line: renamed }
   }
   return undefined
 }
@@ -834,6 +898,45 @@ function bracedHint(
       continue
     const meant = `${f.raw.slice(0, at)}{${dir}}[${m[2]}]${m[3] ?? ''}`
     return `. A directory takes a git ref braced: did you mean ${meant}?`
+  }
+  return undefined
+}
+
+/**
+ * `. A path filter is relative to the workspace root: did you mean
+ * ./packages/lib?` for an unmatched `./lib` typed in `packages/`, as pnpm
+ * reads a path. Only when the root-relative path selects a project.
+ */
+function rootRelativeHint(
+  root: string,
+  cwd: string,
+  parsed: readonly ReturnType<typeof parseFilter>[],
+  unmatched: readonly string[],
+  projects: ProjectMeta[],
+  graph: PackageGraph,
+): string | undefined {
+  const sub = relPosix(root, path.resolve(cwd))
+  if (sub === '' || sub === '..' || sub.startsWith('../')) return undefined
+  for (const f of parsed) {
+    if (!f.isPath || f.exactDir === true || !unmatched.includes(f.raw)) continue
+    const at = (f.negate ? 1 : 0) + (f.withDependents ? 3 : 0) + (f.onlyDependents ? 1 : 0)
+    const rest = f.raw.slice(at)
+    const braced = /^\{([^{}]*)\}(.*)$/.exec(rest)
+    const bare = braced === null ? /^(\.\/.*?|\.)((?:\^?\.\.\.)?)$/.exec(rest) : null
+    const m = braced ?? bare
+    if (m === null) continue
+    const dir = path.posix.join(sub, m[1]!)
+    const meant = `${f.raw.slice(0, at)}${braced !== null ? `{${dir}}` : `./${dir}`}${m[2]}`
+    // Whether the path names a project, its ref and `!` aside.
+    const { gitSince: _since, sinceViaDeps: _via, ...reread } = parseFilter(meant, root)
+    const hit = applyFilters({
+      filters: [{ ...reread, negate: false }],
+      projects,
+      graph,
+      affectedByFilter: new Map(),
+    })
+    if (hit.size === 0) continue
+    return `. A path filter is relative to the workspace root: did you mean ${meant}?`
   }
   return undefined
 }

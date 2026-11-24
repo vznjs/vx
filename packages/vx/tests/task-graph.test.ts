@@ -366,7 +366,9 @@ describe('buildTaskGraph', () => {
         packageGraph: packageGraph({}),
         requested: [{ project: 'a', task: 'build' }],
       }),
-    ).toThrow(/a#build: dependsOn nope#build, but no project is named nope/)
+    ).toThrow(
+      'a#build: dependsOn nope#build, but no project is named nope (projects: a) — name one of them, or remove nope#build from dependsOn',
+    )
   })
 
   it("a pkg#task miss with nothing near lists the project's tasks", () => {
@@ -423,7 +425,7 @@ describe('buildTaskGraph', () => {
           requested: [{ project: 'packages/b', task: 'build' }],
         })
     expect(graph()).toThrow(
-      /^packages\/b#build: dependsOn packages\/a#build, but no project is named packages\/a$/,
+      /^packages\/b#build: dependsOn packages\/a#build, but no project is named packages\/a \(projects: packages\/b\) — name one of them, or remove packages\/a#build from dependsOn$/,
     )
     // CONTROL: another near target is still offered.
     expect(graph(project('packages/c', { build: cmd('c') }))).toThrow(
@@ -489,7 +491,9 @@ describe('buildTaskGraph', () => {
         packageGraph: packageGraph({}),
         requested: [{ project: 'packages/app', task: 'test' }],
       }),
-    ).toThrow(/no project is named packages\/c$/)
+    ).toThrow(
+      /no project is named packages\/c \(projects: [^)]*\) — name one of them, or remove packages\/c#build from dependsOn$/,
+    )
   })
 
   it('detects a same-project task self-cycle', () => {

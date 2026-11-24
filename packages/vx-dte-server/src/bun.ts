@@ -35,22 +35,28 @@ function main(argv: string[]): void {
   // Read from the environment, as the cache and history servers and the
   // relay's Worker read them: one way to configure every vx server.
   const env = Bun.env
-  const audience = env.AUDIENCE?.trim() ?? ''
+  const audience = env['AUDIENCE']?.trim() ?? ''
   // The bare usage said nothing of which was missing.
   if (!noAuth) {
     const missing = [
       // An empty one is missing too: it started a relay that refused every token.
-      ...((env.ALLOW ?? '').trim() === '' ? ['ALLOW'] : []),
+      ...((env['ALLOW'] ?? '').trim() === '' ? ['ALLOW'] : []),
       ...(audience === '' ? ['AUDIENCE'] : []),
     ]
     if (missing.length > 0) fail(`missing ${missing.join(' and ')} (or --no-auth)\n${USAGE}`)
   }
   let allow: ReturnType<typeof parseAllow> = []
   try {
-    allow = parseAllow(env.ALLOW ?? '')
+    allow = parseAllow(env['ALLOW'] ?? '')
   } catch (err) {
     fail(`ALLOW: ${(err as Error).message}`)
   }
+  // A token names an http(s) URL: any other refused every token.
+  const aud = audience === '' ? null : URL.parse(audience)
+  if (audience !== '' && (aud === null || !/^https?:$/.test(aud.protocol)))
+    fail(
+      `AUDIENCE: the URL clients reach this relay at (https://relay.example.com), not ${audience}`,
+    )
   // Digits only, as the cache and history servers read it: Number('') is
   // 0, a random port for `--port "$PORT"` with PORT unset, and Number read
   // 0x50 as 80 and 1e1 as 10.

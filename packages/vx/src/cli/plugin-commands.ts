@@ -20,7 +20,7 @@ import type {
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
 import {
-  envFlagOn,
+  ciProvider,
   machineParallelism,
   maskedLine,
   printable,
@@ -233,7 +233,7 @@ async function verbArtifacts(
     }
   }
   const policy: CachePolicy =
-    envFlagOn(process.env['CI']) || namesRemote(envSpec ?? ws.workspaceConfig?.cache?.policy)
+    ciProvider() !== null || namesRemote(envSpec ?? ws.workspaceConfig?.cache?.policy)
       ? asked
       : { ...asked, remoteWrite: false }
   const scope = resolveCacheScope(
@@ -277,7 +277,7 @@ async function openVerbRemotes(
   remotes: readonly ResolvedRemote[],
   open: (typeof import('../orchestrator/index.js'))['openRemotes'],
 ): Promise<void> {
-  const ci = envFlagOn(process.env['CI'])
+  const ci = ciProvider() !== null
   await open(remotes, ci, new SecretBroker(ci, warn))
 }
 
@@ -324,7 +324,18 @@ export async function pluginVerbs(cwd = process.cwd()): Promise<string[]> {
 /** `vx help` lines for every plugin verb in the workspace around `cwd`. */
 export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> {
   const ws = await workspacePlugins(cwd).catch(() => null)
-  if (ws === null || 'loadError' in ws) return []
+  if (ws === null) return []
+  // The reference without them and exit 0 hid the broken file: a verb with
+  // no `description` just went missing. Said on stderr, so stdout stays the
+  // reference.
+  if ('loadError' in ws) {
+    ui.sayNotice(
+      'warn',
+      'vx help',
+      `plugin verbs could not be listed: .vx/workspace failed to load: ${ws.loadError}`,
+    )
+    return []
+  }
   // A verb has one owner, a package: the workspace load refuses two packages
   // declaring it, and of one package's plugins the first declared runs.
   const lines: string[] = []
@@ -352,7 +363,7 @@ export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> 
  * column `head` ends at, at core's reference width, so a plugin's long
  * description reads as core's own entries do.
  */
-function helpLines(head: string, text: string, width = 88): string[] {
+function helpLines(head: string, text: string, width = 80): string[] {
   const indent = ' '.repeat(head.length)
   const lines: string[] = []
   let line = head

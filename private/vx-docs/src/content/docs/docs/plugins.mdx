@@ -231,12 +231,15 @@ Next: [CI](../ci/).
 
 Start from your `turbo.json` or Nx graph, a temporary step while you move to `vx.config.ts`.
 
+`turbo()` takes package edges from your lockfile's plugin, so declare it beside it. `nx()` reads them from Nx.
+
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
 import { turbo } from '@vzn/vx-migrate'
 
 export default defineWorkspace({
-  plugins: [turbo()],
+  plugins: [turbo(), bun()],
 })
 ```
 
@@ -257,17 +260,17 @@ one changes ([Write a plugin](../writing-plugins/)).
 | [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/) | `discover`, `project`, `fingerprint`, `key` | `pnpm()`, `bun()`, `npm()`, `yarn()`: [Lockfiles](../lockfiles/) |
 | [`@vzn/vx-cache`](../../plugins/vx-cache/) | `cache` | `vxCache()`: a [remote cache](../remote-cache/) on your cache server |
 | [`@vzn/vx-otel`](../../plugins/vx-otel/) | `telemetry` | `otel()`: [traces, metrics and logs](#opentelemetry) |
-| [`@vzn/vx-ci`](../../plugins/vx-ci/) | `config`, `telemetry`, `commands` | `github()`, `gitlab()`: [CI](../ci/) summaries and branch caches |
-| [`@vzn/vx-dte`](../distributed-task-execution/) | `executor`, `commands` | `dte()`: [Distributed task execution](../distributed-task-execution/) |
-| [`@vzn/vx-history`](../../plugins/vx-history/) | `schedule`, `admit`, `commands` | `vxHistory()`: slow tasks first, memory-aware packing |
-| [`@vzn/vx-reapi`](../../plugins/vx-reapi/) | `cache`, `executor` | `reapi()`: [Remote cache](../remote-cache/) and [Remote execution](../remote-execution/) on a Bazel server |
-| [`@vzn/vx-migrate`](../../plugins/vx-migrate/) | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) | [Migrate](../migrate/) from Turbo or Nx |
+| [`@vzn/vx-ci`](../../plugins/vx-ci/) | `config`, `telemetry` (`github()`), `commands` | `github()`, `gitlab()`: [CI](../ci/) summaries and branch caches |
+| [`@vzn/vx-dte`](../distributed-task-execution/) | `config`, `measures`, `schedule`, `executor`, `setup`, `teardown`, `commands` | `dte()`: [Distributed task execution](../distributed-task-execution/) |
+| [`@vzn/vx-history`](../../plugins/vx-history/) | `schedule`, `admit`, `setup`, `teardown`, `commands` | `vxHistory()`: slow tasks first, memory-aware packing |
+| [`@vzn/vx-reapi`](../../plugins/vx-reapi/) | `executor`, `cache`, `teardown` | `reapi()`: [Remote cache](../remote-cache/) and [Remote execution](../remote-execution/) on a Bazel server |
+| [`@vzn/vx-migrate`](../../plugins/vx-migrate/) | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`), `teardown` (`turboCache()`) | [Migrate](../migrate/) from Turbo or Nx |
 | [`@vzn/vx-cache-server`](../../plugins/vx-cache-server/) | none | the [cache server](../servers/cache/) you host |
 | [`@vzn/vx-history-server`](../../plugins/vx-history-server/) | none | the [history server](../servers/history/) `vxHistory()` reads |
 | [`@vzn/vx-dte-server`](../servers/dte/) | none | the relay `dte()` meets its workers at |
 | [`@vzn/vx-devtools`](../../plugins/vx-devtools/) | none | the CI token check the servers share |
 
-One plugin can fill several: `@vzn/vx-history` fills three at once.
+One plugin can fill several: `@vzn/vx-dte` fills seven at once.
 
 <Aside type="tip" title="Each package's full guide">
   Every package has its own page under [Plugins](../../plugins/vx-ci/) in the sidebar.
@@ -377,7 +380,7 @@ endpoint would send your key in clear, so vx warns and sends nothing there.
 | Signal            | Carries                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | `vx.run` span     | `vx.run.task_count`, `vx.run.failed_count`, `vx.run.aborted_count`, `vx.run.not_run_count`, `vx.run.hit_local_count`, `vx.run.hit_remote_count`, `vx.run.up_to_date_count`, `vx.run.restored_local_count`, `vx.run.restored_remote_count`, `vx.run.exit_ok`, `vx.cache.upload.*` (remote uploads, once settled), `vx.workspace.id`, `vx.default_branch`, `vx.telemetry.schema` |
-| `vx.task` span    | `vx.cache.source`, `vx.cache.restored` (on a hit), `vx.task.hash`, `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.sandbox_violations`, `vx.task.not_ready`, `vx.task.command`, `vx.task.flaky.*`, `vx.cache.stored_*` (on a hit), `vx.task.admission_held_ms`, `vx.task.queued_ms`, `vx.task.input_files`, `vx.cache.miss.change_count` and `vx.cache.miss.changes` (what a miss's key changed since the last saved entry), `vx.cache.artifact_bytes`, `vx.cache.save_ms`, `vx.cache.fetch_ms`; links to the tasks it waited on; `vx.task.retry`, `vx.task.timeout` and `vx.sandbox.violation` events |
+| `vx.task` span    | `vx.cache.source`, `vx.cache.restored` (on a hit), `vx.task.hash`, `vx.task.where` (the machine a plugin executor ran it on), `vx.task.attempts`, `vx.task.blocked_by`, `vx.task.timed_out`, `vx.task.outputs_missing`, `vx.task.sandbox_violations`, `vx.task.not_ready`, `vx.task.command`, `vx.task.flaky.*`, `vx.cache.stored_*` (on a hit), `vx.task.admission_held_ms`, `vx.task.queued_ms`, `vx.task.input_files`, `vx.cache.miss.change_count` and `vx.cache.miss.changes` (what a miss's key changed since the last saved entry), `vx.cache.artifact_bytes`, `vx.cache.save_ms`, `vx.cache.fetch_ms`; links to the tasks it waited on; `vx.task.retry` (20 at most, then `vx.task.retries_dropped`), `vx.task.timeout` and `vx.sandbox.violation` events |
 | a span per step   | `startup`, `load configs`, `classify + probe`, `run graph`, … (the `VX_DEBUG_TIMING` steps), with `vx.stage.name` |
 | metrics           | `vx.tasks.total`, `vx.tasks.failed`, `vx.tasks.cache_hits`, `vx.tasks.cache_restored`, `vx.tasks.cache_up_to_date`, `vx.run.duration_ms`, `vx.run.time_saved_ms` |
 | metrics per task  | `vx.task.duration`, `vx.task.cpu_time`, `vx.task.peak_memory`, `vx.task.time_saved`, `vx.task.admission_held`, `vx.task.queued`, `vx.task.artifact_size`, `vx.task.cache_save`, `vx.task.cache_fetch` at its end; `vx.task.cpu_usage` and `vx.task.memory` each second while it runs; each point names its span as an exemplar |
@@ -470,18 +473,18 @@ From `@vzn/vx-history`. Learns from past runs which tasks are slow and how much 
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| `window` | How many recent runs to learn from. | `20` |
+| `window` | How many recent runs to learn from: `50`. | `20` |
 | `resources` | Packs tasks by the memory they used, times `headroom`. `false` turns packing off. | `{ headroom: 1.25 }` |
-| `memory` | The memory budget, in MB, tasks are packed into. | this machine's, or its container limit |
+| `memory` | The memory budget, in MB, tasks are packed into: `memory: 8192`. | this machine's, or its container limit |
 | `reservations` | Cores and memory by task id, for a task history has not seen: `{ '@demo/web#build': { cpus: 2, memory: 2048 } }`. | `{}` |
-| `assume` | Durations in ms by task id, for a first run with no history. | `{}` |
-| `file` | A timings file, from the workspace root, that CI keeps between runs. | none |
-| `url` | A [history server](../servers/history/) to read and send timings. | `VX_HISTORY_URL` |
-| `headers` | Headers for a proxy in front of the server. | `{}` |
-| `issuer` | The CI whose tokens the server takes. | required with `url` |
+| `assume` | Durations in ms by task id, for a first run with no history: `{ '@demo/web#build': 30000 }`. | `{}` |
+| `file` | A timings file, from the workspace root, that CI keeps between runs: `'.vx/timings.json'`. | none |
+| `url` | A [history server](../servers/history/) to read and send timings: `'https://history.example.com'`. | `VX_HISTORY_URL` |
+| `headers` | Headers for a proxy in front of the server: `{ 'x-api-key': key }`. | `{}` |
+| `issuer` | The CI whose tokens the server takes: `'https://token.actions.githubusercontent.com'`. | required with `url` |
 | `repository` | Your repository at that CI, `org/name`. | required with `url` |
-| `timeoutMs` | Deadline for one request to the server. | `10000` |
-| `retries` | Tries after a 5xx or a 429. | `2` |
+| `timeoutMs` | Deadline for one request to the server, in ms: `5000`. | `10000` |
+| `retries` | Tries after a 5xx or a 429: `0` sends once. | `2` |
 
 ### `dte()`
 
@@ -492,9 +495,9 @@ From `@vzn/vx-dte`. Spreads one run over workers: [Distributed task execution](.
 | `workers` | Worker types by name, each with its `machines`. A task with `exec.worker` runs only on its type. | none: only workers that join |
 | `adapter` | What starts workers: `github()`, `gitlab()`, `docker()` or `local()`. | none |
 | `relay` | The relay's URL. `VX_DTE_RELAY` beats it. | the adapter's own |
-| `token` | A function returning the relay token. | `VX_DTE_TOKEN`, else GitHub's OIDC token |
+| `token` | A function returning the relay token: `() => process.env.RELAY_TOKEN`. | `VX_DTE_TOKEN`, else GitHub's OIDC token |
 | `unmeasured` | What a task with no history counts for when planning workers. | `{ cpu: 2, memory: '4GB' }` |
-| `headers` | Headers for a proxy in front of the relay. | `{}` |
+| `headers` | Headers for a proxy in front of the relay: `{ 'x-api-key': key }`. | `{}` |
 
 Each machine in `workers.<type>.machines.<name>`:
 
@@ -502,7 +505,7 @@ Each machine in `workers.<type>.machines.<name>`:
 | --- | --- | --- |
 | `cpu` | Its cores. | required |
 | `memory` | Its memory: bytes, or `'8GB'`, `'512MiB'`. | required |
-| `max` | How many one run may start. | as many as the work needs |
+| `max` | How many may be in the run at once. One lost or failed to start is replaced. | as many as the work needs |
 | `platform` | Its platform, such as `'linux-x64'`. A task with `exec.platforms` runs only there. | this machine's |
 | `runsOn` | The CI runner label `vx dte init` writes. | the platform's GitHub-hosted runner |
 
@@ -533,9 +536,9 @@ From `@vzn/vx-reapi`. A Bazel remote cache, and remote execution with `execute: 
 | Option | What it does | Default |
 | --- | --- | --- |
 | `endpoint` | The server, `host:port` or a URL. Unset, the plugin steps aside. | none |
-| `instanceName` | The instance on a shared server. | `''` |
-| `headers` | Sent on every call, such as a key. | `{}` |
-| `tls` | TLS on or off. | on, unless `grpc://`, `http://` or a socket |
+| `instanceName` | The instance on a shared server: `'main'`. | `''` |
+| `headers` | Sent on every call, such as a key: `{ 'x-buildbuddy-api-key': key }`. | `{}` |
+| `tls` | TLS on or off: `tls: false`. | on, unless `grpc://`, `http://` or a socket |
 | `tlsCertificate` | PEM file of a private CA. | system roots |
 | `tlsClientCertificate` | PEM file of a client certificate, for mutual TLS. | none |
 | `tlsClientKey` | PEM file of its key. | none |
@@ -544,22 +547,22 @@ From `@vzn/vx-reapi`. A Bazel remote cache, and remote execution with `execute: 
 | `capacity` | Remote tasks at once. | the run's own worker count |
 | `executeTimeoutMs` | Deadline for one remote task. `exec.timeout` wins. | `600000` |
 | `queueTimeoutMs` | How long a task waits for a remote worker before it runs here. | no limit |
-| `callTimeoutMs` | Deadline for one cache call. | `30000` |
-| `metaTimeoutMs` | Deadline for one small control call. | `callTimeoutMs`, at most `15000` |
-| `chunkBytes` | Bytes per upload or download message. | `65535` |
-| `toolName` | The tool name the server shows. | `'vx'` |
-| `toolVersion` | The tool version the server shows. | `'0.0.0'` |
-| `correlatedInvocationsId` | Groups several runs as one build on the server. | `''` |
+| `callTimeoutMs` | Deadline for one cache call, in ms: `60000`. | `30000` |
+| `metaTimeoutMs` | Deadline for one small control call, in ms: `5000`. | `callTimeoutMs`, at most `15000` |
+| `chunkBytes` | Bytes per upload or download message: `1048576`. | `65535` |
+| `toolName` | The tool name the server shows: `'vx-ci'`. | `'vx'` |
+| `toolVersion` | The tool version the server shows: `'1.2.3'`. | `'0.0.0'` |
+| `correlatedInvocationsId` | Groups several runs as one build on the server: `process.env.GITHUB_RUN_ID`. | `''` |
 
 `ReapiRemoteCache`, for a cache you build in your own code, takes the same options with the PEM text
 itself, and a warning callback:
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| `tlsCaPem` | PEM text of a private CA. | system roots |
-| `tlsClientCertPem` | PEM text of a client certificate. | none |
-| `tlsClientKeyPem` | PEM text of its key. | none |
-| `onWarn` | Called with a message when a call recovers from a fault. | none |
+| `tlsCaPem` | PEM text of a private CA: `readFileSync('ca.pem', 'utf8')`. | system roots |
+| `tlsClientCertPem` | PEM text of a client certificate: `readFileSync('client.pem', 'utf8')`. | none |
+| `tlsClientKeyPem` | PEM text of its key: `readFileSync('client.key', 'utf8')`. | none |
+| `onWarn` | Called with a message when a call recovers from a fault: `(m) => console.warn(m)`. | none |
 
 ### `turbo()` and `nx()`
 
@@ -577,15 +580,15 @@ From `@vzn/vx-migrate`. Keep the remote cache a Turbo or Nx workspace already ha
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| `url` | The cache server. | `TURBO_API` / `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` |
-| `token` | The bearer token. | `TURBO_TOKEN` / `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` |
-| `timeoutMs` | Deadline for one request. | `30000` |
-| `retries` | Resends after a 429, a 5xx or no connection. | `1` |
+| `url` | The cache server: `'https://cache.example.com'`. | `TURBO_API` / `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` |
+| `token` | The bearer token: `process.env.CACHE_TOKEN`. | `TURBO_TOKEN` / `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` |
+| `timeoutMs` | Deadline for one request, in ms: `10000`. | `30000` |
+| `retries` | Resends after a 429, a 5xx or no connection: `3`. | `1` |
 | `oidc` | `turboCache()` only: trade the GitHub job's token for a short-lived one. `true` for Vercel, or `{ tokenUrl, revokeUrl, audience, params }`. | off |
 | `teamId` | `turboCache()` only: the team id. | `TURBO_TEAMID` |
 | `teamSlug` | `turboCache()` only: the team slug. | `TURBO_TEAM` |
 | `signatureKey` | `turboCache()` only: signs uploads and checks downloads. | `TURBO_REMOTE_CACHE_SIGNATURE_KEY` |
-| `uploadTimeoutMs` | `turboCache()` only: deadline for one upload. | `60000` |
+| `uploadTimeoutMs` | `turboCache()` only: deadline for one upload, in ms: `120000`. | `60000` |
 | `preflight` | `turboCache()` only: send Turbo's preflight request first. | `false` |
 | `scope` | `turboCache()` only: `'header'` names the branch in a header; `'key'` puts it in each key. | `'header'` |
 
@@ -593,9 +596,9 @@ From `@vzn/vx-migrate`. Keep the remote cache a Turbo or Nx workspace already ha
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| `tokenUrl` | Where the job's token is traded. | Vercel's; required for any other server |
+| `tokenUrl` | Where the job's token is traded: `'https://cache.example.com/oidc/token'`. | Vercel's; required for any other server |
 | `revokeUrl` | Where the short-lived token is revoked when the run ends. `false`: none. | Vercel's |
-| `audience` | The audience GitHub mints the job's token for. | none |
+| `audience` | The audience GitHub mints the job's token for: `'https://cache.example.com'`. | none |
 | `params` | Extra fields sent with the trade, such as Vercel's `policy_id`. | `{}` |
 
 ### `otel()`
@@ -608,8 +611,8 @@ From `@vzn/vx-cache-server`, to run the [cache server](../servers/cache/) in you
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| `blobs` | Where entries are stored: a bucket or a folder. | required |
-| `authorize` | Checks each request's CI token, such as `oidcAuth()`. | required |
+| `blobs` | Where entries are stored: any object with `put`, `get` and `size`, over a bucket or a folder. | required |
+| `authorize` | Checks each request's CI token: `oidcAuth({ allow })`. | required |
 | `limits` | `{ maxCheckHashes, maxUploadBytes }`: the most keys one check asks and the largest upload. | `500`, `100000000` |
 
 ### `createHistoryServer()`
@@ -619,9 +622,9 @@ From `@vzn/vx-history-server`, to run the [history server](../servers/history/) 
 | Option | What it does | Default |
 | --- | --- | --- |
 | `store` | Where timings are kept, such as `sqliteStore()`. | required |
-| `authorize` | Checks each request's CI token against the repository it names. | required |
-| `timingDays` | Days a task's timings are kept after its last report. | `30` |
-| `now` | The clock, in ms; tests move it. | `Date.now` |
+| `authorize` | Checks each request's CI token against the repository it names: `oidcAuth({ allow })`. | required |
+| `timingDays` | Days a task's timings are kept after its last report: `90`. | `30` |
+| `now` | The clock, in ms; tests move it: `() => 0`. | `Date.now` |
 
 ### `createRelay()` and `serveRelay()`
 
@@ -630,9 +633,9 @@ From `@vzn/vx-dte-server`, to run the [relay](../servers/dte/) in your own code.
 | Option | What it does | Default |
 | --- | --- | --- |
 | `verify` | Checks each request's token, such as `createVerifier()`. Unset, every request is let in: this machine only. | none |
-| `heartbeatMs` | How often the run and its workers hear from each other. | `2000` |
-| `graceMs` | How long a dropped worker may reconnect before it is gone. | `10000` |
-| `sockets` | Connections a host kept across a restart, to rebuild runs from. | none |
+| `heartbeatMs` | How often the run and its workers hear from each other, in ms: `5000`. | `2000` |
+| `graceMs` | How long a dropped worker may reconnect before it is gone, in ms: `30000`. | `10000` |
+| `sockets` | Connections a host kept across a restart, to rebuild runs from, such as those a Durable Object's `state.getWebSockets()` returns. | none |
 | `upgrade` | `createRelay()`: accepts a worker's websocket. | required |
 | `hostname` | `serveRelay()`: the address to listen on. | required |
 | `port` | `serveRelay()`: the port; `0` picks a free one. | required |
@@ -642,10 +645,10 @@ From `@vzn/vx-dte-server`, to run the [relay](../servers/dte/) in your own code.
 | Option | What it does | Default |
 | --- | --- | --- |
 | `allow` | Who may join: the parsed `ALLOW` list. | required |
-| `audience` | The audience a token must name. | required |
-| `runClaims` | Which token fields tie a worker to its run, by issuer. | the repository's id |
-| `fetchJson` | Reads the issuer's keys; tests serve them offline. | a cached fetch |
-| `now` | The clock, in seconds; tests move it. | the real clock |
+| `audience` | The audience a token must name: `'https://relay.example.com'`. | required |
+| `runClaims` | Which token fields tie a worker to its run, by issuer: `{ 'https://gitlab.com': ['project_id'] }`. | the repository's id |
+| `fetchJson` | Reads the issuer's keys; tests serve them offline: `async () => jwks`. | a cached fetch |
+| `now` | The clock, in seconds; tests move it: `() => 1700000000`. | the real clock |
 
 ### `oidcAuth()`
 
@@ -654,10 +657,10 @@ From `@vzn/vx-devtools`: the CI token check every server shares.
 | Option | What it does | Default |
 | --- | --- | --- |
 | `allow` | Who may take part: the parsed `ALLOW` list. | required |
-| `audience` | The audience a token must name. | the URL the server is reached at |
+| `audience` | The audience a token must name: `'https://cache.example.com'`. | the URL the server is reached at |
 | `readAccess` | `READ_ACCESS`: `public` lets a request with no token read. | private |
-| `fetchJson` | Reads the issuer's keys; tests serve them offline. | a cached fetch |
-| `now` | The clock, in seconds; tests move it. | the real clock |
+| `fetchJson` | Reads the issuer's keys; tests serve them offline: `async () => jwks`. | a cached fetch |
+| `now` | The clock, in seconds; tests move it: `() => 1700000000`. | the real clock |
 
 <Takeaway>set any plugin option and know its default.</Takeaway>
 

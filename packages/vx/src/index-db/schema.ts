@@ -325,6 +325,8 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       up_to_date_count       INTEGER NOT NULL DEFAULT 0,
       restored_local_count   INTEGER NOT NULL DEFAULT 0,
       restored_remote_count  INTEGER NOT NULL DEFAULT 0,
+      -- Tasks a stop or --fail-fast killed: in the footer, with no runs row (v59).
+      aborted_count     INTEGER NOT NULL DEFAULT 0,
       exit_ok           INTEGER NOT NULL,
       commit_sha        TEXT,
       branch            TEXT,
@@ -517,6 +519,22 @@ export function inHashes(hashes: readonly string[]): { test: string; params: str
 }
 
 /**
+ * Each of `hashes`' entries, saved from a pass, as that pass in the flaky
+ * record where it holds none for the key. The entry serves every hit a run
+ * keeps of it, so a failure reads the key as passed by one index probe and
+ * never the kept hits (`run_hits`), and so does a key whose entry is going.
+ */
+export function recordEntryPasses(db: Database, hashes: readonly string[]): void {
+  if (hashes.length === 0) return
+  db.query(
+    `INSERT INTO task_outcomes(project, task, hash, status, attempts, recorded_at)
+     SELECT e.project, e.task, e.hash, 'success', NULL, e.created_at FROM entries AS e
+     WHERE e.hash IN (SELECT value FROM json_each(?)) AND e.exit_code = 0
+       AND NOT EXISTS (SELECT 1 FROM task_outcomes AS o WHERE o.hash = e.hash AND o.status <> 'failed')`,
+  ).run(JSON.stringify(hashes))
+}
+
+/**
  * Retention: the runs table grows by one row per task per invocation,
  * hits included — a 2000-task repo accretes ~20k rows in days. 30 days
  * covers `vx info` (24 h windows) and CI-side consumers. The
@@ -548,7 +566,7 @@ export function pruneHistoryRows(db: Database, cutoff: number): number {
 
 // The index's schema. A mismatch drops and recreates the index: no
 // migrations, so any change to what it stores bumps this.
-export const SCHEMA_VERSION = 'v58'
+export const SCHEMA_VERSION = 'v59'
 
 /**
  * SQL predicate selecting `runs` rows that record an EXECUTION.

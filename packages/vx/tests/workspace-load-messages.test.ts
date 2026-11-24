@@ -9,14 +9,17 @@ import { afterEach, expect, it } from 'bun:test'
 import { BIN } from './helpers/vx.js'
 
 let root: string | undefined
+// A test may run vx more than once: each root, not only the last.
+const roots: string[] = []
 
 afterEach(async () => {
-  if (root !== undefined) await rm(root, { recursive: true, force: true })
+  await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true })))
 })
 
 /** `vx <args>` over one member `p`; stderr with the root as `<root>`. */
 const vx = async (files: Record<string, string | Uint8Array>, args: string[]) => {
   root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-load-msg-')))
+  roots.push(root)
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
   await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["p"]}')
   await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')

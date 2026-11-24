@@ -25,7 +25,7 @@
     "lint.oxlint": {
       "description": "oxlint with tsgolint-backed type-aware checks",
       "exec": {
-        "command": "oxlint --type-aware --type-check",
+        "command": "oxlint --type-aware --type-check --ignore-pattern node_modules",
         "sandbox": {
           "allow": {
             "read": [
@@ -42,11 +42,15 @@
       ],
       "inputs": {
         "files": [
+          "*.ts",
           "src/**",
           "tests/**",
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {
@@ -132,7 +136,11 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",
@@ -190,7 +198,11 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",
@@ -248,7 +260,11 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",
@@ -306,7 +322,11 @@
         "files": [
           "src/**",
           "tests/**",
-          "package.json"
+          "package.json",
+          "README.md"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",

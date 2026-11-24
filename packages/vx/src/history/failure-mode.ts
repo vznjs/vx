@@ -6,7 +6,7 @@
 // of a repo judges a key on what all of them saw.
 
 import type { Database } from 'bun:sqlite'
-import { KEYED_RUNS_SQL } from '../index-db/index.js'
+import { KEYED_RUNS_SQL, recordEntryPasses } from '../index-db/index.js'
 import { expandHits } from './run-history.js'
 import { isCacheHit, TASK_STATUSES } from '../graph/index.js'
 
@@ -40,12 +40,19 @@ function keyOutcomesSql(source: string, where = ''): string {
   // `observesKey`), so it carries none of the filter's columns.
   const keyed =
     source === OUTCOMES ? '1' : `${KEYED_RUNS_SQL} AND cached IS NOT 0 AND blocked_by IS NULL`
+  // A `runs` id is run order. The flaky record's is write order, which
+  // worktrees sharing it break: a pass one kept packed is written after
+  // another's later failure, so it is read in the order the tasks started.
+  const seq =
+    source === OUTCOMES
+      ? 'ROW_NUMBER() OVER (PARTITION BY project, task, hash ORDER BY recorded_at, id)'
+      : 'id'
   return `SELECT project, task, hash, SUM(failed) AS failures, SUM(passed) AS passes,
        SUM(retried) AS retried_failures,
-       SUM(CASE WHEN failed = 1 AND id > first_pass THEN 1 ELSE 0 END) AS relapses
-       FROM (SELECT project, task, hash, id, failed, passed, retried,
-           MIN(CASE WHEN passed = 1 THEN id END) OVER (PARTITION BY project, task, hash) AS first_pass
-         FROM (SELECT project, task, hash, id,
+       SUM(CASE WHEN failed = 1 AND seq > first_pass THEN 1 ELSE 0 END) AS relapses
+       FROM (SELECT project, task, hash, seq, failed, passed, retried,
+           MIN(CASE WHEN passed = 1 THEN seq END) OVER (PARTITION BY project, task, hash) AS first_pass
+         FROM (SELECT project, task, hash, ${seq} AS seq,
              CASE WHEN status = 'failed' THEN 1 ELSE 0 END AS failed,
              CASE WHEN status = 'success' AND attempts > 1 THEN attempts - 1 ELSE 0 END AS retried,
              CASE WHEN status = 'success' OR status IN ${HIT_STATUSES}${source === OUTCOMES ? '' : ' OR cache_hit = 1'}
@@ -167,8 +174,12 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
     (c) => c.status === 'failed' || c.attempts > 1 || everFailed.has(keyOf(c)),
   )
   if (suspects.length === 0) return []
-  // A kept hit is a pass of its key: written out before the passes are counted.
-  expandHits(db)
+  // A kept hit is a pass of its key, which its entry stands for. Not a
+  // pass's: its entry is this run's own save, its row not yet written.
+  recordEntryPasses(
+    db,
+    suspects.filter((c) => c.status === 'failed').map((c) => c.hash),
+  )
   const counts = new Map<string, { passes: number; failures: number; relapses: number }>()
   chunked(suspects, (chunk) => {
     const rows = db
@@ -206,7 +217,9 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
  * a retry. Asked only after a failure, so a green run never reads it.
  */
 export function knownFlaky(db: Database, project: string, task: string, hash: string): boolean {
-  expandHits(db)
+  // A kept hit is a pass of its key, which its entry stands for; another
+  // key's went into the record before its failure did.
+  recordEntryPasses(db, [hash])
   const passed = db
     .query(
       `SELECT 1 FROM ${OUTCOMES} WHERE hash = ? AND project = ? AND task = ?

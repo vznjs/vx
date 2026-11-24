@@ -144,6 +144,8 @@ export interface ArtifactTask {
     readonly workspaceFiles: readonly string[]
   }
   readonly nestedProjectDirs?: readonly string[]
+  readonly env?: Readonly<Record<string, string | undefined>>
+  readonly secret?: readonly string[]
   readonly others?: ReadonlySet<string>
 }
 ```
@@ -759,7 +761,14 @@ export interface ExecuteResult extends RunResult {
     | { kind: 'trailing'; landed: Promise<void> }
   readonly changed?: readonly string[]
   readonly outputsMissing?: readonly string[]
+  readonly outputsMissingFacts?: OutputsMissingFacts
   readonly where?: string
+  readonly queuedMs?: number
+  readonly deadServers?: readonly {
+    readonly taskId: string
+    readonly exitCode: number
+    readonly began: boolean
+  }[]
   readonly machine?: {
     readonly cores: number
     readonly memoryBytes: number
@@ -817,6 +826,7 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
+  status(message: string): void
   readonly artifacts: TaskArtifacts
   cacheFacts(): Promise<CacheFacts>
 }
@@ -1144,6 +1154,7 @@ export interface InvocationRecord {
   upToDateCount: number
   restoredLocalCount: number
   restoredRemoteCount: number
+  abortedCount?: number
   exitOk: boolean
   commitSha: string | null
   branch: string | null
@@ -1232,6 +1243,16 @@ The name is the contract that survives the copy boundary.
 
 ```ts
 export function isUserError(err: unknown): err is UserError
+```
+
+## `jsonErrorAt`
+
+function · `src/util/json-position.ts`
+
+The 1-based `line:column` of the first syntax error in `text`, or undefined when it finds none.
+
+```ts
+export function jsonErrorAt(text: string, jsonc = false): string | undefined
 ```
 
 ## `KeyHookContext`
@@ -1473,6 +1494,7 @@ export interface MachineReport {
   memoryBytes: number
   done: number
   failed: number
+  aborted?: number
   onlineMs: number
   busyMs: number
   cpuPeak: number
@@ -1763,6 +1785,35 @@ rows through the globs, so a source file beside outputs is no stray.
 export function outputDirPrefixes(globs: readonly string[]): string[] | null
 ```
 
+## `outputsMissingFacts`
+
+function · `src/orchestrator/attempt.ts`
+
+Why outputs `missing` matched nothing, as this disk shows it: what a
+refusal names beside them. An executor that ran the command elsewhere
+asks it where the files are (`ExecuteResult.outputsMissingFacts`).
+
+```ts
+export function outputsMissingFacts(
+  missing: readonly string[],
+  sets: readonly { readonly base: string; readonly globs: readonly string[] }[],
+): OutputsMissingFacts
+```
+
+## `OutputsMissingFacts`
+
+type · `src/exec/executor.ts`
+
+What a disk shows about outputs that matched nothing: the reasons the refusal names.
+
+```ts
+export interface OutputsMissingFacts {
+  readonly wroteNone?: true
+  readonly folderAsFile?: readonly string[]
+  readonly bracket?: string
+}
+```
+
 ## `outputsOverlap`
 
 function · `src/graph/task-graph.ts`
@@ -1792,7 +1843,7 @@ export function outputsOverlap(rawA: string, rawB: string): boolean
 type · `src/report/logger.ts`
 
 The default logger's per-task output policy, from `--output-logs`, else a
-truthy `CI`, else the CLI's flow: full: frames for executed work, one-liners
+CI (`ciProvider`: any CI variable on), else the CLI's flow: full: frames for executed work, one-liners
 for quiet hits; CI's and the programmatic default. errors-only: only failed
 tasks print. none: no per-task output. hash-only: one line per task (outcome,
 id, key), Turbo's parity; the summary still renders. focused: requested nodes
@@ -1842,7 +1893,7 @@ type · `src/config.ts`
 `WorkspaceConfig.pipelines[name]`: a saved `vx run` over every project.
 Each key is its `vx run` flag in camelCase (`cachePolicy` is
 `--cache-policy`); a flag given to `vx pipeline` beats it, and so does
-the flag's `VX_*` variable.
+the flag's `VX_*` variable. No typed flag turns off a saved `true`.
 
 ```ts
 export interface Pipeline {
@@ -1883,6 +1934,8 @@ export interface PlannedTask {
   hash: string
   cacheStatus: CacheStatus
   deps: readonly string[]
+  command?: string
+  forwarded?: true
   p50Ms?: number
   executor?: string
   download?: 'deferred'
@@ -2213,6 +2266,7 @@ export interface ProjectHookContext extends BaseContext {
   readonly dir: string
   readonly projects: readonly ProjectMeta[]
   readonly lock: boolean
+  read(file: string): void
 }
 ```
 
@@ -2349,7 +2403,9 @@ provenance and the never-fail contract: a layer THROWS on failure, and every
 throw is a miss reported to `onError`. The bytes are the local
 `<hash>.tar.zst` verbatim. See docs/modules/cache.md.
 
-Core bounds no call, so each request carries the layer's own deadline.
+Core bounds only a download's waiting (`run.pluginTimeout` for the answer,
+then between bytes; a miss), so each request carries the layer's own
+deadline too.
 
 ```ts
 export interface RemoteCacheLayer {
@@ -2681,6 +2737,7 @@ export interface RunResult {
   stdout: string
   stderr: string
   signal?: string | number
+  exitedBeforeStop?: true
   timedOut?: boolean
   killedAfterGrace?: true
   cpuMs?: number
@@ -2774,6 +2831,7 @@ export interface RunSummaryRecord {
   failedCount: number
   abortedCount: number
   notRunCount?: number
+  notRun?: readonly string[]
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number
@@ -2900,6 +2958,7 @@ export interface SandboxViolation {
   path?: string
   via?: string
   opened?: 'read' | 'write'
+  entry?: 'file' | 'dir' | 'missing'
   ignorable?: readonly ('read' | 'write' | 'network' | 'systemInfo')[]
 }
 ```
@@ -3093,6 +3152,7 @@ export interface TaskHistory {
   runs: number
   p50DurationMs: number | undefined
   p99DurationMs: number | undefined
+  forecastP99DurationMs?: number
   successRate: number
   hitRate: number
   failureMode: FailureMode
@@ -3305,6 +3365,7 @@ export interface TaskTelemetry {
   blockedBy?: string
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
+  outputsMissing?: readonly string[]
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
   failedAttempts?: readonly FailedAttempt[]
@@ -3487,7 +3548,16 @@ export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
   readonly head?: (colors: ColorSupport) => string
 }
-export type Column = string | { readonly title: string; readonly align: 'right' }
+export type Column =
+  | string
+  | {
+      readonly title: string
+      readonly align?: 'right'
+      /** On a terminal too narrow for the row, the column goes: 1 first, then 2… */
+      readonly drop?: number
+      /** The last column: on a terminal too narrow for it beside its row, under it. */
+      readonly under?: boolean
+    }
 export type FieldRow = readonly [label: string, ...values: Inline[]] | null
 export type Inline = string | Token | readonly Inline[]
 export interface NoticeParts {

@@ -200,4 +200,26 @@ describe('a hostile hook answer is refused naming the plugin', () => {
       ),
     ).toBe("UserError: plugin 'org/h' failed in config: trap")
   })
+
+  // An edit that leaves a proxy in the workspace config threw out of the
+  // re-validation after the hook: vx's own stack and "bug in vx".
+  it('config, a proxy left in the workspace config', async () => {
+    const workspace: Record<string, unknown> = {}
+    expect(
+      await said(() =>
+        applyConfigHooks(
+          [
+            testPlugin('org/h', {
+              config: (w) => {
+                ;(w as Record<string, unknown>)['run'] = new Proxy({}, { ownKeys: trap })
+              },
+            }),
+          ],
+          workspace as never,
+          {} as never,
+          () => Object.keys(workspace['run'] as object),
+        ),
+      ),
+    ).toBe("UserError: plugin 'org/h' failed in config: trap")
+  })
 })

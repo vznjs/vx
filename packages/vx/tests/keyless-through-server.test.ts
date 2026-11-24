@@ -46,6 +46,47 @@ it('a task behind a keyed server that folds a keyless one is not saved, and is t
   expect(await once()).toEqual(['success', false, 'app#db'])
   expect(warnings.filter((w) => w.includes('not saved —')).at(-1)).toBe(
     '[vx] app#e2e: not saved — its key folds app#db, which declares no `inputs`, ' +
-      'so no later run derives it; declare inputs on app#db',
+      "so no later run derives it, nor any other task's that folds it; declare inputs on app#db",
+  )
+}, 30_000)
+
+// A run-level fact: gen#build declares no inputs, and each of its four
+// dependants said so, four lines for one fix.
+it('a keyless upstream is named once a run, however many dependants it leaves unsaved', async () => {
+  root = await makeWorkspace({ prefix: 'vx-keyless-once-' })
+  await addProject(
+    root,
+    'gen',
+    `export default { tasks: { build: { exec: { command: 'true' } } } }`,
+  )
+  for (const p of ['a', 'b', 'c'])
+    await addProject(
+      root,
+      p,
+      `export default { tasks: { build: { dependsOn: ['gen#build'], exec: { command: 'true' },
+        inputs: { files: ['vx.config.mjs'] }, outputs: { files: [] }, cache: true } } }`,
+    )
+  const warnings: string[] = []
+  const log: Logger = {
+    status: (line) => void warnings.push(line),
+    taskStdout() {},
+    taskStderr() {},
+    taskComplete() {},
+  }
+  const r = await run({
+    cwd: root,
+    tasks: ['build'],
+    all: true,
+    log,
+    handleSignals: false,
+  } as never)
+  expect(
+    r.outcomes.filter((o) => o.node.id !== 'gen#build' && o.cache?.keylessBy === 'gen#build')
+      .length,
+  ).toBe(3)
+  const said = warnings.filter((w) => w.includes('declares no `inputs`'))
+  expect(said.length).toBe(1)
+  expect(said[0]).toMatch(
+    /^\[vx\] [abc]#build: not saved — its key folds gen#build, which declares no `inputs`, so no later run derives it, nor any other task's that folds it; declare inputs on gen#build$/,
   )
 }, 30_000)

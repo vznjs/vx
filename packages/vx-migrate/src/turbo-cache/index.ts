@@ -223,32 +223,6 @@ async function removeTemp(file: string): Promise<void> {
   liveTemps.delete(file)
 }
 
-/** The verified temp as a body that deletes the temp once read to the end or cancelled. */
-function unlinkingStream(file: string): ReadableStream<Uint8Array> {
-  const reader = Bun.file(file).stream().getReader()
-  const remove = () => removeTemp(file)
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const next = await reader.read()
-        if (next.done) {
-          await remove()
-          controller.close()
-        } else {
-          controller.enqueue(next.value)
-        }
-      } catch (err) {
-        await remove()
-        controller.error(err)
-      }
-    },
-    async cancel(reason) {
-      await reader.cancel(reason)
-      await remove()
-    },
-  })
-}
-
 function tagsEqual(expected: string, actual: string): boolean {
   const a = Buffer.from(expected, 'base64')
   const b = Buffer.from(actual, 'base64')
@@ -856,48 +830,80 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const duration = Number(res.headers.get('x-artifact-duration'))
     const durationMs = Number.isFinite(duration) && duration > 0 ? duration : undefined
     if (this.key === undefined) return { body: res, durationMs }
-    return { body: await this.verified(this.key, hash, res), durationMs }
+    return { body: this.verified(this.key, hash, res), durationMs }
   }
 
   /**
-   * The tag's message carries the body's length BEFORE its bytes, and a
-   * chunked response declares no length, so the body is written to the temp
-   * first and signed from there: two passes over a file, never one in memory.
+   * The body as it arrives, kept in a temp as it passes: the tag's message
+   * carries the body's length BEFORE its bytes, and a chunked response
+   * declares no length, so the tag is checked from the temp once the last
+   * byte is in, and a bad one errors that last read. Core keeps nothing of a
+   * body that errors (a miss); held whole inside get() it read as no answer,
+   * and core's wait for one cut a big download that was still streaming.
    */
-  private async verified(key: Uint8Array, hash: string, res: Response): Promise<Response> {
+  private verified(key: Uint8Array, hash: string, res: Response): Response {
     const refused = () => new Error('the artifact signature did not verify — treated as a miss')
     const tag = res.headers.get('x-artifact-tag')
     if (tag === null) {
-      await res.body?.cancel()
-      throw refused()
+      void res.body?.cancel()
+      // Said apart from a mismatch: a server that keeps no tag fails every
+      // signed read, and "did not verify" pointed at the key.
+      throw new Error(
+        'the server sent no x-artifact-tag, so the signature cannot verify — treated as a miss; turborepo-remote-cache stores the tag only with its own TURBO_REMOTE_CACHE_SIGNATURE_KEY set',
+      )
+    }
+    const max = this.maxSignedBody
+    const past = () => new Error(`the signed artifact runs past ${max} bytes — treated as a miss`)
+    if (Number(res.headers.get('content-length') ?? 0) > max) {
+      void res.body?.cancel()
+      throw past()
     }
     const temp = path.join(this.tempDir, `vx-turbo-${hash}-${crypto.randomUUID()}`)
     trackTemp(temp)
-    try {
-      const max = this.maxSignedBody
-      const past = () => new Error(`the signed artifact runs past ${max} bytes — treated as a miss`)
-      if (Number(res.headers.get('content-length') ?? 0) > max) {
-        await res.body?.cancel()
-        throw past()
-      }
-      let n = 0
-      const counted = res.body?.pipeThrough(
-        new TransformStream<Uint8Array, Uint8Array>({
-          transform(chunk, controller) {
-            n += chunk.byteLength
-            if (n > max) controller.error(past())
-            else controller.enqueue(chunk)
-          },
-        }),
-      )
-      await Bun.write(temp, new Response(counted ?? null))
-      const expected = await artifactTag(key, hash, this.config.teamId ?? '', Bun.file(temp))
-      if (!tagsEqual(expected, tag)) throw refused()
-    } catch (err) {
+    const sink = Bun.file(temp).writer()
+    const teamId = this.config.teamId ?? ''
+    const reader = (res.body ?? new Response(null).body!).getReader()
+    let n = 0
+    const drop = async (): Promise<void> => {
+      // quiet: a sink already ended has nothing to flush
+      await Promise.resolve(sink.end()).catch(() => undefined)
       await removeTemp(temp)
-      throw err
     }
-    return new Response(unlinkingStream(temp))
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            const next = await reader.read()
+            if (next.done) {
+              await sink.end()
+              const expected = await artifactTag(key, hash, teamId, Bun.file(temp))
+              await removeTemp(temp)
+              if (tagsEqual(expected, tag)) controller.close()
+              else controller.error(refused())
+              return
+            }
+            n += next.value.byteLength
+            if (n > max) {
+              // quiet: refused already; the connection only needs letting go
+              await reader.cancel().catch(() => undefined)
+              await drop()
+              controller.error(past())
+              return
+            }
+            await sink.write(next.value)
+            controller.enqueue(next.value)
+          } catch (err) {
+            await drop()
+            controller.error(err)
+          }
+        },
+        async cancel(reason) {
+          // quiet: a body already ended has nothing to cancel
+          await reader.cancel(reason).catch(() => undefined)
+          await drop()
+        },
+      }),
+    )
   }
 
   missing(hash: string): void {
@@ -1059,9 +1065,54 @@ function refuseBadNumbers(options: TurboCacheOptions): void {
  *
  * Declines with no URL, team or token, so it is safe to leave declared.
  */
+const shownValue = (v: unknown): string =>
+  typeof v === 'function' ? 'a function' : (JSON.stringify(v) ?? typeof v)
+
+const OIDC_SHAPE = 'true or { tokenUrl, revokeUrl, audience, params }'
+
+/**
+ * `oidc`'s shape, at the call: read only in a CI job's cache hook, a wrong
+ * one passed `vx lock` and every laptop run, then ran local only in CI.
+ */
+function refuseBadOidc(oidc: unknown): void {
+  if (oidc === undefined || oidc === true) return
+  if (oidc === null || typeof oidc !== 'object' || Array.isArray(oidc))
+    throw new UserError(`turboCache() option "oidc" must be ${OIDC_SHAPE}, got ${shownValue(oidc)}`)
+  refuseUnknownOptions('turboCache() option "oidc"', oidc, {
+    tokenUrl: 'any',
+    revokeUrl: 'any',
+    audience: 'any',
+    params: 'any',
+  })
+  const o = oidc as Record<string, unknown>
+  const bad = (key: string, want: string): never => {
+    throw new UserError(
+      `turboCache() option "oidc.${key}" must be ${want}, got ${shownValue(o[key])}`,
+    )
+  }
+  for (const key of ['tokenUrl', 'audience'])
+    if (o[key] !== undefined && typeof o[key] !== 'string') bad(key, 'a string')
+  if (
+    o['revokeUrl'] !== undefined &&
+    o['revokeUrl'] !== false &&
+    typeof o['revokeUrl'] !== 'string'
+  )
+    bad('revokeUrl', 'a string or false')
+  const params = o['params']
+  if (
+    params !== undefined &&
+    (params === null ||
+      typeof params !== 'object' ||
+      Array.isArray(params) ||
+      Object.values(params).some((v) => typeof v !== 'string'))
+  )
+    bad('params', 'an object of strings')
+}
+
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
   refuseBadNumbers(options)
+  refuseBadOidc(options.oidc)
   // At the call too, as vxCache() checks its url: in the hook alone, a verb
   // that opens no cache (`vx show`) took a url every run then failed on.
   const url = options.url?.replace(/\/+$/, '')

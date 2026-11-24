@@ -493,7 +493,7 @@ export default [
   // ---- time limits and retries ------------------------------------------
 
   // moon crates/config: a task timeout is a positive number of seconds.
-  refuseTask(
+  make(
     {
       slug: 'timeout-zero-refused',
       title: 'A time limit of zero seconds fails the run before the task starts',
@@ -501,7 +501,20 @@ export default [
       from: ['timeout-bounds', 'task-timeout'],
       needs: ['timeout'],
     },
-    { timeout: 0 },
+    {
+      projects: {
+        a: {
+          tasks: {
+            // A tool that accepts zero kills the build so soon its mark may never land,
+            // and would pass by luck; the prerequisite it runs first always shows it.
+            prep: { command: 'true', inputs: ['src/**'] },
+            build: { ...BUILD, timeout: 0, dependsOn: ['prep'] },
+          },
+          files: { 'src/a.txt': 'a\n' },
+        },
+      },
+    },
+    [{ ...REFUSED, expect: { ...REFUSED.expect, notRan: ['a#prep', 'a#build'] } }],
   ),
 
   refuseTask(

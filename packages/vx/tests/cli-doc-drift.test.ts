@@ -203,10 +203,10 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     expect(topLevel.has('vx') && topLevel.has('sandbox')).toBe(true)
 
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
-    // The paragraph under the section's `### JSON`.
+    // The paragraph under the section's `### JSON` and its Details list.
     const start = doc.indexOf('`--format json` prints the same facts')
     expect(start).toBeGreaterThan(-1)
-    const bullet = doc.slice(start, doc.indexOf('\n\n', start))
+    const bullet = doc.slice(start, doc.indexOf('\n</details>', start))
     const named = new Set(Array.from(bullet.matchAll(/`(\w+)`/g), (m) => m[1] as string))
     for (const shape of bullet.matchAll(/`[[{][^`]*`/g)) {
       for (const k of shape[0].matchAll(/\w+/g)) named.add(k[0])
@@ -249,7 +249,7 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     }
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
     const start = doc.indexOf('`--format json` prints the same facts')
-    const bullet = doc.slice(start, doc.indexOf('\n\n', start)).replace(/\s+/g, ' ')
+    const bullet = doc.slice(start, doc.indexOf('\n</details>', start)).replace(/\s+/g, ' ')
     const shapes = Array.from(bullet.matchAll(/`(\w+)` \(`\[?\{([^`}]*)\}/g), (m) => [
       m[1]!,
       m[2]!
@@ -267,6 +267,7 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
         'plugins',
         'sandbox',
         'workers',
+        'workspaceError',
       ]),
     )
     const off = shapes.filter(([name, keys]) => sourceKeys(name!) !== keys)

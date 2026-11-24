@@ -301,13 +301,14 @@ it('charges a server’s CPU to the dependant it served', () => {
     "SELECT cpu_ms FROM runs WHERE task = 'calm' ORDER BY id DESC LIMIT 1",
   ])
   const cpu = Number(/\d+/.exec(r.stdout.toString())?.[0])
-  // 4 s of a server burning a core for it, sampled each second while its
-  // fit learns: about 3 s (its own CPU is ~0). Where /proc is an outer
+  // 4 s of CPU a server burns for it, sampled each second while its fit
+  // learns: about 3 s (its own CPU is ~0). Where /proc is an outer
   // namespace's (a sandbox in an unprivileged container), the tree cannot be
   // read, and vx charges nothing rather than strangers' CPU.
   if (procfsOwn()) expect(cpu).toBeGreaterThan(1500)
   else expect(cpu).toBeLessThan(1500)
-}, 60_000)
+  // A hang guard: 4 s of CPU on a machine loaded 10 to 1 is 40 s of wall.
+}, 120_000)
 
 // No task ever runs on the orchestrator under dte(), only cache hits
 // restore there (2026-10-24): not a task that says

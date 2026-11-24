@@ -46,9 +46,9 @@ describe.skipIf(!available)('the missing-output failure of a sandboxed task', ()
     ])
   })
 
-  it('control: with a write grant, the plain line', async () => {
+  it('control: with a write grant, the unsandboxed line', async () => {
     expect(await warnings(", write: ['build']")).toEqual([
-      '[vx] app#build: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern',
+      '[vx] app#build: outputs matched no files (build/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it',
     ])
   })
 })

@@ -455,12 +455,13 @@ describe('every page stating the timeout ladder states all four rungs', () => {
       (p) =>
         path.basename(p) !== 'releases.mdx' && readFileSync(p, 'utf8').includes('VX_RUN_TIMEOUT'),
     )
-    // cli.md, schema.md, the workspace and environment-variables pages and
-    // the feature inventory. A sixth copy lands here unpinned no more.
+    // cli.md, schema.md, the workspace, running-tasks and environment-variables
+    // pages and the feature inventory. A seventh copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
       'cli.md',
       'environment-variables.mdx',
       'features.md',
+      'running-tasks.mdx',
       'schema.md',
       'workspace.mdx',
     ])

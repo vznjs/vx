@@ -1,10 +1,18 @@
 // src/worker.ts in workerd, the runtime Workers deploy to, with R2.
 
 import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
-import { conformance, scopeOf } from './conformance.js'
+import { conformance, hashOf, scopeOf } from './conformance.js'
 import { ALLOW_VAR, GITHUB, type Issuer, issuer, JOBS, NAMED, REPO } from './issuer.js'
+
+// Miniflare removes its temp directory unawaited on dispose, so the process
+// often ended first and left a `miniflare-*` there: it gets one of ours.
+const tmpRoot = mkdtempSync(path.join(os.tmpdir(), 'vx-miniflare-'))
+const savedTmp = process.env['TMPDIR']
+process.env['TMPDIR'] = tmpRoot
 
 const MAX = 7 * 1024 * 1024
 /** The Worker's own origin, its tokens' audience. */
@@ -14,24 +22,46 @@ let mf: Miniflare
 let base: URL
 let iss: Issuer
 
-async function start(bindings: Record<string, unknown>, r2Buckets = ['BLOBS']): Promise<Miniflare> {
-  const built = await Bun.build({
+let script: Promise<string> | undefined
+const built = (): Promise<string> =>
+  (script ??= Bun.build({
     entrypoints: [path.join(import.meta.dir, '..', 'src', 'worker.ts')],
     target: 'browser',
     format: 'esm',
-  })
+  }).then((b) => b.outputs[0]!.text()))
+
+async function worker(bindings: Record<string, unknown>, r2Buckets = ['BLOBS']) {
+  return {
+    modules: true,
+    script: await built(),
+    compatibilityDate: '2026-10-01',
+    r2Buckets,
+    bindings: { AUDIENCE: AUD, ...bindings },
+    // The issuer's keys, served to the Worker's fetch without a network.
+    outboundService: async (req: Request) =>
+      new URL(req.url).origin === GITHUB
+        ? Response.json(await iss.fetchJson(req.url))
+        : new Response(null, { status: 502 }),
+  }
+}
+
+async function start(bindings: Record<string, unknown>, r2Buckets = ['BLOBS']): Promise<Miniflare> {
+  return new Miniflare(convertV4MiniflareOptions(await worker(bindings, r2Buckets)))
+}
+
+/**
+ * One Worker per bindings, all in one workerd: a workerd start per row
+ * took 3 s on a loaded machine, so eleven rows passed even 30 s.
+ */
+async function startEach(rows: readonly Record<string, unknown>[]): Promise<Miniflare> {
   return new Miniflare(
     convertV4MiniflareOptions({
-      modules: true,
-      script: await built.outputs[0]!.text(),
-      compatibilityDate: '2026-10-01',
-      r2Buckets,
-      bindings: { AUDIENCE: AUD, ...bindings },
-      // The issuer's keys, served to the Worker's fetch without a network.
-      outboundService: async (req: Request) =>
-        new URL(req.url).origin === GITHUB
-          ? Response.json(await iss.fetchJson(req.url))
-          : new Response(null, { status: 502 }),
+      workers: await Promise.all(
+        rows.map(async (b, i) => ({
+          name: `row-${i}`,
+          ...(await worker(b)),
+        })),
+      ),
     }),
   )
 }
@@ -46,7 +76,19 @@ beforeAll(async () => {
   base = await mf.ready
 })
 
-afterAll(() => mf.dispose())
+afterAll(async () => {
+  await mf.dispose()
+  if (savedTmp === undefined) delete process.env['TMPDIR']
+  else process.env['TMPDIR'] = savedTmp
+  // Its unawaited removal may still be writing under it: retry until gone.
+  for (let i = 0; i < 40 && existsSync(tmpRoot); i++) {
+    try {
+      rmSync(tmpRoot, { recursive: true, force: true })
+    } catch {
+      await Bun.sleep(50)
+    }
+  }
+})
 
 conformance('Workers with R2', {
   base: () => base.href,
@@ -58,7 +100,7 @@ conformance('Workers with R2', {
 })
 
 it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is unset or wrong', async () => {
-  for (const [bindings, status, detail] of [
+  const rows = [
     [{ ALLOW: '' }, 401, 'ALLOW is empty: set it to the CI workflows this server serves'],
     [
       { ALLOW: 'https://gitlab.com:group/app' },
@@ -107,20 +149,24 @@ it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is un
       500,
       'READ_ACCESS: public, or unset, not ["public"]',
     ],
-  ] as const) {
-    const other = await start(bindings)
-    try {
-      const res = await fetch(new URL('/v1/artifacts/abc', await other.ready))
+  ] as const
+  const each = await startEach(rows.map(([bindings]) => bindings))
+  try {
+    const url = await each.ready
+    for (const [i, [, status, detail]] of rows.entries()) {
+      // Miniflare's entry routes by this header to the named Worker.
+      const res = await each.dispatchFetch(new URL('/v1/artifacts/abc', url), {
+        headers: { 'MF-Route-Override': `row-${i}` },
+      })
       expect([res.status, ((await res.json()) as { message: string }).message]).toEqual([
         status,
         detail,
       ])
-    } finally {
-      await other.dispose()
     }
+  } finally {
+    await each.dispose()
   }
-  // One Miniflare start per row; the rows on a loaded CI runner pass 5 s.
-}, 30_000)
+})
 
 // No bucket bound: /v1/capabilities answered 200, and every artifact
 // route 502, "Cannot read properties of undefined", blaming R2.
@@ -164,6 +210,37 @@ it('reads AUDIENCE as its origin, without the blanks around it', async () => {
     expect(res.status).toBe(200)
   } finally {
     await other.dispose()
+  }
+})
+
+// bun.test.ts holds READ_ACCESS=public at the handler; this holds the
+// Worker's var to the same answers.
+it('reads with no token where READ_ACCESS is public, only a repository ALLOW names, and writes nothing', async () => {
+  const open = await start({ ALLOW: ALLOW_VAR, READ_ACCESS: 'public' })
+  try {
+    const at = new URL('/v1/artifacts/', await open.ready)
+    const main = { ...NAMED, 'vx-scope': scopeOf('refs/heads/main') }
+    const token = `Bearer ${await iss.sign(JOBS.main, AUD)}`
+    const put = await fetch(new URL('ab12', at), {
+      method: 'PUT',
+      body: 'hello',
+      headers: { ...NAMED, authorization: token },
+    })
+    const read = await fetch(new URL('ab12', at), { headers: main })
+    const other = await fetch(new URL('ab12', at), {
+      headers: { ...main, 'vx-repository': hashOf('acme/other') },
+    })
+    const write = await fetch(new URL('cd34', at), { method: 'PUT', body: 'x', headers: NAMED })
+    expect([put.status, read.status, await read.text(), other.status, write.status]).toEqual([
+      204,
+      200,
+      'hello',
+      403,
+      403,
+    ])
+    expect(((await write.json()) as { message: string }).message).toBe('this request reads only')
+  } finally {
+    await open.dispose()
   }
 })
 

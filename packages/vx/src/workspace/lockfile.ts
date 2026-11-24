@@ -12,20 +12,21 @@
 //   - `vx lock --check` AUDITS it: full re-evaluation + deep equality.
 //
 // Text, laid out for the parse, then size, then merges (M, 2026-11-23):
-//   line 1   JSON: {"version":9,"nestedWorkspaces":[…]?}
-//   then     every distinct task once, on two lines: `#<pointer>`, then
-//            its JSON (keys sorted). The pointer is 7 base-36 chars of the
-//            xxh3 of that JSON, so the same projects lock to the same text
-//            whatever lock was there, and a merge cannot point a task at
-//            JSON another branch changed (M, 2026-11-23)
+//   line 1   JSON: {"version":10,"nestedWorkspaces":[…]?}
 //   then     each project, in xxh3-of-name order: `<name>⇥{"path":…}`
 //            ("file" left out for vx.config.ts, `null` for none and no
 //            plugin; its config without the tasks), then each task in name
-//            order on two lines: `⇥<task>`, then its `#<pointer>`
-// A name line seldom changes, so it sits between two branches'
-// edits to neighbouring records and git merges both; hashed order keeps two
-// new projects apart. A name a tab could break, or one starting with `#`,
-// `"` or `{`, is written as a JSON string.
+//            order: its `#<pointer>`, its JSON (keys sorted) if no task
+//            above holds that pointer, then `⇥<task>`. The pointer is 7
+//            base-36 chars of the xxh3 of that JSON, so the same projects
+//            lock to the same text whatever lock was there, and a merge
+//            cannot point a task at JSON another branch changed
+// A name line seldom changes, and each edit sits between two of them (the
+// project's or a task's above, its task's below), so git merges edits to
+// different projects, or a project added or removed beside one (a shared
+// pool of JSON above the projects, version 9, put them side by side);
+// hashed order keeps two new projects apart. A name a tab could break, or one starting with `#`, `"`
+// or `{`, is written as a JSON string.
 
 import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
@@ -40,6 +41,7 @@ import {
   xxh3hex,
 } from '../util/index.js'
 import { validateProjectConfig } from './config-schema.js'
+import { unreadable } from './load-reads.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 import {
   DEPENDENCIES_LOCK_NAME,
@@ -54,7 +56,7 @@ import {
 export const LOCKFILE_NAME = '.vx/projects.lock'
 const ENTRY_KEYS = new Set(['path', 'file', 'by', 'config'])
 
-export const LOCKFILE_VERSION = 9
+export const LOCKFILE_VERSION = 10
 /** The config file a project line names by leaving `file` out. */
 const DEFAULT_FILE = 'vx.config.ts'
 
@@ -184,11 +186,13 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   let text: string | undefined
   let read: Decoded
   try {
-    text = await file.text()
+    // A refused read is not bad JSON: "re-run `vx lock`" could not help.
+    text = await file.text().catch((err: unknown) => unreadable(err, lockfilePath(root)))
     read = decoded(text)
   } catch (err) {
-    if (err instanceof UserError) throw err
+    // First: a merge's markers can break an entry before any line reads as one.
     if (text !== undefined && mergeConflicted(text)) throw lineBroken(text)
+    if (err instanceof UserError) throw err
     throw new UserError(
       `${LOCKFILE_NAME} is not valid JSON — re-run \`vx lock\` or delete it`,
       'VX_E_LOCK',
@@ -208,6 +212,9 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       'VX_E_LOCK',
     )
   }
+  // As an entry's: a key `vx lock` never writes passed a run and `--check`.
+  if (Object.keys(lock).some((k) => k !== 'version' && k !== 'nestedWorkspaces'))
+    throw lineBroken(text!)
   const nested = lock.nestedWorkspaces
   if (
     nested !== undefined &&
@@ -297,24 +304,10 @@ function decoded(text: string): Decoded {
     const e = text.indexOf('\n', a)
     return e < 0 ? text.length : e
   }
-  // The pool: where each pointer's JSON starts, parsed on first use.
+  // Where each pointer's JSON starts, under the task line that holds it
+  // first; parsed on first use.
   const bodyAt = new Map<string, number>()
   let a = nl + 1
-  while (text.charCodeAt(a) === 35) {
-    // A pointer is `#` and 7 characters, a line of its own.
-    const e = a + 8
-    // A shorter one would read the next line as its own; one twice, which body wins.
-    const ref = text.slice(a, e)
-    if (
-      text.charCodeAt(e) !== 10 ||
-      text.charCodeAt(e + 1) !== 123 ||
-      ref.includes('\n') ||
-      bodyAt.has(ref)
-    )
-      throw lineBroken(text)
-    bodyAt.set(ref, e + 1)
-    a = end(e + 1) + 1
-  }
   const tasks = new Map<string, unknown>()
   const task = (ref: string): unknown => {
     let t = tasks.get(ref)
@@ -330,6 +323,9 @@ function decoded(text: string): Decoded {
     }
     return t
   }
+  // Each task's pointer, put in place once every JSON is known: a merge can
+  // leave a holder above the line its JSON moved to.
+  const refs: [own: Obj, task: string, ref: string][] = []
   const names = new Set<string>()
   while (a < text.length) {
     const e = end(a)
@@ -363,41 +359,38 @@ function decoded(text: string): Decoded {
       (config !== undefined && !configShaped(config))
     )
       throw malformed(dir)
-    // Its tasks: a name line, then a pointer line, each. A config of tasks alone is left out.
-    if (text.charCodeAt(a) === 9) {
+    // Its tasks: a pointer line, the JSON under its first holder, then the
+    // task's name line. A config of tasks alone is left out.
+    if (text.charCodeAt(a) === 35) {
       config ??= {}
       if (!isObj(config) || config['tasks'] !== undefined) throw malformed(dir)
       const own: Obj = {}
       let last = ''
-      while (text.charCodeAt(a) === 9) {
-        let ne = text.indexOf('\n', a)
-        if (ne < 0) ne = text.length
+      while (text.charCodeAt(a) === 35) {
+        // A pointer is `#` and 7 characters, a line of its own.
+        const pe = a + 8
+        const ref = text.slice(a, pe)
+        if (text.charCodeAt(pe) !== 10 || ref.includes('\n')) throw lineBroken(text)
+        a = pe + 1
+        if (text.charCodeAt(a) === 123) {
+          // A merge may keep one JSON under two holders: the same pointer is the same text.
+          const was = bodyAt.get(ref)
+          if (was !== undefined && text.slice(was, end(was)) !== text.slice(a, end(a)))
+            throw lineBroken(text)
+          bodyAt.set(ref, a)
+          a = end(a) + 1
+        }
+        if (text.charCodeAt(a) !== 9) throw lineBroken(text)
+        const ne = end(a)
         const t =
           text.charCodeAt(a + 1) === 34
             ? (JSON.parse(text.slice(a + 1, ne)) as unknown)
             : text.slice(a + 1, ne)
-        // A pointer is `#` and 7 characters, a line of its own.
-        const pe = ne + 9
         // In name order, as `vx lock` writes them: a name twice is a merge that kept both.
-        if (
-          typeof t !== 'string' ||
-          t <= last ||
-          text.charCodeAt(ne + 1) !== 35 ||
-          (pe < text.length && text.charCodeAt(pe) !== 10)
-        )
-          throw lineBroken(text)
+        if (typeof t !== 'string' || t <= last) throw lineBroken(text)
         last = t
-        const v = task(text.slice(ne + 1, pe))
-        // Assignment is the fast path; a task named `__proto__` would set the prototype.
-        if (t === '__proto__')
-          Object.defineProperty(own, t, {
-            value: v,
-            enumerable: true,
-            writable: true,
-            configurable: true,
-          })
-        else own[t] = v
-        a = pe + 1
+        refs.push([own, t, ref])
+        a = ne + 1
       }
       config['tasks'] = own
     }
@@ -417,6 +410,18 @@ function decoded(text: string): Decoded {
         configurable: true,
       })
     else projects[dir] = value
+  }
+  for (const [own, t, ref] of refs) {
+    const v = task(ref)
+    // Assignment is the fast path; a task named `__proto__` would set the prototype.
+    if (t === '__proto__')
+      Object.defineProperty(own, t, {
+        value: v,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      })
+    else own[t] = v
   }
   return { header, projects }
 }
@@ -511,13 +516,25 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
     refOf.set(json, ref)
   }
   const lines = [header]
-  for (const ref of [...pool.keys()].sort(cmp)) lines.push(ref, pool.get(ref)!)
+  const written = new Set<string>()
   const order = rows
     .map((r) => [xxh3(r.name), r] as const)
     .sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : cmp(x[1].name, y[1].name)))
   for (const [, r] of order) {
     lines.push(r.line)
-    for (const [t, json] of r.tasks) lines.push(`\t${taskKey(t)}`, refOf.get(json)!)
+    for (const [t, json] of r.tasks) {
+      const ref = refOf.get(json)!
+      lines.push(ref)
+      // Its JSON under its first holder: in a pool of its own, two branches'
+      // edits to different projects sat side by side and clashed.
+      if (!written.has(ref)) {
+        written.add(ref)
+        lines.push(json)
+      }
+      // The name last: an edit's lines sit between two that seldom change,
+      // so a project added or removed beside it is a hunk of its own.
+      lines.push(`\t${taskKey(t)}`)
+    }
   }
   return { file: lockfilePath(root), text: `${lines.join('\n')}\n`, shown: LOCKFILE_NAME }
 }
