@@ -927,6 +927,8 @@ executor declares `timeouts`).
 - A worker still holding a cancelled attempt that it has not answered
   takes no new attempt of that task until it ends that one. Its end is
   never counted as the retry's.
+- A cancelled attempt that ends after its retry lays none of its files
+  here, and dependants are sent the retry's entry, not its own.
 
 </details>
 

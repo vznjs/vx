@@ -1659,6 +1659,12 @@ export class Orchestrator extends RunReport<Worker> {
       this.usedMs += Math.min(head.cpuMs / share, a.cores * ms)
       this.needMs += Math.min(job.need.cores, a.cores) * ms
     }
+    // Cancelled: its retry may have run elsewhere meanwhile. Laid, its files
+    // lay over the retry's, and its key sent dependants its bytes.
+    if (job.req.signal?.aborted === true) {
+      this.pumpSoon()
+      return job.resolve(result(head, sentLog ?? []))
+    }
     this.savedAs.set(task, key)
     this.ranOn.set(task, a.id)
     const node = this.o.nodes()?.get(task)

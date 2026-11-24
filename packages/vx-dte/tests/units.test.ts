@@ -7056,3 +7056,33 @@ it('a retry waits for the worker still holding its cancelled attempt, and runs a
     await h.stop()
   }
 }, 30_000)
+
+// A cancelled attempt's end that comes after its retry ran elsewhere laid
+// the cancelled attempt's files over the retry's, and dependants were sent
+// its key for their upstream's files.
+it('a cancelled attempt that ends after its retry lays nothing and leaves the retry its key', async () => {
+  const h = await harness(new Map([node('t'), node('d', ['t'])]))
+  try {
+    const a = await h.worker(1)
+    const stop = new AbortController()
+    const first = h.o.execute({ ...h.req('t'), signal: stop.signal })
+    expect(await a.batches()).toEqual([['t']])
+    stop.abort()
+    expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't' }])
+    const b = await h.worker(1)
+    const second = h.o.execute({ ...h.req('t'), attempt: 2 } as ExecuteRequest)
+    expect(await b.batches()).toEqual([['t']])
+    await b.finish('t', 'k-retry')
+    expect((await second).exitCode).toBe(0)
+    await a.finish('t', 'k-cancelled', { exitCode: 143, durationMs: 1 })
+    expect((await first).exitCode).toBe(143)
+    expect(h.store.restored).not.toContain('k-cancelled')
+    void h.o.execute(h.req('d'))
+    await Promise.race([a.batches(), b.batches()])
+    const sent = [...a.orders, ...b.orders].find((o) => o.task === 'd')
+    expect(sent).toBeDefined()
+    expect(sent!.deps.map((d) => d.key)).not.toContain('k-cancelled')
+  } finally {
+    await h.stop()
+  }
+}, 10000)
