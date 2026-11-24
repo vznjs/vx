@@ -1,6 +1,9 @@
 // The glob grammar Nx and Turbo share and vx's own differ in extglobs; both
 // adapters translate through here.
 
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+
 const EXTGLOB = /([?@+*!])\(([^()]*)\)/g
 
 /**
@@ -142,4 +145,27 @@ export function apartTakeBacks<T>(a: readonly T[], b: readonly T[]): [T[], T[]] 
  */
 export function literalGlob(p: string): string {
   return p.replace(/^!|[{}[\]]/g, '\\$&')
+}
+
+/**
+ * `glob` with each bracketed segment escaped where, read literally, it
+ * names a path under `base`: Turbo reads an existing `app/[locale]` that
+ * way (vercel/turborepo#14850), and core refuses the class spelling of
+ * one. Only a literal prefix is followed, as core's check follows it.
+ */
+export function existingBracketsLiteral(glob: string, base: string): string {
+  if (!glob.includes('[')) return glob
+  const neg = glob.startsWith('!') ? '!' : ''
+  const segments = glob.slice(neg.length).split('/')
+  const at: string[] = []
+  for (const [i, s] of segments.entries()) {
+    if (/(?<!\\)[*?{]/.test(s)) break
+    const plain = s.replace(/\\(.)/g, '$1')
+    if (/(?<!\\)\[/.test(s)) {
+      if (!existsSync(path.join(base, ...at, plain))) break
+      segments[i] = plain.replace(/[[\]]/g, '\\$&')
+    }
+    at.push(plain)
+  }
+  return neg + segments.join('/')
 }

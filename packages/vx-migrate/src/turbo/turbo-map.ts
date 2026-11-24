@@ -14,7 +14,13 @@ import path from 'node:path'
 import { isLiteralPattern, outputsOverlap, pruneOrphanPersistentNotes, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
-import { apartTakeBacks, literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
+import {
+  apartTakeBacks,
+  existingBracketsLiteral,
+  literalGlob,
+  minimatchToVx,
+  withoutTakenBack,
+} from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import {
   type Owner,
@@ -833,6 +839,20 @@ function definitionOf(pkgName: string, name: string, chain: readonly TurboJson[]
   return def
 }
 
+/** `def` with its inputs' existing bracketed paths read literally (`existingBracketsLiteral`). */
+function routeInputs(def: TurboTask, dir: string, root: string): TurboTask {
+  if (Array.isArray(def.inputs))
+    def.inputs = def.inputs.map((i) => {
+      if (typeof i !== 'string') return i
+      const neg = i.startsWith('!') ? '!' : ''
+      const body = i.slice(neg.length)
+      return body.startsWith('$TURBO_ROOT$/')
+        ? `${neg}$TURBO_ROOT$/${existingBracketsLiteral(body.slice(13), root)}`
+        : existingBracketsLiteral(i, dir)
+    })
+  return def
+}
+
 /** A task's `{ mode: "dependencyOutputs" }` input: the producers it names, and which of their files. */
 interface DependencyOutputs {
   from: readonly string[] | null
@@ -1074,7 +1094,9 @@ export async function mapTurboWorkspace(
   // Turbo 1 lists an env var as `$NAME` among `globalDependencies` (and a
   // task's `dependsOn`); read as a file it was a glob that matched nothing, and
   // the var re-keyed nothing.
-  const globalDeps = rootCfg.globalDependencies ?? []
+  const globalDeps = (rootCfg.globalDependencies ?? []).map((g) =>
+    typeof g === 'string' ? existingBracketsLiteral(g, root) : g,
+  )
   const notes: string[] = []
   // `interruptible: true` maps to nothing (KNOWN_TASK_KEYS): a written
   // config names it; `turbo()` at `vx lock` stays quiet, as it acts the same.
@@ -1204,13 +1226,15 @@ export async function mapTurboWorkspace(
     if (meta === rootMeta && !singlePackage) {
       const defined = new Set(rootTaskNames)
       const defFor = (name: string): TurboTask | undefined =>
-        defined.has(name) ? definitionOf(ROOT, name, [rootCfg]) : undefined
+        defined.has(name) ? routeInputs(definitionOf(ROOT, name, [rootCfg]), root, root) : undefined
       return { defined, defFor }
     }
     const chain = turboChain(meta.name, files)
     const defined = new Set(taskNamesFor(meta.name, chain, files))
     const defFor = (name: string): TurboTask | undefined =>
-      defined.has(name) ? definitionOf(meta.name, name, chain) : undefined
+      defined.has(name)
+        ? routeInputs(definitionOf(meta.name, name, chain), meta.dir, root)
+        : undefined
     return { defined, defFor }
   }
 

@@ -388,6 +388,11 @@ Rules:
 - `src/**.ts` is `src/**/*.ts`, and `gen**` is `gen*/**`.
 - Core refuses the glued spelling.
 
+**A bracketed path.** An input or `globalDependencies` segment such as `[locale]` that names an existing path is read literally, as Turbo reads it.
+
+- `app/[locale]/**` is `app/\[locale\]/**`. A class naming no path (`*.[jt]s`) stays a class.
+- Core refuses the class spelling of an existing path.
+
 **`env` / `passThroughEnv`.** Explicit names go to `inputs.env` (env only) and `exec.env.passThrough` (both, plus both globals).
 
 - Under `turbo()`, a wildcard expands over the environment `vx lock` ran in. The lock records the names it matched there.

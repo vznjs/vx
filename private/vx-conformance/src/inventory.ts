@@ -881,6 +881,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/tracked-outputs',
     'vx-migrate/tsc-buildinfo',
     'vx-migrate/turbo',
+    'vx-migrate/turbo-bracket-inputs',
     'vx-migrate/turbo-cache',
     'vx-migrate/turbo-cache-exit',
     'vx-migrate/turbo-cache-preflight',
