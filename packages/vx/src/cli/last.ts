@@ -465,15 +465,6 @@ export function formatStats(stats: readonly TaskStats[]): ui.Block {
   )
 }
 
-/**
- * `--sql`: one SELECT over the history (`runs`, `invocations`, `steps`,
- * `warnings`, `failures`, and the store's `entries`, `entry_inputs`,
- * `task_durations`, `task_outcomes`),
- * so an agent asks what no flag answers: a task's memory trend, the
- * flakiest project, which input moved a key. `query_only` stops a write
- * the statement hides (`WITH … DELETE`); it does not stop ATTACH, which
- * creates a file, hence only SELECT or WITH may lead.
- */
 /** The most rows `--sql`'s table holds; JSON streams, with no bound. */
 const MAX_TABLE_ROWS = 100_000
 
@@ -500,6 +491,15 @@ function* jsonRows(
   yield `${piece}]}\n`
 }
 
+/**
+ * `--sql`: one SELECT over the history (`runs`, `invocations`, `steps`,
+ * `warnings`, `failures`, and the store's `entries`, `entry_inputs`,
+ * `task_durations`, `task_outcomes`),
+ * so an agent asks what no flag answers: a task's memory trend, the
+ * flakiest project, which input moved a key. `query_only` stops a write
+ * the statement hides (`WITH … DELETE`); it does not stop ATTACH, which
+ * creates a file, hence only SELECT or WITH may lead.
+ */
 async function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): Promise<number> {
   if (!/^\s*(select|with)\b/i.test(sql)) {
     throw new UserError(

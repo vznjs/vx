@@ -139,6 +139,7 @@ describe('verbFlags is what each verb accepts', () => {
           '--save-dev',
           '--save',
           '--save-optional',
+          '--save-exact',
           '--save-prod',
           '--dev',
           '--optional',
