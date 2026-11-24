@@ -157,6 +157,7 @@ export function addHints(
       if (args.config.unixSockets === undefined) {
         const unix = refusedUnixSocketHint(
           `${outTail.text()}\n${errTail.text()}`.split('\n').slice(-64),
+          args.command,
         )
         if (unix !== undefined) violations.push(unix)
       }
@@ -504,26 +505,39 @@ function selfLookupHint(
  * Python `PermissionError` under `socket.py`), and the one hint left was
  * the working directory's, which changed nothing. Named only when the
  * output pairs that refusal with a socket; the path, when the client names
- * one, is the grant (Linux allows any path once one is granted).
+ * one, is the grant (Linux allows any path once one is granted), else one
+ * the command connects to (`UNIX-CONNECT:<path>`, `unix://<path>`): the
+ * block refuses `socket()`, before any path reaches a trace. With none, it
+ * says how to find it, never a bare `true`: that admits every socket,
+ * docker.sock included, which is root on the host.
  */
-function refusedUnixSocketHint(lines: readonly string[]): SandboxViolation | undefined {
+function refusedUnixSocketHint(
+  lines: readonly string[],
+  command: string,
+): SandboxViolation | undefined {
   const at = lines.findIndex((l, i) => {
     if (!/operation not permitted/i.test(l)) return false
     const near = lines.slice(Math.max(0, i - 3), i + 1).join('\n')
     return /\bsocket\b|AF_UNIX|UNIX-CONNECT|dial unix/i.test(near)
   })
   if (at < 0) return undefined
-  const sock = lines
-    .slice(Math.max(0, at - 3), at + 1)
-    .join('\n')
-    .match(/(?:unix|UNIX-CONNECT:|connect\(')\s*(\/[^\s:'"),]+)/i)?.[1]
-  const grant = sock === undefined ? 'true' : `[${JSON.stringify(sock)}]`
+  const sock =
+    lines
+      .slice(Math.max(0, at - 3), at + 1)
+      .join('\n')
+      .match(/(?:unix|UNIX-CONNECT:|connect\(')\s*(\/[^\s:'"),]+)/i)?.[1] ??
+    command.match(/(?:\bUNIX-(?:CONNECT|CLIENT|SENDTO):|\bunix:\/\/)(\/[^\s:'"),]+)/i)?.[1]
   return {
     timestamp: new Date(),
     hint: true,
     line:
       'vx: the task was refused a unix socket: this sandbox blocks them unless granted. ' +
-      `If it needs one, grant it: \`allow: { unixSockets: ${grant} }\`.`,
+      (sock !== undefined
+        ? `If it needs one, grant it: \`allow: { unixSockets: [${JSON.stringify(sock)}] }\`.`
+        : "If it needs one, grant its path: `allow: { unixSockets: ['<socket path>'] }`; the " +
+          'client names it (DOCKER_HOST, SSH_AUTH_SOCK, a database URL), and `ss -xl` lists the ' +
+          'listening ones. Not `unixSockets: true`: it allows every socket, docker.sock ' +
+          'included, which is root on this machine.'),
   }
 }
 

@@ -1,7 +1,9 @@
 // A task refused a unix socket (Linux blocks socket(AF_UNIX) unless
 // `allow.unixSockets` grants it) failed with only its client's own
 // `Operation not permitted`, and the one hint vx added was to grant read
-// of the working directory, which changed nothing (2026-11-24).
+// of the working directory, which changed nothing (2026-11-24). With no
+// path known it names how to find one, never a bare `true`: that admits
+// every socket, docker.sock included.
 import { realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -38,21 +40,18 @@ describe.skipIf(!available || process.platform !== 'linux')('a refused unix sock
     return { status: r.outcomes[0]?.status, lines: r.outcomes[0]?.sandbox?.lines ?? [], sock }
   }
 
-  it('names unixSockets: true for socat, and that grant passes', async () => {
+  it('names the path the command connects to (socat), and that grant passes', async () => {
     const cmd = 'socat -u OPEN:/dev/null UNIX-CONNECT:$SOCK'
     const refused = await outcome(cmd, '')
     expect(refused.status).toBe('failed')
-    expect(refused.lines.find((l) => l.includes('unixSockets'))).toContain(
-      'allow: { unixSockets: true }',
-    )
+    const grant = `unixSockets: [${JSON.stringify(refused.sock)}]`
+    expect(refused.lines.find((l) => l.includes('unixSockets'))).toContain(`allow: { ${grant} }`)
     // Not the working directory's hint, which changed nothing.
     expect(refused.lines.join('\n')).not.toContain("read: ['.']")
     // A socket outside the project is hidden too: the next run names its read.
-    const granted = await outcome(cmd, 'unixSockets: true')
+    const granted = await outcome(cmd, grant)
     expect(granted.lines.join('\n')).toContain("allow: { read: ['../../s.sock'] }")
-    expect((await outcome(cmd, "unixSockets: true, read: ['.', '../../s.sock']")).status).toBe(
-      'success',
-    )
+    expect((await outcome(cmd, `${grant}, read: ['.', '../../s.sock']`)).status).toBe('success')
   }, 60_000)
 
   it('names the path a client names (Docker: dial unix <path>)', async () => {
@@ -65,11 +64,13 @@ describe.skipIf(!available || process.platform !== 'linux')('a refused unix sock
     )
   }, 60_000)
 
-  it('names unixSockets: true for Python, whose error names no path', async () => {
+  it('offers no bare unixSockets: true when no path is known (Python)', async () => {
     const refused = await outcome('python3 -c "import socket; socket.socket(socket.AF_UNIX)"', '')
-    expect(refused.lines.find((l) => l.includes('unixSockets'))).toContain(
-      'allow: { unixSockets: true }',
-    )
+    const line = refused.lines.find((l) => l.includes('unixSockets')) ?? ''
+    expect(line).toContain("allow: { unixSockets: ['<socket path>'] }")
+    expect(line).not.toContain('allow: { unixSockets: true }')
+    expect(line).toContain('every socket')
+    expect(line).toContain('docker.sock')
   }, 60_000)
 
   it('stays quiet on a refusal no socket is near (a plain failure that says unix)', async () => {
