@@ -4048,6 +4048,8 @@ Default: the latest release.
 - A `TAG` that names an older release goes back.
 - A `TAG` that names the running version says `already at` without
   asking the registry.
+- An exact version pin in `package.json` stays exact; npm is given
+  `--save-exact` for it.
 
 </div>
 </details>

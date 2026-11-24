@@ -873,6 +873,20 @@ describe('managedInstall', () => {
     }
   })
 
+  // 2026-11-24, against a local registry: `npm install @vzn/vx@0.5.0` wrote
+  // "^0.5.0" over an exact "0.4.0" pin; pnpm, bun and yarn 1 keep it exact.
+  it('keeps an exact pin exact under npm, and a range a range', async () => {
+    const argv = async (spec: string): Promise<string> => {
+      const root = await tree({
+        'package.json': JSON.stringify({ devDependencies: { '@vzn/vx': spec } }),
+        'package-lock.json': '{}',
+      })
+      return upgradeArgv(managedInstall(path.join(root, BIN), root)!, '1.2.3').join(' ')
+    }
+    expect(await argv('0.4.0')).toBe('npm install @vzn/vx@1.2.3 --save-dev --save-exact')
+    expect(await argv('^0.4.0')).toBe('npm install @vzn/vx@1.2.3 --save-dev')
+  })
+
   it('a package.json that is not JSON is one refusal naming it, not "no package.json lists vx"', async () => {
     const root = await tree({ 'package.json': '{ "devDependencies": { "@vzn/vx": "^1" }, }' })
     const file = path.join(root, 'package.json')
