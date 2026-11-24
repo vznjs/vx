@@ -214,6 +214,7 @@ A task the run did not see keeps its time, including one another writer put ther
 A run that executed nothing and restored only tasks the file already times leaves it as it was. An all-cached run writes a missing one.
 
 - A file that is not one warns, is read as empty and is never written over.
+- A file it cannot read (not absent) warns once and is never written over: it may hold another writer's timings.
 - A file it cannot write warns, and the run goes on.
 - `--dry` writes nothing.
 

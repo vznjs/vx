@@ -8,9 +8,9 @@ import path from 'node:path'
 const VERSION = 1
 
 /**
- * The file's durations; none when it is absent or unread (with a warning),
- * and undefined, with a warning, when it is a file but not a timings file:
- * not one to write over.
+ * The file's durations; none when it is absent, and undefined, with a
+ * warning, when it cannot be read or is not a timings file: not one to
+ * write over.
  */
 export function readTimings(
   file: string,
@@ -22,7 +22,9 @@ export function readTimings(
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
     warn(`[vx] vx-history: timings file ${file} not read: ${(err as Error).message}`)
-    return {}
+    // Not absent: it may hold another writer's timings this user cannot see,
+    // so it is not one to write over (and a failed write said it twice).
+    return undefined
   }
   let parsed: unknown
   try {
