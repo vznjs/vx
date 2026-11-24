@@ -666,6 +666,61 @@ describe('HistoryServer', () => {
     )
   })
 
+  // With no local history, the server's numbers are what order the run.
+  it("ranks a run's tasks by the timings the server answers", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-history-rank-'))
+    const cache = new Cache(dir)
+    const nodeOf = (p: string) =>
+      ({
+        id: `${p}#build`,
+        projectName: p,
+        projectDir: dir,
+        taskName: 'build',
+        config: { exec: { command: `echo ${p}` } },
+        deps: [],
+        requested: true,
+      }) as unknown as TaskNode
+    const nodes = new Map(['fast', 'slow'].map((p) => [`${p}#build`, nodeOf(p)]))
+    const defs = taskDefinitions([...nodes.values()])
+    const up = await fetch(`${url}/v1/timings/upload`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${await iss.sign('main', new URL(url).origin)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...NAMED,
+        timings: [
+          { hash: defs.get('fast#build'), durationMs: 50 },
+          { hash: defs.get('slow#build'), durationMs: 9000 },
+        ],
+      }),
+    })
+    expect(up.status).toBe(204)
+    const token = Bun.env.VX_HISTORY_TOKEN
+    Bun.env.VX_HISTORY_TOKEN = await iss.sign('main', new URL(url).origin)
+    try {
+      const refined: Promise<unknown>[] = []
+      const local = (await vxHistory({ url, ...NAMED }).schedule!(nodes, {
+        warn: () => {},
+        workspaceRoot: dir,
+        localCache: cache,
+        branch: 'main',
+        refs: ['refs/heads/main'],
+        refine: (p: Promise<unknown>) => refined.push(p),
+      } as never)) as Map<string, number>
+      // No local history: the two tie until the server answers.
+      expect(local.get('slow#build')).toBe(local.get('fast#build'))
+      const ranks = (await refined[0]) as Map<string, number>
+      expect(ranks.get('slow#build')! > ranks.get('fast#build')!).toBe(true)
+    } finally {
+      if (token === undefined) delete Bun.env.VX_HISTORY_TOKEN
+      else Bun.env.VX_HISTORY_TOKEN = token
+      cache.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   // The ordering was computed twice, on the local history and again when
   // the server's numbers landed, and each pass named the bad assumption.
   it('names an assumption it drops once a run, with the server re-ranking', async () => {
