@@ -489,6 +489,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-credential-stores.unsafe',
     'sandbox-deny-scan',
     'sandbox-deny-scan.unsafe',
+    'sandbox-dns-hint.unsafe',
     'sandbox-dependency-outputs.unsafe',
     'sandbox-dirfd-open.unsafe',
     'sandbox-dirfd-quote.unsafe',

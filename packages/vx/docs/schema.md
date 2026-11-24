@@ -2367,6 +2367,11 @@ export default defineProject({
   even when the task survived it.
 - A client that skips the proxy and dials an address itself (socat, a
   raw socket) gets `Network is unreachable`: no grant lifts it.
+- A task resolves no names: Node's `fetch` and `https` look the host up
+  themselves and fail `getaddrinfo EAI_AGAIN <host>`, granted or not.
+  They take the proxy with `NODE_USE_ENV_PROXY=1` (Node 22.21+, 24.5+):
+  `exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`. On Linux the
+  failure names it, and the grant when the host has none.
 - A host `deny.network` holds gets no `allow.network` entry in the
   `fix:` line: no allow lifts it.
 - `ignore: { network: ['example.com:443'] }` silences one refusal,

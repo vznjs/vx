@@ -1455,6 +1455,14 @@ or every address (`/proc/net/tcp`, `tcp6`), and the task neither grants
 nor binds it. Before, it got a bare refusal and no word of vx
 (`sandbox-loopback-hint.unsafe.test.ts`).
 
+A failed Linux task whose output's tail holds Node's
+`getaddrinfo EAI_AGAIN <host>` (or `ENOTFOUND`) gets a hint naming
+`NODE_USE_ENV_PROXY=1` (`selfLookupHint`): the task has no DNS, and Node's
+fetch and https dial the host themselves instead of the proxy in
+`HTTPS_PROXY`, so the proxy refused nothing and no violation said why. The
+hint adds `allow: { network: ['<host>'] }` when no entry covers the host
+(`sandbox-dns-hint.unsafe.test.ts`).
+
 `releaseBridges` also unlinks each port's socket. The task's socat dies
 with the namespace and never removes it, so every bridged run left one
 socket in the tmpdir (176 on one box, item 877). The sockets are listed

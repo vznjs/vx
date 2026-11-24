@@ -149,6 +149,11 @@ export function addHints(
         [...loopbackPorts(args.config.network), ...bridgedPorts(args.config)],
       )
       if (refused !== undefined) violations.push(refused)
+      const lookedUp = selfLookupHint(
+        `${outTail.text()}\n${errTail.text()}`.split('\n').slice(-64),
+        args.config.network,
+      )
+      if (lookedUp !== undefined) violations.push(lookedUp)
       if (args.config.unixSockets === undefined) {
         const unix = refusedUnixSocketHint(
           `${outTail.text()}\n${errTail.text()}`.split('\n').slice(-64),
@@ -452,6 +457,42 @@ function refusedLoopbackHint(
       `${ports.join(', ')}, which a process on this machine listens on: a sandboxed task has ` +
       `a loopback of its own. Grant ${ports.length === 1 ? 'it' : 'them'}: ` +
       `\`allow: { network: [${grants}] }\`.`,
+  }
+}
+
+/** Node's refusal of a name it looked up itself, and the name. */
+const SELF_LOOKUP = /\bgetaddrinfo (EAI_AGAIN|ENOTFOUND) ([A-Za-z0-9.-]+)/
+
+/**
+ * A sandboxed task resolves no names: it reaches a host only through the
+ * proxy in HTTPS_PROXY, which Node's fetch and https ignore unless
+ * NODE_USE_ENV_PROXY=1. A Node client of a granted host failed
+ * `getaddrinfo EAI_AGAIN <host>`, with no request for the proxy to refuse
+ * and so no violation. Names the variable, and the grant when no entry of
+ * `network` covers the host.
+ */
+function selfLookupHint(
+  lines: readonly string[],
+  network: true | readonly string[] | undefined,
+): SandboxViolation | undefined {
+  const m = lines.map((l) => SELF_LOOKUP.exec(l)).find((x) => x !== null)
+  if (m === undefined || m === null) return undefined
+  const host = m[2]!.replace(/\.$/, '').toLowerCase()
+  const covered =
+    network === true ||
+    (network ?? []).some((entry) => {
+      const pattern = entry.replace(/:\d+$/, '').toLowerCase()
+      return pattern.startsWith('*.') ? host.endsWith(pattern.slice(1)) : host === pattern
+    })
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: the task looked up ${host} itself (getaddrinfo ${m[1]}): a sandboxed task resolves ` +
+      'no names and reaches a host only through the proxy vx puts in HTTPS_PROXY. ' +
+      "Node's fetch and https skip it unless NODE_USE_ENV_PROXY=1 (Node 22.21+, 24.5+): " +
+      "`exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`." +
+      (covered ? '' : ` It also needs the host: \`allow: { network: ['${host}'] }\`.`),
   }
 }
 
