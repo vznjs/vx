@@ -51,6 +51,7 @@ export function s3Blobs(client: Bun.S3Client): Blobs {
       const res = await fetch(client.presign(name), { headers: { range: 'bytes=0-0' } })
       return res.ok ? (await res.body?.cancel(), '') : await res.text()
     } catch {
+      // quiet: only the reason is lost; the HEAD's own refusal is still said
       return ''
     }
   }

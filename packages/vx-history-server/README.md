@@ -118,7 +118,7 @@ names it.
 - A statement D1 fails with an error Cloudflare says to retry ("Network
   connection lost", an object reset) is sent up to three times, as the
   cache server asks R2 again.
-- A write retried that had landed folds that run's reports twice.
+- A write retried that had landed counts that run's reports twice.
 
 ## API
 

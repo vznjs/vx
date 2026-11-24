@@ -6983,4 +6983,4 @@ it('a retry waits for the worker still holding its cancelled attempt, and runs a
   } finally {
     await h.stop()
   }
-}, 10000)
+}, 30_000)

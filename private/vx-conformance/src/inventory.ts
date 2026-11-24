@@ -724,6 +724,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/yarn-package-settings',
     'vx-lockfile/yarn-transparent-workspaces',
     'vx-migrate/adopt',
+    'vx-migrate/adoption-edited-since-lock',
     'vx-migrate/adoption-script-hooks',
     'vx-migrate/adoption-task-names',
     'vx-migrate/cache-timeout-options',
