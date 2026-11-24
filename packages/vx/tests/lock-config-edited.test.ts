@@ -2,7 +2,7 @@
 // `vx lock` after it ran the locked config, green, and an agent read the
 // green run as its edit working. The run names the edited file and says
 // `run vx lock`; it never relocks.
-import { readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
@@ -538,5 +538,61 @@ describe('a claimant option edited since vx lock', () => {
       expect.stringContaining('.vx/workspace.mjs changed since the last `vx lock` — run `vx lock`'),
     ])
     expect(out).not.toContain('deps.txt')
+  })
+})
+
+// A run with no stamps beside its lock (a clone, CI, a branch switch)
+// evaluates every mapping once and stamps what holds, but not the workspace
+// file: the next run found it unstamped and evaluated every mapping again.
+describe('a workspace with no stamps', () => {
+  let root: string
+  const counted = pluginSource(
+    'org/count',
+    `{ async project(config, ctx) {
+        const { appendFile } = await import('node:fs/promises')
+        await appendFile(ctx.workspaceRoot + '/.mapped', 'x')
+        config.tasks = { ...config.tasks, say: { exec: { command: 'echo mapped' } } }
+      } }`,
+  )
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-lock-nostamps-' })
+    await addProject(root, 'core')
+    await writeFile(path.join(root, '.vx', 'workspace.mjs'), localWorkspaceSource([counted]))
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'))
+    await rm(path.join(root, '.mapped'))
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('evaluates the mappings once, not again on the next run', async () => {
+    for (let i = 0; i < 2; i++) {
+      const { code, out } = await vx(root, ['run', 'core#say'])
+      expect([code, out]).toEqual([0, expect.stringContaining('mapped')])
+    }
+    expect(await readFile(path.join(root, '.mapped'), 'utf8')).toBe('x')
+  })
+
+  // The run asked only the configs and mappings: a plugin that no longer
+  // adds a project ran green here, and the next run refused it.
+  it('refuses a plugin option that discovers otherwise', async () => {
+    const adds = (on: boolean) =>
+      pluginSource(
+        'org/adds',
+        `{ discover: () => ${on ? "[{ dir: 'tools/extra', name: 'extra' }]" : '[]'} }`,
+      )
+    const workspace = (on: boolean) =>
+      writeFile(path.join(root, '.vx', 'workspace.mjs'), localWorkspaceSource([counted, adds(on)]))
+    await mkdir(path.join(root, 'tools', 'extra'), { recursive: true })
+    await workspace(true)
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'))
+    await workspace(false)
+    const { code, out } = await vx(root, ['run', 'core#say'])
+    expect([code, out]).toEqual([
+      1,
+      expect.stringContaining('.vx/workspace.mjs changed since the last `vx lock` — run `vx lock`'),
+    ])
   })
 })

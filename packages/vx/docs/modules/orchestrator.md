@@ -3171,7 +3171,10 @@ name, an edge, a mapping or a recorded dependency digest differs (a plugin's opt
 locked commands, green); one that holds is stamped. And a run with no stamps beside
 its lock (a fresh clone, CI, a new `--cache-dir`) evaluates every config
 and runs the stage once, as `vx lock --check` does, to verify the lock
-and stamp what matches; it still runs what the lock records.
+and stamp what matches; it still runs what the lock records. It runs
+`discover` again too: a project a plugin no longer adds refuses, naming the
+workspace file, and a workspace file that holds is stamped, so the next run
+does not evaluate it all again.
 
 `loadWorkspacePlugins` runs the `config` stage on a copy of the
 workspace file's export (its plugins kept as they are): the export is one

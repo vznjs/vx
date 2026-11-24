@@ -629,11 +629,31 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       // projects' mapped-from files unstamped, so an edit to one ran green.
       const held = await lock()
       const mapped = hasHook(plugins, 'project')
+      const workspace = workspaceAsked ? null : await workspaceStat(workspaceRoot)
+      workspaceAsked = true
+      const taken =
+        workspace === null ? null : await takeConfigStamps(workspaceRoot, [workspace.file])
       edited = await asLockHolds(args, digest, held, (m) => {
         if (args.staged?.get(m.name) !== undefined) return false
         if (m.configPath !== null) return true
         return mapped && Object.hasOwn(held.projects, lockKey(workspaceRoot, m.dir))
       })
+      // The workspace file too, as a run beside stamps asks it once it
+      // moved: left unstamped, the next run evaluated every mapping again.
+      // A digest that differs is the key path's to name: with no stamp,
+      // the claimed file may be the one edited.
+      if (workspace !== null && taken !== null && edited.length === 0) {
+        const rel = path.relative(workspaceRoot, workspace.file)
+        const discovers = await workspaceDiscovers(args, held)
+        const read = taken.configs[rel]
+        if (discovers === 'discovery') edited = [rel]
+        else if (
+          discovers === 'holds' &&
+          read !== undefined &&
+          evaluatedWorkspace(workspace.file, read[2])
+        )
+          await restampConfigs(workspaceRoot, args.cacheDir, digest, taken)
+      }
       stamped = stampsBesideLock(workspaceRoot, args.cacheDir, digest)
     } else if (digest !== undefined && got !== undefined) {
       const mappedFrom = await pluginReads(digest, unstaged)
@@ -892,14 +912,35 @@ async function workspaceStat(root: string): Promise<ConfigStat | null> {
 /**
  * Whether the plugins as the workspace file declares them now discover and
  * map every project as the lock holds, as `vx lock --check` compares them:
- * the names, the plugin that added each, the edges, the dependency digests
- * `.vx/dependencies.lock` records, then each config after the `project` stage. Asked only once the file moved since its stamp.
+ * `workspaceDiscovers`, then each config after the `project` stage. Asked
+ * only once the file moved since its stamp.
  */
 async function workspaceHolds(
   args: LoadProjectsArgs,
   digest: string,
   held: Lockfile,
 ): Promise<boolean> {
+  if ((await workspaceDiscovers(args, held)) !== 'holds') return false
+  const drifted = await asLockHolds(
+    args,
+    digest,
+    held,
+    (m) =>
+      m.configPath !== null || Object.hasOwn(held.projects, lockKey(args.workspaceRoot, m.dir)),
+  )
+  return drifted.length === 0
+}
+
+/**
+ * How the plugins as the workspace file declares them now discover the
+ * projects, as `vx lock --check` compares them: `discovery` when a name, the
+ * plugin that added one or an edge differs from the lock, `digests` when a
+ * claimant's digests differ from what `.vx/dependencies.lock` records.
+ */
+async function workspaceDiscovers(
+  args: LoadProjectsArgs,
+  held: Lockfile,
+): Promise<'holds' | 'discovery' | 'digests'> {
   const root = args.workspaceRoot
   // The discovery `vx lock` runs: from the config files alone, so a project
   // a plugin no longer adds is missed.
@@ -919,7 +960,7 @@ async function workspaceHolds(
       ]),
     ),
   })
-  if (!Bun.deepEquals(shape(fresh), shape(args.projectMetas), true)) return false
+  if (!Bun.deepEquals(shape(fresh), shape(args.projectMetas), true)) return 'discovery'
   // A claimant's options move the digests `vx lock` recorded: the key path
   // named the claimed file, which had not changed.
   const recorded = lockedDependencies(held)
@@ -935,15 +976,9 @@ async function workspaceHolds(
       const answer = await claimedDigests(plugin, file, ctx)
       if (answer !== undefined) files.set(file, answer)
     }
-    if (!sameRecord(recorded, dependenciesLock(fresh, files))) return false
+    if (!sameRecord(recorded, dependenciesLock(fresh, files))) return 'digests'
   }
-  const drifted = await asLockHolds(
-    args,
-    digest,
-    held,
-    (m) => m.configPath !== null || Object.hasOwn(held.projects, lockKey(root, m.dir)),
-  )
-  return drifted.length === 0
+  return 'holds'
 }
 
 /**
