@@ -1216,8 +1216,8 @@ Empty values:
 - "Drop every edge" and "drop none" are both plausible readings: pass
   bare `--exclude-dependencies` for the first, omit the flag for the second.
 - Given twice, `--exclude-dependencies` name lists add up, and a bare one drops every edge.
-- An EMPTY spec (`--cache-policy=`) applied nothing and left every axis
-  on: pass `--no-cache` to disable them all.
+- An EMPTY spec (`--cache-policy=`) is refused: pass `--no-cache` to
+  disable every axis.
 
 **Numeric flags take a plain decimal integer.**
 
@@ -1242,7 +1242,7 @@ Unknown flags:
   `vx upgrade --hlp` hints `--help`.
 - `--json` on a verb that takes `--format` hints `--format json`.
 - A flag exactly one other verb takes names that verb instead
-  (`vx run build --poll`: `` `vx watch` takes it ``).
+  (`vx run build --sql`: `` `vx last` takes it ``).
 - `vx version` takes no word, so `vx version --hlp` is refused (exit 1).
 
 A task typed where the verb goes:
