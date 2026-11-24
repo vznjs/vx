@@ -1326,12 +1326,12 @@
     },
     "nix": {
       "all": {
-        "pass": 1103,
+        "pass": 1100,
         "can": 1391,
         "of": 2212
       },
       "correctness": {
-        "pass": 946,
+        "pass": 943,
         "can": 1195,
         "of": 1789
       },
@@ -1376,7 +1376,7 @@
         "of": 493
       },
       "outputs": {
-        "pass": 237,
+        "pass": 234,
         "can": 312,
         "of": 319
       },
@@ -15651,18 +15651,18 @@
         },
         "turbo": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "nx": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "nix": {
           "status": "fail",
@@ -15742,7 +15742,7 @@
         "moon": {
           "status": "fail",
           "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.txt is missing, expected \"x2\\n\""
+          "detail": "play 1 of 5: packages/a/dist/x.txt is missing, expected \"x2\\n\""
         }
       }
     },
@@ -15762,21 +15762,23 @@
         },
         "turbo": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.js is \"x2\\n\", a stale result"
         },
         "nx": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.js is \"x2\\n\", a stale result"
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/dist/x.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.js is \"x2\\n\", a stale result"
         },
         "nix": {
-          "status": "pass"
+          "status": "fail",
+          "step": 7,
+          "detail": "play 1 of 5: packages/a/dist/x.js is missing, expected \"x2\\n\""
         },
         "moon": {
           "status": "fail",
@@ -16474,18 +16476,18 @@
         },
         "turbo": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "nx": {
           "status": "fail",
           "step": 5,
-          "detail": "play 3 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         },
         "nix": {
           "status": "fail",
@@ -16494,8 +16496,8 @@
         },
         "moon": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/dist/x.txt is \"x2\\n\", a stale result"
         }
       }
     },
@@ -16751,16 +16753,18 @@
         },
         "nx": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/a/build/b.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/build/b.js is \"x2\\n\", a stale result"
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/a/build/b.js is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/a/build/b.js is \"x2\\n\", a stale result"
         },
         "nix": {
-          "status": "pass"
+          "status": "fail",
+          "step": 7,
+          "detail": "play 1 of 5: packages/a/build/b.js is missing, expected \"x2\\n\""
         },
         "moon": {
           "status": "fail",
@@ -16851,21 +16855,23 @@
         },
         "turbo": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 2 of 5: packages/b/dist/a.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x2\\n\", a stale result"
         },
         "nx": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x2\\n\", a stale result"
         },
         "vite-task": {
           "status": "fail",
-          "step": 5,
-          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x1\\n\", expected \"x2\\n\""
+          "step": 11,
+          "detail": "play 1 of 5: packages/b/dist/a.txt is \"x2\\n\", a stale result"
         },
         "nix": {
-          "status": "pass"
+          "status": "fail",
+          "step": 7,
+          "detail": "play 1 of 5: packages/b/dist/a.txt is missing, expected \"x2\\n\""
         },
         "moon": {
           "status": "fail",

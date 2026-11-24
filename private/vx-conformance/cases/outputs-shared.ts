@@ -2,7 +2,7 @@
 // the pair or keep both tasks' files, never lose one. Ordered by an edge
 // (the dependant adds to its upstream's tree), every run leaves the tree a
 // cold run of both commands leaves.
-import { defineCase, type ProjectSpec, type WorkspaceSpec } from '../src/spec.ts'
+import { defineCase, type ProjectSpec, type Step, type WorkspaceSpec } from '../src/spec.ts'
 
 const A = 'packages/a'
 
@@ -39,6 +39,24 @@ function bothKept(xFile: string, yFile: string, orRefused: boolean) {
     { run: 'all', expect: { exit: 0 as const, files: files('x2\n'), ...extra } },
     { write: { [`${A}/dist`]: null } },
     { run: 'all', expect: { exit: 0 as const, files: files('x2\n'), ...extra } },
+    ...(orRefused ? aloneKept(`${A}/${xFile}`, `${A}/${yFile}`, extra) : []),
+  ]
+}
+
+/**
+ * y run alone beside x's file, then replayed from an empty
+ * `dist` once x changed: the order of two unordered tasks is a race, so a tool that stores
+ * or clears the other's file can pass the runs above by luck; here it cannot.
+ */
+function aloneKept(x: string, y: string, extra: object): Step[] {
+  const cleared: Step = { write: { [`${A}/dist`]: null } }
+  return [
+    { write: { [`${A}/srcy/a.txt`]: 'y2\n' } },
+    { run: 'y', expect: { exit: 0, files: { [x]: 'x2\n', [y]: 'y2\n' }, ...extra } },
+    { write: { [`${A}/srcx/a.txt`]: 'x3\n' } },
+    { run: 'x', expect: { exit: 0, files: { [x]: 'x3\n', [y]: 'y2\n' }, ...extra } },
+    cleared,
+    { run: 'y', expect: { exit: 0, files: { [y]: 'y2\n' }, filesNot: { [x]: 'x2\n' }, ...extra } },
   ]
 }
 

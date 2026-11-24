@@ -61,6 +61,30 @@ function bothKept(x: Writer, y: Writer, wipe: string[], orRefused: boolean): Ste
     { run: 'all', expect: { exit: 0, files: files('x2\n'), ...extra } },
     { write: Object.fromEntries(wipe.map((p) => [p, null])) },
     { run: 'all', expect: { exit: 0, files: files('x2\n'), ...extra } },
+    ...(orRefused ? aloneKept(x, y, wipe, extra) : []),
+  ]
+}
+
+/**
+ * y run alone beside x's file, then replayed after `wipe` once x changed:
+ * the order of two unordered tasks is a race, so a tool that stores or
+ * clears the other's file can pass the runs above by luck; here it cannot.
+ */
+function aloneKept(x: Writer, y: Writer, wipe: string[], extra: object): Step[] {
+  const src = (w: Writer, n: 'x' | 'y', v: string): Step => ({
+    write: { [`packages/${w.project}/src${n}/a.txt`]: v },
+  })
+  const cleared: Step = { write: Object.fromEntries(wipe.map((p) => [p, null])) }
+  return [
+    src(y, 'y', 'y2\n'),
+    { run: 'y', expect: { exit: 0, files: { [x.at]: 'x2\n', [y.at]: 'y2\n' }, ...extra } },
+    src(x, 'x', 'x3\n'),
+    { run: 'x', expect: { exit: 0, files: { [x.at]: 'x3\n', [y.at]: 'y2\n' }, ...extra } },
+    cleared,
+    {
+      run: 'y',
+      expect: { exit: 0, files: { [y.at]: 'y2\n' }, filesNot: { [x.at]: 'x2\n' }, ...extra },
+    },
   ]
 }
 
