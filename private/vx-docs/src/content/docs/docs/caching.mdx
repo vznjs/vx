@@ -193,6 +193,7 @@ Pick what you did since the last build. Each line is what vx printed in a real r
 Declared outputs are a promise. When the command ends:
 
 - a plain path, like `dist/index.js`, **must exist**;
+- a path with a trailing slash, like `dist/`, must be a folder;
 - a wildcard, like `coverage/**`, may match nothing;
 - but **at least one** declared output must exist.
 

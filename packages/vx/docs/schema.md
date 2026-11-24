@@ -1796,6 +1796,8 @@ each path.
 **How a path is read.**
 
 - `dist` and `dist/` name the whole tree, as `dist/**` does.
+- `dist/` names a folder: a file named `dist` matches nothing, and the task
+  fails saying a folder was declared and a file was written.
 - `./dist/**` is `dist/**`: a leading `./` is dropped.
 - `.` alone is refused: write `**`.
 - `dist/`, `coverage/`, `.next/`: outputs ignore `.gitignore`, so

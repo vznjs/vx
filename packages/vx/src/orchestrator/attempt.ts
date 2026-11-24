@@ -19,7 +19,7 @@ import { isLocalExecutor, localExecutor } from './local-executor.js'
 import { printable, relPosix, span, taskEnvSource, UserError } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { tagged } from '../ui/index.js'
-import { missingOutputs, outputsStep } from './attempt-outputs.js'
+import { folderWrittenAsFile, missingOutputs, outputsStep } from './attempt-outputs.js'
 import { buildRequest } from './attempt-request.js'
 import { bracketLiteralHint } from './miss-save.js'
 import { declareStateHint, stateLeft } from './undeclared-state.js'
@@ -617,12 +617,27 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     left = missing.length > 0 && m.state !== undefined ? stateLeft(m.state, node.projectDir) : []
   }
   if (missing.length === 0) return undefined
+  const files = elsewhere
+    ? []
+    : [
+        ...folderWrittenAsFile(
+          node.projectDir,
+          missing.filter((g) => policy.outputs.includes(g)),
+        ),
+        ...folderWrittenAsFile(
+          args.run.workspaceRoot,
+          missing.filter((g) => policy.wsOutputs.includes(g)),
+        ),
+      ]
   const line =
     `[vx] ${node.id}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
     `but never wrote ${missing.length === 1 ? 'it' : 'them'}, so the task fails and nothing is cached: ` +
     `write ${missing.length === 1 ? 'it' : 'them'}, or fix the pattern` +
     (noWrite
       ? ` — the task is sandboxed and declares no exec.sandbox.allow.write, so its writes never reached disk`
+      : '') +
+    (files.length > 0
+      ? ` — a folder was declared, a file was written: ${[...new Set(files)].join(', ')}`
       : '') +
     (left.length > 0
       ? ` — ${left.map(printable).join(', ')} survived the clean, which the task declares neither input nor ` +

@@ -1018,14 +1018,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2140,
-        "can": 2140,
-        "of": 2210
+        "pass": 2141,
+        "can": 2141,
+        "of": 2211
       },
       "correctness": {
-        "pass": 1726,
-        "can": 1726,
-        "of": 1787
+        "pass": 1727,
+        "can": 1727,
+        "of": 1788
       },
       "efficiency": {
         "pass": 325,
@@ -1068,9 +1068,9 @@
         "of": 493
       },
       "outputs": {
-        "pass": 307,
-        "can": 307,
-        "of": 318
+        "pass": 308,
+        "can": 308,
+        "of": 319
       },
       "env": {
         "pass": 146,
@@ -1096,13 +1096,13 @@
     "turbo": {
       "all": {
         "pass": 1395,
-        "can": 1811,
-        "of": 2210
+        "can": 1812,
+        "of": 2211
       },
       "correctness": {
         "pass": 1121,
-        "can": 1464,
-        "of": 1787
+        "can": 1465,
+        "of": 1788
       },
       "efficiency": {
         "pass": 244,
@@ -1146,8 +1146,8 @@
       },
       "outputs": {
         "pass": 236,
-        "can": 305,
-        "of": 318
+        "can": 306,
+        "of": 319
       },
       "env": {
         "pass": 133,
@@ -1173,13 +1173,13 @@
     "nx": {
       "all": {
         "pass": 1393,
-        "can": 1846,
-        "of": 2210
+        "can": 1847,
+        "of": 2211
       },
       "correctness": {
         "pass": 1080,
-        "can": 1489,
-        "of": 1787
+        "can": 1490,
+        "of": 1788
       },
       "efficiency": {
         "pass": 283,
@@ -1223,8 +1223,8 @@
       },
       "outputs": {
         "pass": 225,
-        "can": 305,
-        "of": 318
+        "can": 306,
+        "of": 319
       },
       "env": {
         "pass": 135,
@@ -1250,13 +1250,13 @@
     "vite-task": {
       "all": {
         "pass": 1028,
-        "can": 1395,
-        "of": 2210
+        "can": 1396,
+        "of": 2211
       },
       "correctness": {
         "pass": 863,
-        "can": 1174,
-        "of": 1787
+        "can": 1175,
+        "of": 1788
       },
       "efficiency": {
         "pass": 156,
@@ -1300,8 +1300,8 @@
       },
       "outputs": {
         "pass": 208,
-        "can": 305,
-        "of": 318
+        "can": 306,
+        "of": 319
       },
       "env": {
         "pass": 133,
@@ -1327,13 +1327,13 @@
     "nix": {
       "all": {
         "pass": 1102,
-        "can": 1390,
-        "of": 2210
+        "can": 1391,
+        "of": 2211
       },
       "correctness": {
         "pass": 945,
-        "can": 1194,
-        "of": 1787
+        "can": 1195,
+        "of": 1788
       },
       "efficiency": {
         "pass": 147,
@@ -1377,8 +1377,8 @@
       },
       "outputs": {
         "pass": 237,
-        "can": 312,
-        "of": 318
+        "can": 313,
+        "of": 319
       },
       "env": {
         "pass": 122,
@@ -1404,13 +1404,13 @@
     "moon": {
       "all": {
         "pass": 1280,
-        "can": 1742,
-        "of": 2210
+        "can": 1743,
+        "of": 2211
       },
       "correctness": {
         "pass": 1009,
-        "can": 1423,
-        "of": 1787
+        "can": 1424,
+        "of": 1788
       },
       "efficiency": {
         "pass": 236,
@@ -1454,8 +1454,8 @@
       },
       "outputs": {
         "pass": 193,
-        "can": 308,
-        "of": 318
+        "can": 309,
+        "of": 319
       },
       "env": {
         "pass": 138,
@@ -33179,6 +33179,47 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/folder-output-written-as-file-fails",
+      "ref": "zzsp6a",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output declared as a folder (`dist/`) that the command wrote as a file fails",
+      "why": "A trailing slash says the output is a folder. A command that writes a file of that name instead did something else: a typo in the tool’s flag, or an archive where a folder was meant. Caching the file replays it to every later run, and the tasks that read `dist/` as a folder break far from the cause.",
+      "from": [
+        "missing-outputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 1,
+          "detail": "succeeded, expected a failure"
         }
       }
     },

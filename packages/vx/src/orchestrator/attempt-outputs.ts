@@ -36,6 +36,7 @@ import {
   relPosix,
   span,
   splitNegations,
+  stripTrailingSlash,
   taskGlob,
 } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
@@ -486,9 +487,12 @@ function outputMatches(
 }
 
 function matchesAny(base: string, glob: string, kept: (rel: string) => boolean): boolean {
+  // `out/` names a folder: a file of that name is no match (M 2026-11-24).
+  const folder = glob.endsWith('/')
   for (const tree of asTrees([glob])) {
     if (isLiteralPattern(tree)) {
-      if (kept(tree) && exists(path.join(base, tree))) return true
+      const abs = path.join(base, tree)
+      if (kept(tree) && (folder ? isDir(abs) : exists(abs))) return true
       continue
     }
     // A link to a directory is listed by its own name, which a glob reaching
@@ -526,6 +530,27 @@ function exists(abs: string): boolean {
   } catch {
     return false
   }
+}
+
+function isDir(abs: string): boolean {
+  try {
+    return statSync(abs, { throwIfNoEntry: false })?.isDirectory() === true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The trailing-slash outputs of `globs` (relative to `base`) that name a
+ * file, not the folder they declare: why such a glob matched nothing.
+ */
+export function folderWrittenAsFile(base: string, globs: readonly string[]): string[] {
+  return globs.flatMap((g) => {
+    if (!g.endsWith('/')) return []
+    const rel = stripTrailingSlash(normalizeGlob(g))
+    const abs = path.join(base, rel)
+    return exists(abs) && !isDir(abs) ? [rel] : []
+  })
 }
 
 function linksToDir(abs: string): boolean {

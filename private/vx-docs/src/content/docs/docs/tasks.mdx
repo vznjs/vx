@@ -285,6 +285,7 @@ Type globs and watch which files a task reads. Files of other projects never mat
 Declared outputs are a promise. When the command ends:
 
 - a plain path, like `dist/index.js`, **must exist**;
+- a path with a trailing slash, like `dist/`, must be a folder;
 - a wildcard, like `coverage/**`, may match nothing;
 - but **at least one** declared output must exist.
 

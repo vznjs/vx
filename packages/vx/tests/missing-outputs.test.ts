@@ -76,6 +76,10 @@ describe('a declared literal output that matches no files', () => {
           inputs: { files: ['src/**'] }, outputs: { files: ['void/**'] }, cache: true },
         dirsonly: { exec: { command: 'mkdir -p gen/a/b' },
           inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] }, cache: true },
+        slashfile: { exec: { command: 'echo x > out2' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['out2/'] }, cache: true },
+        slashdir: { exec: { command: 'mkdir -p out3 && echo x > out3/a' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['out3/'] }, cache: true },
         noop: { exec: { command: 'true' },
           inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true },
       } }\n`,
@@ -95,6 +99,20 @@ describe('a declared literal output that matches no files', () => {
     ])
     // Nothing was saved: the next run runs the command again and fails again.
     expect((await runTask('lost')).status).toBe('failed')
+  })
+
+  // A trailing slash names a folder: a file of that name is no match (M 2026-11-24).
+  it('fails a trailing-slash output written as a file, saying so', async () => {
+    const r = await runTask('slashfile')
+    expect(r.status).toBe('failed')
+    expect(r.lines).toEqual([
+      expect.stringContaining(
+        'app#slashfile: outputs matched no files (out2/) — the command exited 0 but never wrote it',
+      ),
+    ])
+    expect(r.lines[0]).toContain('— a folder was declared, a file was written: out2')
+    const d = await runTask('slashdir')
+    expect([d.ok, d.lines]).toEqual([true, []])
   })
 
   it('fails an uncached task too', async () => {
