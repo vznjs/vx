@@ -238,7 +238,7 @@ describe('the decoders', () => {
   it('a tree stops at a field that is not length-delimited', () => {
     const root = encodeDirectory({ files: [file], directories: [], symlinks: [] })
     const buf = new Uint8Array([0x08, 0x01, 0x0a, root.length, ...root])
-    expect(decodeTreeWithBytes(buf)).toEqual({ children: [], childDigests: [] })
+    expect(decodeTreeWithBytes(buf)).toEqual({ children: [], childDigests: [], childBytes: [] })
   })
 
   it('a child’s digest is over the bytes sent, not our re-encoding of them', () => {

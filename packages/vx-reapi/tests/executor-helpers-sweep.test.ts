@@ -12,7 +12,14 @@ import protobuf from 'protobufjs'
 import type { ExecuteRequest } from '@vzn/vx'
 import { execDigestFor } from '../src/cache.js'
 import { commandEnvironment, materialiseOutputs, reapiExecutor } from '../src/executor.js'
-import { decodeTreeWithBytes, encodeDirectory, encodeTree, sha256 } from '../src/merkle.js'
+import {
+  concat,
+  decodeTreeWithBytes,
+  encodeDirectory,
+  encodeTree,
+  lenField,
+  sha256,
+} from '../src/merkle.js'
 import { ReapiClient, type Directory } from '../src/wire.js'
 import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 import { startFakeReapi, type FakeReapi } from './helpers/fake-reapi.js'
@@ -406,6 +413,40 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     expect(recorded.map((d) => d.path)).toEqual(['pkg/mods/top'])
     const tree = decodeTreeWithBytes(fake.blobs.get(recorded[0]!.tree_digest.hash)!)
     expect(tree.children.length).toBe(6)
+  })
+
+  // A parent names its child by the digest of the WORKER's bytes. A split
+  // re-encoded each child with vx's encoder, which drops what it does not
+  // decode (a Directory's own `node_properties`, field 5): the new Tree's
+  // parent named a child it no longer carried, so the record never replayed
+  // and a graft of it was missing that subtree.
+  it("a match's Tree carries its children as the worker encoded them", async () => {
+    const plain = dir(['d'])
+    const props = lenField(5, lenField(3, new Uint8Array([8, 0xed, 0x03])))
+    const deepRaw = concat([encodeDirectory(plain), props])
+    const gen: Directory = {
+      files: [],
+      directories: [{ name: 'deep', digest: sha256(deepRaw) }],
+      symlinks: [],
+    }
+    const genRaw = encodeDirectory(gen)
+    const top: Directory = {
+      files: [],
+      directories: [{ name: 'gen', digest: sha256(genRaw) }],
+      symlinks: [],
+    }
+    const tree = concat([
+      lenField(1, encodeDirectory(top)),
+      lenField(2, genRaw),
+      lenField(2, deepRaw),
+    ])
+    executeReturning('mods', fake.put(tree))
+    await refusal(run('k-raw', ['mods/*']))
+    const recorded = recordOf('k-raw')
+    expect(recorded.map((d) => d.path)).toEqual(['pkg/mods/gen'])
+    const split = decodeTreeWithBytes(fake.blobs.get(recorded[0]!.tree_digest.hash)!)
+    expect(split.root?.directories.map((d) => d.digest.hash)).toEqual([sha256(deepRaw).hash])
+    expect(split.childDigests).toEqual([sha256(deepRaw).hash])
   })
 
   it("the matches' Trees go up in one probe and one batch, not one round trip each", async () => {

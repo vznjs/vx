@@ -41,7 +41,9 @@ import {
   digestWith,
   encodeAction,
   encodeCommand,
-  encodeTree,
+  concat,
+  encodeDirectory,
+  lenField,
   mapBounded,
   readVarintAt,
   sha256,
@@ -117,7 +119,14 @@ async function decomposeOutputDir(
   const tree = decodeTreeWithBytes(blob)
   if (tree.root === undefined) return whole
   const byDigest = new Map<string, Directory>()
-  tree.children.forEach((c, i) => byDigest.set(tree.childDigests[i]!, c))
+  // A split Tree carries the worker's bytes, never vx's re-encoding: a
+  // parent names its child by the digest of those bytes, and vx's encoder
+  // drops what it does not decode (a Directory's `node_properties`).
+  const rawOf = new Map<string, Uint8Array>()
+  tree.children.forEach((c, i) => {
+    byDigest.set(tree.childDigests[i]!, c)
+    rawOf.set(tree.childDigests[i]!, tree.childBytes[i]!)
+  })
   // Every match's Tree is written by a replay, and their sum is at most the
   // capture's own expansion. One past the free inodes is refused by the
   // download (materialiseOutputs), so splitting it first is wasted work:
@@ -141,16 +150,12 @@ async function decomposeOutputDir(
   // Every transitive child of `dir`, which is what a Tree message must carry.
   // Each once: a subtree a Tree names under many names was walked per name,
   // 2^depth from a Tree of depth+1 directories.
-  const descendants = (
-    dir: Directory,
-    acc: Directory[] = [],
-    had = new Set<string>(),
-  ): Directory[] => {
+  const descendants = (dir: Directory, acc: string[] = [], had = new Set<string>()): string[] => {
     for (const d of dir.directories) {
       const child = byDigest.get(d.digest.hash)
       if (child === undefined || had.has(d.digest.hash)) continue
       had.add(d.digest.hash)
-      acc.push(child)
+      acc.push(d.digest.hash)
       descendants(child, acc, had)
     }
     return acc
@@ -171,7 +176,10 @@ async function decomposeOutputDir(
       seen.add(prefix)
       let blob = encoded.get(hash)
       if (blob === undefined) {
-        const data = encodeTree(dir, descendants(dir))
+        const data = concat([
+          lenField(1, rawOf.get(hash) ?? encodeDirectory(dir)),
+          ...descendants(dir).map((d) => lenField(2, rawOf.get(d)!)),
+        ])
         blob = { digest: sha256(data), data }
         encoded.set(hash, blob)
       }

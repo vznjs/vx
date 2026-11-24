@@ -822,11 +822,14 @@ export function decodeTreeWithBytes(buf: Uint8Array): {
   root?: Directory
   children: Directory[]
   childDigests: string[]
+  childBytes: Uint8Array[]
 } {
-  const out: { root?: Directory; children: Directory[]; childDigests: string[] } = {
-    children: [],
-    childDigests: [],
-  }
+  const out: {
+    root?: Directory
+    children: Directory[]
+    childDigests: string[]
+    childBytes: Uint8Array[]
+  } = { children: [], childDigests: [], childBytes: [] }
   let i = 0
   while (i < buf.length) {
     const [key, k] = readVarintAt(buf, i)
@@ -841,6 +844,7 @@ export function decodeTreeWithBytes(buf: Uint8Array): {
     else if (key >>> 3 === 2) {
       out.children.push(decodeDirectory(slice))
       out.childDigests.push(sha256(slice).hash)
+      out.childBytes.push(slice)
     }
   }
   return out
