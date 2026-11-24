@@ -238,6 +238,20 @@ async function serve(
    */
   // Taken by its orchestrator in this session: only then is a silence one to join again after.
   let welcomed = false
+  // One started by hand that the run ends before taking says so, as one
+  // with no live run does: a warm run's workers exited 0 without a word.
+  const untaken = (): number => {
+    if (!welcomed && opts.id === undefined)
+      ui.print(
+        'err',
+        ui.status(
+          'warn',
+          'vx dte worker',
+          `run ${opts.run} ended before it took this worker: nothing was left for it`,
+        ),
+      )
+    return 0
+  }
   const ended = (err: RelayError): number => {
     if (err.message === ORCHESTRATOR_SILENT) {
       if (welcomed) silenced()
@@ -249,8 +263,9 @@ async function serve(
           `the orchestrator went silent: the tasks running here were stopped, and the run gives them to other workers${welcomed ? '; joining it again' : ''}`,
         ),
       )
+      return 0
     }
-    return 0
+    return untaken()
   }
 
   /** Saves the task's files (none when `bare`) and output under `key` and says so. */
@@ -734,7 +749,7 @@ async function serve(
       if (quit.signal.aborted) return quitCode()
       for (const { from, body } of messages) {
         if (from === 'relay') {
-          if ((body as { type?: string }).type === 'closed') return 0
+          if ((body as { type?: string }).type === 'closed') return untaken()
           continue
         }
         const m = body as ToWorker

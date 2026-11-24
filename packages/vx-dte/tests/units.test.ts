@@ -926,6 +926,37 @@ it('a worker stopped by a signal stops its tasks before it exits', async () => {
   }
 })
 
+// A warm run ended before it took the workers started by hand for it: each
+// exited 0 and said nothing, so the terminals read as if nothing happened.
+it('a worker started by hand that the run ends before taking says so', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, 'worker-child.ts'), served.url, R, root],
+      { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, NO_COLOR: '1' } },
+    )
+    let joined = false
+    for (let i = 0; i < 100 && !joined; i++)
+      for (const { from, body } of flat(await o.poll()))
+        if (from === 'relay' && (body as { type: string }).type === 'joined') joined = true
+    expect(joined).toBe(true)
+    await o.leave()
+    const [code, err] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect([code, err]).toEqual([
+      0,
+      expect.stringContaining(`run ${R} ended before it took this worker: nothing was left for it`),
+    ])
+  } finally {
+    await served.stop()
+  }
+})
+
 it('gives failed worker starts three more workers, then fails the run', async () => {
   const served = servedRelay()
   const url = served.url
