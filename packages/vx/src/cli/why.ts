@@ -198,9 +198,17 @@ async function resolveTarget(
       .query('SELECT 1 FROM main.runs WHERE project = ? AND task = ? ORDER BY id DESC LIMIT 1')
       .get(project, task)
     if (hit !== null) return target
-    if ((await declaresId(target)) === 'group') throw groupRefusal(target)
+    const kind = await declaresId(target)
+    if (kind === 'group') throw groupRefusal(target)
     const gone = prunedRefusal(cache, target, target)
     if (gone !== undefined) throw gone
+    // Declared and never run, while others ran: it read "no recorded runs
+    // for", the message for an id nobody declares.
+    if (kind !== false)
+      throw refusal(
+        { tone: 'info', headline: `no runs of ${target} yet`, fix: `vx run ${target}` },
+        { code: 'VX_E_NO_HISTORY', message: `vx why: no recorded runs for "${target}"` },
+      )
   } else {
     // A bare name reads only its own task's rows: the DISTINCT over every
     // pair sorted the whole history (24 of 26 ms at 58k rows), and its list

@@ -948,6 +948,13 @@ describe('vx why of a declared task that never ran', () => {
         code: 1,
         err: '› vx why  no runs of app#dev yet\n\n  fix  vx run dev\n',
       })
+      // Named whole from the root, it read "no recorded runs for", the
+      // message for an id nobody declares (cli.md says "no runs of … yet").
+      const byId = await vx(root, ['why', 'app#dev'])
+      expect({ code: byId.code, err: byId.err }).toEqual({
+        code: 1,
+        err: '› vx why  no runs of app#dev yet\n\n  fix  vx run app#dev\n',
+      })
       for (const [cwd, target, id] of [
         [app, 'all', 'app#all'],
         [root, 'app#all', 'app#all'],
