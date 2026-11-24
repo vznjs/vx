@@ -1289,6 +1289,32 @@ describe('config', () => {
     ])
   })
 
+  // A laptop whose cache policy names the remote is let write by core,
+  // and with no token uploaded nothing, unsaid: the opt-in did nothing.
+  it('says once that a run with no token uploads nothing its policy lets it write', async () => {
+    const saved = { ...Bun.env }
+    const names = ['GITHUB_ACTIONS', 'GITLAB_CI', 'ACTIONS_ID_TOKEN_REQUEST_URL', 'VX_CACHE_TOKEN']
+    for (const k of names) delete Bun.env[k]
+    const warned: string[] = []
+    const srv = server(64)
+    try {
+      const plugin = vxCache({ ...NAMED, url: srv.url })
+      const c = (await plugin.cache!({
+        refs: [MAIN],
+        warn: (m: string) => warned.push(m),
+      } as never)) as VxCacheLayer
+      expect(await c.put('ab12', new Blob(['x']), { durationMs: 1 })).toBe(false)
+      expect(await c.put('cd34', new Blob(['y']), { durationMs: 1 })).toBe(false)
+      expect(srv.seen.filter((r) => r.method === 'PUT')).toEqual([])
+    } finally {
+      for (const k of names) if (saved[k] !== undefined) Bun.env[k] = saved[k]
+      await srv.stop()
+    }
+    expect(warned).toEqual([
+      "[vx] vx-cache: the cache policy writes the remote, but this run has no CI token the server takes (VX_CACHE_TOKEN, or GitHub's OIDC token): nothing is uploaded",
+    ])
+  })
+
   // A ref whose scope is longer than the server takes (PROTOCOL.md § Keys:
   // 512 characters, percent-encoded; a 60-character Japanese branch is 555)
   // made every check a 400, so the run read nothing, main's artifacts too.

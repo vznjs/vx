@@ -735,6 +735,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private unsaid: Error | undefined
   /** A `replace` refused was said: it is said once a run. */
   private saidNoReplace = false
+  /** That the run has no token to write with was said: once a run, by `cache()` on a CI that names it. */
+  saidNoToken = false
 
   /** Throws the refusal `open`'s ask met, once. */
   private sayUnsaid(): void {
@@ -971,9 +973,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
     body: Blob,
     meta: { durationMs: number; replace?: true },
   ): Promise<void | false> {
+    if (this.disabled || this.writesRefused) return false
     // With no token a job reads only: nothing is uploaded, and none counted.
-    if (this.disabled || this.writesRefused || !hasCiToken(this.env, this.lent?.() !== undefined))
+    // Core asks a write only where its policy writes the remote (on CI, or a
+    // policy that names it), so that write is said once not to happen.
+    if (!hasCiToken(this.env, this.lent?.() !== undefined)) {
+      if (!this.saidNoToken)
+        this.warn(
+          "[vx] vx-cache: the cache policy writes the remote, but this run has no CI token the server takes (VX_CACHE_TOKEN, or GitHub's OIDC token): nothing is uploaded",
+        )
+      this.saidNoToken = true
       return false
+    }
     // The server keeps the bytes a scope holds and answers 204 unread
     // (PROTOCOL.md): a PUT reported the corrupt copy fixed, so no run (nor
     // DTE peer) learned it was not, and each one downloaded it again.
@@ -1198,10 +1209,10 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
       if (config === undefined) return undefined
       const lent = ctx.lent?.() !== undefined
       // A GitLab job with no `id_tokens` entry read only, unsaid.
-      if (
+      const tokenless =
         !hasCiToken(Bun.env, lent) &&
         (Bun.env['GITHUB_ACTIONS'] === 'true' || Bun.env['GITLAB_CI'] === 'true')
-      )
+      if (tokenless)
         ctx.warn(
           Bun.env['GITHUB_ACTIONS'] === 'true'
             ? '[vx] vx-cache: this job gets no OIDC token (give it `permissions: id-token: write`): it reads only'
@@ -1227,6 +1238,7 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
       layer.refs = refs
       layer.lent = ctx.lent
       layer.warn = ctx.warn
+      layer.saidNoToken = tokenless
       return layer
     },
   })

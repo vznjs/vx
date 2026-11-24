@@ -96,7 +96,9 @@ A CI job's requests carry its own OIDC token. The server's `ALLOW` decides wheth
 
 - Other CIs (Buildkite, CircleCI, Jenkins) have no token the server takes. Their jobs read only, as a laptop does, from a server whose `READ_ACCESS` is `public`.
 
-With no token (off CI) a run reads only and uploads nothing, from a server whose `READ_ACCESS` is `public`.
+Off CI a run reads only: core writes no remote there. With no token it reads from a server whose `READ_ACCESS` is `public`.
+
+A laptop whose cache policy names the remote (`cache.policy`, `--cache-policy`) is let write by core. It uploads only with a token the server takes, such as a CI job's `VX_CACHE_TOKEN`. With none it uploads nothing, said once a run.
 
 Any other server refuses the first read, said once, and the run stays local.
 
