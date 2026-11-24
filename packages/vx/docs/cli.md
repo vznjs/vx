@@ -6245,8 +6245,8 @@ vx last --stats test               # test, in every project
 | pass rate    | share of runs that passed                      |
 | hit rate     | share of runs served from cache                |
 | failure mode | `stable`, `flaky-recoverable` or `flaky-fatal` |
-| peak RSS     | the largest peak memory                        |
-| cpu          | the mean CPU parallelism                       |
+| peak RSS     | the largest peak memory of a passing run       |
+| cpu          | the mean CPU parallelism of passing runs       |
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -6255,6 +6255,10 @@ vx last --stats test               # test, in every project
 - p50 and p99 read one set of timings, the ones the forecast reads: the
   task's last five on the branch, else on any branch.
 - A hit counts what its producing run used.
+- Peak RSS and cpu leave out failed runs: one may stop early, so its use
+  is not what the task needs to pass.
+- A task with only failed runs shows `—` there; its run's own table shows
+  what it used.
 - Units match the run grid: `3.6MB`, cpu `127%`, `—` where unknown.
 - On a narrow terminal, columns go in this order: cpu, peak RSS, p99, hit
   rate, failure mode, runs. Task, p50 and pass rate stay.
