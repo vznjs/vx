@@ -441,6 +441,28 @@ describe('buildInputTree', () => {
     expect(top.files.map((f) => f.is_executable)).toEqual([false])
   })
 
+  // The key folds the execute bit (`100755:<oid>`, a bare oid for 644). A
+  // chmod after the key was taken shipped the new bit, and the result was
+  // recorded under the key that named the old one.
+  it('an execute bit that changed since the key was taken is moved', async () => {
+    await writeFile(path.join(root, 'now-x.sh'), 'x')
+    await writeFile(path.join(root, 'now-plain.sh'), 'x')
+    await writeFile(path.join(root, 'same.sh'), 'x')
+    await chmod(path.join(root, 'now-x.sh'), 0o755)
+    await chmod(path.join(root, 'same.sh'), 0o755)
+    const blobOid = createHash('sha1').update('blob 1\0x').digest('hex')
+    const tree = await buildInputTree({
+      workspaceRoot: root,
+      paths: ['now-x.sh', 'now-plain.sh', 'same.sh'],
+      expected: new Map([
+        ['now-x.sh', blobOid],
+        ['now-plain.sh', `100755:${blobOid}`],
+        ['same.sh', `100755:${blobOid}`],
+      ]),
+    })
+    expect(tree.moved.sort()).toEqual(['now-plain.sh', 'now-x.sh'])
+  })
+
   // An upstream's output on disk that is also a declared input (a codegen
   // file under `src/**`) is named twice; it was read and counted twice.
   it('a path named twice is read once and counted once', async () => {

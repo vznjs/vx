@@ -370,9 +370,16 @@ export async function buildInputTree(args: {
       if (args.expected?.has(rel) === true) moved.push(rel)
       continue
     }
+    // The owner-execute bit is what REAPI models; group/other add nothing a
+    // worker can act on.
+    const isExecutable = (got.mode & 0o100) !== 0
+    // The key folds that bit too (`100755:<oid>`): a chmod since it was
+    // taken ships a tree the key does not describe.
+    const want = args.expected?.get(rel)
+    const modeMoved = want !== undefined && want.startsWith('100755:') !== isExecutable
     let digest: Digest
     if (got.kind === 'big') {
-      if (!got.carries) moved.push(rel)
+      if (!got.carries || modeMoved) moved.push(rel)
       digest = got.digest
       if (!seen.has(digest.hash)) {
         seen.add(digest.hash)
@@ -380,8 +387,7 @@ export async function buildInputTree(args: {
       }
     } else {
       const data = got.data
-      const want = args.expected?.get(rel)
-      if (want !== undefined && !carriesOid(data, want)) moved.push(rel)
+      if (modeMoved || (want !== undefined && !carriesOid(data, want))) moved.push(rel)
       // Hashed from the bytes just read, never memoised by (path, size, mtime): a
       // same-size rewrite within the mtime's resolution kept the old digest while
       // `expected` checked the new bytes, and the worker ran the old blob under a
@@ -392,9 +398,6 @@ export async function buildInputTree(args: {
         blobs.push({ digest, data })
       }
     }
-    // The owner-execute bit is what REAPI models; group/other add nothing a
-    // worker can act on.
-    const isExecutable = (got.mode & 0o100) !== 0
     const place = (): void => {
       const { node, leaf } = insertAt(rel)
       node.files.set(leaf, { name: leaf, digest, is_executable: isExecutable })
