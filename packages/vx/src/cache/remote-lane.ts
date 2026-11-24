@@ -178,12 +178,15 @@ export class RemoteLane {
   }
 
   /**
-   * `answer`, or a throw once `run.pluginTimeout` passes: a remote never
-   * breaks a run, and a `get` that never settled held its task and the
-   * run forever. The throw is a miss, said as every failure is.
+   * `answer`, or a throw once `run.pluginTimeout` passes with none: a remote
+   * never breaks a run, and a `get` that never settled held its task and the
+   * run forever. It bounds the wait for an answer; the body's bytes are
+   * bounded apart, by the time between them (`endsOnStop`). The throw is a
+   * miss, said as every failure is; `'0ms'` bounds nothing.
    */
   private bounded<T>(answer: Promise<T>): Promise<T> {
     const ms = teardownTimeoutMs()
+    if (ms === 0) return answer
     let timer: ReturnType<typeof setTimeout> | undefined
     const late = new Promise<never>((_, reject) => {
       timer = setTimeout(

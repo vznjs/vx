@@ -422,27 +422,117 @@ describe('LayeredCache', () => {
     expect(await local.get('h-shape')).toBeNull()
   })
 
-  // A remote never breaks a run: a get that never settles held its task
-  // and the run forever. Bounded by `run.pluginTimeout`, then a miss said.
-  it('get() that never settles is a miss said once the plugin deadline passes', async () => {
-    const errors: Error[] = []
-    const hung = {
-      has: async () => ({}),
-      get: () => new Promise(() => {}),
-      put: async () => {},
-    } as unknown as RemoteCacheLayer
-    const prev = process.env['VX_RUN_PLUGIN_TIMEOUT']
-    process.env['VX_RUN_PLUGIN_TIMEOUT'] = '50ms'
-    try {
-      const layered = layeredOver(local, hung, { onRemoteError: (e) => errors.push(e) })
-      expect(await layered.get('h-hung', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
-    } finally {
-      if (prev === undefined) delete process.env['VX_RUN_PLUGIN_TIMEOUT']
-      else process.env['VX_RUN_PLUGIN_TIMEOUT'] = prev
+  // A remote never breaks a run, and a guard never turns an honest slow
+  // download into a miss: `run.pluginTimeout` bounds the wait for the
+  // answer, then the wait between bytes, never the whole download.
+  describe('a remote that stops answering is a miss; a slow one that streams is not', () => {
+    const withTimeout = async <T>(ms: string, work: () => Promise<T>): Promise<T> => {
+      const prev = process.env['VX_RUN_PLUGIN_TIMEOUT']
+      process.env['VX_RUN_PLUGIN_TIMEOUT'] = ms
+      try {
+        return await work()
+      } finally {
+        if (prev === undefined) delete process.env['VX_RUN_PLUGIN_TIMEOUT']
+        else process.env['VX_RUN_PLUGIN_TIMEOUT'] = prev
+      }
     }
-    expect(errors.map((e) => e.message)).toEqual([
-      'download h-hung failed: get() did not answer within 50 ms (run.pluginTimeout) — degraded to a miss',
-    ])
+    /** A layer answering `whole` after `answerMs` as a Response sending a chunk per `everyMs`, then `stall`ing if asked. */
+    const trickling = (
+      whole: Uint8Array,
+      everyMs: number,
+      stall = false,
+      answerMs = 0,
+    ): RemoteCacheLayer => ({
+      has: async () => ({}),
+      get: async () => {
+        await Bun.sleep(answerMs)
+        const chunks = Array.from({ length: 8 }, (_, i) =>
+          whole.slice((i * whole.length) / 8, ((i + 1) * whole.length) / 8),
+        )
+        let i = 0
+        return {
+          body: new Response(
+            new ReadableStream<Uint8Array>({
+              async pull(c) {
+                if (stall && i === 4) return new Promise(() => {})
+                await Bun.sleep(everyMs)
+                if (i < chunks.length) c.enqueue(chunks[i++]!)
+                else c.close()
+              },
+            }),
+          ),
+          durationMs: 42,
+        }
+      },
+      put: async () => {},
+    })
+
+    it('a get that never answers', async () => {
+      const errors: Error[] = []
+      const hung = {
+        has: async () => ({}),
+        get: () => new Promise(() => {}),
+        put: async () => {},
+      } as unknown as RemoteCacheLayer
+      const layered = layeredOver(local, hung, { onRemoteError: (e) => errors.push(e) })
+      expect(
+        await withTimeout('50ms', () =>
+          layered.get('h-hung', { taskId: 'pkg#build', command: 'tsc' }),
+        ),
+      ).toBeNull()
+      expect(errors.map((e) => e.message)).toEqual([
+        'download h-hung failed: get() did not answer within 50 ms (run.pluginTimeout) — degraded to a miss',
+      ])
+    })
+
+    it('a body that stops sending bytes, leaving nothing behind', async () => {
+      await saveSample(makeLayered(), 'h-stall')
+      const whole = remote.store.get('h-stall')!
+      await wipeLocal()
+      const errors: Error[] = []
+      const layered = layeredOver(local, trickling(whole, 5, true), {
+        onRemoteError: (e) => errors.push(e),
+      })
+      expect(
+        await withTimeout('80ms', () =>
+          layered.get('h-stall', { taskId: 'pkg#build', command: 'echo produced' }),
+        ),
+      ).toBeNull()
+      expect(errors.map((e) => e.message)).toEqual([
+        'download h-stall failed: no bytes for 80 ms (run.pluginTimeout) — degraded to a miss',
+      ])
+      expect(await local.has('h-stall')).toBeNull()
+    })
+
+    it('a download longer than the timeout that keeps streaming is a hit', async () => {
+      await saveSample(makeLayered(), 'h-slow')
+      const whole = remote.store.get('h-slow')!
+      await wipeLocal()
+      const errors: Error[] = []
+      // 8 chunks 40 ms apart: ~320 ms in all, past a 100 ms bound.
+      const layered = layeredOver(local, trickling(whole, 40), {
+        onRemoteError: (e) => errors.push(e),
+      })
+      const hit = await withTimeout('100ms', () =>
+        layered.get('h-slow', { taskId: 'pkg#build', command: 'echo produced' }),
+      )
+      expect([errors, hit?.source]).toEqual([[], 'remote'])
+    })
+
+    it("'0ms' guards nothing: never a miss of its own", async () => {
+      await saveSample(makeLayered(), 'h-zero')
+      const whole = remote.store.get('h-zero')!
+      await wipeLocal()
+      const errors: Error[] = []
+      // Answered 30 ms in: a zero bound would have missed it.
+      const layered = layeredOver(local, trickling(whole, 5, false, 30), {
+        onRemoteError: (e) => errors.push(e),
+      })
+      const hit = await withTimeout('0ms', () =>
+        layered.get('h-zero', { taskId: 'pkg#build', command: 'echo produced' }),
+      )
+      expect([errors, hit?.source]).toEqual([[], 'remote'])
+    })
   })
 
   it('get() that resolves the pre-stream bytes shape is refused, naming the new one', async () => {

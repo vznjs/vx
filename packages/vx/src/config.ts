@@ -118,8 +118,8 @@ export interface RunSettings {
    */
   killGrace?: Duration
   /**
-   * How long one plugin's end-of-run flush or teardown, or a remote cache's
-   * answer to a download, may take; `'0ms'`
+   * How long one plugin's end-of-run flush or teardown may take, and a
+   * remote download may wait for its answer or between bytes; `'0ms'`
    * waits for nothing not already done. Omitted → `'3s'`.
    */
   pluginTimeout?: Duration
