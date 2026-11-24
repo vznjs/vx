@@ -53,6 +53,7 @@ describe('detectColors', () => {
   beforeEach(() => {
     delete process.env['NO_COLOR']
     delete process.env['FORCE_COLOR']
+    delete process.env['CLICOLOR_FORCE']
     for (const v of CI_VARS) delete process.env[v]
   })
 
@@ -92,6 +93,29 @@ describe('detectColors', () => {
     delete process.env['FORCE_COLOR']
     process.env['NO_COLOR'] = '1'
     expect(detectColors(piped).enabled).toBe(false)
+  })
+
+  // `CLICOLOR_FORCE=1` (bixense.com/clicolors, read by ls, CMake, Ninja)
+  // left a piped log plain. Set and not `0`, it paints, below NO_COLOR and
+  // FORCE_COLOR.
+  it('CLICOLOR_FORCE paints a pipe unless it is 0, NO_COLOR or FORCE_COLOR=0 says off', () => {
+    const piped = { isTTY: false } as NodeJS.WriteStream
+    const decide = (v: string, env: Record<string, string> = {}): boolean => {
+      process.env['CLICOLOR_FORCE'] = v
+      for (const [k, x] of Object.entries(env)) process.env[k] = x
+      const on = detectColors(piped).enabled
+      delete process.env['NO_COLOR']
+      delete process.env['FORCE_COLOR']
+      return on
+    }
+    expect([
+      decide('1'),
+      decide('yes'),
+      decide('0'),
+      decide(''),
+      decide('1', { NO_COLOR: '1' }),
+      decide('1', { FORCE_COLOR: '0' }),
+    ]).toEqual([true, true, false, false, false, false])
   })
 
   it('falls through to stream.isTTY when neither env var is set', () => {

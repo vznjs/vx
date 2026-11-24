@@ -7183,14 +7183,15 @@ when it passed only on a retry in this run.
 
 ANSI truecolor (`ansi-16m`) sequences, gated by env:
 
-| Var                         | Effect                                                    |
-| --------------------------- | --------------------------------------------------------- |
-| `NO_COLOR=…` (non-empty)    | Force off. Overrides `FORCE_COLOR`.                       |
-| `FORCE_COLOR=0` / `=false`  | Force off, on a TTY too.                                  |
-| `FORCE_COLOR=…` (any other) | Force on — `1`, `true`, `2`, `3`, the empty string, etc.  |
-| a CI (neither of the above) | On, though the output is a pipe; beats `TERM=dumb`.       |
-| (none of these)             | On iff `stdout.isTTY` and not `TERM=dumb`.                |
-| `TERM=dumb`                 | No live region; plain unless a row above turns colour on. |
+| Var                          | Effect                                                    |
+| ---------------------------- | --------------------------------------------------------- |
+| `NO_COLOR=…` (non-empty)     | Force off. Overrides `FORCE_COLOR`.                       |
+| `FORCE_COLOR=0` / `=false`   | Force off, on a TTY too.                                  |
+| `FORCE_COLOR=…` (any other)  | Force on — `1`, `true`, `2`, `3`, the empty string, etc.  |
+| `CLICOLOR_FORCE=…` (not `0`) | Force on, below the two above.                            |
+| a CI (none of the above)     | On, though the output is a pipe; beats `TERM=dumb`.       |
+| (none of these)              | On iff `stdout.isTTY` and not `TERM=dumb`.                |
+| `TERM=dumb`                  | No live region; plain unless a row above turns colour on. |
 
 Every task gets `FORCE_COLOR=1`, so tools colour their output into vx's
 pipe. Where vx's own output is plain, it strips the colours again.
@@ -7229,16 +7230,22 @@ pipe. Where vx's own output is plain, it strips the colours again.
   to a file and wants it plain.
 - A custom `log` passed to `run()` gets task output as written, and
   always sees plain text.
-- Only a run's own output (`vx run`, `vx watch`) is painted, and the help
-  on a terminal.
+- Every verb's own output follows the table: a run, `vx watch`, `show`,
+  `info`, `why`, `last`, a `--dry` plan and `cache clean`.
 - Help colours: headings bold, `vx <verb>` and each flag or example in
   cyan. `NO_COLOR` or `FORCE_COLOR=0` turns it off.
 - See `tests/help-colors.test.ts`.
-- Every other verb prints plain text whatever `FORCE_COLOR` says: `show`,
-  `info`, `why`, `last`, a `--dry` plan, `cache clean`, and help off a
-  terminal.
-- So a script that forces colour for a run's log still parses them
+- Help is the exception: off a terminal it is plain whatever forces
+  colour, so a script that greps it still parses it
   (`tests/cli-colors-e2e.test.ts`).
+- Colour off (`NO_COLOR`, `FORCE_COLOR=0`) is colour only: on a terminal
+  the live region still redraws. `TERM=dumb` turns both off.
+- `TERM` unset counts as a terminal that can paint and redraw.
+- `FORCE_COLOR=1`, `2` and `3` all mean on: vx writes truecolor
+  whatever the level, and does not read `COLORTERM`.
+- vx writes UTF-8 whatever the locale says: `LANG=C` still gets its box
+  lines and glyphs (`─`, `▰`, `…`).
+- On CI the run prints no live region, on a terminal too.
 
 </div>
 </details>

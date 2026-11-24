@@ -583,7 +583,8 @@ Flags, forms and every rule: [the CLI reference](../../cli/environment-variables
 
 | Variable                                               | What vx does with it                                         |
 | ------------------------------------------------------ | ------------------------------------------------------------ |
-| `NO_COLOR`, `FORCE_COLOR`                              | turn vx's colours off or on                                  |
+| `NO_COLOR`, `FORCE_COLOR`, `CLICOLOR_FORCE`            | turn vx's colours off or on                                  |
+| `TERM`                                                 | `dumb`: no colour and no live region                         |
 | `CI`                                                   | a truthy value picks the CI output                           |
 | `GITHUB_ACTIONS`                                       | wraps each task's output in a collapsible group              |
 | `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI` | names the CI provider in the run's history                   |

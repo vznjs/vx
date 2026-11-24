@@ -79,6 +79,7 @@ const hues = new Map<string, string>()
  *   NO_COLOR non-empty → off (overrides FORCE_COLOR)
  *   FORCE_COLOR=0 or =false → off, even on a TTY
  *   FORCE_COLOR any other value → on (the empty string too)
+ *   CLICOLOR_FORCE set and not `0` → on (bixense.com/clicolors)
  *   any CI (`onCi`) → on: a CI log looks like the terminal
  *   else: on iff the stream is a TTY that is not `TERM=dumb`.
  * `0` and `false` are the convention's "off" (supports-color, chalk,
@@ -91,13 +92,18 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
     ? false
     : force !== undefined
       ? force !== '0' && force !== 'false'
-      : onCi() || (stream.isTTY === true && !dumbTerminal())
+      : clicolorForce() || onCi() || (stream.isTTY === true && !dumbTerminal())
   return {
     enabled,
     get columns() {
       return stream.isTTY === true ? stream.columns : undefined
     },
   }
+}
+
+function clicolorForce(): boolean {
+  const v = process.env['CLICOLOR_FORCE']
+  return v !== undefined && v !== '' && v !== '0'
 }
 
 /** A CI log gets the same colours as a terminal; one whose viewer shows raw escapes is turned off with `NO_COLOR`. */
