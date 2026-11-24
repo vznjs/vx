@@ -16,16 +16,20 @@
 // moved and a deleted project's dependants are there. `vx lock --check`
 // holds it to a fresh derivation.
 //
-// Text, two lines per project, keyed by its name, so a merge of two
-// branches touches only the projects each changed. Laid out for the parse
-// first, then for size, then merges (2026-11-23):
-//   line 1   JSON: {"version":6,"files":[file,…],"edges":true?,"extras":{…}?}
-//   then     each project in xxh3-of-name order: its name on a line, then
-//            ⇥deps⇥reach⇥digests, each list comma-separated, the digests in
-//            `files` order ("" for none), empty trailing fields dropped. The
-//            name line seldom changes, so it sits between two branches'
-//            edits to neighbouring projects and git merges both; hashed
-//            order keeps two new projects apart. A list with an element a comma or tab could break is
+// Text, keyed by each project's name, so a merge of two branches touches
+// only the projects each changed. Laid out for the parse first, then for
+// size, then merges (2026-11-23):
+//   line 1   JSON: {"version":7,"files":[file,…],"edges":true?,"extras":{…}?}
+//   then     each project in xxh3-of-name order: an empty line, its name,
+//            then deps⇥reach⇥digests, each list comma-separated, the
+//            digests in `files` order ("" for none), empty trailing fields
+//            dropped. Its fields line sits between its name line and the
+//            next empty line, which seldom change, so git merges edits to
+//            neighbouring projects and a project added or removed beside an
+//            edit (version 6 had no empty line, and an edit touched the next
+//            project's lines); the empty line costs the byte the fields
+//            line's leading tab did. Hashed order keeps two new projects
+//            apart. A list with an element a comma or tab could break is
 //            written as a JSON array; a name a tab could break, as a JSON
 //            string. A hex digest is its 8 bytes in base64url; any other
 //            digest is `=` and the string.
@@ -36,7 +40,7 @@ import type { ProjectMeta } from './workspace.js'
 import { type LoadReads, readOnce } from './load-reads.js'
 
 export const DEPENDENCIES_LOCK_NAME = '.vx/dependencies.lock'
-const DEPENDENCIES_LOCK_VERSION = 6
+const DEPENDENCIES_LOCK_VERSION = 7
 const HEX16 = /^[0-9a-f]{16}$/
 const B64 = /^[A-Za-z0-9_-]{11}$/
 const CONFLICT = /^(?:<{7}|={7}|>{7})(?: |$)/
@@ -132,7 +136,7 @@ export function dependenciesLock(
     while (digests.length > 0 && digests[digests.length - 1] === '') digests.pop()
     const fields = [list(named(m.deps)), list(named(m.reach)), list(digests)]
     while (fields.length > 0 && fields[fields.length - 1] === '') fields.pop()
-    lines.push(key(m.name), `\t${fields.join('\t')}`)
+    lines.push('', key(m.name), fields.join('\t'))
   }
   return parsed(`${lines.join('\n')}\n`)!
 }
@@ -205,8 +209,8 @@ export function parseDependenciesLock(bytes: Uint8Array | null): DependenciesLoc
 }
 
 // A committed file a merge or a bad checkout can break inside. The parse
-// checks the header, that each name is new and that a tab-led fields line
-// follows it; a line's
+// checks the header, that each project is an empty line, a new name and a
+// fields line; a line's
 // fields are checked when decoded, which refuses as "invalid, run `vx lock`"
 // rather than a raw TypeError at a lookup.
 function parsed(text: string): DependenciesLock | null {
@@ -222,16 +226,18 @@ function parsed(text: string): DependenciesLock | null {
     const names: string[] = []
     const at = new Map<string, number>()
     for (let a = nl + 1; a < text.length;) {
-      // A name line, then its fields' line, which starts with a tab.
+      // An empty line, a name line, then its fields line.
+      if (text.charCodeAt(a) !== 10) return null
+      a++
       const end = text.indexOf('\n', a)
-      if (end < 0 || text.charCodeAt(a) === 9 || text.charCodeAt(end + 1) !== 9) return null
+      if (end <= a || text.charCodeAt(a) === 9) return null
       const raw = text.slice(a, end)
       const name = raw.charCodeAt(0) === 34 ? (JSON.parse(raw) as unknown) : raw
       if (typeof name !== 'string' || name === '' || at.has(name)) return null
       // A conflict git's merge left: its marker lines would read as names.
       if (CONFLICT.test(name)) return null
       names.push(name)
-      at.set(name, end + 2)
+      at.set(name, end + 1)
       const next = text.indexOf('\n', end + 1)
       if (next < 0) return null
       a = next + 1

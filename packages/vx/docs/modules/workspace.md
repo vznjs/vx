@@ -2110,18 +2110,20 @@ GitHub, which runs no merge driver. A run takes its edges from here and
 keys from those digests, after checking them against the claimant's own
 (`orchestrator/locked-digests.ts`, below).
 
-Text (2026-11-23), two lines per project keyed by its name, in
+Text (2026-11-23), three lines per project keyed by its name, in
 xxh3-of-name order:
 
 ```
-{"version":6,"files":["bun.lock"],"edges":true,"extras":{…}}
+{"version":7,"files":["bun.lock"],"edges":true,"extras":{…}}
+
 web
-	core,ui		_ty6mHZUMhA
+core,ui		_ty6mHZUMhA
+
 core
-			_ty6mHZUMhA
+		_ty6mHZUMhA
 ```
 
-The name, then `⇥deps⇥reach⇥digests`, each list comma-separated, the
+An empty line, the name, then `deps⇥reach⇥digests`, each list comma-separated, the
 digests in `files` order, empty trailing fields dropped. A list with an
 element a comma, tab or newline could break, or that starts with `[`, is
 a JSON array; a name a tab could break, or that starts with `"` or `{`,
@@ -2129,9 +2131,13 @@ a JSON string. A sixteen-hex-digit digest is its 8 bytes in base64url,
 any other is `=` and the string. A parse finds each name at once and
 decodes a project's fields only when asked: 2,016 projects in about
 1.6 ms for all, from 104 KB (version 5, a line per project: the same
-time, 102 KB). The name line sits between two branches' edits to
-neighbouring projects, so git merges both: of 1,320 two-branch merges
-51% conflicted in version 5, 14% here. Every list is sorted, so the same
+time, 102 KB). Each fields line sits between its name line and the next empty line,
+which seldom change, so git merges edits to neighbouring projects: of
+1,320 two-branch merges 51% conflicted in version 5, 14% in version 6.
+Version 7 adds the empty line, so a project added or removed beside an
+edit merges too (version 6 conflicted there,
+`vx-lockfile/tests/dependencies-lock-merge.test.ts`); it costs the byte
+the fields line's leading tab did. Every list is sorted, so the same
 workspace writes the same bytes. A broken line (an edge to no project, a
 bad digest) refuses when read, "invalid, run `vx lock`", never a raw
 TypeError at a lookup; a name twice, a name with no fields' line, or a

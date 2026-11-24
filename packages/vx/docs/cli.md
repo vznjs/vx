@@ -3224,7 +3224,9 @@ that no longer matches the lockfile.
 - It also holds each claimed lockfile's per-project digests
   (`FingerprintClaim.digests`), with the hash of each other file they read
   (a `bun.lock` patch).
-- Layout: two lines per project, keyed by its name.
+- Layout: an empty line, a name line and a fields line per project, keyed
+  by its name, so git merges edits to different projects and a project
+  added or removed beside one.
 - A run keys each task from those digests, after checking them against
   the plugin's digests of the lockfile as it is now.
 - `cache.db` keeps the plugin's digests by the lockfile's hash: one parse
