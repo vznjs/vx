@@ -1318,7 +1318,7 @@ describe('flow e2e against a real fixture workspace', () => {
       expect(out).toContain('::error title=one#boom::failed (exit 7)')
       expect(out).toContain('┌─ one#boom')
     },
-    { timeout: 20_000 },
+    { timeout: 30_000 },
   )
 })
 

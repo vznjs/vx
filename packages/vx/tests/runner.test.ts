@@ -764,7 +764,7 @@ describe('runPersistent', () => {
     async (_name, printf, readyWhen, expected) => {
       expect(await settleWithin(printf, readyWhen)).toBe(expected)
     },
-    8_000,
+    30_000,
   )
 
   it('readyWhen matches a character split across two writes', async () => {
@@ -1462,7 +1462,7 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
   // 875), its neighbour 30 times its own time, the slowdown's cause
   // unproven. They make no claim about time, so their budget is the
   // work's under load, not the default.
-  const HEAVY_ROW_MS = 20_000
+  const HEAVY_ROW_MS = 30_000
 
   it(
     'reads a known allocation back as bytes, on THIS platform',

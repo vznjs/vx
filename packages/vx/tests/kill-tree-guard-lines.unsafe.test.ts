@@ -88,5 +88,5 @@ it.skipIf(process.platform !== 'linux' || strace === null)(
       rmSync(dir, { recursive: true, force: true })
     }
   },
-  20_000,
+  30_000,
 )

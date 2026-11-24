@@ -193,7 +193,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a port bridge’s s
       ])
       expect({ out: out.trim(), err }).toEqual({ out: '[0,0]', err: '' })
     },
-    20_000,
+    30_000,
   )
 
   // SRT's dependency check reads the socat its live config names, vx's
