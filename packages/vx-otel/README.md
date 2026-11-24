@@ -149,7 +149,7 @@ A task span links to the spans of the tasks it waited on. A group is seen throug
 
 A task span carries these events:
 
-- `vx.task.retry`, per attempt that failed and was run again, with `vx.task.attempt` and `vx.task.exit_code`;
+- `vx.task.retry`, per attempt that failed and was run again, with `vx.task.attempt` and `vx.task.exit_code`. Past 20, `vx.task.retries_dropped` says how many more;
 - `vx.task.timeout`, when vx's own timeout killed it;
 - `vx.sandbox.violation`, per sandbox violation, with its line. Past 100, `vx.sandbox.violations_dropped` says how many more.
 

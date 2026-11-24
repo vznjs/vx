@@ -170,6 +170,7 @@ const VX_ATTR = {
   storedPeakRssBytes: 'vx.cache.stored_peak_rss_bytes',
   sandboxViolation: 'vx.sandbox.violation',
   sandboxViolationsDropped: 'vx.sandbox.violations_dropped',
+  retriesDropped: 'vx.task.retries_dropped',
   stageName: 'vx.stage.name',
   wallclockStartNs: 'vx.task.wallclock_start_ns',
   wallclockEndNs: 'vx.task.wallclock_end_ns',
@@ -219,7 +220,8 @@ interface OtlpSpanLink {
  * (`vx.sandbox.violation`, its line).
  */
 export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanEvent[] {
-  const events: OtlpSpanEvent[] = (t.failedAttempts ?? []).map((a, i) => ({
+  const attempts = t.failedAttempts ?? []
+  const events: OtlpSpanEvent[] = attempts.slice(0, MAX_RETRY_EVENTS).map((a, i) => ({
     timeUnixNano: String(Math.trunc(a.endedAt) * 1_000_000),
     name: 'vx.task.retry',
     attributes: [
@@ -228,6 +230,14 @@ export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanE
       ...(a.timedOut === true ? [boolAttr(VX_ATTR.taskTimedOut, true)] : []),
     ],
   }))
+  if (attempts.length > MAX_RETRY_EVENTS) {
+    const last = attempts.at(-1)!
+    events.push({
+      timeUnixNano: String(Math.trunc(last.endedAt) * 1_000_000),
+      name: VX_ATTR.retriesDropped,
+      attributes: [intAttr(VX_ATTR.retriesDropped, attempts.length - MAX_RETRY_EVENTS)],
+    })
+  }
   if (t.timedOut === true) {
     events.push({ timeUnixNano: endUnixNano, name: 'vx.task.timeout', attributes: [] })
   }
@@ -249,8 +259,13 @@ export function taskSpanEvents(t: TaskTelemetry, endUnixNano: string): OtlpSpanE
   return events
 }
 
-/** A collector keeps 128 events per span by default; the rest say how many they were. */
+/**
+ * A collector keeps 128 events per span by default; the rest say how many
+ * they were. `retries` has no maximum, so retries get their own share:
+ * 20 + 1 dropped + 1 timeout + 100 + 1 dropped stays under it.
+ */
 const MAX_VIOLATION_EVENTS = 100
+const MAX_RETRY_EVENTS = 20
 
 /**
  * A child span of the run for one of its stages (`VX_DEBUG_TIMING`'s marks):

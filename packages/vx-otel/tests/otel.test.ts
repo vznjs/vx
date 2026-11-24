@@ -3177,6 +3177,24 @@ describe('signals link to each other', () => {
       attributes: [{ key: 'vx.sandbox.violations_dropped', value: { intValue: '3' } }],
     })
   })
+
+  it('a task span keeps within the 128 events a collector keeps, however many retries', () => {
+    // `retries` has no maximum: 150 retry events pushed the timeout, the
+    // violations and their dropped count past the limit, cut unsaid.
+    const failedAttempts = Array.from({ length: 150 }, (_, i) => ({ endedAt: i, exitCode: 1 }))
+    const lines = Array.from({ length: 103 }, (_, i) => `deny file-read /x${i}`)
+    const events = taskSpanEvents(
+      { ...FULL_TASK, failedAttempts, sandboxViolationLines: lines },
+      '7',
+    )
+    expect(events.length).toBeLessThanOrEqual(128)
+    expect(events.filter((e) => e.name === 'vx.task.retry')).toHaveLength(20)
+    expect(events.find((e) => e.name === 'vx.task.retries_dropped')?.attributes).toEqual([
+      { key: 'vx.task.retries_dropped', value: { intValue: '130' } },
+    ])
+    expect(events.some((e) => e.name === 'vx.task.timeout')).toBe(true)
+    expect(events.at(-1)?.name).toBe('vx.sandbox.violations_dropped')
+  })
 })
 
 describe('a slow collector never holds the run', () => {
