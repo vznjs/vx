@@ -165,21 +165,48 @@ it('a second statement is refused, not dropped', () => {
 
 // A query whose rows never end (a recursive CTE with no stop) held every row
 // in memory, 160 MB in 3 s, until the machine ran out: no word, no end.
-it('a query past the row cap is refused, not read to the end', () => {
-  const endless = 'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT x FROM c'
-  for (const format of ['pretty', 'json']) {
-    const r = vx('last', '--sql', endless, '--format', format)
-    expect(r.code).toBe(1)
-    expect(r.err).toContain(
-      '--sql: the query returns more than 100000 rows — add a LIMIT, or aggregate',
-    )
-    // JSON answers with its error document, and no rows.
-    expect(r.out).toEqual(format === 'json' ? expect.stringContaining('"ok":false') : '')
-  }
-  // At the cap exactly, every row prints (control).
-  const capped = vx('last', '--sql', `${endless} LIMIT 100000`, '--format', 'json')
-  expect(capped.code).toBe(0)
-  expect((JSON.parse(capped.out) as { rows: unknown[] }).rows.length).toBe(100000)
+// JSON streams each row as SQLite yields it, so it ends when its reader
+// does; the table needs every row for its widths, so it is bounded.
+const ENDLESS = 'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT x FROM c'
+
+it('--format json streams an endless query until its reader closes the pipe', () => {
+  const p = Bun.spawnSync({
+    cmd: [
+      'bash',
+      '-c',
+      '"$0" "$1" last --sql "$2" --format json 2>"$3" | head -c 100000 >/dev/null; echo "${PIPESTATUS[0]}"',
+      process.execPath,
+      BIN,
+      ENDLESS,
+      path.join(root, 'sql-err.txt'),
+    ],
+    cwd: root,
+    env: { ...process.env, NO_COLOR: '1' },
+    timeout: 25_000,
+  })
+  // Exited on its own, with its own verdict and no word: the reader left.
+  expect(p.signalCode ?? null).toBeNull()
+  expect(p.stdout.toString().trim()).toBe('0')
+  expect(readFileSync(path.join(root, 'sql-err.txt'), 'utf8')).toBe('')
+}, 30_000)
+
+it('--format json prints every row of a large result, in order', () => {
+  const r = vx('last', '--sql', `${ENDLESS} LIMIT 250000`, '--format', 'json')
+  expect([r.code, r.err]).toEqual([0, ''])
+  const rows = (JSON.parse(r.out) as { rows: Array<{ x: number }> }).rows
+  expect([rows.length, rows[0], rows.at(-1)]).toEqual([250000, { x: 1 }, { x: 250000 }])
+}, 30_000)
+
+it('the table refuses a query past its row bound, naming the bound and the stream', () => {
+  const r = vx('last', '--sql', ENDLESS)
+  expect([r.code, r.out]).toEqual([1, ''])
+  expect(r.err).toContain(
+    '--sql: the table holds at most 100000 rows, since its column widths need every row first — add a LIMIT, or use --format json, which streams',
+  )
+  // At the bound exactly, every row prints (control).
+  const at = vx('last', '--sql', `${ENDLESS} LIMIT 100000`)
+  expect(at.code).toBe(0)
+  expect(at.out.trimEnd().split('\n').length).toBe(100001)
 }, 30_000)
 
 // A query that matched nothing printed nothing and exited 0: no table, no

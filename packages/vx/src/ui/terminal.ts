@@ -46,8 +46,33 @@ function dataWrite(stream: StreamName, bytes: string): boolean {
  */
 export async function dataPieces(stream: StreamName, pieces: Iterable<string>): Promise<void> {
   const s = streamOf(stream)
-  for (const piece of pieces) {
-    if (!dataWrite(stream, piece)) await new Promise((resolve) => s.once('drain', resolve))
+  // A reader that left (EPIPE, `| head`) raises no drain: the wait ended
+  // only with the loop, and an endless source wrote on for nobody.
+  let gone = false
+  const leave = (): void => {
+    gone = true
+  }
+  s.once('error', leave)
+  s.once('close', leave)
+  try {
+    for (const piece of pieces) {
+      if (gone || s.destroyed || (s.errored ?? null) !== null) return
+      if (dataWrite(stream, piece)) continue
+      await new Promise<void>((resolve) => {
+        const done = (): void => {
+          s.off('drain', done)
+          s.off('error', done)
+          s.off('close', done)
+          resolve()
+        }
+        s.once('drain', done)
+        s.once('error', done)
+        s.once('close', done)
+      })
+    }
+  } finally {
+    s.off('error', leave)
+    s.off('close', leave)
   }
 }
 

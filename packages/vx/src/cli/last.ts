@@ -474,10 +474,33 @@ export function formatStats(stats: readonly TaskStats[]): ui.Block {
  * the statement hides (`WITH … DELETE`); it does not stop ATTACH, which
  * creates a file, hence only SELECT or WITH may lead.
  */
-/** The most rows `--sql` prints; past it the query is refused, not read on. */
-const MAX_SQL_ROWS = 100_000
+/** The most rows `--sql`'s table holds; JSON streams, with no bound. */
+const MAX_TABLE_ROWS = 100_000
 
-function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): number {
+/** `{ rows }` a piece at a time, each piece many rows: one write per row cost the stream its speed. */
+function* jsonRows(
+  first: IteratorResult<unknown>,
+  rest: Iterator<unknown>,
+  refused: (err: unknown) => never,
+): Generator<string> {
+  let piece = '{"rows":['
+  let row = first
+  for (let n = 0; row.done !== true; n++) {
+    piece += `${n === 0 ? '' : ','}${JSON.stringify(row.value)}`
+    if (piece.length >= 65_536) {
+      yield piece
+      piece = ''
+    }
+    try {
+      row = rest.next()
+    } catch (err) {
+      refused(err)
+    }
+  }
+  yield `${piece}]}\n`
+}
+
+async function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): Promise<number> {
   if (!/^\s*(select|with)\b/i.test(sql)) {
     throw new UserError(
       `vx last: --sql reads only: one SELECT (or WITH … SELECT) over the history`,
@@ -509,27 +532,7 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
       'VX_E_USAGE',
     )
   }
-  // Read by position: a join's `SELECT *` names `run_id` twice, and rows
-  // keyed by name kept one value per name.
   const columns = stmt.columnNames
-  let values: unknown[][]
-  try {
-    // Counted first, by stepping: rows that never end (a recursive CTE with
-    // no stop) were all held in memory until the machine ran out.
-    let rows = 0
-    for (const _ of stmt.iterate()) {
-      if (++rows > MAX_SQL_ROWS) {
-        throw new UserError(
-          `vx last: --sql: the query returns more than ${MAX_SQL_ROWS} rows — add a LIMIT, or aggregate`,
-          'VX_E_USAGE',
-        )
-      }
-    }
-    values = stmt.values() as unknown[][]
-  } catch (err) {
-    if (isUserError(err)) throw err
-    return refused(err)
-  }
   if (format === 'json') {
     const twice = columns.find((c, i) => columns.indexOf(c) !== i)
     if (twice !== undefined) {
@@ -538,9 +541,39 @@ function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): numbe
         'VX_E_USAGE',
       )
     }
-    const rows = values.map((v) => Object.fromEntries(columns.map((c, i) => [c, v[i]])))
-    ui.data('out', `${JSON.stringify({ rows })}\n`)
+    // Each row as SQLite yields it: a query whose rows never end (a
+    // recursive CTE with no stop) held every row in memory until the
+    // machine ran out. It now streams until its reader leaves. The first
+    // row is stepped before a byte prints, so a query SQLite refuses to
+    // run is refused whole.
+    const rows = stmt.iterate()
+    let first: IteratorResult<unknown>
+    try {
+      first = rows.next()
+    } catch (err) {
+      return refused(err)
+    }
+    await ui.dataPieces('out', jsonRows(first, rows, refused))
     return 0
+  }
+  // Read by position: a join's `SELECT *` names `run_id` twice, and rows
+  // keyed by name kept one value per name. Counted first, by stepping: the
+  // table's widths need every row, so it holds a bounded number.
+  let values: unknown[][]
+  try {
+    let rows = 0
+    for (const _ of stmt.iterate()) {
+      if (++rows > MAX_TABLE_ROWS) {
+        throw new UserError(
+          `vx last: --sql: the table holds at most ${MAX_TABLE_ROWS} rows, since its column widths need every row first — add a LIMIT, or use --format json, which streams`,
+          'VX_E_USAGE',
+        )
+      }
+    }
+    values = stmt.values() as unknown[][]
+  } catch (err) {
+    if (isUserError(err)) throw err
+    return refused(err)
   }
   if (values.length === 0) {
     // Printed nothing before: an empty table read as a query never run.
@@ -1035,7 +1068,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         { code: 'VX_E_NO_HISTORY', message: 'vx last: no recorded runs yet — run something first' },
       )
 
-    if (parsed.sql !== undefined) return printQuery(db, parsed.sql, parsed.format)
+    if (parsed.sql !== undefined) return await printQuery(db, parsed.sql, parsed.format)
 
     if (parsed.stats === true) {
       if (noRuns()) throw noRunsYet()

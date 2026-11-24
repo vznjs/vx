@@ -6401,8 +6401,12 @@ milliseconds.
 - `--sql reads only` (exit 1): a write is refused.
 - A query that selects no row prints `the query selected no rows` on
   stderr and exits 0.
-- A query past 100,000 rows is refused (exit 1) before any row prints:
-  add a `LIMIT`, or aggregate.
+- `--format json` prints each row as SQLite yields it, with no bound:
+  a query whose rows never end streams until Ctrl+C, or until its reader
+  leaves (`| head`), which ends it with exit 0.
+- The table needs every row for its column widths, so it holds at most
+  100,000. Past that it is refused (exit 1) before any row prints: add
+  a `LIMIT`, or use `--format json`.
 - The query runs with SQLite's `query_only` on, so a `WITH` that hides a
   write fails too.
 - Nothing else may lead the statement: `ATTACH` would make a file.
