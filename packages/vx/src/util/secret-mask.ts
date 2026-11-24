@@ -182,7 +182,17 @@ function urlPasswords(value: string): string[] {
   let found = urlPasswordsOf.get(value)
   if (found === undefined) {
     found = []
-    for (const m of value.matchAll(URL_PASSWORD)) if (m[1] !== undefined) found.push(m[1])
+    for (const m of value.matchAll(URL_PASSWORD)) {
+      if (m[1] === undefined) continue
+      found.push(m[1])
+      // A driver's error or config dump prints it decoded (`p@ss` for `p%40ss`).
+      try {
+        const plain = decodeURIComponent(m[1])
+        if (plain !== m[1]) found.push(plain)
+      } catch {
+        // not a valid escape: printed as written
+      }
+    }
     urlPasswordsOf.set(value, found)
   }
   return found

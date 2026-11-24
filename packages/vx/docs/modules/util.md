@@ -1617,7 +1617,8 @@ or `_DIR` and is not git's `GIT_CONFIG_KEY_<n>`, or the task names it in
 `exec.env.secret` (L-14), and its value has six characters or more. No such variable: `secretMask` is null and nothing is
 paid per byte. Any variable's value also masks a URL's password, split
 as WHATWG splits it: the userinfo ends at the last `@` before the path,
-query or fragment, so `app:p@ss@db` masks `p@ss`.
+query or fragment, so `app:p@ss@db` masks `p@ss`. An escaped password
+is masked decoded too (`p%40ss` and `p@ss`), as a driver prints it.
 
 A mask whose sources include `process.env` also masks every value
 `holdSecret` holds: what a plugin's keychain (`ctx.secret`) answered,

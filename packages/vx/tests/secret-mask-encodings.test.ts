@@ -101,6 +101,14 @@ describe('a secret in its encoded spellings', () => {
     )
   })
 
+  // A URL's password is percent-encoded in the URL (`p%40ss` for `p@ss`); a
+  // driver's error or config dump prints it decoded, and that leaked.
+  it("masks a URL's percent-encoded password as decoded too", () => {
+    const db = secretMask([{ DATABASE_URL: 'postgres://app:s3cr%40t%2Fpw@db/app' }])!
+    expect(db.mask('password: s3cr@t/pw')).toBe(`password: ${MASKED}`)
+    expect(db.mask('postgres://app:s3cr%40t%2Fpw@db/app')).toBe(`postgres://app:${MASKED}@db/app`)
+  })
+
   it('CONTROL: a value with nothing to encode is masked once, as before', () => {
     const plain = secretMask([{ API_TOKEN: 'plainsekretvalue1' }])!
     expect(plain.mask('x plainsekretvalue1 y')).toBe(`x ${MASKED} y`)
