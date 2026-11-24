@@ -932,6 +932,7 @@ vx asks `executor(ctx)` once per run. Per task, the first executor whose `accept
 | `outputs` | where they are: `disk` (default), `deferred` with `materialize()`, or `trailing` with `landed` |
 | `changed` | files the command changed where it ran, which this disk cannot see |
 | `where`, `machine` | which machine ran it, and its `cores`, `memoryBytes` and `cpuShare` |
+| `queuedMs` | how long it held the task before a machine took it (a worker's warm-up, or room on one): vx counts it as queue time, not run time |
 
 `distribution` hooks, each optional:
 
