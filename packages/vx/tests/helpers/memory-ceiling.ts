@@ -8,9 +8,10 @@
 // 3 GB took vx from 100 MB to 1.5 GB of RSS while every unit test stayed
 // green, because none measured a whole vx process.
 
+import { mkdtempSync } from 'node:fs'
 import { readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
-import { afterAll } from 'bun:test'
 import { localWorkspaceSource } from './local-workspace.js'
 import { addProject, gitInitCommit, makeWorkspace } from './workspace.js'
 
@@ -25,9 +26,22 @@ export const text = (bytes: number): string =>
   `yes 0123456789abcdefghijklmnopqrstuvwxyz | head -c ${bytes}`
 
 const roots: string[] = []
-afterAll(() => Promise.all(roots.map((r) => rm(r, { recursive: true, force: true }))))
+const live = new Set<ReturnType<typeof Bun.spawn>>()
+/**
+ * Each suite's afterEach: kills the vx a failed or timed-out test left
+ * running, then removes its directories (ENOTEMPTY retries: a timed-out
+ * body may still be writing). A hook registered here would bind to only
+ * the first file importing this module in a process.
+ */
+export async function removeScratch(): Promise<void> {
+  for (const p of live) p.kill('SIGKILL')
+  await Promise.all([...live].map((p) => p.exited))
+  live.clear()
+  const dirs = roots.splice(0)
+  await Promise.all(dirs.map((r) => rm(r, { recursive: true, force: true, maxRetries: 5 })))
+}
 
-/** A directory removed when the file ends. */
+/** A directory removed when the test ends. */
 export function scratch(dir: string): string {
   roots.push(dir)
   return dir
@@ -44,13 +58,15 @@ export async function workspace(
     files?: number
   } = {},
 ): Promise<string> {
-  const root = scratch(
-    await makeWorkspace({
-      prefix: 'vx-mem-',
-      git: false,
-      ...(opts.edges ? { edges: opts.edges } : {}),
-    }),
-  )
+  // Registered before the first await: a test that times out inside
+  // makeWorkspace never gets its path back to register.
+  const dir = scratch(mkdtempSync(path.join(os.tmpdir(), 'vx-mem-')))
+  const root = await makeWorkspace({
+    dir,
+    prefix: 'ws-',
+    git: false,
+    ...(opts.edges ? { edges: opts.edges } : {}),
+  })
   if (opts.plugins !== undefined)
     await writeFile(
       path.join(root, '.vx', 'workspace.mjs'),
@@ -113,6 +129,8 @@ export function spawnVx(root: string, args: readonly string[], consumer?: string
     stderr: 'pipe',
     env: { ...process.env, ...ENV, HOME: root, VX_TEST_MEMORY_PROBE: probe },
   })
+  live.add(proc)
+  void proc.exited.then(() => live.delete(proc))
   let out = ''
   let err = ''
   let closed = 0

@@ -6,12 +6,13 @@
 // `.unsafe`: a traced task's exit is strace's, and strace failed under
 // output floods before (output-memory.unsafe.test.ts, item 925).
 
-import { beforeAll, describe, expect, it } from 'bun:test'
+import { afterEach, beforeAll, describe, expect, it } from 'bun:test'
 import {
   floor,
   linux,
   MIB,
   peakMib,
+  removeScratch,
   run,
   spawnVx,
   task,
@@ -19,6 +20,9 @@ import {
   TIMEOUT,
   workspace,
 } from './helpers/memory-ceiling.js'
+
+// 5,000 projects' files take minutes to remove on a loaded disk.
+afterEach(removeScratch, TIMEOUT * 3)
 
 let base = 0
 beforeAll(async () => {

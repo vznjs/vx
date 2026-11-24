@@ -1151,6 +1151,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'measure-helper',
     'memo-parts',
     'memory-ceiling-cache.unsafe',
+    'memory-ceiling-cleanup',
     'memory-ceiling-output.unsafe',
     'memory-ceiling-scale.unsafe',
     'memory-ceiling-watch.unsafe',
