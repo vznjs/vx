@@ -16,6 +16,7 @@ import {
   type TaskResources,
 } from '@vzn/vx'
 import type { DteInit, DteSetup } from './init.js'
+import { repoEnv } from './local.js'
 import type { Need } from './plan/index.js'
 // Not the index: a config load never reads the planner.
 import { bookedCores } from './plan/model.js'
@@ -1304,6 +1305,7 @@ export async function changedSinceParent(workspaceRoot: string): Promise<string[
     const proc = Bun.spawn({
       cmd: ['git', 'diff', '--name-only', '-z', '--relative', '--no-renames', 'HEAD^', '--'],
       cwd: workspaceRoot,
+      env: repoEnv(workspaceRoot),
       stdout: 'pipe',
       stderr: 'ignore',
     })

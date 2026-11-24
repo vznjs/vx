@@ -47,6 +47,7 @@ import { leaves, MIN_CORES, Planner, wholeCores, type Need } from './plan/index.
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
 import { leftUnder, names, outputFiles } from './outputs.js'
+import { repoEnv } from './local.js'
 import { type Declared, LEARN_MS, type RecordedWorker, RunReport } from './report.js'
 
 interface Job {
@@ -2558,12 +2559,18 @@ function holds(tree: Tree, dir: string): boolean {
   return tree.dirs.has(dir) || tree.links.some((l) => dir === l || dir.startsWith(`${l}/`))
 }
 
-/** `tree`'s files and submodules under `root`, relative to it; undefined when git cannot list it. */
-async function listTree(root: string, tree: string): Promise<Tree | undefined> {
+/**
+ * `tree`'s files and submodules under `root`, relative to it; undefined when
+ * git cannot list it. A hook's `GIT_DIR` dropped (`repoEnv`): kept, git took
+ * `root` for the checkout's top, listed paths from the repository's, and every
+ * task keying a file of a subdirectory workspace was refused as untracked.
+ */
+export async function listTree(root: string, tree: string): Promise<Tree | undefined> {
   let p
   try {
     p = Bun.spawn(['git', 'ls-tree', '-r', '-z', tree], {
       cwd: root,
+      env: repoEnv(root),
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'ignore',
