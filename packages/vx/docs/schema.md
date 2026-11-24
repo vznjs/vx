@@ -2405,8 +2405,8 @@ export default defineProject({
   or database client: on Linux no violation names the block.
 - A failed task whose output says so gets the grant: the path the
   client names (`unixSockets: ['/var/run/docker.sock']`) or the command
-  connects to (`UNIX-CONNECT:<path>`, `unix://<path>`). With neither, it
-  says how to find the path, never `true`: that allows every socket,
+  connects to (`UNIX-CONNECT:<path>`, `unix://<path>`).
+- With neither, it says how to find the path, never `true`: that allows every socket,
   docker.sock included, which is root on the host.
 - A socket outside the project is hidden as any path is: the next run
   names its read grant.
