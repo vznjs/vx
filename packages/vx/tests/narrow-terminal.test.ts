@@ -360,14 +360,23 @@ describe('a task row at 50 columns', () => {
   it.each([40, 50])('fits %i columns, the name cut in its middle', (columns) => {
     for (const enabled of [false, true]) {
       const r = row({ enabled, columns })
-      expect(Bun.stringWidth(r)).toBeLessThanOrEqual(columns)
-      // At 40 the name has one column: only the mark.
-      expect(Bun.stripANSI(r)).toMatch(columns === 50 ? /pa.*….*ld$/ : /…$/)
+      for (const l of r.split('\n')) expect(Bun.stringWidth(l)).toBeLessThanOrEqual(columns)
+      expect(Bun.stripANSI(r)).toMatch(
+        columns === 50 ? /pa.*….*ld$/ : /\n {12}packages\/app#build$/,
+      )
     }
     expect(Bun.stripANSI(row({ enabled: true, columns: 50 }))).toBe(
       row({ enabled: false, columns: 50 }),
     )
     expect(formatListHeader({ enabled: false, columns }).length + 2).toBeLessThanOrEqual(columns)
+  })
+
+  // At 40 a row left its name one column, and printed only `…`: no row
+  // said which task it was. Under 8 columns the name goes under the row.
+  it('at 20 columns the name goes under the row, cut to fit', () => {
+    const r = Bun.stripANSI(row({ enabled: true, columns: 20 })).split('\n')
+    expect(r).toHaveLength(2)
+    expect(r[1]).toBe('            pack…ild')
   })
 
   it('CONTROL: at 60 and off a terminal the name stays whole', () => {

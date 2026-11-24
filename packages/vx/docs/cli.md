@@ -1431,6 +1431,8 @@ Each task row reads left to right: status, cache, time and more.
 - Status, cache and time always stay.
 - Narrower still (below about 60 columns), the task's name gives way in
   its middle (`pac…ld`).
+- With under 8 columns left for it, the name goes on its own line under
+  the row, at the gutter.
 - Logs off a terminal keep every column.
 - A terminal titles the rows with a `Tasks` line holding the column
   names; a pipe (an agent's shell) gets that line once, above its first row.

@@ -1139,6 +1139,16 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     expect(s.chunks.at(-1)).toBe('\r\x1b[4A\x1b[Jn1\nn2')
   })
 
+  // A narrow terminal's task row puts its name on a line under it: one
+  // region entry of two lines, which erased as one and left a row behind.
+  it('erases each line of an entry that holds a newline', () => {
+    const s = ttyW(10)
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setRegion(['row\n  name', 'l2'], { force: true })
+    w.setRegion(['n1'], { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[2A\x1b[Jn1')
+  })
+
   it('a single logical line that wraps still uses the cursor-up erase', () => {
     const s = ttyW(10)
     const w = createOutputWriter(s, { forceFloorMs: 0 })
@@ -1542,9 +1552,10 @@ describe('list headers', () => {
     expect(row(at(60))).toBe('            success no-cache   1.50s   web#build')
     for (const columns of [40, 60, 80, 100, 120]) {
       const head = over(formatListHeader(at(columns)))
-      const r = row(at(columns))
-      // At 40 the name gives way to `…`.
-      expect(head.indexOf('task')).toBe(r.lastIndexOf(' ') + 1)
+      const [r, under] = row(at(columns)).split('\n') as [string, string | undefined]
+      // At 40 the name has no room beside the row: it goes under it.
+      if (columns === 40) expect(under).toBe('            web#build')
+      else expect(head.indexOf('task')).toBe(r.lastIndexOf(' ') + 1)
       expect(head.indexOf('time') + 4).toBe(r.indexOf('1.50s') + 5)
       expect(Bun.stringWidth(r)).toBeLessThanOrEqual(columns)
     }

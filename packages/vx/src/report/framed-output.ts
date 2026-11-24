@@ -426,9 +426,14 @@ export function formatTaskRow(
   const lead = `${row}${cells.critical === true ? paint('warn', CRITICAL_MARK, colors) : ' '} `
   // With every optional column gone a 50-column terminal still left a name
   // 11 columns, and the row wrapped: there the name gives way in its middle.
+  // Under 8 columns a cut name says nothing (`…`): it goes under the row.
   if (colors.columns !== undefined && colors.columns < FULL_ROW + NAME_ROOM) {
     const room = colors.columns - Bun.stringWidth(lead)
-    if (Bun.stringWidth(paintedId) > room) return `${lead}${cutPaintedMiddle(paintedId, room)}`
+    if (Bun.stringWidth(paintedId) <= room) return `${lead}${paintedId}`
+    if (room >= NAME_MIN) return `${lead}${cutPaintedMiddle(paintedId, room)}`
+    const under = colors.columns - GUTTER
+    const name = Bun.stringWidth(paintedId) > under ? cutPaintedMiddle(paintedId, under) : paintedId
+    return `${lead.trimEnd()}\n${ROW_LEAD}${name}`
   }
   return `${lead}${paintedId}`
 }
@@ -501,6 +506,8 @@ const COL_WIDTH: Record<keyof Grid, number> = {
 }
 /** What a name gets before its row wraps: most ids fit. */
 const NAME_ROOM = 24
+/** The least a cut task name keeps beside its row (`pac…ld`). */
+const NAME_MIN = 8
 const FULL_ROW =
   GUTTER +
   STATUS_COL +

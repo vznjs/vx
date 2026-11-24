@@ -204,7 +204,10 @@ export function createOutputWriter(
     }
     let rows = rowsOf.get(line)
     if (rows === undefined) {
-      rows = Math.max(1, Math.ceil(Bun.stringWidth(line) / cols))
+      // A task row whose name went under it (a narrow terminal) is two lines.
+      rows = 0
+      for (const part of line.split('\n'))
+        rows += Math.max(1, Math.ceil(Bun.stringWidth(part) / cols))
       rowsOf.set(line, rows)
     }
     return rows
