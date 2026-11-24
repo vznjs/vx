@@ -4914,6 +4914,14 @@ not refused.
 A glob rooted in a nested workspace (`dist/` holding its own
 `.vx/workspace.*`) is not refused: it keys that workspace's files.
 
+A run refuses an `inputs.files` link into another project too, say
+`src/a -> ../../a`, when no `dependsOn` path reaches that project. The
+task fails with its key not derived.
+
+Depend on a task of that project, or take the link back (`!src/a`) and
+name its files in `inputs.workspaceFiles`. With a `dependsOn` path, the
+link keys its target string alone.
+
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_NESTED_OUTPUT`

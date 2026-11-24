@@ -508,4 +508,55 @@ describe('a link into another project keys as the link', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'with no dependsOn path to that project, the link is refused, naming it, the project and the fix',
+    async () => {
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\n')
+      await addProject(root, 'a', {
+        config: `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['a.txt'] } } } }`,
+        files: { 'a.txt': 'A1\n' },
+      })
+      const b = await addProject(root, 'b', {
+        config: `export default { tasks: { build: { exec: { command: 'cat src/a/a.txt > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
+      })
+      await mkdir(path.join(b, 'src'))
+      await symlink('../../a', path.join(b, 'src', 'a'))
+      commit('fixture')
+      const err = await all().then(
+        () => undefined,
+        (e: unknown) => e as Error & { code?: string },
+      )
+      const said_ = `${err?.message ?? ''}${said.join('')}`
+      expect(said_).toContain(
+        'b#build reads packages/b/src/a in inputs.files, a link into the project a',
+      )
+      expect(said_).toContain(
+        'Depend on a task of a, or take the link back with "!src/a" and name the files in inputs.workspaceFiles ("packages/a")',
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a link among inputs.workspaceFiles still keys what is behind it, in a project too',
+    async () => {
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\n')
+      await addProject(root, 'a', {
+        config: `export default { tasks: {} }`,
+        files: { 'a.txt': 'A1\n' },
+      })
+      const b = await addProject(root, 'b', {
+        config: `export default { tasks: { build: { exec: { command: 'cat ../../ws/a.txt > out.txt' }, inputs: { files: [], workspaceFiles: ['ws'] }, outputs: { files: ['out.txt'] }, cache: true } } }`,
+      })
+      await symlink('packages/a', path.join(root, 'ws'))
+      commit('fixture')
+      expect((await all())['b#build'], said.join('')).toBe('success')
+      expect((await all())['b#build']).toBe('cache-hit')
+      await writeFile(path.join(root, 'packages', 'a', 'a.txt'), 'A2\n')
+      expect((await all())['b#build'], said.join('')).toBe('success')
+      expect(await readFile(path.join(b, 'out.txt'), 'utf8')).toBe('A2\n')
+    },
+    TIMEOUT,
+  )
 })

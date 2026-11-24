@@ -34,9 +34,10 @@ the `history` module's (history.md), and the tables `index-db`'s
   directory (caching.md § key). `filesBehind(dir)` lists what a linked
   directory keys; `vx watch` judges a change to one by the same list.
   `behindLink(link, hashFile)` is the digest the key folds for one; the
-  inputs re-check follows each linked input again with it. It keys nothing
-  behind a link into another project, by the directories
-  `setProjectDirs(workspaceRoot, dirs)` names as a run loads its projects.
+  inputs re-check follows each linked input again with it. Given the task,
+  an `inputs.files` link into another project keys nothing behind it when
+  the task's `dependsOn` reaches that project, and is refused
+  (`VX_E_NESTED_INPUT`) when not, by what `setLinkBounds` names.
 - `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
   (`checkpointOffThread`), the index's WAL checkpoints run PASSIVE on a
   thread of their own every 100 ms, through a second connection, and the
@@ -204,11 +205,17 @@ export function filesBehind(dir: string): string[]
 export function behindLink(
   link: string,
   hashFile: (file: string) => Promise<string>,
+  taskId?: string,
 ): Promise<string>
 
-// Each project's directory, set as a run loads its projects: `behindLink`
-// follows no link into a project other than its own.
-export function setProjectDirs(workspaceRoot: string, dirs: readonly string[]): void
+// Set as a run builds its graph: each project, and each task's projectDir
+// and deps, so `behindLink` knows a link's task and the projects its
+// `dependsOn` reaches.
+export function setLinkBounds(
+  workspaceRoot: string,
+  projects: readonly { name: string; dir: string }[],
+  task: (id: string) => { projectDir: string; deps: readonly string[] } | undefined,
+): void
 
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the

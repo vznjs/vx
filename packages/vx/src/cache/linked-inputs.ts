@@ -8,15 +8,17 @@
 // task reads. `--affected` (workspace/affected.ts) and `vx watch`
 // (cli/watch.ts) read the same targets.
 //
-// Never into another project (principle 6): a link there keys its target
-// string alone, and a nested project's directory is not walked. Followed,
-// `b/src/a -> ../../a` keyed a's gitignored dist, so a's restore between b's
-// up-front key and its run re-keyed b, which was never saved. What b reads
-// of a reaches its key through `dependsOn`, as a's input key.
+// Never into another project (principle 6), from a link in the task's own
+// project. Followed, `b/src/a -> ../../a` keyed a's gitignored dist, so a's
+// restore between b's up-front key and its run re-keyed b, which was never
+// saved. With a `dependsOn` path to that project the link keys its target
+// string alone, and what b reads there reaches its key as that project's
+// input keys; with none it is refused (`VX_E_NESTED_INPUT`), as a glob into
+// another project is. A link among `inputs.workspaceFiles` has no boundary.
 
 import { readdirSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { xxh3hex } from '../util/index.js'
+import { relPosix, UserError, xxh3hex } from '../util/index.js'
 import { absentOr } from './key-fold.js'
 
 /** What a dangling link, or a loop of links, holds behind it: nothing to read. */
@@ -30,15 +32,36 @@ const NOTHING_BEHIND = ''
 const SKIPPED = ['.git', 'node_modules', '.vx/cache', '.yarn/cache']
 const skipped = (rel: string): boolean => SKIPPED.some((s) => rel === s || rel.endsWith(`/${s}`))
 
-/** Each workspace's project directories, made real (deepest first) at the first link. */
-const projectDirsOf = new Map<string, { readonly raw: readonly string[]; real?: string[] }>()
+/** A project as a link's boundary names it. */
+interface ProjectAt {
+  readonly name: string
+  readonly dir: string
+}
+
+/** What a run tells the boundary: its projects, and its tasks by id. */
+interface RunBounds {
+  readonly projects: readonly ProjectAt[]
+  readonly task: (
+    id: string,
+  ) => { readonly projectDir: string; readonly deps: readonly string[] } | undefined
+  /** Made real, deepest first, at the first link: links are rare. */
+  real?: ProjectAt[]
+  readonly reach: Map<string, ReadonlySet<string>>
+}
+
+const boundsByRoot = new Map<string, RunBounds>()
 
 /**
- * Set as a run loads its projects: the directories a link never keys into
- * but its own. Nothing is resolved until a link input asks (links are rare).
+ * Set as a run builds its graph: each project, and each task's `projectDir`
+ * and `deps`, so a link input knows its task's project and the projects its
+ * `dependsOn` reaches. Nothing is resolved until a link input asks.
  */
-export function setProjectDirs(workspaceRoot: string, dirs: readonly string[]): void {
-  projectDirsOf.set(workspaceRoot, { raw: dirs })
+export function setLinkBounds(
+  workspaceRoot: string,
+  projects: readonly ProjectAt[],
+  task: RunBounds['task'],
+): void {
+  boundsByRoot.set(workspaceRoot, { projects, task, reach: new Map() })
 }
 
 function realOr(p: string): string {
@@ -51,28 +74,77 @@ function realOr(p: string): string {
 
 const within = (dir: string, p: string): boolean => p === dir || p.startsWith(dir + path.sep)
 
-/** The project a link sits in, and every project of its workspace. */
+/** The task a link input belongs to, when the link lies in the task's own project. */
 interface LinkBounds {
-  readonly dirs: readonly string[]
-  readonly own: string | undefined
+  readonly root: string
+  readonly link: string
+  readonly taskId: string
+  readonly own: string
+  readonly run: RunBounds
+  readonly projects: readonly ProjectAt[]
 }
 
-function boundsOf(link: string): LinkBounds | undefined {
-  if (projectDirsOf.size === 0) return undefined
+function boundsOf(link: string, taskId: string | undefined): LinkBounds | undefined {
+  if (taskId === undefined || boundsByRoot.size === 0) return undefined
   const at = realOr(path.dirname(link))
-  for (const [root, entry] of projectDirsOf) {
+  for (const [root, run] of boundsByRoot) {
     if (!within(realOr(root), at)) continue
-    const dirs = (entry.real ??= entry.raw.map(realOr).sort((a, b) => b.length - a.length))
-    return { dirs, own: dirs.find((d) => within(d, at)) }
+    const node = run.task(taskId)
+    if (node === undefined) return undefined
+    const own = realOr(node.projectDir)
+    // Outside its project: an `inputs.workspaceFiles` link, which has no boundary.
+    if (!within(own, at)) return undefined
+    const projects = (run.real ??= run.projects
+      .map((p) => ({ name: p.name, dir: realOr(p.dir) }))
+      .sort((a, b) => b.dir.length - a.dir.length))
+    return { root, link, taskId, own, run, projects }
   }
   return undefined
 }
 
-/** `real` lies in a project other than the link's own. */
+/** The projects `id`'s `dependsOn` reaches, at any depth, its own aside. */
+function reachOf(run: RunBounds, id: string): ReadonlySet<string> {
+  const known = run.reach.get(id)
+  if (known !== undefined) return known
+  const out = new Set<string>()
+  const seen = new Set<string>([id])
+  const stack = [...(run.task(id)?.deps ?? [])]
+  while (stack.length > 0) {
+    const d = stack.pop()!
+    if (seen.has(d)) continue
+    seen.add(d)
+    const node = run.task(d)
+    if (node === undefined) continue
+    out.add(realOr(node.projectDir))
+    stack.push(...node.deps)
+  }
+  run.reach.set(id, out)
+  return out
+}
+
+/**
+ * Whether `real` lies in a project other than the task's own: `false` when
+ * not, `true` when a `dependsOn` path reaches that project (keyed through
+ * it), and a refusal when none does.
+ */
 function otherProject(bounds: LinkBounds | undefined, real: string): boolean {
   if (bounds === undefined) return false
-  const owner = bounds.dirs.find((d) => within(d, real))
-  return owner !== undefined && owner !== bounds.own
+  const owner = bounds.projects.find((p) => within(p.dir, real))
+  if (owner === undefined || owner.dir === bounds.own) return false
+  if (reachOf(bounds.run, bounds.taskId).has(owner.dir)) return true
+  const link = relPosix(bounds.root, bounds.link)
+  const own = relPosix(
+    bounds.own,
+    path.join(realOr(path.dirname(bounds.link)), path.basename(bounds.link)),
+  )
+  const target = relPosix(realOr(bounds.root), real)
+  throw new UserError(
+    `${bounds.taskId} reads ${link} in inputs.files, a link into the project ${owner.name} ` +
+      `(${target}): a project's inputs never reach another project's files, so an edit there ` +
+      `would replay a stale hit. Depend on a task of ${owner.name}, or take the link back ` +
+      `with "!${own}" and name the files in inputs.workspaceFiles (${JSON.stringify(target)}).`,
+    'VX_E_NESTED_INPUT',
+  )
 }
 
 /**
@@ -109,15 +181,17 @@ function walkBehind(dir: string, bounds: LinkBounds | undefined): string[] {
 /**
  * The content behind the symlink at `link`, as one string: a file's identity
  * (`hashFile` of its real path), a directory's files and theirs, or
- * `NOTHING_BEHIND` for a dangling link, a loop or a target in another project. A special file (a FIFO, a
+ * `NOTHING_BEHIND` for a dangling link, a loop or a target in a project
+ * `taskId`'s `dependsOn` reaches (`otherProject`). A special file (a FIFO, a
  * device) is named, never read: a read can block. Never memoized: an upstream
  * task may write behind the link between two keys.
  */
 export function behindLink(
   link: string,
   hashFile: (file: string) => Promise<string>,
+  taskId?: string,
 ): Promise<string> {
-  return follow(link, hashFile, new Set(), boundsOf(link))
+  return follow(link, hashFile, new Set(), boundsOf(link, taskId))
 }
 
 async function follow(

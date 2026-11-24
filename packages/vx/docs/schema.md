@@ -1420,6 +1420,7 @@ Paths start at the project folder. vx always leaves out what git ignores, its ow
 - Depend on that project's task instead, or name its files in `inputs.workspaceFiles`.
 - A pattern that reaches into it past its fixed folder is refused too: `*/d.txt`, or a root project's `packages/**/*.ts` over its members.
 - A leading `**`, a sibling folder and a `!` entry over a nested project are fine.
+- `src/a -> ../../a`, an input link into another project, is refused when a run finds it and no `dependsOn` path reaches that project. With one, the link keys its target string alone.
 
 </div>
 </details>

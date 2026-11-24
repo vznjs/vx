@@ -39,7 +39,7 @@ import {
   checkBlobSizes,
   lazyGitEnumeration,
   DEFAULT_STORE,
-  setProjectDirs,
+  setLinkBounds,
 } from '../cache/index.js'
 import { clockDir, measureFsClockLag } from '../memo/index.js'
 import {
@@ -312,6 +312,9 @@ export async function prepareRunLocked(
     const graph = await buildGraph(options, log, ws, scope, load, asked, hashCache, cache)
     if (graph === 'none-affected') return emptyRun('none-affected')
     const { nodes } = graph
+    // A link input into another project needs a dependsOn path there (linked-inputs.ts).
+    let keyedOnly: ReadonlyMap<string, TaskNode> | undefined
+    setLinkBounds(workspaceRoot, projectMetas, (id) => nodes.get(id) ?? keyedOnly?.get(id))
     const git = await enumerateGit(options, ws, store, asked, graph, hashCache, countDependents)
     const keyOnly = await applyKeyStages(
       options,
@@ -325,6 +328,7 @@ export async function prepareRunLocked(
       hashCache,
       cache,
     )
+    keyedOnly = keyOnly
     const access = pluginAccess(log, ws, store, layer, nodes)
     return {
       ...held,
@@ -641,11 +645,6 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
   // its files under its default `build`, so a parent's glob that folded or
   // cleaned them crossed a boundary.
   const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
-  // A link input never keys into another project's files (linked-inputs.ts).
-  setProjectDirs(
-    workspaceRoot,
-    projectMetas.map((m) => m.dir),
-  )
   const nestedWorkspaces = discoveryOf(projectMetas).walls ?? []
   if (nestedWorkspaces.length > 0)
     outputWalls.set(nestedDirsByProject, computeNestedProjectDirs(projectMetas, nestedWorkspaces))

@@ -449,13 +449,16 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     for a directory every file beneath it at any depth, tracked or not
     (`.git`, `node_modules`, `.vx/cache` and `.yarn/cache` aside, as Nx's walker skips them), a link
     among them followed in turn. The target may be in the project,
-    elsewhere in the workspace or outside it, but never in another
-    project: a link there keys its target string alone, and a linked
-    directory's walk skips another project's directory. What a task
-    reads of another project reaches its key through `dependsOn` (that
-    task's input key). Followed, `b/src/a -> ../../a` keyed `a`'s
-    git-ignored `dist`, so `a`'s restore re-keyed `b`, which was never
-    saved (2026-11-24). Retargeting a link
+    elsewhere in the workspace or outside it, but an `inputs.files` link
+    is never followed into another project. With a `dependsOn` path to
+    that project, the link keys its target string alone and a linked
+    directory's walk skips that project: what the task reads there
+    reaches its key as that project's input keys. With none, the run
+    refuses it (`VX_E_NESTED_INPUT`), as it refuses a glob into another
+    project. Followed, `b/src/a -> ../../a` keyed `a`'s git-ignored
+    `dist`, so `a`'s restore re-keyed `b`, which was never saved
+    (2026-11-24). An `inputs.workspaceFiles` link has no boundary and
+    is followed anywhere. Retargeting a link
     changes the key, to equal bytes too; an edit behind it changes the
     key. A dangling link, or a loop of links, keys its target string
     alone. `--affected` selects a link whose target changed (a file

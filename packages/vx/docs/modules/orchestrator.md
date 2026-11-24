@@ -1709,6 +1709,7 @@ export interface InputFact {
   since: number
   ctimeMs?: number // the ctime of the describe's stat behind the digest (none for an index OID)
   behind?: string // a link's content as the key folds it (`behindLink`)
+  task?: string // a link's task, which bounds what `behindLink` follows
 }
 export async function movedInput(
   facts: readonly InputFact[],

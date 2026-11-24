@@ -316,7 +316,7 @@ export class Cache implements CacheLayer {
       hashFile,
       (f) => this.ix.localMemo.relFor(input.workspaceRoot, f),
       (v) => digestValue(this.ix, v),
-      (link) => behindLink(link, hashFile),
+      (link) => behindLink(link, hashFile, input.taskId),
     )
   }
 
