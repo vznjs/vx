@@ -468,7 +468,7 @@ function refusedUnixSocketHint(lines: readonly string[]): SandboxViolation | und
   const at = lines.findIndex((l, i) => {
     if (!/operation not permitted/i.test(l)) return false
     const near = lines.slice(Math.max(0, i - 3), i + 1).join('\n')
-    return /socket\(1,|\bsocket\b|AF_UNIX|\bunix\b/i.test(near)
+    return /\bsocket\b|AF_UNIX|UNIX-CONNECT|dial unix/i.test(near)
   })
   if (at < 0) return undefined
   const sock = lines

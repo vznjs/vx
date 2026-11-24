@@ -71,4 +71,12 @@ describe.skipIf(!available || process.platform !== 'linux')('a refused unix sock
       'allow: { unixSockets: true }',
     )
   }, 60_000)
+
+  it('stays quiet on a refusal no socket is near (a plain failure that says unix)', async () => {
+    const refused = await outcome(
+      'echo "converting unix time"; echo "chmod: changing permissions of x: Operation not permitted" >&2; exit 1',
+      '',
+    )
+    expect(refused.lines.filter((l) => l.includes('unixSockets'))).toEqual([])
+  }, 60_000)
 })
