@@ -5994,7 +5994,7 @@ vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 <div class="vx-deeper-body">
 
 - `--log` does not combine with `--list` or `--failed`.
-- `--stats` does not combine with `--list`, `--failed` or `--log`.
+- `--stats` does not combine with `--list`, `--failed`, `--log` or a run id.
 - `--branch` combines only with `--stats`.
 
 </div>

@@ -256,6 +256,13 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
         error: `--stats does not combine with --list, --failed or --log${seeHelp('last')}`,
       }
     }
+    // A run id read as the task: "no recorded run of 0199b2c4".
+    if (out.runId !== undefined && RUN_ID_SHAPE.test(out.runId)) {
+      return {
+        ...out,
+        error: `a run id and --stats do not combine: replay ${out.runId}, or --stats [<task>]${seeHelp('last')}`,
+      }
+    }
     if (out.runId !== undefined) out.task = out.runId
     delete out.runId
     return out
