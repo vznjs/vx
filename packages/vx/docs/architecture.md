@@ -28,6 +28,8 @@ specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 | `packages/vx-history-server` | `@vzn/vx-history-server` — the task timings `vxHistory()` reads, one folded row per task (`PROTOCOL.md`, `/v1`): Bun + SQLite, Workers + D1, or Docker                           |
 | `packages/vx-cache`          | `@vzn/vx-cache` — `vxCache()` cache plugin: a remote cache for CI jobs, on a server that speaks `@vzn/vx-cache-server`'s `/v1` wire                                              |
 | `private/vx-bench`           | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
+| `private/vx-conformance`     | one neutral suite of task-runner outcomes, run sandboxed against vx, Turbo, Nx, Vite Task and Nix (private)                                                                      |
+| `private/vx-servers`         | `compose.yaml`: the dte, cache and history servers' images in one file (private)                                                                                                 |
 | `private/vx-plugin-examples` | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
 | `private/vx-dte-service`     | vznjs's own relay deploy: `@vzn/vx-dte-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                              |
 | `private/vx-cache-service`   | vznjs's own cache server deploy: `@vzn/vx-cache-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                     |
