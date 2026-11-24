@@ -39,10 +39,13 @@ Where the repo shows a remote cache, it declares `turboCache()` or `nxCache()` t
 ```ts
 // .vx/workspace.ts — a Turbo repo mid-migration, with its remote cache
 import { defineWorkspace } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
 import { turbo, turboCache } from '@vzn/vx-migrate'
 
-export default defineWorkspace({ plugins: [turboCache(), turbo()] })
+export default defineWorkspace({ plugins: [turboCache(), turbo(), bun()] })
 ```
+
+`turbo()` reads no package edges: the lockfile plugin (`bun()`, `pnpm()`, `npm()` or `yarn()` from `@vzn/vx-lockfile`) gives `^build` its order. Without it, `vx lock` refuses a `^` edge.
 
 The package exports `turbo`, `nx`, `turboCache`, `nxCache` and their options types.
 

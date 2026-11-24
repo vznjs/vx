@@ -231,12 +231,15 @@ Next: [CI](../ci/).
 
 Start from your `turbo.json` or Nx graph, a temporary step while you move to `vx.config.ts`.
 
+`turbo()` takes package edges from your lockfile's plugin, so declare it beside it. `nx()` reads them from Nx.
+
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
+import { bun } from '@vzn/vx-lockfile'
 import { turbo } from '@vzn/vx-migrate'
 
 export default defineWorkspace({
-  plugins: [turbo()],
+  plugins: [turbo(), bun()],
 })
 ```
 
