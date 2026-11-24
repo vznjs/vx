@@ -6074,25 +6074,24 @@ their count.
 </div>
 </details>
 
-**Re-run what failed.** A run with failures ends with the command that
-re-runs them:
+**Re-run what failed.** A replayed run with failures ends with a `next`
+row, the command that re-runs them:
 
 ```text
-re-run what failed: vx run @demo/web#test -- …
+  next      vx run @demo/web#test -- …
 ```
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- The line keeps the arguments the run forwarded to the tasks that got
+- The row keeps the arguments the run forwarded to the tasks that got
   them.
 - A failed dependency never got them, so it gets a line of its own
   without them.
-- `-- 'a b'`: the replayed `$ vx run …` or `$ vx watch …` line and the
-  re-run line shell-quote each argument, so both paste back as they ran.
-- `'@demo/web#it'\''s boom'`: the re-run line quotes a task id the same
-  way.
+- `-- 'a b'`: the `command` row (`vx run …` or `vx watch …`) and `next`
+  shell-quote each argument, so both paste back as they ran.
+- `'@demo/web#it'\''s boom'`: `next` quotes a task id the same way.
 
 </div>
 </details>
