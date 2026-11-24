@@ -241,7 +241,6 @@ async function restoreTree(
   const files = rows.filter((r) => !r.path.endsWith('/') && r.mode !== LINK_MODE)
   if (
     await copyTree(
-      ix,
       hash,
       treeSource(hash, tree, treeIno),
       rows,
@@ -295,7 +294,6 @@ async function restoreInline(
   if (files.length !== art.files.size) return false
   for (const r of files) if (art.files.get(r.path)?.byteLength !== r.size) return false
   return await copyTree(
-    ix,
     hash,
     inlineSource(art, workspaceRoot !== undefined),
     rows,
@@ -444,7 +442,6 @@ const keptLink = (to: Buffer, r: OutputFileRow): string | undefined =>
  * staging cannot rename as a write in place would land, the extractor takes it.
  */
 async function copyTree(
-  ix: StoreIndex,
   hash: string,
   src: CopySource,
   rows: readonly OutputFileRow[],

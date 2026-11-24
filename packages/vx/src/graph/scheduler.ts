@@ -214,7 +214,6 @@ class GraphRun {
   // its `pending` hits 0, so no tick scans the whole order.
   private readonly dependents = new Map<string, string[]>()
   private readonly pending = new Map<string, number>()
-  private readonly baseline: ReadonlyMap<string, number>
   private readonly restoreTier: ReadonlySet<string> | undefined
   // Restore-tier tasks whose execute threw `RestoreDemoted`: from then on
   // they are exec-tier tasks, gated on their deps like any other.
@@ -287,7 +286,6 @@ class GraphRun {
         : options.restoreTier !== undefined && options.restoreTier.size > 0
           ? tieredReverseDepCount(nodes, options.restoreTier)
           : (options.reverseDeps?.() ?? computeReverseDepCount(nodes))
-    this.baseline = baseline
     const priority: (id: string) => number = options.priorities
       ? mergePriorities(baseline, options.priorities)
       : (id) => baseline.get(id) ?? 0

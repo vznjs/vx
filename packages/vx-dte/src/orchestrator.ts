@@ -1111,12 +1111,6 @@ export class Orchestrator extends RunReport<Worker> {
     return o === undefined ? undefined : Math.min(a.cores / 2, o)
   }
 
-  /** Whether a task of `a`'s holds its cores: its command still runs, or has yet to. */
-  private holding(a: Worker): boolean {
-    for (const j of a.busy.values()) if (j.held !== undefined) return true
-    return false
-  }
-
   /**
    * What a task books: a measured one its need times the share of their
    * history the run's tasks used, once they used `LEARN_MS` of it, and
@@ -1177,23 +1171,6 @@ export class Orchestrator extends RunReport<Worker> {
       a.other = was === undefined ? o : was + (o - was) * OTHER_WEIGHT
     }
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
-  }
-
-  /** Whether a worker of `platform` bigger than `above` is starting: a task that filled that size waits for it. */
-  private bigger(
-    above: { readonly cores: number; readonly memory: number },
-    platform: string | undefined,
-  ): boolean {
-    const joined = this.joinedLabels()
-    for (const [id, { declared }] of this.spawnedAt)
-      if (
-        this.starting(id, joined) &&
-        (platform === undefined || placeOf(declared) === platform) &&
-        ((this.sizeHas.get(declared.size)?.cores ?? declared.cpu) > above.cores ||
-          (this.sizeHas.get(declared.size)?.memory ?? declared.memory) > above.memory)
-      )
-        return true
-    return false
   }
 
   /**

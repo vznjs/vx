@@ -522,7 +522,6 @@ export class ReapiClient {
   private digestFunction: DigestFunctionName = 'SHA256'
   private compression = false
   private batchCompression = false
-  private negotiated: ServerCapabilities | undefined
   private readonly toolName: string
   private readonly toolVersion: string
   private readonly correlatedInvocationsId: string
@@ -794,7 +793,6 @@ export class ReapiClient {
       caps.supportedCompressors.includes('ZSTD') &&
       typeof Bun.zstdCompressSync === 'function'
     this.batchCompression = this.compression && caps.supportedBatchCompressors.includes('ZSTD')
-    this.negotiated = caps
   }
 
   /** The negotiated digest function; SHA256 until `negotiate()` says otherwise. */

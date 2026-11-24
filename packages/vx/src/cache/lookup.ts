@@ -130,7 +130,7 @@ async function adopt(ix: StoreIndex, hash: string, ctx: CacheGetContext): Promis
   const blob = ix.rowless.delete(hash)
     ? (ix.selectBlob.get(hash) as { bytes: Uint8Array } | null)
     : null
-  if (blob !== null) return adopted(ix, writeArtifactAndIndex(ix, hash, blob.bytes, meta()))
+  if (blob !== null) return adopted(writeArtifactAndIndex(ix, hash, blob.bytes, meta()))
   const finalPath = tarPath(ix, hash)
   if (!artifactFileMayExist(ix, hash)) return false
   const tmpPath = tempPath(ix, hash)
@@ -146,7 +146,7 @@ async function adopt(ix: StoreIndex, hash: string, ctx: CacheGetContext): Promis
   } catch {
     return false
   }
-  return adopted(ix, writeArtifactAndIndex(ix, hash, { tmpPath }, meta()))
+  return adopted(writeArtifactAndIndex(ix, hash, { tmpPath }, meta()))
 }
 
 /**
@@ -168,7 +168,7 @@ function artifactFileMayExist(ix: StoreIndex, hash: string): boolean {
 }
 
 /** An adoption's verdict: an artifact that fails the checks is a miss. */
-async function adopted(ix: StoreIndex, indexing: Promise<unknown>): Promise<boolean> {
+async function adopted(indexing: Promise<unknown>): Promise<boolean> {
   try {
     await indexing
     return true

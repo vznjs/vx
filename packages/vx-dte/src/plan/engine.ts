@@ -345,7 +345,7 @@ export class Engine {
   private readonly avail: Float64Array
 
   constructor(
-    private readonly g: EngineGraph,
+    g: EngineGraph,
     private readonly sizes: readonly EngineSize[],
     opts: EngineOptions = {},
   ) {

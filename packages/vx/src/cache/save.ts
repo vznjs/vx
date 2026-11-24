@@ -481,7 +481,7 @@ function unreadableOutput(err: unknown, args: PackArgs): unknown {
  * and called the task's own outputs corrupt.
  */
 async function planWithin(ix: StoreIndex, args: PackArgs): Promise<ArtifactPlan> {
-  const plan = await planOutputs(ix, args)
+  const plan = await planOutputs(args)
   if (plan.size > ix.artifactCeiling) {
     const [packed, ceiling] = sizesPast(plan.size, ix.artifactCeiling)
     throw new Error(
@@ -492,7 +492,7 @@ async function planWithin(ix: StoreIndex, args: PackArgs): Promise<ArtifactPlan>
   return plan
 }
 
-export function planOutputs(ix: StoreIndex, args: PackArgs): Promise<ArtifactPlan> {
+export function planOutputs(args: PackArgs): Promise<ArtifactPlan> {
   return planArtifact({
     key: args.hash,
     stdout: args.entry.stdout ?? '',
@@ -557,7 +557,7 @@ async function packForSave(
   // No ceiling: a tree is this machine's own files, never decoded. The
   // ceiling bounds what a remote makes a hit write, so an upload meets it
   // (`pinArtifact`); a 2.1 GB Next.js standalone build was never cached.
-  const plan = await planOutputs(ix, args)
+  const plan = await planOutputs(args)
   if (ix.store.embeddings > 0 && plan.size <= ix.store.embeddings) {
     const tar = await packArtifactBytes(plan)
     return { compressed: await zstdCompress(tar), tar }

@@ -199,7 +199,6 @@ export function createRelay(opts: RelayOptions): Relay {
    * resend them, so they wait for the next socket.
    */
   const deliver = (
-    session: Session,
     p: Participant,
     m: Message,
     notice = false,
@@ -233,7 +232,7 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 
   /** `socket` reaches the participant: what queued for it goes down it. */
-  const plug = (session: Session, p: Participant, socket: RelaySocket): void => {
+  const plug = (p: Participant, socket: RelaySocket): void => {
     p.socket = socket
     delete p.droppedAt
     if (p.hello !== undefined) {
@@ -278,7 +277,7 @@ export function createRelay(opts: RelayOptions): Relay {
         if (p.socket !== undefined) closeSocket(p.socket)
         continue
       }
-      deliver(session, p, { from: 'relay', body: { type: 'closed' } }, true)
+      deliver(p, { from: 'relay', body: { type: 'closed' } }, true)
       drop(session, p, false)
     }
     // A session is live while its host is, and only a live one is kept: a peer
@@ -310,7 +309,7 @@ export function createRelay(opts: RelayOptions): Relay {
       return
     }
     if (tell && session.host !== undefined && !session.closed) {
-      deliver(session, session.host, { from: 'relay', body: { type: 'left', id: p.id } }, true)
+      deliver(session.host, { from: 'relay', body: { type: 'left', id: p.id } }, true)
     }
   }
 
@@ -429,8 +428,8 @@ export function createRelay(opts: RelayOptions): Relay {
       session.host = p
       session.cert = body.key as string
       for (const a of session.byId.values())
-        if (a.role === 'peer') deliver(session, p, joined(a), true)
-    } else if (session.host !== undefined) deliver(session, session.host, joined(p), true)
+        if (a.role === 'peer') deliver(p, joined(a), true)
+    } else if (session.host !== undefined) deliver(session.host, joined(p), true)
     return p
   }
 
@@ -457,7 +456,7 @@ export function createRelay(opts: RelayOptions): Relay {
     } catch {
       throw new HttpError(400, 'body nests too deep to pass')
     }
-    deliver(session, to, m, false, text)
+    deliver(to, m, false, text)
   }
 
   const live = (key: string): Session => {
@@ -605,7 +604,7 @@ export function createRelay(opts: RelayOptions): Relay {
       // Plugged first: Bun runs the earlier socket's close handler inside
       // its close(), and that detach lost the participant (a redial on
       // the Bun relay ended its peer).
-      plug(session, p, socket)
+      plug(p, socket)
       if (earlier !== undefined && earlier !== socket) {
         try {
           closeSocket(earlier)
@@ -668,7 +667,7 @@ export function createRelay(opts: RelayOptions): Relay {
         // let go or never restored as its own left it deaf while its pings were
         // answered, and 13baaf6's host heard nothing for 8 min. Not closing the
         // other: a host may hand the same socket as another object.
-        if (socket !== undefined && p.socket !== socket) plug(session, p, socket)
+        if (socket !== undefined && p.socket !== socket) plug(p, socket)
         if (body.leave === true) drop(session, p)
         else if (body.remove !== undefined) removePeer(session, p, body.remove)
         else if (Array.isArray(body.sends)) {
