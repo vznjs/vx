@@ -84,7 +84,7 @@ A CI job's requests carry its own OIDC token. The server's `ALLOW` decides wheth
 
 - On GitHub Actions the job's token is asked for the server's origin, and asked again before it ends.
 
-  After a 5xx, a 429 or no answer from GitHub it is asked again, three tries in all, before the remote turns off.
+  After a 5xx, a 429 or no answer from GitHub it is asked again, `retries` + 1 tries in all (3 by default), before the remote turns off.
 
   The job needs `permissions: id-token: write`, which sets `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`.
 
@@ -110,7 +110,7 @@ A job started from another workflow would carry a token that writes nowhere the 
 
 A job uses a lent token over its own. It never lends one on, nor any once its remote is off for the run.
 
-An upload answered with a 5xx or a 429, or whose connection reset, is sent again, three tries in all. A PUT names its hash, so a second one stores the same bytes.
+An upload answered with a 5xx or a 429, or whose connection reset, is sent again, `retries` + 1 tries in all (3 by default). A PUT names its hash, so a second one stores the same bytes.
 
 A download is asked again the same way, so one reset connection is no miss. In a distributed run a read that fails fails the run.
 

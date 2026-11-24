@@ -83,7 +83,7 @@ A CI job sends its own token:
 - GitHub's OIDC token needs `permissions: id-token: write`, which sets `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`.
 - On GitLab, name an `id_tokens` entry `VX_HISTORY_TOKEN` with the server's origin as `aud`.
 
-A 5xx or 429 from GitHub's endpoint is asked again up to three times. So is a 429, 502, 503 or 504 from the server.
+A 5xx or 429 from GitHub's endpoint is asked again up to `retries` times (2 by default). So is a 429, 502, 503 or 504 from the server; a 500 is not, since the server may have counted the upload.
 
 A CI job with no token says so once. On GitHub Actions (`GITHUB_ACTIONS`) it names the permission.
 
@@ -139,7 +139,7 @@ A longer one, such as a server's endless stream, is refused as `answered over N 
 
 `timeoutMs` (default 10 000, whole ms from 1 to 2³¹−1) bounds each request to the server.
 
-`retries` (default 2, 0 to 10) is how many times a request is asked again, 1 s, 2 s, … apart. That covers one answered 5xx or 429, and GitHub's OIDC endpoint.
+`retries` (default 2, 0 to 10) is how many times a request is asked again, 1 s, 2 s, … apart. That covers a 429, 502, 503 or 504 from the server, and a 5xx or 429 from GitHub's OIDC endpoint.
 
 `headers` are sent on every request to the server, for a proxy in front of it. For example, a Cloudflare Access service token:
 
