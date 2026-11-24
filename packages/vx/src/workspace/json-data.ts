@@ -49,7 +49,27 @@ export function nonJsonPaths(value: unknown): NonJsonValue[] {
             : `.${k}`
     out.push({ path: path === '' ? 'the default export' : path, is })
   }
+  // A proxy's trap may throw at any read the walk makes (its prototype, its
+  // keys, a descriptor): that was vx's own stack and "bug in vx". The walk
+  // drops what it pushed below the node and names the node.
   const walk = (v: unknown, inArray: boolean): void => {
+    const depth = keys.length
+    const held = ancestors.length
+    try {
+      visit(v, inArray)
+    } catch (err) {
+      keys.length = depth
+      ancestors.length = held
+      let why = 'a throw'
+      try {
+        why = err instanceof Error ? err.message : String(err)
+      } catch {
+        // A thrown value whose own conversion throws: named generically.
+      }
+      found(`an object that threw when read (${why})`)
+    }
+  }
+  const visit = (v: unknown, inArray: boolean): void => {
     if (typeof v === 'function') found('a function')
     else if (typeof v === 'symbol') found('a symbol')
     else if (typeof v === 'bigint') found('a bigint')
