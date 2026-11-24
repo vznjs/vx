@@ -202,7 +202,9 @@ vx run build --all   # on the machine that starts the run
 vx dte worker        # on each worker, with the same two variables
 ```
 
-`VX_DTE_RUN` must be a random UUID, so no one can guess the run. A worker started before its run says the relay has no live run. A run with no worker yet says it is waiting for one to join, and shows no time left until one does.
+`VX_DTE_RUN` must be a random UUID, so no one can guess the run.
+
+A worker started before its run says the relay has no live run. A run with no worker yet says it is waiting for one to join, and shows no time left until one does.
 
 <Takeaway>run only what changed, on the OS and size each task needs, on any CI.</Takeaway>
 
