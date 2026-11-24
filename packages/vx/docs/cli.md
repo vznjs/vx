@@ -5244,7 +5244,8 @@ It counts tasks from the lock, as a run does, and evaluates no config.
   `defaultBuilds`.
 - No lock: `projects` reads `—` and `projects lock` reads `no`.
 - A lock a run would refuse: `projects` reads `—` and `projects lock`
-  reads `refused:` and why. JSON: `lockError`, the counts zero.
+  reads `refused:` and why. JSON: `lockError`, `tasks` and `defaultBuilds`
+  zero, `projects` the lock's count.
 - A broken config is `vx lock`'s to report, not `vx info`'s.
 - A `.vx/workspace` that does not load (a syntax error, a plugin hook
   that threw): the report still prints, with a `workspace config` row
@@ -5525,6 +5526,7 @@ no second source.
 | ---- | --------------------------------------------------- |
 | `0`  | the facts printed, with no lock included            |
 | `1`  | no workspace here or above, or a parse error        |
+| `1`  | a `--cache-dir` that is no directory                |
 | `1`  | the facts printed, and `.vx/workspace` did not load |
 
 ## `vx why`
