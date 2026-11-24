@@ -503,6 +503,8 @@ waits on `dev`. It stops the server when the rest of the run ends.
   A task with no `exec`. It runs nothing itself, only what it depends on.
 </Concept>
 
+In a project with `lint`, `build` and `test` tasks:
+
 ```ts title="packages/web/vx.config.ts"
 ci: { dependsOn: ['lint', 'build', 'test'] },
 ```

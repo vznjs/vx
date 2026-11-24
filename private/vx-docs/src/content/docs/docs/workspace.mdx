@@ -61,14 +61,14 @@ Coming from the [Quickstart](../../quickstart/)? Turn its one app into the two p
 
    ```sh
    bun create vite packages/ui --template vanilla
-   echo 'export const greet = (name) => `Hello, ${name}`' > packages/ui/src/index.js
+   echo 'export const greet = (name) => `Hello, ${name}`' > packages/ui/src/index.ts
    ```
 
    ```ts title="packages/ui/vite.config.ts"
    import { defineConfig } from 'vite'
 
    export default defineConfig({
-     build: { lib: { entry: 'src/index.js', formats: ['es'], fileName: 'index' } },
+     build: { lib: { entry: 'src/index.ts', formats: ['es'], fileName: 'index' } },
    })
    ```
 
