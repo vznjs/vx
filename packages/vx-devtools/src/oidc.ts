@@ -426,11 +426,12 @@ export function oidcClaims(opts: {
       try {
         return await set(header, token)
       } catch (err) {
-        if (
-          !(err instanceof errors.JWKSNoMatchingKey) ||
-          (!entry.cached && Date.now() - entry.at < KEYS_COOLDOWN_MS)
-        )
-          throw err
+        if (!(err instanceof errors.JWKSNoMatchingKey)) throw err
+        // Another request read them again since: share that read, so a flood
+        // of unknown kids reads the issuer once, not once a request.
+        const now = keys.get(iss)
+        if (now !== undefined && now !== entry) return (await usable(iss, now.set))(header, token)
+        if (!entry.cached && Date.now() - entry.at < KEYS_COOLDOWN_MS) throw err
         return (await usable(iss, reading(iss, raw).set))(header, token)
       }
     }
