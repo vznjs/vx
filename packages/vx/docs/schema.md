@@ -110,6 +110,10 @@ refused. `vx lock` evaluates it once, from the workspace root.
 
 - `satisfies ProjectConfig` does not check `dependsOn` names against the
   task keys. `defineProject` does.
+- Only `vx lock` and `vx lock --check` evaluate a config. A file it
+  writes is written then; a run or `vx show` reads the lock.
+- A default export that is a Promise is awaited, as top-level await is.
+  A function is refused: export what it returns.
 - `import type`: Bun erases it, so the file loads in a workspace that runs
   the `vx` binary without the package installed.
 - Either form is fine: vx reads the object.
