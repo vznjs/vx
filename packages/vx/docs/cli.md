@@ -7148,10 +7148,14 @@ pipe. Where vx's own output is plain, it strips the colours again.
 - The cache stores the coloured bytes.
 - Plain vx output: a pipe off CI, `NO_COLOR`, `FORCE_COLOR=0`. Escapes
   are stripped from task output then, live and replayed alike.
+- Coloured vx output (a terminal, CI, `FORCE_COLOR`): a task keeps only
+  its colours, OSC 8 links and redraws of its own line.
+- Its cursor moves, screen erases, modes, titles and clipboard writes are
+  dropped: they never rewrite vx's lines or outlive the run.
 - An escape cut across two chunks is stripped too.
 - `\e]0;title` with no terminator: an unterminated string escape ends at
   its line, so it never swallows the lines after it.
-- Pinned by `tests/plain-output.test.ts` and
+- Pinned by `tests/plain-output.test.ts`, `tests/terminal-output.test.ts` and
   `tests/cli-colors-e2e.test.ts`.
 - `env: { define: { FORCE_COLOR: '0' } }`: a task that writes its output
   to a file and wants it plain.

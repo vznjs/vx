@@ -132,6 +132,7 @@ import {
   type Measure,
   neverStarted,
   plainOutput,
+  terminalOutput,
   resolveOutputView,
   type RunEvent,
   terminalSubscriber,
@@ -390,9 +391,12 @@ export async function runCore(options: CoreRunOptions): Promise<RunSummary> {
   // run and taken off on every way out, or it reported the next run twice.
   const bus = options.bus ?? createEventBus()
   // Tasks run with colour forced (exec/env.ts); where the terminal prints
-  // plain, their escapes are stripped. A custom logger gets the task's
-  // bytes as written, as the cache holds them: it formats its own output.
-  const render = terminalSubscriber(terminal === null || colors.enabled ? sink : plainOutput(sink))
+  // plain, their escapes are stripped, and where it is coloured only their
+  // colours and links are kept. A custom logger gets the task's bytes as
+  // written, as the cache holds them: it formats its own output.
+  const render = terminalSubscriber(
+    terminal === null ? sink : colors.enabled ? terminalOutput(sink) : plainOutput(sink),
+  )
   let unsubscribeTerminal = bus.subscribe(render)
   // What the run warned of, no task's: the footer repeats it (`warn`).
   const warned: string[] = []

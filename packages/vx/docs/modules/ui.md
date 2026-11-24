@@ -99,10 +99,15 @@ createOutputWriter(stream, opts: OutputWriterOptions): OutputWriter  // with a R
 // report/plain-output.ts: `sink` with terminal escapes stripped from task
 // output, for a pipe, CI or `NO_COLOR` (tasks run with `FORCE_COLOR`).
 export function plainOutput(sink: Logger): Logger
+// `sink` with task output cut to its colours and OSC 8 links, where vx's own
+// output is coloured: no cursor move, erase, mode or title reaches vx's lines.
+export function terminalOutput(sink: Logger): Logger
 
 // util/plain-text.ts: Bun.stripANSI, but an unterminated OSC, DCS, SOS, PM
 // or APC ends at its line, not the input's end (plain output, kept logs).
 export function stripEscapes(text: string): string
+// `text` with only SGR colours, OSC 8 links and line redraws left (terminalOutput).
+export function keepStyleEscapes(text: string): string
 
 // links.ts: file links in failed output
 // path-links.ts: the path pattern both share

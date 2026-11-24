@@ -118,19 +118,19 @@ here, itself or in a brace group.
 
 ## Report
 
-| File                                                                             | Topic                                                                                                               |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| [`report.md`](./report.md#srcreportloggerts--pluggable-logging-surface)          | `src/report/{logger,forecast}.ts` — default logger (flow-aware policy, frames, replay), live ETA and critical path. |
-| [`report.md`](./report.md#reportstatus-linets--dynamic-worker-region)            | `src/report/status-line.ts` — serialized writer + dynamic bottom status line.                                       |
-| [`report.md`](./report.md#srcreportframed-outputts--turbo-style-framed-blocks)   | `src/report/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                           |
-| [`ui.md`](./ui.md#srcui--the-ui-kit)                                             | `src/report/plain-output.ts` — task output stripped of ANSI where no terminal reads it (see ui.md) .                |
-|                                                                                  | `src/util/plain-text.ts` — `stripEscapes`: escapes stripped, an unterminated string escape ending at its line.      |
-| [`util.md`](./util.md#srcexecrunnerts--child-process-invocation--rusage-capture) | `src/util/raw-utf8.ts` — task output decoded with each non-UTF-8 byte kept, and written back as that byte.          |
-|                                                                                  | `src/util/json-position.ts` — `jsonErrorAt`: the `line:column` where a refused package.json stops parsing.          |
-| [`report.md`](./report.md#srcreportsummaryts--end-of-run-summary-lines)          | `src/report/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                |
-| [`report.md`](./report.md#srcreporttallyts--outcome-tally)                       | `src/report/tally.ts` — outcome tally for the end-of-run footer.                                                    |
-| [`report.md`](./report.md#srcreporteventsts--run-event-bus--wire-contract)       | `src/report/events.ts` — run event bus + serializable `WireEvent` contract.                                         |
-| [`report.md`](./report.md#srcreportmigrationts--a-migrations-report)             | `src/report/migration.ts` — `applyMigration`: a migration written by `workspace`, then drawn.                       |
+| File                                                                             | Topic                                                                                                                                        |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`report.md`](./report.md#srcreportloggerts--pluggable-logging-surface)          | `src/report/{logger,forecast}.ts` — default logger (flow-aware policy, frames, replay), live ETA and critical path.                          |
+| [`report.md`](./report.md#reportstatus-linets--dynamic-worker-region)            | `src/report/status-line.ts` — serialized writer + dynamic bottom status line.                                                                |
+| [`report.md`](./report.md#srcreportframed-outputts--turbo-style-framed-blocks)   | `src/report/framed-output.ts` — `┌─ task ─┐` border helpers + one-liners.                                                                    |
+| [`ui.md`](./ui.md#srcui--the-ui-kit)                                             | `src/report/plain-output.ts` — task output stripped of ANSI where no terminal reads it, cut to colours and links where one does (see ui.md). |
+|                                                                                  | `src/util/plain-text.ts` — `stripEscapes`: escapes stripped, an unterminated string escape ending at its line.                               |
+| [`util.md`](./util.md#srcexecrunnerts--child-process-invocation--rusage-capture) | `src/util/raw-utf8.ts` — task output decoded with each non-UTF-8 byte kept, and written back as that byte.                                   |
+|                                                                                  | `src/util/json-position.ts` — `jsonErrorAt`: the `line:column` where a refused package.json stops parsing.                                   |
+| [`report.md`](./report.md#srcreportsummaryts--end-of-run-summary-lines)          | `src/report/summary.ts` — the footer: `projects` / `tasks` / `cache` meters, `info` and `time` rows.                                         |
+| [`report.md`](./report.md#srcreporttallyts--outcome-tally)                       | `src/report/tally.ts` — outcome tally for the end-of-run footer.                                                                             |
+| [`report.md`](./report.md#srcreporteventsts--run-event-bus--wire-contract)       | `src/report/events.ts` — run event bus + serializable `WireEvent` contract.                                                                  |
+| [`report.md`](./report.md#srcreportmigrationts--a-migrations-report)             | `src/report/migration.ts` — `applyMigration`: a migration written by `workspace`, then drawn.                                                |
 
 ## History
 

@@ -42,7 +42,7 @@ export {
   taskList,
 } from './framed-output.js'
 export { createForecast } from './forecast.js'
-export { plainOutput } from './plain-output.js'
+export { plainOutput, terminalOutput } from './plain-output.js'
 export type { LiveUsage } from './status-line.js'
 export { formatOutcomeTable, formatRunSummary, neverStarted, type RunContext } from './summary.js'
 export { drawMigration } from './migration.js'
