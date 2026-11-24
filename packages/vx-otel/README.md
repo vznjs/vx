@@ -105,7 +105,9 @@ The root `vx.run` span carries:
 - the stop's counts: `vx.run.aborted_count`, the tasks it cut short, and `vx.run.not_run_count`, the ones it reached first;
 - the remote uploads once they settled: `vx.cache.upload.count`, `.bytes`, `.ms` summed, and `.failed`.
 
-A child `vx.task` span is sent per task, none for one the stop reached before it started. It starts after any wait for a machine a remote executor reports (a worker's warm-up), which is queue time. Every task span carries:
+A child `vx.task` span is sent per task, none for one the stop reached before it started.
+
+It starts after any wait for a machine a remote executor reports (a worker's warm-up), which is queue time. Every task span carries:
 
 - `cicd.pipeline.task.name`, and vx's own status as `vx.task.status`;
 - `cicd.pipeline.task.run.result`, the convention's enum: `success` for a run or a hit, `failure`, `timeout`, `skip`, `cancellation`;
