@@ -930,7 +930,8 @@ executor declares `timeouts`).
   takes no new attempt of that task until it ends that one. Its end is
   never counted as the retry's.
 - A cancelled attempt that ends after its retry lays none of its files
-  here, and dependants are sent the retry's entry, not its own.
+  here, and dependants are sent the retry's entry, not its own. Its time
+  is not learned as the task's either.
 
 </details>
 

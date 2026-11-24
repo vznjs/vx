@@ -7112,3 +7112,27 @@ it('a cancelled attempt that ends after its retry lays nothing and leaves the re
     await h.stop()
   }
 }, 30_000)
+
+// The cancelled attempt's late end also wrote its time over the retry's:
+// a hung attempt cut by its timeout taught later runs the task's pace.
+it('a cancelled attempt that ends after its retry leaves the retry its time', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    const stop = new AbortController()
+    const first = h.o.execute({ ...h.req('t'), signal: stop.signal })
+    expect(await a.batches()).toEqual([['t']])
+    stop.abort()
+    expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't' }])
+    const b = await h.worker(1)
+    const second = h.o.execute({ ...h.req('t'), attempt: 2 } as ExecuteRequest)
+    expect(await b.batches()).toEqual([['t']])
+    await b.finish('t', 'k-retry', { exitCode: 0, durationMs: 400 })
+    expect((await second).exitCode).toBe(0)
+    await a.finish('t', 'k-cancelled', { exitCode: 143, durationMs: 60_000 })
+    expect((await first).exitCode).toBe(143)
+    expect(h.o.finished(() => undefined).map((t) => t.took)).toEqual([400])
+  } finally {
+    await h.stop()
+  }
+}, 30_000)

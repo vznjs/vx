@@ -1606,6 +1606,13 @@ export class Orchestrator extends RunReport<Worker> {
     a.ran++
     a.done.push(task)
     a.usage.record(head, job.sentAt)
+    // Cancelled: its retry may have run elsewhere meanwhile. Laid, its files
+    // lay over the retry's, its key sent dependants its bytes, and its time,
+    // a hang's cut by a timeout, taught later runs the task's pace.
+    if (job.req.signal?.aborted === true) {
+      this.pumpSoon()
+      return job.resolve(result(head, sentLog ?? []))
+    }
     const share = shareOf(head.cpuShare)
     // At least as long as it ran: begun here once its batch's send resolved,
     // which can be after its worker began it, it was seen for less, and its
@@ -1658,12 +1665,6 @@ export class Orchestrator extends RunReport<Worker> {
       // share only, and booking the next tasks by that packed them tighter.
       this.usedMs += Math.min(head.cpuMs / share, a.cores * ms)
       this.needMs += Math.min(job.need.cores, a.cores) * ms
-    }
-    // Cancelled: its retry may have run elsewhere meanwhile. Laid, its files
-    // lay over the retry's, and its key sent dependants its bytes.
-    if (job.req.signal?.aborted === true) {
-      this.pumpSoon()
-      return job.resolve(result(head, sentLog ?? []))
     }
     this.savedAs.set(task, key)
     this.ranOn.set(task, a.id)
