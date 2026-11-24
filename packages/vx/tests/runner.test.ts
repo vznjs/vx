@@ -1914,6 +1914,12 @@ describe('runCommand — the rows its sweep asked for', () => {
       env: { PATH: process.env.PATH ?? '' },
       capture: { stdout: false, stderr: false },
     })
+    // macOS has no per-argument cap (MAX_ARG_STRLEN is Linux's), only the
+    // 1 MiB total: there the same command runs.
+    if (process.platform !== 'linux') {
+      expect([r.exitCode, r.spawnFailed]).toEqual([0, undefined])
+      return
+    }
     expect([r.exitCode, r.spawnFailed]).toEqual([127, true])
     expect(r.stderr).toContain('E2BIG')
     expect(r.stderr).toContain('the command, with the args after --, is 147 KiB')
