@@ -20,8 +20,14 @@ export const CONFIG_STAMPS_FILE = 'config-stamps.json'
 export interface ConfigStamps {
   /** Epoch ms before the first stat: the racy window runs from here. */
   at: number
-  /** Each config, workspace-relative → [size, mtimeMs, xxh3 of its bytes]. */
-  configs: Record<string, [number, number, string]>
+  /**
+   * Each config, workspace-relative → [size, mtimeMs, xxh3 of its bytes,
+   * ctimeMs, inode]. Size and mtime alone missed a same-length edit whose
+   * mtime was set back; ctime and the inode move with any write, as in
+   * the file-hash memo. A stamp from before them has neither: its bytes
+   * are read.
+   */
+  configs: Record<string, [number, number, string, number?, number?]>
   /**
    * The files a `project` plugin made each project's config from
    * (`ProjectHookContext.read`), by project directory, workspace-relative;
@@ -53,7 +59,7 @@ export async function takeConfigStamps(
       const s = await stat(file).catch(() => null)
       const bytes = s === null ? null : await readFile(file).catch(() => null)
       if (s === null || bytes === null) return
-      configs[path.relative(root, file)] = [s.size, s.mtimeMs, xxh3hex(bytes)]
+      configs[path.relative(root, file)] = [s.size, s.mtimeMs, xxh3hex(bytes), s.ctimeMs, s.ino]
     }),
   )
   return { at, configs }
@@ -104,6 +110,15 @@ async function readStamps(cacheDir: string): Promise<Stamps | null> {
   return got.stamps.catch(() => null)
 }
 
+/** A config as the caller stat'ed it, for `LockStamps.edited`. */
+export interface ConfigStat {
+  readonly file: string
+  readonly size: number
+  readonly mtimeMs: number
+  readonly ctimeMs: number
+  readonly ino: number
+}
+
 /** The stamps `vx lock` took beside one lock, read once (one stat) per load. */
 export interface LockStamps {
   /** The files a `project` plugin made each project's config from, by project directory. */
@@ -111,13 +126,14 @@ export interface LockStamps {
   /** Whether `rel` was there (stamped) when `vx lock` ran. */
   present: (rel: string) => boolean
   /**
-   * The configs of `files` whose bytes differ from their stamp: size and
-   * mtime (the caller's stat) first, the bytes only when those moved or the
+   * The configs of `files` whose bytes differ from their stamp: size,
+   * mtime, ctime and inode (the caller's stat) first, the bytes only when
+   * those moved or the
    * stamp was taken inside the file's racy window (a same-size edit then
    * keeps both). A commit since changes nothing: a config it moved under
    * the same lock was not relocked.
    */
-  edited: (files: readonly { file: string; size: number; mtimeMs: number }[]) => Promise<string[]>
+  edited: (files: readonly ConfigStat[]) => Promise<string[]>
 }
 
 /**
@@ -139,13 +155,15 @@ export async function stampsBesideLock(
     present: (rel) => Object.hasOwn(configs, rel),
     edited: async (files) => {
       const edited = await Promise.all(
-        files.map(async ({ file, size, mtimeMs }) => {
+        files.map(async ({ file, size, mtimeMs, ctimeMs, ino }) => {
           const rel = path.relative(root, file)
           const was = configs[rel]
           if (!Array.isArray(was)) return null
           if (
             size === was[0] &&
             mtimeMs === was[1] &&
+            ctimeMs === was[3] &&
+            ino === was[4] &&
             at - mtimeMs > racyWindowMs(mtimeMs, FILE_HASH_RACY_MS)
           )
             return null

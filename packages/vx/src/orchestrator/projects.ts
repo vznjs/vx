@@ -46,7 +46,7 @@ import {
   resolveCacheDir,
   validateWorkspace,
 } from '../workspace/index.js'
-import { stampsBesideLock } from '../memo/index.js'
+import { stampsBesideLock, type ConfigStat } from '../memo/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
@@ -500,7 +500,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   const pluginReads = async (
     digest: string,
     metas: readonly ProjectMeta[],
-  ): Promise<{ moved: string[]; present: { file: string; size: number; mtimeMs: number }[] }> => {
+  ): Promise<{ moved: string[]; present: ConfigStat[] }> => {
     const got = await (stamped ??= stampsBesideLock(workspaceRoot, args.cacheDir, digest))
     if (got === undefined) return { moved: [], present: [] }
     const files = metas.flatMap((m) => {
@@ -509,7 +509,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       return rels.filter((rel) => !statted.has(rel) && (statted.add(rel), true))
     })
     const moved: string[] = []
-    const present: { file: string; size: number; mtimeMs: number }[] = []
+    const present: ConfigStat[] = []
     await Promise.all(
       files.map(async (rel) => {
         const file = path.join(workspaceRoot, rel)
@@ -518,14 +518,21 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         if (st === null) {
           if (was) moved.push(rel)
         } else if (!was) moved.push(rel)
-        else present.push({ file, size: st.size, mtimeMs: st.mtimeMs })
+        else
+          present.push({
+            file,
+            size: st.size,
+            mtimeMs: st.mtimeMs,
+            ctimeMs: st.ctimeMs,
+            ino: st.ino,
+          })
       }),
     )
     return { moved: moved.sort(), present }
   }
   const editedSinceLock = async (
     digest: string,
-    files: readonly { file: string; size: number; mtimeMs: number }[],
+    files: readonly ConfigStat[],
   ): Promise<string[]> => {
     if (files.length === 0) return []
     const got = await (stamped ??= stampsBesideLock(workspaceRoot, args.cacheDir, digest))
@@ -605,7 +612,15 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             ...(await editedSinceLock(digest, [
               ...withFile.flatMap((m, i) =>
                 recordedOf(m) === undefined
-                  ? [{ file: m.configPath, size: stats[i]!.size, mtimeMs: stats[i]!.mtimeMs }]
+                  ? [
+                      {
+                        file: m.configPath,
+                        size: stats[i]!.size,
+                        mtimeMs: stats[i]!.mtimeMs,
+                        ctimeMs: stats[i]!.ctimeMs,
+                        ino: stats[i]!.ino,
+                      },
+                    ]
                   : [],
               ),
               ...mappedFrom.present,

@@ -2,7 +2,7 @@
 // `vx lock` after it ran the locked config, green, and an agent read the
 // green run as its edit working. The run names the edited file and says
 // `run vx lock`; it never relocks.
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, git, makeWorkspace } from './helpers/workspace.js'
@@ -64,6 +64,25 @@ describe('a config edited since vx lock', () => {
     expect((await vx(root, ['lock'])).code).toBe(0)
     const { code } = await vx(root, ['run', 'say', '--all'])
     expect(code).toBe(0)
+  })
+
+  // The stamp kept size and mtime alone: a same-length edit whose mtime was
+  // set back (`touch -d`, a tool that keeps it) ran the locked config,
+  // green. ctime and the inode move with any write; the stamp holds them.
+  it('refuses a same-length edit whose mtime was set back', async () => {
+    const old = new Date(Date.now() - 3_600_000)
+    await utimes(file, old, old)
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    const before = await stat(file)
+    await writeFile(file, config('BEFORE'))
+    await utimes(file, before.atime, before.mtime)
+    const now = await stat(file)
+    expect([now.size, now.mtimeMs]).toEqual([before.size, before.mtimeMs])
+    const { code, out } = await vx(root, ['run', 'say', '--all'])
+    expect([
+      code,
+      out.includes('packages/core/vx.config.mjs changed since the last `vx lock`'),
+    ]).toEqual([1, true])
   })
 
   it('runs when the file was rewritten with the same bytes', async () => {

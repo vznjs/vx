@@ -298,7 +298,7 @@ export class IndexRemoteHits implements RemoteHits {}
 ### Purpose
 
 `vx lock` and a passing `vx lock --check` stamp each config file (size,
-mtime, xxh3 of its bytes) before evaluating it, and keep the stamps with
+mtime, xxh3 of its bytes, ctime, inode) before evaluating it, and keep the stamps with
 the lock's digest in the cache dir's `config-stamps.json`. A run reads its
 configs from the lock, so `stampsBesideLock(…).edited` names the in-scope
 config files whose bytes moved since: the run refuses them with "run
@@ -306,15 +306,18 @@ config files whose bytes moved since: the run refuses them with "run
 stamps are this workspace's (a pull, a clone or a cache dir another
 checkout shares asks nothing). A commit since changes nothing: a config
 edit committed with no `vx lock` is refused, and so is a pulled one whose
-commit kept the lock. Read once per version of the file. The stat match only ever skips the read; a
-refusal is decided by the file's bytes now, never by a memo (rule 9).
+commit kept the lock. Read once per version of the file. The stat match only ever skips the read, and
+it holds ctime and the inode as the file-hash memo does: size and mtime alone
+skipped a same-length edit whose mtime was set back, and the run used the locked
+config. A stamp without them reads the bytes. A refusal is decided by the file's
+bytes now, never by a memo (rule 9).
 
 ### Public surface
 
 ```ts
 export interface ConfigStamps {
   at: number // epoch ms before the first stat: the racy window runs from here
-  configs: Record<string, [number, number, string]>
+  configs: Record<string, [number, number, string, number?, number?]> // size, mtime, xxh3, ctime, inode
   reads?: Record<string, string[]> // the files a `project` plugin made each project's config from, by dir
 }
 export const CONFIG_STAMPS_FILE = 'config-stamps.json' // a cache clear deletes it
@@ -328,7 +331,7 @@ export function writeConfigStamps(
 export interface LockStamps {
   reads: Record<string, string[]> // the files a `project` plugin made each project's config from, by dir
   present: (rel: string) => boolean // whether `rel` was there when `vx lock` ran
-  edited: (files: readonly { file: string; size: number; mtimeMs: number }[]) => Promise<string[]>
+  edited: (files: readonly ConfigStat[]) => Promise<string[]> // ConfigStat: { file, size, mtimeMs, ctimeMs, ino }
 }
 export function stampsBesideLock(
   root: string,
