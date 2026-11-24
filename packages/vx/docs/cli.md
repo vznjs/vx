@@ -5103,11 +5103,13 @@ Fields the task does not set are left out. An empty list prints `none`.
 - A multi-line value, such as a command, continues under its first line.
 - `vx show <project> --format json`: `{ name, dir, defaultBuild, config }`, the config
   exactly as resolved.
-- `vx show <pkg>#<task> --format json`: `{ name, dir, task, config }`.
+- `vx show <pkg>#<task> --format json`: `{ name, dir, task, defaultBuild, config }`.
+- `vx show <pkg>#build` marks a default build `default`, as the project
+  view does.
 - `vx show build`: a bare name that is no project is a task. JSON: an
   array of the one-task shape.
-- The default `build` is declared by no project. It counts in the list
-  and in `vx show <project>`.
+- The default `build` is declared by no project. It counts in the list,
+  in `vx show <project>`, and on `vx info`'s `projects` row.
 - `vx show build` does not name a default build, as `vx run build --all`
   does not run one.
 
@@ -5196,7 +5198,9 @@ It counts tasks from the lock, as a run does, and evaluates no config.
 
 - The task count and the sandbox row's count come from the load a run
   uses: the lock, plugin stages included.
-- A default build is no declared task and is not counted.
+- A default build is no declared task. It is named apart:
+  `21 (332 tasks, 7 default builds)`, `vx show`'s 339. JSON:
+  `defaultBuilds`.
 - No lock: `projects` reads `—` and `projects lock` reads `no`.
 - A lock a run would refuse: `projects` reads `—` and `projects lock`
   reads `refused:` and why. JSON: `lockError`, the counts zero.
@@ -5446,7 +5450,7 @@ no second source.
 | `git`                                                                | git's version, null when not found                                                                                                                                                                                                                                                |
 | `gitStatusCache` (`{ fsmonitor, untrackedCache }`)                   | null when git could not answer                                                                                                                                                                                                                                                    |
 | `workspaceRoot`                                                      | the workspace root                                                                                                                                                                                                                                                                |
-| `projects`, `tasks`                                                  | the counts                                                                                                                                                                                                                                                                        |
+| `projects`, `tasks`, `defaultBuilds`                                 | the counts                                                                                                                                                                                                                                                                        |
 | `plugins` (`[{ name, seams }]`)                                      | each plugin and the seams it fills                                                                                                                                                                                                                                                |
 | `workers` (`{ count, source, cores, cpuQuota }`)                     | (the source one of `env` / `workspace` / `cgroup` / `cores`; `cpuQuota` in cores or null)                                                                                                                                                                                         |
 | `memory` (`{ usableBytes, totalBytes, cgroupLimitBytes }`)           | the limit null when none binds                                                                                                                                                                                                                                                    |

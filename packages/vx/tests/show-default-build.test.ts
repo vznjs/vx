@@ -110,6 +110,25 @@ describe('vx show and the default build of a dependency', () => {
         defaultBuild: boolean
       }
       expect(app.defaultBuild).toBe(true)
+      // The task view too: it read as a build someone declared.
+      expect((await vx(root, ['show', 'app#build'])).out).toMatch(/^ {2}app#build +default$/m)
+      const one = JSON.parse((await vx(root, ['show', 'app#build', '--format', 'json'])).out) as {
+        defaultBuild: boolean
+      }
+      expect(one.defaultBuild).toBe(true)
+      const own = JSON.parse((await vx(root, ['show', 'app#test', '--format', 'json'])).out) as {
+        defaultBuild: boolean
+      }
+      expect(own.defaultBuild).toBe(false)
+      // `vx info` names the default builds the list counts: 3 tasks there.
+      expect((await vx(root, ['info'])).out).toMatch(
+        /^ {2}projects +3 \(1 task, 2 default builds\)$/m,
+      )
+      const info = JSON.parse((await vx(root, ['info', '--format', 'json'])).out) as {
+        tasks: number
+        defaultBuilds: number
+      }
+      expect([info.tasks, info.defaultBuilds]).toEqual([1, 2])
       expect((await vx(root, ['run', 'lib#build'])).code).toBe(0)
     },
     TIMEOUT,

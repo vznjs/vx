@@ -226,7 +226,11 @@ function describeProjects(f: InfoFacts): string {
   if (f.workspaceError !== null) return UNLOADED
   if (f.lockError != null) return '— (the lock is refused)'
   if (!f.lockfile) return '— (no lock: `vx lock`)'
-  return `${f.projects} (${f.tasks} task${f.tasks === 1 ? '' : 's'})`
+  const builds =
+    f.defaultBuilds === 0
+      ? ''
+      : `, ${f.defaultBuilds} default build${f.defaultBuilds === 1 ? '' : 's'}`
+  return `${f.projects} (${f.tasks} task${f.tasks === 1 ? '' : 's'}${builds})`
 }
 
 function describeFlakyTasks(tasks: readonly FlakyTask[]): string {

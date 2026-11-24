@@ -39,6 +39,7 @@ import {
   untracedReason,
 } from '../sandbox/index.js'
 import {
+  buildPackageGraph,
   findWorkspaceRoot,
   lockedDependencies,
   lockfilePath,
@@ -84,6 +85,8 @@ export interface InfoFacts {
   workspaceRoot: string
   projects: number
   tasks: number
+  /** The default builds a run loads beside `tasks`: `vx show` counts both. */
+  defaultBuilds: number
   plugins: Array<{ name: string; seams: string[] }>
   /**
    * The worker count a run defaults to and where it comes from:
@@ -311,6 +314,7 @@ async function collectWorkspaceInfo(
     indexError = err.message
   }
   let taskCount = 0
+  let defaultBuilds = 0
   let sandboxed = 0
   // The run path's load — the lock, a plugin's `project` stage counted —
   // so the doctor's task count is the number a run would see. No lock, or
@@ -324,7 +328,10 @@ async function collectWorkspaceInfo(
         plugins,
         projectMetas: metas,
         seeds: 'all',
-        closure: false,
+        // As `vx show` loads it: a config-less package a configured one
+        // depends on has the default build a run gives it.
+        closure: true,
+        packageGraph: buildPackageGraph([...metas]),
         configs: lock,
         warn,
       })
@@ -332,7 +339,11 @@ async function collectWorkspaceInfo(
         const tasks = p.config.tasks ?? {}
         // The default build is no declared task: `vx run build` denies it, and
         // right after `vx init` the doctor said `1 (1 task)` of `tasks: {}`.
-        taskCount += Object.values(tasks).filter((t) => !isDefaultBuild(t)).length
+        // Named beside it: `vx show` counts it, and two totals read as a bug.
+        for (const t of Object.values(tasks)) {
+          if (isDefaultBuild(t)) defaultBuilds++
+          else taskCount++
+        }
         for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
       }
     } catch (err) {
@@ -341,6 +352,7 @@ async function collectWorkspaceInfo(
       // gone): every run refuses with it, so it is the lock's error.
       if (refused === null && err.code === 'VX_E_LOCK') refused = err.message
       taskCount = 0
+      defaultBuilds = 0
       sandboxed = 0
     }
 
@@ -382,6 +394,7 @@ async function collectWorkspaceInfo(
     workspaceRoot: root,
     projects: metas.length,
     tasks: taskCount,
+    defaultBuilds,
     // Which plugins loaded and which seams each fills, in pipeline order —
     // the answer to "why did this task run there / cache there / not at
     // all" before reading any config. A declined seam still costs nothing;

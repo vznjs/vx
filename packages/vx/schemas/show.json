@@ -69,7 +69,7 @@
     "task": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "dir", "task", "config"],
+      "required": ["name", "dir", "task", "defaultBuild", "config"],
       "properties": {
         "name": { "type": "string", "description": "the project name" },
         "dir": {
@@ -77,6 +77,10 @@
           "description": "the project's directory, relative to the workspace root, POSIX separators"
         },
         "task": { "type": "string", "description": "the task name" },
+        "defaultBuild": {
+          "type": "boolean",
+          "description": "the task is the default build, declared by no config or plugin"
+        },
         "config": { "$ref": "#/$defs/taskConfig", "description": "the task's resolved config" }
       }
     },

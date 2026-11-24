@@ -14,6 +14,7 @@
     "workspaceRoot",
     "projects",
     "tasks",
+    "defaultBuilds",
     "plugins",
     "workers",
     "memory",
@@ -69,6 +70,10 @@
     "workspaceRoot": { "type": "string", "description": "the workspace root, absolute" },
     "projects": { "type": "integer", "description": "how many projects the workspace has" },
     "tasks": { "type": "integer", "description": "how many tasks they declare" },
+    "defaultBuilds": {
+      "type": "integer",
+      "description": "the default builds a run loads beside them; vx show counts both"
+    },
     "plugins": {
       "type": "array",
       "description": "each loaded plugin, in declared order",

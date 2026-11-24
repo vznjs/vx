@@ -498,7 +498,13 @@ function renderTask(
   format: 'pretty' | 'json',
 ): Shown {
   if (format === 'json') {
-    const obj = { name, dir, task: taskName, config: shownTask(task) }
+    const obj = {
+      name,
+      dir,
+      task: taskName,
+      defaultBuild: isDefaultBuild(task),
+      config: shownTask(task),
+    }
     return `${JSON.stringify(obj)}\n`
   }
   return [taskReport(name, dir, taskName, task)]
@@ -515,6 +521,7 @@ function renderTaskAcross(
       name: p.name,
       dir: relPosix(root, p.dir) || '.',
       task: taskName,
+      defaultBuild: isDefaultBuild(p.config.tasks![taskName]!),
       config: shownTask(p.config.tasks![taskName]!),
     }))
     return `${JSON.stringify(list)}\n`
@@ -526,7 +533,11 @@ function renderTaskAcross(
 
 /** The `app#build` panel: the project's dir, then every field the run reads. */
 function taskReport(name: string, dir: string, taskName: string, task: TaskConfig): ui.Block {
-  return ui.section(`${name}#${taskName}`, ui.fields([['dir', dir], ...taskRows(task)]))
+  const rows = ui.fields([['dir', dir], ...taskRows(task)])
+  // Marked as the project view marks it: unmarked, it read as declared.
+  return isDefaultBuild(task)
+    ? ui.section(`${name}#${taskName}`, ui.dim(' default'), rows)
+    : ui.section(`${name}#${taskName}`, rows)
 }
 
 /** Every field the run reads, in the order the schema declares them. */
