@@ -7181,6 +7181,8 @@ when it passed only on a retry in this run.
 - A changed input that fails is what a red run usually means.
 - The first pass after only failures is a recovery (a missing tool
   installed), not a flake.
+- "After" is when each task started, not when a worktree sharing the
+  record wrote it.
 - Only tasks with `cache: true` are judged: "same inputs, red after
   green" is a claim only declared inputs can back.
 - A task without them keys on its config alone. If it needed a retry,

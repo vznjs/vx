@@ -40,12 +40,19 @@ function keyOutcomesSql(source: string, where = ''): string {
   // `observesKey`), so it carries none of the filter's columns.
   const keyed =
     source === OUTCOMES ? '1' : `${KEYED_RUNS_SQL} AND cached IS NOT 0 AND blocked_by IS NULL`
+  // A `runs` id is run order. The flaky record's is write order, which
+  // worktrees sharing it break: a pass one kept packed is written after
+  // another's later failure, so it is read in the order the tasks started.
+  const seq =
+    source === OUTCOMES
+      ? 'ROW_NUMBER() OVER (PARTITION BY project, task, hash ORDER BY recorded_at, id)'
+      : 'id'
   return `SELECT project, task, hash, SUM(failed) AS failures, SUM(passed) AS passes,
        SUM(retried) AS retried_failures,
-       SUM(CASE WHEN failed = 1 AND id > first_pass THEN 1 ELSE 0 END) AS relapses
-       FROM (SELECT project, task, hash, id, failed, passed, retried,
-           MIN(CASE WHEN passed = 1 THEN id END) OVER (PARTITION BY project, task, hash) AS first_pass
-         FROM (SELECT project, task, hash, id,
+       SUM(CASE WHEN failed = 1 AND seq > first_pass THEN 1 ELSE 0 END) AS relapses
+       FROM (SELECT project, task, hash, seq, failed, passed, retried,
+           MIN(CASE WHEN passed = 1 THEN seq END) OVER (PARTITION BY project, task, hash) AS first_pass
+         FROM (SELECT project, task, hash, ${seq} AS seq,
              CASE WHEN status = 'failed' THEN 1 ELSE 0 END AS failed,
              CASE WHEN status = 'success' AND attempts > 1 THEN attempts - 1 ELSE 0 END AS retried,
              CASE WHEN status = 'success' OR status IN ${HIT_STATUSES}${source === OUTCOMES ? '' : ' OR cache_hit = 1'}

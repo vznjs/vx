@@ -174,6 +174,22 @@ it("writes a failed key's kept pass into the flaky record before the failure", (
   cache.close()
 })
 
+// Worktrees share the flaky record: a pass one keeps packed can reach it
+// after another worktree's later failure of the key, and still precedes it.
+it('reads a key that failed after a pass written out late as flaky', () => {
+  const store = path.join(dir, 'store')
+  const open = (name: string): Cache =>
+    new Cache(path.join(dir, name), undefined, undefined, undefined, undefined, store)
+  const a = open('a')
+  const b = open('b')
+  runHistory(a).recordRuns([], undefined, hitsOf('run-1', 4))
+  runHistory(b).recordRuns([failed(2, 'run-2')])
+  expandHits(indexDb(a))
+  expect(knownFlaky(indexDb(b), 'p2', 'build', 'another-key')).toBe(true)
+  a.close()
+  b.close()
+})
+
 it('reads a kept hit as a pass of its key', () => {
   const cache = new Cache(path.join(dir, 'cache'))
   runHistory(cache).recordRuns([], undefined, hitsOf('run-1', 4))
