@@ -403,7 +403,6 @@ function renderList(
     return `${JSON.stringify(rows.map(({ name, dir, tags, tasks, hasDefault }) => ({ name, dir, tags, tasks, defaultBuild: hasDefault })))}\n`
   }
   if (rows.length === 0) return []
-  const anyTags = rows.some((r) => r.tags.length > 0)
   const cells = rows.map((r) => {
     const n = r.tasks.length
     const count = `${n} task${n === 1 ? '' : 's'}`
@@ -422,10 +421,28 @@ function renderList(
             : r.hasDefault
               ? `${count}, ${n - 1} from plugins, default build (no vx config)`
               : `${count} from plugins (no vx config)`
-    return [ui.id(r.name), r.dir, tasks, ...(anyTags ? [r.tags.join(', ')] : [])]
+    return { name: r.name, dir: r.dir, tasks, tags: r.tags }
   })
-  const columns = ['project', 'dir', 'tasks', ...(anyTags ? ['tags'] : [])]
-  return [ui.section('Projects', String(rows.length), ui.table(columns, cells))]
+  return [ui.section('Projects', String(rows.length), projectTable(cells))]
+}
+
+/**
+ * The project list's table. On a terminal too narrow for it (78 columns at
+ * 60, 2026-11-24) the tags go, then the dir: a project and its tasks stay.
+ */
+export function projectTable(
+  rows: readonly { name: string; dir: string; tasks: string; tags: readonly string[] }[],
+): ui.Block {
+  const anyTags = rows.some((r) => r.tags.length > 0)
+  return ui.table(
+    [
+      'project',
+      { title: 'dir', drop: 2 },
+      'tasks',
+      ...(anyTags ? [{ title: 'tags', drop: 1 }] : []),
+    ],
+    rows.map((r) => [ui.id(r.name), r.dir, r.tasks, ...(anyTags ? [r.tags.join(', ')] : [])]),
+  )
 }
 
 /**

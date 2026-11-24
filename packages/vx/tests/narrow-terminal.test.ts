@@ -19,6 +19,7 @@ import { formatRunSummary } from '../src/report/summary.js'
 import { helpText, paintHelp, verbHelpText, wrapHelp } from '../src/cli/help.js'
 import { formatRunList, formatStats } from '../src/cli/last.js'
 import { whatChangedSection } from '../src/cli/why.js'
+import { projectTable } from '../src/cli/show.js'
 import { paint, ui } from '../src/ui/index.js'
 
 const node = (id: string): TaskNode => {
@@ -538,5 +539,39 @@ describe('help on a narrow terminal', () => {
 
   it('CONTROL: off a terminal the text is as written', () => {
     expect(wrapHelp(helpText(), undefined)).toBe(helpText())
+  })
+})
+
+// `vx show`'s project list ran past a 60-column terminal (78 columns for
+// `@vzn/vx-bench  private/vx-bench  18 tasks, default build`): the tags,
+// then the dir, now go first, as `vx last --list` drops its columns.
+describe('vx show project list', () => {
+  const rows = [
+    {
+      name: '@vzn/vx-history-service',
+      dir: 'private/vx-history-service',
+      tasks: '7 tasks, default build',
+      tags: ['service', 'deploy'],
+    },
+    { name: '@vzn/vx', dir: 'packages/vx', tasks: '144 tasks', tags: [] },
+  ]
+  const lines = (columns?: number): string[] =>
+    projectTable(rows).lines(
+      columns === undefined ? { enabled: false } : { enabled: false, columns },
+    )
+
+  it.each([60, 80])(
+    'every line fits %i columns and keeps each project and its tasks',
+    (columns) => {
+      const out = lines(columns)
+      for (const l of out) expect(Bun.stringWidth(l)).toBeLessThanOrEqual(columns)
+      expect(out.find((l) => l.includes('@vzn/vx-history-service'))).toContain(
+        '7 tasks, default build',
+      )
+    },
+  )
+
+  it('keeps every column off a terminal', () => {
+    expect(lines().find((l) => l.includes('@vzn/vx '))).toContain('packages/vx')
   })
 })

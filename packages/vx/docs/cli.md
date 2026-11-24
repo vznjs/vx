@@ -5066,6 +5066,7 @@ A `tags` column appears when any project has tags.
   `vx run bare#build` refuses it.
 - `vx.config.ts not locked — run vx lock`: a config written after the
   lock. It shows in the list and in `vx show <project>`'s `config` row.
+- On a terminal too narrow for the list, `tags` goes, then `dir`.
 - `--format json`: an array of `{ name, dir, tags: string[], tasks: string[], defaultBuild: boolean }`. `defaultBuild` is true where the text says `default build`.
 
 </div>
