@@ -30,11 +30,11 @@ const CONFIG = `
   }
 `
 
-/** Write 256 KiB blocks into `dir` until the disk refuses one. */
-async function fill(dir: string): Promise<void> {
+/** Write `block`-byte files into `dir` until the disk refuses one. */
+async function fill(dir: string, block = 256 * 1024): Promise<void> {
   for (let i = 0; ; i++) {
     try {
-      await writeFile(path.join(dir, `filler-${i}.bin`), Buffer.alloc(256 * 1024, 1))
+      await writeFile(path.join(dir, `filler-${block}-${i}.bin`), Buffer.alloc(block, 1))
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOSPC') return
       throw err
@@ -87,7 +87,7 @@ describe.skipIf(
           proc.exited,
         ])
         expect(`${code}\n${out}${err}`).toStartWith('0\n')
-        expect(err).toMatch(/\b4 pass\b/)
+        expect(err).toMatch(/\b5 pass\b/)
         // The one skip is this wrapper, inside.
         expect(err).toMatch(/\b1 skip\b/)
       } finally {
@@ -166,7 +166,7 @@ describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
       )
       await fill(small)
       // 256 KiB of room: the 700 KB artifact starts, and the disk ends it.
-      await rm(path.join(small, 'filler-0.bin'))
+      await rm(path.join(small, `filler-${256 * 1024}-0.bin`))
       const full = await run()
       expect(full.out + full.err).toMatch(/cache save failed: app#build: .*(ENOSPC|full)/)
       expect(full.code).toBe(0)
@@ -210,6 +210,28 @@ describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
       )
       expect(second.out + second.err).not.toContain('\n    at ')
       expect(second.code).toBe(0)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a cache directory made on a full disk names the file it could not write',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-full-dir-' })
+      made.push(root)
+      await project(root)
+      const cacheDir = path.join(small, 'cache')
+      await fill(small)
+      // Down to the last page: the ignore file's two bytes are refused too.
+      await fill(small, 512)
+      const run = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      expect(run.code).toBe(1)
+      expect(run.out + run.err).toContain(
+        `ENOSPC: no space left on device, write '${path.join(cacheDir, '.gitignore')}'`,
+      )
+      expect(run.out + run.err).toContain('the disk that path is on is full')
+      // An empty ignore file left behind would stand as written to every later run.
+      expect(await readdir(cacheDir)).not.toContain('.gitignore')
     },
     TIMEOUT,
   )
