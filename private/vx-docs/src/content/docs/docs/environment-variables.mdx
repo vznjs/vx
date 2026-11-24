@@ -28,7 +28,7 @@ test('API_URL is https', () => {
 ```ts title="packages/web/vx.config.ts"
 test: {
   exec: { command: 'vitest run' },
-  inputs: { files: ['src/**'] },
+  inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'] },
   outputs: { files: [] },
   cache: true,
 },
@@ -86,7 +86,7 @@ Read the `[vx]` line: vx names the variable it held back, and the fix.
 
 ```ts title="packages/web/vx.config.ts" ins={1}
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
-inputs: { files: ['src/**'] },
+inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'] },
 outputs: { files: [] },
 cache: true,
 ```
@@ -135,7 +135,7 @@ cache: true,
 
 ```ts title="packages/web/vx.config.ts" ins={2}
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
-inputs: { files: ['src/**'], env: ['API_URL'] },
+inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'], env: ['API_URL'] },
 outputs: { files: [] },
 cache: true,
 ```
@@ -207,7 +207,7 @@ export default defineProject({
         command: 'vitest run',
         env: { passThrough: ['API_URL'] },
       },
-      inputs: { files: ['src/**'] },
+      inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'] },
       outputs: { files: [] },
       cache: true,
     },
@@ -233,7 +233,7 @@ export default defineProject({
 
 ```ts
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
-inputs: { files: ['src/**'] },
+inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'] },
 ```
 
 New `API_URL` → **up-to-date**, old result.
@@ -243,7 +243,7 @@ New `API_URL` → **up-to-date**, old result.
 
 ```ts
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
-inputs: { files: ['src/**'], env: ['API_URL'] },
+inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'], env: ['API_URL'] },
 ```
 
 New `API_URL` → the test **runs**.
@@ -270,7 +270,7 @@ build: {
     command: 'vite build',
     env: { define: { NODE_ENV: 'production' } },
   },
-  inputs: { files: ['src/**', 'index.html'] },
+  inputs: { files: ['src/**', 'index.html', 'vite.config.*'] },
   outputs: { files: ['dist/**'] },
   cache: true,
 },
@@ -338,7 +338,7 @@ Vite writes `VITE_*` values into the bundle. Pass it **and** key on it, or a new
 
 ```ts mark={1,2}
 exec: { command: 'vite build', env: { passThrough: ['VITE_API_URL'] } },
-inputs: { files: ['src/**', 'index.html'], env: ['VITE_API_URL'] },
+inputs: { files: ['src/**', 'index.html', 'vite.config.*'], env: ['VITE_API_URL'] },
 outputs: { files: ['dist/**'] },
 cache: true,
 ```
@@ -367,7 +367,7 @@ import { defineProject } from '@vzn/vx/config'
 
 const keyed = (...names: string[]) => ({
   exec: { command: 'vite build', env: { passThrough: names } },
-  inputs: { files: ['src/**', 'index.html'], env: names },
+  inputs: { files: ['src/**', 'index.html', 'vite.config.*'], env: names },
 })
 
 export default defineProject({

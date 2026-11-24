@@ -295,7 +295,7 @@ inputs: {
 ```ts mark={1,4}
 exec: { command: 'vite build', env: { passThrough: ['MODE'] } },
 inputs: {
-  files: ['src/**'],
+  files: ['src/**', 'vite.config.ts'],
   env: ['MODE'],
 },
 ```

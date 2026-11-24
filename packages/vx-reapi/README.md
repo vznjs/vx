@@ -691,7 +691,7 @@ install: {
 build: {
   dependsOn: ['install'],
   exec: { command: 'vite build' },
-  inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+  inputs: { files: ['src/**', 'vite.config.*'] }, outputs: { files: ['dist/**'] }, cache: true,
 },
 ```
 

@@ -1577,7 +1577,7 @@ Which dependencies' keys count toward this task's key.
 e2e: {
   exec: { command: 'vitest run' },
   dependsOn: ['build'],
-  inputs: { files: ['tests/**'], tasks: [] },
+  inputs: { files: ['tests/**', 'vitest.config.*'], tasks: [] },
 }
 ```
 

@@ -100,7 +100,7 @@ export default defineProject({
     test: {
       dependsOn: ['^build'],
       exec: { command: 'vitest run src' },
-      inputs: { files: ['src/**'] },
+      inputs: { files: ['src/**', 'vite.config.ts'] },
       outputs: { files: [] },
       cache: true,
     },
@@ -121,7 +121,7 @@ export default defineProject({
     test: {
       dependsOn: ['^build'],
       exec: { command: 'vitest run src', env: { passThrough: ['API_URL'] } },
-      inputs: { files: ['src/**'], env: ['API_URL'] },
+      inputs: { files: ['src/**', 'vite.config.ts'], env: ['API_URL'] },
       outputs: { files: [] },
       cache: true,
     },

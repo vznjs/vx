@@ -126,7 +126,7 @@ export default defineProject({
       // env is isolated, and a key that varies on a var the task
       // can't see is incoherent.
       exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
-      inputs: { files: ['src/**'], env: ['NODE_ENV'] },
+      inputs: { files: ['src/**', 'vite.config.*'], env: ['NODE_ENV'] },
       outputs: { files: ['dist/**'] },
       cache: true,
     },
