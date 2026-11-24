@@ -895,6 +895,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/turbo-dependency-outputs-upstream',
     'vx-migrate/turbo-dot-segments',
     'vx-migrate/turbo-dotenv-globs',
+    'vx-migrate/turbo-dotenv-lock-warning',
     'vx-migrate/turbo-entry-root-edge',
     'vx-migrate/turbo-env-key',
     'vx-migrate/turbo-env-literal-once',

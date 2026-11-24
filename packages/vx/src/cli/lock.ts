@@ -57,7 +57,7 @@ import {
   writeAllOrNone,
   writeNoFollow,
 } from '../util/index.js'
-import { makeIgnoredCacheDir } from '../cache/index.js'
+import { answerRuntime, makeIgnoredCacheDir } from '../cache/index.js'
 import { type ConfigStamps, takeConfigStamps, writeConfigStamps } from '../memo/index.js'
 import * as ui from '../ui/index.js'
 import { refusalNotice, sayNotice } from '../ui/index.js'
@@ -782,7 +782,7 @@ async function writeLock(
         'vx lock',
         `${name}: its config holds this checkout's path (${root}), so another checkout locks it otherwise and keys it apart — use a path relative to the project, or $VX_RUN_WORKSPACE in the command`,
       )
-  for (const line of unkeyedReads(root, check)) sayNotice('warn', 'vx lock', line)
+  for (const line of await unkeyedReads(root, check)) sayNotice('warn', 'vx lock', line)
   return 0
 }
 
@@ -822,9 +822,11 @@ function dotenvFiles(dir: string): string[] {
  * only on a miss, which a stale hit never brings, and Vite loads an ignored
  * `.env.production.local`), and, for a cached task, a `passThrough` name a
  * bundler inlines that `inputs.env` does not key, or one `inputs.env` keys
- * that the command never gets. One git spawn at most.
+ * that the command never gets. One git spawn at most, and a task's runtime
+ * probes only for a file it would name: a probe that prints the file's path
+ * keys it (turbo()'s `.env` probe), so that file is not named.
  */
-function unkeyedReads(root: string, check: GraphCheck): string[] {
+async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> {
   // One line per finding, naming every task it holds for: a migrated Turbo
   // repo's shared `globalPassThroughEnv` (NODE_ENV) printed it once per task,
   // 78 lines on create-t3-turbo.
@@ -836,9 +838,32 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
   }
   const found: { task: string; ws: string; rel: string; glob: string }[] = []
   let dotenvOf: Map<string, string[]> | undefined
+  const answers = new Map<string, Promise<string>>()
+  const probedOf = new Map<string, Promise<Set<string>>>()
   for (const m of check.all) {
     for (const [name, t] of Object.entries(check.resolved.get(m.name)?.tasks ?? {})) {
       const task = `${m.name}#${name}`
+      // The workspace-relative paths a line of the task's probe output names.
+      const probed = (): Promise<Set<string>> => {
+        let got = probedOf.get(task)
+        if (got !== undefined) return got
+        const ask = async (cmd: string, workspace: boolean) => {
+          const at = `${workspace ? root : m.dir}\0${cmd}`
+          let out = answers.get(at)
+          if (out === undefined)
+            answers.set(at, (out = answerRuntime(cmd, m.dir, root, workspace).catch(() => '')))
+          const base = workspace ? root : m.dir
+          return (await out).split('\n').map((l) => relPosix(root, path.join(base, l)))
+        }
+        got = Promise.all([
+          ...(t.inputs?.runtime ?? []).map((c) => ask(c, false)),
+          ...(t.inputs?.workspaceRuntime ?? []).map((c) => ask(c, true)),
+        ]).then((all) => new Set(all.flat()))
+        probedOf.set(task, got)
+        return got
+      }
+      const hasProbes =
+        (t.inputs?.runtime?.length ?? 0) + (t.inputs?.workspaceRuntime?.length ?? 0) > 0
       const own = outputMatcher(t.outputs?.files ?? [])
       const ownWs = outputMatcher(t.outputs?.workspaceFiles ?? [])
       // A literal entry keys the ignored file it names, as a run's walk does.
@@ -854,7 +879,9 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
         const ws = relPosix(root, abs)
         // A `**` reader with no cache has no key to go stale.
         if (glob.includes('**') && t.cache !== true) continue
-        if (!own(relPosix(m.dir, abs)) && !ownWs(ws)) found.push({ task, ws, rel, glob })
+        if (own(relPosix(m.dir, abs)) || ownWs(ws)) continue
+        if (hasProbes && (await probed()).has(ws)) continue
+        found.push({ task, ws, rel, glob })
       }
       if (t.cache !== true) continue
       // A build that leaves a `.env` beside its config out of its inputs
@@ -867,7 +894,11 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
         dotenvOf ??= new Map()
         let env = dotenvOf.get(m.dir)
         if (env === undefined) dotenvOf.set(m.dir, (env = dotenvFiles(m.dir)))
-        const unread = env.filter((f) => !keyed(f) && !excluded(f))
+        let unread = env.filter((f) => !keyed(f) && !excluded(f))
+        if (unread.length > 0 && hasProbes) {
+          const seen = await probed()
+          unread = unread.filter((f) => !seen.has(relPosix(root, path.join(m.dir, f))))
+        }
         if (unread.length > 0)
           said(
             task,

@@ -153,6 +153,16 @@ describe('vx lock and what a key never sees', () => {
     expect(r.err).not.toContain('app#lint')
   })
 
+  // A runtime probe that prints a file's path keys it (turbo()'s `.env`
+  // probe); one that names other files leaves the rest named.
+  it('names no dotenv file a runtime probe prints, and still names the rest', async () => {
+    const r = await lock(task('build', { files: ['src/**'], runtime: ['echo .env; echo vite 6'] }))
+    expect(r.code).toBe(0)
+    expect(r.err).toContain(
+      'packages/app#build: .env.production.local beside its config is in no input',
+    )
+  })
+
   it('names Bun and Nx public variables only passThrough names', async () => {
     const r = await lock(
       task(

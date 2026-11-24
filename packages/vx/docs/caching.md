@@ -345,7 +345,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A cached task with outputs that no input points at a `.env`,
     `.env.local`, `.env.<mode>` or `.env.<mode>.local` beside its config
     gets a `vx lock` note too: Vite, Next and Bun load those on their own.
-    `'!.env*'` says the task reads none.
+    `'!.env*'` says the task reads none. A file a runtime probe of the
+    task prints the path of (turbo()'s `.env` probe) is keyed, so neither
+    note names it.
     A **glob** matching nothing stays silent while another glob of the
     task matches a file, and so does a literal naming a path that does
     not exist, until it does. When no glob matches (a literal does not
