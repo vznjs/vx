@@ -304,9 +304,13 @@ workspace and lock, the last 8 used. A run reads its configs from the lock,
 so `stampsBesideLock(…).edited` names the in-scope config files whose bytes
 moved since, or that the entry lacks: the run refuses them with "run
 `vx lock`". A lock with no entry (a pull, a clone, a branch another
-`vx lock` left) returns undefined, and the run evaluates every config it
-reads; `restampConfigs` stamps those that match, into a cache dir that
-exists only (a plan makes none). The one entry held only the last lock's stamps, so after `vx lock`
+`vx lock` left) returns undefined, and the run evaluates every config and
+every `project` plugin's mapping once, as `vx lock --check` does (the lock
+holds what the stage left: the bare config differed, and a fresh clone
+refused what the check passed); `restampConfigs` stamps those that match,
+with the files each mapping read, into a cache dir that
+exists only (a plan makes none). The config stamps are taken before the
+evaluation: one edited during it was stamped as the lock holds. The one entry held only the last lock's stamps, so after `vx lock`
 on a branch an unlocked edit on main ran the locked config, green. A commit since changes nothing: a config
 edit committed with no `vx lock` is refused, and so is a pulled one whose
 commit kept the lock. Read once per version of the file. The stat match only ever skips the read, and
@@ -345,12 +349,12 @@ export function stampsBesideLock(
   cacheDir: string,
   lock: string,
 ): Promise<LockStamps | undefined>
-// Stamp `rels` again beside the stamps of lock `lock`: a run found them to evaluate as the lock holds
+// Keep `taken` (taken before the evaluation) beside the stamps of lock `lock`: a run found them to evaluate as the lock holds
 export function restampConfigs(
   root: string,
   cacheDir: string,
   lock: string,
-  rels: readonly string[],
+  taken: ConfigStamps,
 ): Promise<void>
 ```
 

@@ -89,23 +89,20 @@ export async function writeConfigStamps(
 }
 
 /**
- * Stamp `rels` (workspace-relative) as they are now beside lock `lock`: a
- * run found them to evaluate as the lock holds. The lock's other stamps and
- * `at` stay; a lock with none gets these. Only into a cache dir a run or
- * `vx lock` made: a plan makes none (`clockDir`), so until one exists each
- * run evaluates again.
+ * Keep `taken` beside lock `lock`: a run found those configs and mapped-from
+ * files to evaluate as the lock holds. Taken by the caller before it
+ * evaluated: an edit between the two reads as one after. The lock's other
+ * stamps and `at` stay; a lock with none gets these. Only into a cache dir
+ * a run or `vx lock` made: a plan makes none (`clockDir`), so until one
+ * exists each run evaluates again.
  */
 export async function restampConfigs(
   root: string,
   cacheDir: string,
   lock: string,
-  rels: readonly string[],
+  taken: ConfigStamps,
 ): Promise<void> {
   try {
-    const taken = await takeConfigStamps(
-      root,
-      rels.map((rel) => path.join(root, rel)),
-    )
     const was = (await readStamps(cacheDir))?.entries.find(
       (e) => e.root === root && e.lock === lock,
     )
@@ -113,7 +110,11 @@ export async function restampConfigs(
       cacheDir,
       was === undefined
         ? { root, lock, ...taken }
-        : { ...was, configs: { ...was.configs, ...taken.configs } },
+        : {
+            ...was,
+            configs: { ...was.configs, ...taken.configs },
+            reads: { ...was.reads, ...taken.reads },
+          },
       false,
     )
   } catch {

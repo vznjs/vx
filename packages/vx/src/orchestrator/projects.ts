@@ -49,7 +49,12 @@ import {
   resolveCacheDir,
   validateWorkspace,
 } from '../workspace/index.js'
-import { restampConfigs, stampsBesideLock, type ConfigStat } from '../memo/index.js'
+import {
+  restampConfigs,
+  stampsBesideLock,
+  takeConfigStamps,
+  type ConfigStat,
+} from '../memo/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
@@ -534,17 +539,6 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     )
     return { moved: moved.sort(), present }
   }
-  const editedSinceLock = async (
-    digest: string,
-    files: readonly ConfigStat[],
-  ): Promise<string[]> => {
-    if (files.length === 0) return []
-    const got = await (stamped ??= stampsBesideLock(workspaceRoot, args.cacheDir, digest))
-    // No stamps beside this lock: each config is asked, evaluated below.
-    return got === undefined
-      ? files.map((f) => path.relative(workspaceRoot, f.file))
-      : got.edited(files)
-  }
   while (pending.length > 0) {
     const round = pending.splice(0, pending.length)
     // Only a config FILE is evaluated (or read from the lock); a
@@ -609,40 +603,64 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       args.asLocked === true || hooks || (fromLock.length === 0 && unstaged.length === 0)
         ? undefined
         : lockDigest(await lock())
-    const mappedFrom =
-      digest === undefined ? { moved: [], present: [] } : await pluginReads(digest, unstaged)
-    const edited =
+    const got =
       digest === undefined
-        ? []
-        : [
-            ...mappedFrom.moved,
-            ...(await editedSinceLock(digest, [
-              ...withFile.flatMap((m, i) =>
-                recordedOf(m) === undefined
-                  ? [
-                      {
-                        file: m.configPath,
-                        size: stats[i]!.size,
-                        mtimeMs: stats[i]!.mtimeMs,
-                        ctimeMs: stats[i]!.ctimeMs,
-                        ino: stats[i]!.ino,
-                      },
-                    ]
-                  : [],
-              ),
-              ...mappedFrom.present,
-            ])),
-          ]
-    // A stamp holds the bytes `vx lock` last read, not every text that
-    // evaluates as the lock holds: a config restored with its lock (`git
-    // checkout`) was refused while `vx lock --check` passed. Evaluated, as
-    // the check does, before refusing; one that matches is stamped again.
-    if (edited.length > 0 && digest !== undefined) {
-      const same = await evaluatesAsLocked(workspaceRoot, edited, withFile, await lock())
-      if (same.length > 0) {
-        const matched = new Set(same)
-        edited.splice(0, edited.length, ...edited.filter((rel) => !matched.has(rel)))
-        await restampConfigs(workspaceRoot, args.cacheDir, digest, same)
+        ? undefined
+        : await (stamped ??= stampsBesideLock(workspaceRoot, args.cacheDir, digest))
+    let edited: string[] = []
+    if (digest !== undefined && got === undefined) {
+      // No stamps beside this lock (a clone, a cleared cache): every config
+      // and every mapping is evaluated once, as `vx lock --check` does, and
+      // the ones the lock holds are stamped. The round alone left the other
+      // projects' mapped-from files unstamped, so an edit to one ran green.
+      const held = await lock()
+      const mapped = hasHook(plugins, 'project')
+      edited = await asLockHolds(args, digest, held, (m) => {
+        if (args.staged?.get(m.name) !== undefined) return false
+        if (m.configPath !== null) return true
+        return mapped && Object.hasOwn(held.projects, lockKey(workspaceRoot, m.dir))
+      })
+      stamped = stampsBesideLock(workspaceRoot, args.cacheDir, digest)
+    } else if (digest !== undefined && got !== undefined) {
+      const mappedFrom = await pluginReads(digest, unstaged)
+      edited = [
+        ...mappedFrom.moved,
+        ...(await got.edited([
+          ...withFile.flatMap((m, i) =>
+            recordedOf(m) === undefined
+              ? [
+                  {
+                    file: m.configPath,
+                    size: stats[i]!.size,
+                    mtimeMs: stats[i]!.mtimeMs,
+                    ctimeMs: stats[i]!.ctimeMs,
+                    ino: stats[i]!.ino,
+                  },
+                ]
+              : [],
+          ),
+          ...mappedFrom.present,
+        ])),
+      ]
+      // A stamp holds the bytes `vx lock` last read, not every text that
+      // evaluates as the lock holds: a config restored with its lock (`git
+      // checkout`) was refused while `vx lock --check` passed. Evaluated, as
+      // the check does, before refusing; one that matches is stamped again.
+      if (edited.length > 0) {
+        const named = new Set(edited)
+        const asked = new Set(
+          withFile.filter((m) => named.has(path.relative(workspaceRoot, m.configPath))),
+        )
+        if (asked.size > 0) {
+          const still = new Set(
+            await asLockHolds(args, digest, await lock(), (m) => asked.has(m as never)),
+          )
+          edited = edited.filter(
+            (rel) =>
+              still.has(rel) ||
+              ![...asked].some((m) => path.relative(workspaceRoot, m.configPath) === rel),
+          )
+        }
       }
     }
     // A hand-broken entry differs from every evaluation: named as itself,
@@ -832,34 +850,99 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
 }
 
 /**
- * The configs of `edited` (workspace-relative) that evaluate to what the lock
- * holds for their project, as `vx lock --check` compares them. A config that
- * does not evaluate reads as edited.
+ * Of the projects `pick` names, the ones that do not evaluate to what the
+ * lock holds, as `vx lock --check` compares them: the config, then the
+ * `project` stage's mapping. Each by its config file, or its directory
+ * when it has none. The ones that do are stamped beside `digest`: their
+ * configs as read before the evaluation (an edit during it reads as one
+ * after), and the files the stage made them from.
  */
-async function evaluatesAsLocked(
-  root: string,
-  edited: readonly string[],
-  metas: readonly (ProjectMeta & { configPath: string })[],
-  lock: Lockfile,
+async function asLockHolds(
+  args: LoadProjectsArgs,
+  digest: string,
+  held: Lockfile,
+  pick: (meta: ProjectMeta) => boolean,
 ): Promise<string[]> {
-  const named = new Set(edited)
-  const asked = metas.filter((m) => named.has(path.relative(root, m.configPath)))
-  if (asked.length === 0) return []
-  let fresh: ProjectConfig[]
+  const root = args.workspaceRoot
+  const metas = args.projectMetas.filter(pick)
+  if (metas.length === 0) return []
+  const files = metas.flatMap((m) => (m.configPath === null ? [] : [m.configPath]))
+  const taken = await takeConfigStamps(root, files)
+  const named = (m: ProjectMeta): string =>
+    m.configPath === null ? relPosix(root, m.dir) : path.relative(root, m.configPath)
+  let fresh: Map<string, unknown>
+  let reads: Map<string, Set<string>> | undefined
   try {
-    fresh = await loadProjectConfigs(
-      asked.map((m) => m.configPath),
-      root,
+    const configs = await loadProjectConfigs(files, root)
+    const evaluated = new Map(files.map((f, i) => [f, JSON.parse(JSON.stringify(configs[i]))]))
+    fresh = new Map(
+      metas.flatMap((m) =>
+        m.configPath === null ? [] : [[m.dir, evaluated.get(m.configPath)] as const],
+      ),
     )
+    if (hasHook(args.plugins, 'project')) {
+      // The stage on what the configs say now, as `vx lock` runs it.
+      const view: Lockfile = { ...held, projects: { ...held.projects } }
+      for (const m of metas) {
+        if (m.configPath === null) continue
+        const dir = lockKey(root, m.dir)
+        const was = Object.hasOwn(held.projects, dir) ? held.projects[dir] : undefined
+        view.projects[dir] = {
+          ...(was ?? { name: m.name }),
+          file: path.basename(m.configPath),
+          config: fresh.get(m.dir) as ProjectConfig,
+        }
+      }
+      const staged = await loadProjects({
+        workspaceRoot: root,
+        cacheDir: args.cacheDir,
+        plugins: args.plugins,
+        projectMetas: args.projectMetas,
+        seeds: metas.map((m) => m.name),
+        closure: false,
+        configs: async () => view,
+        warn: args.warn,
+        lock: true,
+      })
+      for (const m of metas) fresh.set(m.dir, staged.stage?.get(m.dir))
+      reads = staged.reads
+    }
   } catch {
-    return []
+    return metas.map(named)
   }
-  return asked.flatMap((m, i) => {
+  const same = metas.filter((m) => {
     const dir = lockKey(root, m.dir)
-    const locked = Object.hasOwn(lock.projects, dir) ? lock.projects[dir] : undefined
-    const same =
-      locked?.file === path.basename(m.configPath) &&
-      Bun.deepEquals(JSON.parse(JSON.stringify(fresh[i])), locked.config, true)
-    return same ? [path.relative(root, m.configPath)] : []
+    const locked = Object.hasOwn(held.projects, dir) ? held.projects[dir] : undefined
+    return (
+      locked !== undefined &&
+      (m.configPath === null
+        ? locked.file === undefined
+        : locked.file === path.basename(m.configPath)) &&
+      fresh.get(m.dir) !== undefined &&
+      Bun.deepEquals(fresh.get(m.dir), locked.config, true)
+    )
   })
+  if (same.length > 0) {
+    const kept = new Set(same.flatMap((m) => (m.configPath === null ? [] : [named(m)])))
+    const byDir: Record<string, string[]> = {}
+    for (const m of same) {
+      const got = reads?.get(m.dir)
+      if (got !== undefined && got.size > 0)
+        byDir[lockKey(root, m.dir)] = [...got].map((f) => relPosix(root, f)).sort()
+    }
+    // Stamped after the stage read them, as `vx lock` stamps them.
+    const mapped = await takeConfigStamps(root, [
+      ...new Set(Object.values(byDir).flatMap((rels) => rels.map((r) => path.join(root, r)))),
+    ])
+    await restampConfigs(root, args.cacheDir, digest, {
+      at: taken.at,
+      configs: {
+        ...Object.fromEntries(Object.entries(taken.configs).filter(([rel]) => kept.has(rel))),
+        ...mapped.configs,
+      },
+      reads: byDir,
+    })
+  }
+  const matched = new Set(same)
+  return metas.filter((m) => !matched.has(m)).map(named)
 }

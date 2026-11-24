@@ -5,6 +5,8 @@
 import { readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 import { addProject, git, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -235,5 +237,83 @@ describe('a config edited since vx lock', () => {
       expect(code).toBe(1)
       expect(out).toContain('changed since the last `vx lock`')
     })
+  })
+})
+
+// A `project` plugin edits what a config says (vx-lockfile adds the
+// manifest to each task's inputs), and the lock holds what the stage left.
+// With no stamps beside it (a fresh clone, CI) the run compared the bare
+// evaluation with that and refused every such config while `vx lock
+// --check` passed. The mapping reads `mapping.txt`, as turbo() reads turbo.json.
+describe('no stamps beside a lock a project plugin mapped', () => {
+  const MAPPER = pluginSource(
+    'org/mapper',
+    `{ project(config, ctx) {
+        const fs = require('node:fs')
+        const p = require('node:path')
+        const at = p.join(ctx.workspaceRoot, 'mapping.txt')
+        ctx.read(at)
+        const word = fs.readFileSync(at, 'utf8').trim()
+        const edit = p.join(ctx.workspaceRoot, 'edit-during-stage.txt')
+        if (ctx.name === 'core' && fs.existsSync(edit)) {
+          fs.rmSync(edit)
+          fs.writeFileSync(p.join(ctx.dir, 'vx.config.mjs'), fs.readFileSync(p.join(ctx.workspaceRoot, 'after.txt'), 'utf8'))
+        }
+        for (const [n, t] of Object.entries(config.tasks ?? {}))
+          config.tasks[n] = { ...t, description: 'mapped ' + word }
+        if (ctx.name === 'bare') config.tasks = { say: { exec: { command: 'echo ' + word } } }
+      } }`,
+  )
+  let root: string
+  let file: string
+  const stamps = () => rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-lock-mapped-' })
+    file = path.join(await addProject(root, 'core', config('before')), 'vx.config.mjs')
+    await addProject(root, 'bare')
+    await writeFile(path.join(root, 'mapping.txt'), 'one\n')
+    await writeFile(path.join(root, '.vx', 'workspace.mjs'), localWorkspaceSource([MAPPER]))
+    const locked = await vx(root, ['lock'])
+    expect(`${locked.code}\n${locked.out}`).toStartWith('0\n')
+    await stamps()
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('runs a fresh checkout `vx lock --check` passes', async () => {
+    const { code, out } = await vx(root, ['run', 'say', '--all'])
+    expect(out).not.toContain('changed since the last `vx lock`')
+    expect(code).toBe(0)
+    await stamps()
+    expect((await vx(root, ['lock', '--check'])).code).toBe(0)
+    expect((await vx(root, ['run', 'say', '--all'])).code).toBe(0)
+  })
+
+  it('refuses a mapped-from file edited with no `vx lock`', async () => {
+    await writeFile(path.join(root, 'mapping.txt'), 'two\n')
+    const { code, out } = await vx(root, ['run', 'bare#say'])
+    expect(code).toBe(1)
+    expect(out).toContain('changed since the last `vx lock`')
+  })
+
+  it('stamps every mapping, so a later edit to one is refused', async () => {
+    expect((await vx(root, ['run', 'core#say'])).code).toBe(0)
+    await writeFile(path.join(root, 'mapping.txt'), 'two\n')
+    const { code, out } = await vx(root, ['run', 'bare#say'])
+    expect(code).toBe(1)
+    expect(out).toContain('mapping.txt changed since the last `vx lock`')
+  })
+
+  // The stamp was taken after the evaluation: a config edited between the
+  // two was stamped as the lock holds, and the next run ran the old config.
+  it('stamps a config as read before its evaluation', async () => {
+    await writeFile(path.join(root, 'after.txt'), config('after'))
+    await writeFile(path.join(root, 'edit-during-stage.txt'), '')
+    expect((await vx(root, ['run', 'core#say'])).code).toBe(0)
+    expect(await readFile(file, 'utf8')).toContain('after')
+    const { code, out } = await vx(root, ['run', 'core#say'])
+    expect(code).toBe(1)
+    expect(out).toContain('packages/core/vx.config.mjs changed since the last `vx lock`')
   })
 })
