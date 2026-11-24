@@ -124,7 +124,7 @@ export default {
   tasks: {
     build: {
       exec: { command: 'vite build' },
-      inputs: { files: ['src/**', 'public/**', 'index.html'] },
+      inputs: { files: ['src/**', 'public/**', 'index.html', 'vite.config.*'] },
       outputs: { files: ['dist/**'] },
       cache: true,
     },
@@ -137,7 +137,7 @@ Each line answers one question vx asks:
 | Field | Question | Here |
 | --- | --- | --- |
 | `exec.command` | What do I run? | `vite build` |
-| `inputs.files` | Which files does it read? | the source, `public/`, the page |
+| `inputs.files` | Which files does it read? | the source, `public/`, the page, vite's config if you add one |
 | `outputs.files` | Which files does it write? | everything in `dist/` |
 | `cache` | May I skip it when nothing changed? | yes |
 
@@ -165,13 +165,13 @@ export default {
   tasks: {
     build: {
       exec: { command: 'vite build' },
-      inputs: { files: ['src/**', 'public/**', 'index.html'] },
+      inputs: { files: ['src/**', 'public/**', 'index.html', 'vite.config.*'] },
       outputs: { files: ['dist/**'] },
       cache: true,
     },
     test: {
       exec: { command: 'vitest run --passWithNoTests' },
-      inputs: { files: ['src/**'] },
+      inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'] },
       outputs: { files: [] },
       cache: true,
     },
@@ -193,7 +193,7 @@ vx lock
 vx run lint
 ```
 
- A cached test run that passed is skipped until `src/` changes.
+ A cached test run that passed is skipped until `src/` or a vite or vitest config changes.
 
 </Deeper>
 
