@@ -39,6 +39,7 @@ import { rmdirSync, rmSync, unlinkSync } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { Database } from 'bun:sqlite'
 import { VX_RUN_TASK_ENV, VX_RUN_WORKSPACE_ENV } from '../exec/index.js'
 import { isTmpdirRefusal, procfsIsOwn, TMPDIR_HINT, UserError, xxh3hex } from '../util/index.js'
 
@@ -440,5 +441,44 @@ export async function acquireRunLock(
       )
     }
     await Bun.sleep(POLL_MS)
+  }
+}
+
+/**
+ * Hold the workspace's two lock files still: `exclusive` while `vx lock`
+ * renames both, `shared` while a run reads both. `vx lock` renames them one
+ * after the other, and a run reading between the renames paired one
+ * branch's projects with the other's edges. SQLite's lock on a file beside
+ * the run lock, so it dies with its process; a shared hold costs a run one
+ * open (~0.3 ms). One that cannot be taken is no hold: the reads go ahead as
+ * before.
+ */
+export async function holdLockFiles(
+  workspaceRoot: string,
+  mode: 'shared' | 'exclusive',
+): Promise<() => void> {
+  const file = `${runLockPath(workspaceRoot)}-files`
+  for (;;) {
+    let db: Database
+    try {
+      ownLockRoot(file)
+      db = new Database(file)
+      db.exec('PRAGMA busy_timeout = 0')
+    } catch {
+      return () => {}
+    }
+    try {
+      if (mode === 'exclusive') db.exec('BEGIN EXCLUSIVE')
+      else {
+        db.exec('BEGIN')
+        db.query('SELECT count(*) FROM sqlite_master').get()
+      }
+      return () => db.close()
+    } catch (err) {
+      db.close()
+      if ((err as { code?: string }).code !== 'SQLITE_BUSY') return () => {}
+    }
+    // Jittered: two waiters trying in step would each meet the other's try.
+    await Bun.sleep(5 + Math.random() * 10)
   }
 }

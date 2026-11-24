@@ -52,6 +52,7 @@ import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
 import { freezeDeep, readOnly } from './read-only.js'
+import { holdLockFiles } from './run-lock.js'
 import { type ExtraHashes, withExtraHashes } from './lockfile-claim.js'
 
 /**
@@ -789,12 +790,21 @@ export async function loadResolvedProjects(
   return loaded.projects
 }
 
-/** The lock, read once on first ask; no lock is `NO_LOCK`. */
+/**
+ * The lock and the dependencies lock beside it, read once on first ask, both
+ * under one shared hold so a `vx lock` renaming them cannot land between the
+ * two reads; no lock is `NO_LOCK`.
+ */
 export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
   let read: Promise<Lockfile> | undefined
   return () =>
-    (read ??= readLockfile(workspaceRoot).then((lock) => {
-      if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
-      return lock
+    (read ??= holdLockFiles(workspaceRoot, 'shared').then(async (release) => {
+      try {
+        const lock = await readLockfile(workspaceRoot)
+        if (lock === null) throw new UserError(NO_LOCK, 'VX_E_LOCK')
+        return lock
+      } finally {
+        release()
+      }
     }))
 }

@@ -59,6 +59,10 @@ export function acquireRunLock(
   workspaceRoot: string,
   opts: { log: (line: string) => void; signal?: AbortSignal; dir?: string; of?: 'lock' },
 ): Promise<() => Promise<void>>
+// SQLite's lock on `<run lock>-files`: `vx lock` holds it exclusive while it
+// renames projects.lock and dependencies.lock, a run shared while it reads
+// both (`lockReader`), so no run pairs one new file with one old.
+export function holdLockFiles(workspaceRoot: string, mode: 'shared' | 'exclusive'): Promise<() => void>
 // What `vx run` and a plugin verb read of the workspace's cache policy.
 export function workspaceCachePolicy(config): CachePolicy | undefined
 export function namesRemote(spec: string | undefined): boolean // `cache.policy` names `remote:r` or `remote:w`

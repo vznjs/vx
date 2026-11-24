@@ -3305,6 +3305,8 @@ that no longer matches the lockfile.
 - `--affected` reads the base commit's copy to find a deleted project's
   dependants and the edges that moved.
 - `vx lock --check` fails when the dependencies lock is missing or stale.
+- A run started while `vx lock` replaces the two locks waits for both, so
+  it never reads one new lock beside one old one.
 
 </div>
 </details>

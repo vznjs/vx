@@ -22,6 +22,7 @@ import {
   lockDiscovery,
   fingerprintClaims,
   hasHook,
+  holdLockFiles,
   ignoredConfigRefusal,
   loadProjects,
   networkPatternRefusal,
@@ -750,10 +751,16 @@ async function writeLock(
     })
     return 1
   }
-  await writeAllOrNone(
-    [lockfileWrite(root, check.fresh), dependenciesLockWrite(root, check.dependencies!)],
-    root,
-  )
+  // Both renames under one exclusive hold: a run reads both under a shared one.
+  const held = await holdLockFiles(root, 'exclusive')
+  try {
+    await writeAllOrNone(
+      [lockfileWrite(root, check.fresh), dependenciesLockWrite(root, check.dependencies!)],
+      root,
+    )
+  } finally {
+    held()
+  }
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
   if (check.stamps) await keepConfigStamps(root, check.stamps)
   const n = metas.length
