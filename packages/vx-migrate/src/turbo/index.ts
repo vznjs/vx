@@ -263,7 +263,7 @@ const textOf = (file: string): Promise<string> =>
  */
 async function run(root: string, projects: readonly ProjectMeta[]): Promise<AdoptionRun> {
   const dirs = [root, ...projects.map((m) => m.dir)]
-  const [metas, configs, yarnrc, rootManifest, hookConfigs] = await Promise.all([
+  const [metas, configs, yarnrc, rootManifest, hookConfigs, ignored] = await Promise.all([
     withManifests(projects),
     Promise.all(
       dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
@@ -272,6 +272,9 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
     textOf(path.join(root, 'package.json')),
     // Whether the manager runs `pre` / `post` hooks, so whether they fold.
     Promise.all(['.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f)))),
+    // An explicit glob keys the ignored files it matches, named when mapped:
+    // a new one, or a `.gitignore` line, is read by no other part of the key.
+    gitIgnoredUnder(root, ['**']),
   ])
   const envNames = envNamesThatMap(configs, envNamesNow())
   // The tsconfigs a `tsc` script reads are the mapping's inputs too.
@@ -300,6 +303,7 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       // A config file added beside mapped tasks changes what an output may cover.
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
       JSON.stringify([...tsc.texts]),
+      JSON.stringify(ignored),
     ],
     map: (tracked) => mapAll(root, metas, envNames, tracked, tsc.read),
   }

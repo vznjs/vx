@@ -140,7 +140,7 @@ vx lock --check  # name each package the mapping now says otherwise for
 - A negated output under a literal-rooted one (`dist/**` minus `!dist/**/*.map`) takes its paths back (see `outputs` below).
 - One against a wildcard-rooted output (`*/**` minus `!src/**`) keeps what it names (see `outputs` below).
 - `vx lock` keeps the mapping in `<cache dir>/vx-migrate-turbo-mapping.json`. No run reads or writes it.
-- It is keyed on every `turbo.json` / `turbo.jsonc`, every package manifest and the mapper's own code.
+- It is keyed on every `turbo.json` / `turbo.jsonc`, every package manifest, the files git ignores and the mapper's own code.
 - It is also keyed on the env names a wildcard can match (in a Turbo config or Turbo's framework table) or core cannot key.
 - So a second `vx lock` (or `--check`) with none changed reads it instead of mapping.
 - On astro (562 packages) that is ~40 ms of mapping against ~12 ms of key reads.
@@ -381,7 +381,7 @@ Rules:
 - A path a `!` entry takes back stays out.
 - Nothing under `node_modules` or `.vx/` is named. The lockfile plugin keys an install.
 - The paths are listed when the mapping is made (one `git ls-files`).
-- A new ignored file outside every directory listed then is keyed from the next mapping: a `turbo.json`, manifest or git index change.
+- A new ignored file, or a `.gitignore` edit, is keyed from the next `vx lock`. Until then a run keys the files listed before.
 
 **A glued `**`.** A `**` glued to text in an input, output or `globalDependencies` glob is read as Turbo reads it.
 

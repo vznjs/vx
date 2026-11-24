@@ -86,6 +86,44 @@ describe('turbo(): gitignored inputs named by path', () => {
       takenBackStill: (await key()) === deepEdit,
     }).toEqual({ cached: true, genMoved: true, deepMoved: true, takenBackStill: true })
   }, 30_000)
+
+  // The kept mapping was keyed on no ignore rule and no ignored file: a
+  // `.gitignore` line, or a new ignored file under `src/**`, left the next
+  // `vx lock` with the old mapping, and an edit there replayed a stale hit.
+  it('a new ignore rule or ignored file maps afresh, and an edit to it re-keys', async () => {
+    const root = ws.root
+    const lib = path.join(root, 'packages', 'lib')
+    await writeFile(
+      path.join(root, 'turbo.json'),
+      JSON.stringify({ tasks: { gen: { inputs: ['src/**'], outputs: [] } } }),
+    )
+    await writeFile(
+      path.join(lib, 'package.json'),
+      JSON.stringify({ name: 'lib', version: '1.0.0', scripts: { gen: 'cat src/*' } }),
+    )
+    const gen = path.join(lib, 'src', 'gen.ts')
+    const local = path.join(lib, 'src', 'x.local')
+    await writeFile(gen, 'a\n')
+    await writeFile(path.join(root, '.gitignore'), 'dist\n*.local\n')
+    Bun.spawnSync({ cmd: ['git', 'add', '-A', ':!packages/lib/src/gen.ts'], cwd: root })
+    const key = async () => {
+      const plan = await planRun({ cwd: root, tasks: ['gen'], log: silent() })
+      return plan.tasks.find((t) => t.node.id === 'lib#gen')!.hash
+    }
+    await key()
+    await writeFile(path.join(root, '.gitignore'), 'dist\n*.local\ngen.ts\n')
+    const ruled = await key()
+    await writeFile(gen, 'b\n')
+    const genEdit = await key()
+    await writeFile(local, 'a\n')
+    const added = await key()
+    await writeFile(local, 'b\n')
+    const localEdit = await key()
+    expect({ genMoved: genEdit !== ruled, localMoved: localEdit !== added }).toEqual({
+      genMoved: true,
+      localMoved: true,
+    })
+  }, 30_000)
 })
 
 // A literal path git ignores leaves the file lists (core refuses one) and
