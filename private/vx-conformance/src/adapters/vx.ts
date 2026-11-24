@@ -68,7 +68,14 @@ export const vx: Adapter = {
               exec: {
                 command: command(name, t),
                 ...(spec.env || spec.passThrough
-                  ? { env: { passThrough: [...(spec.env ?? []), ...(spec.passThrough ?? [])] } }
+                  ? {
+                      // A name both declared and passed through is listed once: vx refuses a repeat.
+                      env: {
+                        passThrough: [
+                          ...new Set([...(spec.env ?? []), ...(spec.passThrough ?? [])]),
+                        ],
+                      },
+                    }
                   : {}),
                 ...(spec.sandbox
                   ? {
