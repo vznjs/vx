@@ -86,8 +86,11 @@ describe('readTimings / writeTimings', () => {
     expect(readTimings(file, (m) => warnings.push(m))).toEqual({ a: 1 })
     // Dropped by name, as `assume` drops one: it went unsaid.
     expect(warnings.slice(3)).toEqual([
-      `[vx] vx-history: timings file ${file} ignores "b", "c", "d" — each must be a number of ms from 0 to 2^53`,
+      `[vx] vx-history: timings file ${file} ignores "b", "c", "d" — each must be a number of ms from 0 to 2^53−1`,
     ])
+    // The bound the warning names, both sides of it: it said `2^53`, which is dropped.
+    await writeFile(file, `{"version":1,"tasks":{"max":${2 ** 53 - 1},"over":${2 ** 53}}}`)
+    expect(readTimings(file, () => {})).toEqual({ max: 2 ** 53 - 1 })
   })
 
   // Filtered in place, read once: a copy of an 8,002-task file, filtered
@@ -515,8 +518,8 @@ it(
     expect([summary.ok, warnings.filter((w) => w.includes('vx-history'))]).toEqual([
       true,
       [
-        `[vx] vx-history: timings file ${path.join(root, 't.json')} ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53`,
-        '[vx] vx-history: assume ignores "a#lint" — each must be a number of ms from 0 to 2^53',
+        `[vx] vx-history: timings file ${path.join(root, 't.json')} ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53−1`,
+        '[vx] vx-history: assume ignores "a#lint" — each must be a number of ms from 0 to 2^53−1',
       ],
     ])
     // The rewrite keeps no such duration either.

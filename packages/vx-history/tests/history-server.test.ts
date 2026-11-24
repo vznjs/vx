@@ -758,7 +758,7 @@ describe('HistoryServer', () => {
       expect(refined).toHaveLength(1)
       expect(await refined[0]).toBeInstanceOf(Map)
       expect(warned).toEqual([
-        '[vx] vx-history: assume ignores "a#build" — each must be a number of ms from 0 to 2^53',
+        '[vx] vx-history: assume ignores "a#build" — each must be a number of ms from 0 to 2^53−1',
       ])
     } finally {
       fake.mockRestore()

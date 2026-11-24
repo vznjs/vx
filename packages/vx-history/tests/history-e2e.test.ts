@@ -597,7 +597,7 @@ describe('vx-history plugin end to end', () => {
       expect(summary.ok).toBe(true)
       expect(log.started[0]).toBe('b#build')
       expect(lines.filter((l) => l.includes('vx-history'))).toEqual([
-        '[vx] vx-history: assume ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53',
+        '[vx] vx-history: assume ignores "a#build", "a#test" — each must be a number of ms from 0 to 2^53−1',
       ])
     },
     TIMEOUT,

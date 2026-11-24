@@ -61,7 +61,7 @@ export function readTimings(
   }
   if (bad.length > 0) {
     warn(
-      `[vx] vx-history: timings file ${file} ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a number of ms from 0 to 2^53`,
+      `[vx] vx-history: timings file ${file} ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a number of ms from 0 to 2^53−1`,
     )
   }
   return out as Record<string, number>

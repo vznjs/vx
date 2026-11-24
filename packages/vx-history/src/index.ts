@@ -215,7 +215,7 @@ const memoryBudgetMb = (options: VxHistoryOptions): number =>
   usable(options.memory) ? options.memory : Math.floor(machineMemoryBytes() / MB)
 
 /**
- * The `assume` durations that are numbers from 0 to 2^53: a larger one summed
+ * The `assume` durations that are numbers from 0 to 2^53−1: a larger one summed
  * along a chain to Infinity, which core refuses too. A NaN
  * (`Number(process.env.X)` with X unset) became a NaN weight and a string (an
  * untyped `.mjs` config) string weights, and core refused both as a UserError:
@@ -234,7 +234,7 @@ function assumptions(
   }
   if (bad.length > 0) {
     warn(
-      `[vx] vx-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a number of ms from 0 to 2^53`,
+      `[vx] vx-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a number of ms from 0 to 2^53−1`,
     )
   }
   return ok
@@ -244,7 +244,7 @@ function assumptions(
  * A duration a task can take, in ms. A chain's weight is its durations
  * summed, and two `1e308`s (a timings file a CI cache handed over, or
  * `assume`) summed to Infinity, which core refuses: the run failed in
- * `schedule`. Under 2^53 ms, any chain's sum stays finite.
+ * `schedule`. Under 2^53 ms each, any chain's sum stays finite.
  */
 const isDuration = (ms: unknown): ms is number =>
   typeof ms === 'number' && ms >= 0 && ms <= Number.MAX_SAFE_INTEGER
