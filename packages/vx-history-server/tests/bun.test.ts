@@ -533,6 +533,42 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
   ])
 })
 
+// A file another tool made, with a `timings` table of its own, started the
+// server; the first upload failed 500, after init had added a column to it.
+it('refuses a --db whose tables are not its own, and leaves them as they were', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'vx-history-foreign-'))
+  try {
+    const file = path.join(dir, 'other.sqlite')
+    const other = new Database(file, { create: true })
+    other.run('CREATE TABLE timings (task TEXT, ms INTEGER)')
+    other.close()
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', file],
+      {
+        env: {
+          ...process.env,
+          ALLOW: `${GITHUB}:${REPO}:ci.yml`,
+          AUDIENCE: 'https://h.example.com',
+        },
+        stderr: 'pipe',
+        timeout: 10_000,
+      },
+    )
+    expect([cli.exitCode, stderrOf(cli).split('\n')[0]]).toEqual([
+      2,
+      `--db ${file}: its table timings is not this server's: it has no column issuer, repository, ref, hash, duration_ms, cores, rss_bytes, runs, updated_at`,
+    ])
+    const after = new Database(file, { readonly: true })
+    expect(after.query('SELECT name FROM pragma_table_info(?1)').all('timings')).toEqual([
+      { name: 'task' },
+      { name: 'ms' },
+    ])
+    after.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}, 30_000)
+
 it('refuses an empty --port: Number of it is 0, a random port', () => {
   const cli = Bun.spawnSync(
     ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '', '--db', ':memory:'],

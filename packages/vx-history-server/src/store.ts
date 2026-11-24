@@ -92,6 +92,24 @@ const OUTCOMES = `CREATE TABLE IF NOT EXISTS outcomes (issuer TEXT NOT NULL, rep
 const SWEEPS =
   'CREATE TABLE IF NOT EXISTS sweeps (id INTEGER PRIMARY KEY CHECK (id = 1), at INTEGER NOT NULL)'
 
+/**
+ * Each table this server keeps, and the columns a file made before it must
+ * already hold (`slow_ms` it adds), read off the statements that make them.
+ */
+export const TABLES: ReadonlyMap<string, readonly string[]> = new Map(
+  [SCHEMA, OUTCOMES, SWEEPS].map((sql) => {
+    const name = /CREATE TABLE IF NOT EXISTS (\w+)/.exec(sql)![1]!
+    const body = sql
+      .slice(sql.indexOf('(') + 1, sql.lastIndexOf(')'))
+      .replace(/PRIMARY KEY \([^)]*\)/g, '')
+    const columns = body
+      .split(',')
+      .map((c) => c.trim().split(' ')[0]!)
+      .filter((c) => c !== '' && c !== 'slow_ms')
+    return [name, columns]
+  }),
+)
+
 // One statement per 2 MB of a report's rows, passed as one JSON parameter:
 // D1 binds at most 100 parameters, and a free plan's Worker runs at most
 // 50 queries a request.

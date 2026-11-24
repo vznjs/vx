@@ -77,6 +77,10 @@ server at.
 ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' AUDIENCE=https://history.example.com bun packages/vx-history-server/src/bun.ts --db /var/lib/vx-history.sqlite --port 8080
 ```
 
+`--db` is the SQLite file, made if absent. One it cannot open, or whose
+`timings`, `outcomes` or `sweeps` table another tool made, stops the
+server at start, naming the file.
+
 `TIMING_DAYS` is how long a task's row outlives its last report.
 
 - The default is 30.
