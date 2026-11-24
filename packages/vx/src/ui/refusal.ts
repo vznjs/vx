@@ -48,7 +48,11 @@ export function messageParts(message: string): RefusalParts {
   const see = SEE.exec(first)
   if (see !== null) first = first.replace(SEE, '')
   const meant = MEANT.exec(first)
-  if (meant !== null) first = first.replace(MEANT, '')
+  // A sentence after `. Did you mean X?` keeps the full stop before it.
+  if (meant !== null)
+    first = first.replace(MEANT, (m: string, paren: string | undefined, _w, at: number) =>
+      paren === undefined && first.slice(at + m.length).trim() !== '' ? '. ' : '',
+    )
   const sentences = sentencesOf(first)
     .map(bare)
     .filter((s) => s !== '')

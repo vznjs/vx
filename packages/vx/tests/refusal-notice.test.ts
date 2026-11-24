@@ -24,6 +24,17 @@ describe('messageParts', () => {
     })
   })
 
+  // `x. Did you mean y? More.` printed the headline as `x More`.
+  it('keeps a sentence after the hint its own', () => {
+    expect(
+      messageParts('no projects declare task(s): lnt. Did you mean lint? Only b declares it.'),
+    ).toEqual({
+      headline: 'no projects declare task(s): lnt',
+      what: ['Only b declares it'],
+      fix: 'lint',
+    })
+  })
+
   // `--filter a...` read `a..`: the hint's `. ` and then the full stop
   // `bare` drops each took a dot of the pattern's own.
   it("keeps a headline's trailing `...`", () => {
