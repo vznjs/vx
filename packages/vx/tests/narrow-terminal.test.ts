@@ -484,6 +484,30 @@ describe('help on a narrow terminal', () => {
     }
   })
 
+  // At 60 columns the Usage list ran together into one paragraph: each
+  // `vx <verb> …` line took the next as its continuation.
+  it.each([60, 80])(
+    'at %i columns each usage line stays its own, wrapped under its verb',
+    (columns) => {
+      const usage = (t: string): string[] => {
+        const block = t.split('\n\n').find((b) => b.startsWith('Usage:'))!
+        return block.split('\n').slice(1)
+      }
+      const verbs = usage(helpText()).map((l) => /^ {2}vx (\S+)/.exec(l)![1]!)
+      for (const text of [helpText(), ...verbs.map((v) => verbHelpText(v))]) {
+        const out = usage(wrapHelp(text, columns))
+        for (const l of out) {
+          expect(Bun.stringWidth(l)).toBeLessThanOrEqual(columns)
+          expect(l).toMatch(/^ {2}vx \S|^ {5}\S/)
+        }
+        const heads = out.filter((l) => l.startsWith('  vx '))
+        expect(heads.length).toBe(usage(text).length)
+        heads.forEach((h, n) => expect(usage(text)[n]!.startsWith(h)).toBe(true))
+        expect(words(out.join(' '))).toEqual(words(usage(text).join(' ')))
+      }
+    },
+  )
+
   it('a wrapped description continues under its description column', () => {
     const out = wrapHelp(verbHelpText('run'), 60).split('\n')
     const at = out.findIndex((l) => l.startsWith('      --all '))

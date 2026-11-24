@@ -6472,7 +6472,8 @@ Full reference: vx help
 - It paints only on a terminal, so a script that greps it reads plain
   text.
 - On a terminal, an entry wider than the terminal or 80 columns refills
-  at spaces, its lines under its description.
+  at spaces, its lines under its description; a usage line's go under
+  its verb.
 - Piped, it prints as written.
 - A plugin verb answers its own `--help`.
 

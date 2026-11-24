@@ -49,17 +49,20 @@ export function wrapHelp(text: string, columns: number | undefined): string {
     const lead = /^ */.exec(line)![0].length
     const gap = /^ *\S.*? {2,}(?=\S)/.exec(line)?.[0].length
     const column = gap ?? lead
+    // A usage line (`vx <verb> …`, no description) is an entry of its own:
+    // the next one is not its continuation, and it hangs under the verb.
+    const usage = gap === undefined && line.startsWith('vx ', lead)
     // The entry's own continuation lines, authored under its description.
     let body = line.slice(column)
-    while (i + 1 < lines.length && /^ *\S/.test(lines[i + 1]!)) {
+    while (!usage && i + 1 < lines.length && /^ *\S/.test(lines[i + 1]!)) {
       const next = lines[i + 1]!
       // Another entry (a term, two spaces, its description) is not this one's.
       if (/^ */.exec(next)![0].length !== column || /\S {2,}\S/.test(next)) break
       body += ` ${next.trim()}`
       i++
     }
-    const hang = w - column >= DESCRIPTION_ROOM ? column : lead + 4
-    let row = column === hang ? line.slice(0, column) : ''
+    const hang = usage ? lead + 3 : w - column >= DESCRIPTION_ROOM ? column : lead + 4
+    let row = column === hang || usage ? line.slice(0, column) : ''
     if (row === '') out.push(line.slice(0, column).trimEnd())
     let start = true
     for (const word of body.split(' ').filter(Boolean)) {
