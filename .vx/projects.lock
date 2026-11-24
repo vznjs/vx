@@ -633,12 +633,13 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#3gvykz9
+#oso502m
+{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"],"workspaceFiles":["packages/vx/tests/helpers/**","packages/vx-cache-server/tests/issuer.ts","packages/vx-cache-server/tests/mem-blobs.ts","packages/vx-cache-server/tests/conformance.ts"]},"outputs":{"files":[]}}
 	lint.oxlint
 #lewu2os
 	test
-#1sq3xae
-{"cache":true,"dependsOn":["install"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","schemas/**","package.json"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#3l0ky48
+{"cache":true,"dependsOn":["install"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","schemas/**","package.json"],"workspaceFiles":["packages/vx/tests/helpers/**","packages/vx-cache-server/tests/issuer.ts","packages/vx-cache-server/tests/mem-blobs.ts","packages/vx-cache-server/tests/conformance.ts"]},"outputs":{"files":[]}}
 	test.bun
 @vzn/vx-bench	{"path":"private/vx-bench"}
 #3l5986h

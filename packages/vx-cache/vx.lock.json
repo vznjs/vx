@@ -50,7 +50,10 @@
           "tsconfig.json"
         ],
         "workspaceFiles": [
-          "packages/vx/tests/helpers/**"
+          "packages/vx/tests/helpers/**",
+          "packages/vx-cache-server/tests/issuer.ts",
+          "packages/vx-cache-server/tests/mem-blobs.ts",
+          "packages/vx-cache-server/tests/conformance.ts"
         ]
       },
       "outputs": {
@@ -128,7 +131,10 @@
           "package.json"
         ],
         "workspaceFiles": [
-          "packages/vx/tests/helpers/**"
+          "packages/vx/tests/helpers/**",
+          "packages/vx-cache-server/tests/issuer.ts",
+          "packages/vx-cache-server/tests/mem-blobs.ts",
+          "packages/vx-cache-server/tests/conformance.ts"
         ]
       },
       "outputs": {
