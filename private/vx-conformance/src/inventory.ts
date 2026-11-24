@@ -1287,6 +1287,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'tmpdir-refusal',
     'tool-not-on-path',
     'trailing-outputs',
+    'tracked-strays.unsafe',
     'tree-states-key',
     'tree-store-layout',
     'tree-store-torn',
