@@ -54,7 +54,14 @@ async function write(r: string, s: State): Promise<void> {
 }
 
 const vx = (r: string, ...args: string[]) => {
-  const p = Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, ...args], cwd: r, stderr: 'pipe' })
+  // Plain text whatever runs the suite: under vx, FORCE_COLOR splits the line.
+  const { FORCE_COLOR: _, ...env } = process.env
+  const p = Bun.spawnSync({
+    cmd: [process.execPath, CORE_BIN, ...args],
+    cwd: r,
+    stderr: 'pipe',
+    env: { ...env, NO_COLOR: '1' },
+  })
   return { code: p.exitCode, err: p.stderr.toString() }
 }
 
