@@ -5,7 +5,7 @@
 // reads the lock only for each task's definition.
 
 import type { Database } from 'bun:sqlite'
-import { indexDb, indexError, Cache } from '../cache/index.js'
+import { cachesNothing, indexDb, indexError, Cache, parseCachePolicy } from '../cache/index.js'
 import {
   expandHits,
   type FailureMode,
@@ -850,6 +850,8 @@ export function formatTaskRows(
   usual?: ReadonlyMap<string, number>,
   /** Task id → the output globs its exit 0 left matching nothing, from the run's kept warnings. */
   unwritten: ReadonlyMap<string, readonly string[]> = new Map(),
+  /** The run read and wrote no cache (`--no-cache`): its rows say `no-cache`, as it did. */
+  cacheOff = false,
 ): ui.Block[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
@@ -885,7 +887,11 @@ export function formatTaskRows(
     ).trim()
     const id = `${t.project}#${t.task}`
     const usualMs = usual === undefined ? undefined : (usual.get(id) ?? null)
-    const row = noKey ? { ...t, keyNotDerived: true } : t
+    const row = {
+      ...t,
+      ...(noKey ? { keyNotDerived: true } : {}),
+      ...(cacheOff ? { cacheOff } : {}),
+    }
     return (c: ui.ColorSupport) => formatRecordedRow(row, c, note, usualMs)
   })
   const blocks = [taskList(rows)]
@@ -1289,7 +1295,13 @@ function printRun(
   // with: `+0ms` claimed a baseline the live row rightly showed as `—`.
   for (const id of history.timedOnlySince(ranIds, inv.startedAt)) usual.delete(id)
   const warnings = keptWarnings(db, inv.runId)
-  const taskRows = formatTaskRows(detail?.tasks ?? [], moved, usual, unwrittenOutputs(warnings))
+  const taskRows = formatTaskRows(
+    detail?.tasks ?? [],
+    moved,
+    usual,
+    unwrittenOutputs(warnings),
+    cachesNothing(parseCachePolicy(inv.cachePolicy)),
+  )
   if (taskRows.length > 0)
     blocks.push(ui.section('Tasks', String(detail?.tasks.length ?? 0), ...taskRows))
   const stepRows = formatStepRows(keptSteps(db, inv.runId))

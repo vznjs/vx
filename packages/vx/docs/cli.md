@@ -5971,7 +5971,7 @@ then one row per task on the run's own grid. It reads as the run did.
 | Column    | Shows                                                    |
 | --------- | -------------------------------------------------------- |
 | `status`  | how the task ended                                       |
-| `cache`   | `miss`, or the kind of hit                               |
+| `cache`   | `miss`, `no-cache`, or the kind of hit                   |
 | `±usual`  | this time against the task's usual time; `—` never timed |
 | `time`    | how long it took                                         |
 | `cpu`     | average cores used; a hit's is blank, it spent nothing   |
@@ -5993,6 +5993,8 @@ then one row per task on the run's own grid. It reads as the run did.
 - `±usual` uses the timings of the definition (command and `env.define`)
   the task ran under.
 - `—` in `±usual`: never timed, or timed only by this run.
+- `no-cache`: the task caches nothing, or its run read and wrote no
+  cache (`--no-cache`).
 - `—` in any other cell: a value the run could not read.
 - The cache key is in `--format json` only.
 

@@ -687,6 +687,8 @@ export interface RecordedRow {
   blocks: number | null
   /** Its key was not derived: no command ran and no cache was asked. */
   keyNotDerived?: boolean
+  /** Its run's policy read and wrote no cache (`--no-cache`). */
+  cacheOff?: boolean
 }
 
 /**
@@ -714,6 +716,7 @@ export function formatRecordedRow(
       ? { restoreFailed: true }
       : {}),
     cache: {
+      ...(r.cacheOff === true ? { off: true } : {}),
       ...(r.restored !== null ? { restored: r.restored } : {}),
       ...(r.outputBytes !== null ? { outputBytes: r.outputBytes } : {}),
     },
