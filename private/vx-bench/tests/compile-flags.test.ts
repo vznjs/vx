@@ -8,7 +8,7 @@ it("times vx compiled with the release's flags", () => {
   expect(vxCompileFlags()).toEqual(
     expect.arrayContaining(['--no-compile-autoload-dotenv', '--minify', '--bytecode']),
   )
-  for (const file of ['compare.ts', 'pr-bench.ts', 'pr-bench-base.ts']) {
+  for (const file of ['compare.ts', 'pr-bench.ts', 'pr-bench-base.ts', 'real/nightly.ts']) {
     const src = readFileSync(path.join(import.meta.dir, '..', file), 'utf8')
     expect(src).toMatch(/'--compile',\s*\.\.\.vxCompileFlags\(\),/)
   }
