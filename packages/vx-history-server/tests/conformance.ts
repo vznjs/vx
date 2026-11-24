@@ -40,8 +40,12 @@ export function conformance(name: string, target: Target): void {
       },
       token,
     )
-  const upload = (timings: unknown[], token = tokens.main) =>
-    post('/v1/timings/upload', { timings }, token)
+  // A report landing in the millisecond its row was last written is left
+  // (a retried write counts once), so uploads one after another wait a tick.
+  const upload = async (timings: unknown[], token = tokens.main) => {
+    await Bun.sleep(1)
+    return post('/v1/timings/upload', { timings }, token)
+  }
   const named = () => ({ issuer: target.issuer, repository: target.repository })
   const ask = (refs: string[], hashes: unknown, token: string | null = tokens.read) =>
     post('/v1/timings/query', { ...named(), refs, hashes }, token)

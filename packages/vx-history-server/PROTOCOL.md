@@ -54,7 +54,9 @@ limits count on. Each folds into its row of the token's repository and ref:
 
 A report that would not move the row (`durationMs` and `cores` within
 5%, no new `rssBytes` peak) is not written, unless the row is a day old:
-each write costs, and the fold would move it under 1.5%.
+each write costs, and the fold would move it under 1.5%. Nor is one
+that lands in the millisecond its row was last written: a write retried
+after it landed counts once.
 
 The first report sets the row; one without `cores` or `rssBytes` keeps
 the row's. A row not reported for `TIMING_DAYS` (30) is deleted.
