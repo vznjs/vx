@@ -195,6 +195,6 @@ export {
   type DependencySpec,
 } from './dependency-spec.js'
 export { keepStyleEscapes, stripEscapes } from './plain-text.js'
-export { modeMatches, readUmask, restoredMode } from './umask.js'
+export { modeMatches, peekUmask, readUmask, restoredMode } from './umask.js'
 export type { Inline, Style, Token, Tone } from './styled.js'
 export { notify, onNotice, type Notice } from './notice.js'

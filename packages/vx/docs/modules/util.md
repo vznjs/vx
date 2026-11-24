@@ -2389,11 +2389,16 @@ table above is the function's output row for row
 The process umask, read when a restore starts, and the permission bits a
 restore gives a stored mode: minus the umask, as tar gives a non-root
 user. A file on disk holds a stored mode as saved, or as a restore here
-leaves it.
+leaves it. Linux reads the umask from `/proc/self/status`: Bun's
+`process.umask()` sets 0 and puts it back, and a directory a parallel
+restore made in that window landed 0777. Other platforms have only that
+call.
 
 ### Public surface
 
 ```ts
+// The umask now, never set to read it on Linux.
+export function peekUmask(): number
 export function readUmask(): void
 export function restoredMode(mode: number): number
 export function modeMatches(disk: number, stored: number): boolean

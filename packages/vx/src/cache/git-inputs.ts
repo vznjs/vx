@@ -41,6 +41,7 @@ import {
   isInstalledPath,
   notAWorkTree,
   parseCheckAttrOutput,
+  peekUmask,
   relPosix,
   sameDir,
   UserError,
@@ -3193,7 +3194,7 @@ export function writeIndexBlobs(files: ReadonlyMap<string, string>): void {
     // Beside it and renamed over: a read-only output is replaced, not opened,
     // and a hard link's other name keeps its bytes.
     // The mode a checkout gives it: the index's, under the umask.
-    const want = (held.startsWith('100755:') ? 0o777 : 0o666) & ~process.umask()
+    const want = (held.startsWith('100755:') ? 0o777 : 0o666) & ~peekUmask()
     const temp = `${abs}.vx-${process.pid}-${Date.now().toString(36)}`
     try {
       writeFileSync(temp, proc.stdout)
