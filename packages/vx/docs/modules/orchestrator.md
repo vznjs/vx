@@ -563,6 +563,10 @@ export function keepsOutcome(o: TaskOutcome): boolean
 // attempt-outputs.ts: the declared globs a run matched no file for, where the files are (a remote executor's worker);
 // a trailing-slash glob (`out/`) matches only a folder
 export function missingOutputs(sets: readonly OutputSet[]): string[]
+export function outputsMissingFacts(
+  missing: readonly string[],
+  sets: readonly { readonly base: string; readonly globs: readonly string[] }[],
+): OutputsMissingFacts // why they matched nothing, read on this disk
 ```
 
 Cache-key derivation (`ComputeHashArgs`, `computeTaskHash`,

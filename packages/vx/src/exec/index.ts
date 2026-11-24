@@ -58,6 +58,7 @@ export {
   type TaskPlacement,
   type ResolvedSandboxConfig,
   type SandboxViolation,
+  type OutputsMissingFacts,
 } from './executor.js'
 
 export { primeSpares, warmSpares } from './warm-shell.js'

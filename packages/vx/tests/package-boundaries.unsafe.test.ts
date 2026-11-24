@@ -205,6 +205,9 @@ describe('package boundaries', () => {
       // Widened 2026-10-25: a DTE worker walks only the trees a task's
       // outputs reach, as core's save does.
       'outputDirPrefixes',
+      // Widened 2026-11-24: the worker says why outputs matched nothing,
+      // from its disk, which the orchestrator's lacks.
+      'outputsMissingFacts',
       'outputsOverlap',
       'planRun',
       'prepareRun',

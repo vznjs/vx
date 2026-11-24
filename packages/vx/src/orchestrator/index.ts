@@ -22,6 +22,7 @@ export {
 // `vx lock` judges every task's network entries, as a run's sandbox would.
 export { networkPatternRefusal } from '../sandbox/index.js'
 export { missingOutputs } from './attempt-outputs.js'
+export { outputsMissingFacts } from './attempt.js'
 export { affectedTaskProjects } from './affected-tasks.js'
 export { applyGraphStage } from './graph-stage.js'
 export { applyMigration } from './migration.js'

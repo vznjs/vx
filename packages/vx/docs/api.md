@@ -761,6 +761,7 @@ export interface ExecuteResult extends RunResult {
     | { kind: 'trailing'; landed: Promise<void> }
   readonly changed?: readonly string[]
   readonly outputsMissing?: readonly string[]
+  readonly outputsMissingFacts?: OutputsMissingFacts
   readonly where?: string
   readonly queuedMs?: number
   readonly deadServers?: readonly {
@@ -1781,6 +1782,35 @@ rows through the globs, so a source file beside outputs is no stray.
 
 ```ts
 export function outputDirPrefixes(globs: readonly string[]): string[] | null
+```
+
+## `outputsMissingFacts`
+
+function · `src/orchestrator/attempt.ts`
+
+Why outputs `missing` matched nothing, as this disk shows it: what a
+refusal names beside them. An executor that ran the command elsewhere
+asks it where the files are (`ExecuteResult.outputsMissingFacts`).
+
+```ts
+export function outputsMissingFacts(
+  missing: readonly string[],
+  sets: readonly { readonly base: string; readonly globs: readonly string[] }[],
+): OutputsMissingFacts
+```
+
+## `OutputsMissingFacts`
+
+type · `src/exec/executor.ts`
+
+What a disk shows about outputs that matched nothing: the reasons the refusal names.
+
+```ts
+export interface OutputsMissingFacts {
+  readonly wroteNone?: true
+  readonly folderAsFile?: readonly string[]
+  readonly bracket?: string
+}
 ```
 
 ## `outputsOverlap`

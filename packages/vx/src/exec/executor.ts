@@ -64,6 +64,16 @@ export interface ResolvedSandboxConfig {
   }
 }
 
+/** What a disk shows about outputs that matched nothing: the reasons the refusal names. */
+export interface OutputsMissingFacts {
+  /** No positive output's top folder is there: the command wrote nowhere near them. */
+  readonly wroteNone?: true
+  /** Trailing-slash outputs that name a file, not the folder they declare. */
+  readonly folderAsFile?: readonly string[]
+  /** A `[` that starts a character class where that literal path exists (the hint text). */
+  readonly bracket?: string
+}
+
 export interface SandboxViolation {
   /** Raw log line from SRT. Format differs between macOS / Linux. */
   line: string
@@ -361,6 +371,11 @@ export interface ExecuteResult extends RunResult {
    * itself. The executor saves no entry under the task's key for it.
    */
   readonly outputsMissing?: readonly string[]
+  /**
+   * Why `outputsMissing` matched nothing, as the disk where the command ran
+   * shows it (`outputsMissingFacts`): this machine's disk lacks the files.
+   */
+  readonly outputsMissingFacts?: OutputsMissingFacts
   /**
    * Which machine ran the command (a REAPI worker id, a pool member). Absent:
    * this host. Reaches telemetry, the row and frame (`<id>@<where>`) and

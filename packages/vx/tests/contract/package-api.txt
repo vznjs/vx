@@ -351,6 +351,11 @@ export function normalizeGlob(glob: string): string
 export function notice(p: NoticeParts): Block
 == function outputDirPrefixes (src/util/paths.ts)
 export function outputDirPrefixes(globs: readonly string[]): string[] | null
+== function outputsMissingFacts (src/orchestrator/attempt.ts)
+export function outputsMissingFacts(
+  missing: readonly string[],
+  sets: readonly { readonly base: string; readonly globs: readonly string[] }[],
+): OutputsMissingFacts
 == function outputsOverlap (src/graph/task-graph.ts)
 export function outputsOverlap(rawA: string, rawB: string): boolean
 == function planRun (src/orchestrator/run.ts)
@@ -862,6 +867,7 @@ export interface ExecuteResult extends RunResult {
     | { kind: 'trailing'; landed: Promise<void> }
   readonly changed?: readonly string[]
   readonly outputsMissing?: readonly string[]
+  readonly outputsMissingFacts?: OutputsMissingFacts
   readonly where?: string
   readonly queuedMs?: number
   readonly deadServers?: readonly {
@@ -1412,6 +1418,12 @@ export interface OutputSet {
   readonly base: string
   readonly globs: readonly string[]
   readonly nestedDirs: readonly string[]
+}
+== type OutputsMissingFacts (src/exec/executor.ts)
+export interface OutputsMissingFacts {
+  readonly wroteNone?: true
+  readonly folderAsFile?: readonly string[]
+  readonly bracket?: string
 }
 == type OutputView (src/report/logger.ts)
 export interface OutputView {

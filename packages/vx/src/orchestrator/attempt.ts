@@ -11,6 +11,7 @@ import {
   type ExecuteRequest,
   type ExecuteResult,
   isExecutorFallback,
+  type OutputsMissingFacts,
   maskCaptured,
   type SandboxViolation,
   signalExitCode,
@@ -657,18 +658,17 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     left = missing.length > 0 && m.state !== undefined ? stateLeft(m.state, node.projectDir) : []
   }
   if (missing.length === 0) return undefined
-  const files = elsewhere
-    ? []
-    : [
-        ...folderWrittenAsFile(
-          node.projectDir,
-          missing.filter((g) => policy.outputs.includes(g)),
-        ),
-        ...folderWrittenAsFile(
-          args.run.workspaceRoot,
-          missing.filter((g) => policy.wsOutputs.includes(g)),
-        ),
-      ]
+  // Read where the files are: an executor that ran the command elsewhere
+  // says what its disk showed, as this one lacks what the command wrote.
+  // One that says nothing keeps the hint this disk can give: a bracketed
+  // path is most often a source folder, checked out here too.
+  const facts: OutputsMissingFacts = elsewhere
+    ? (res.outputsMissingFacts ?? bracketOnly(policy, node.projectDir, args.run.workspaceRoot))
+    : outputsMissingFacts(missing, [
+        { base: node.projectDir, globs: policy.outputs },
+        { base: args.run.workspaceRoot, globs: policy.wsOutputs },
+      ])
+  const files = facts.folderAsFile ?? []
   const line =
     `[vx] ${node.id}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
     `but never wrote ${missing.length === 1 ? 'it' : 'them'}, so the task fails and nothing is cached: ` +
@@ -678,29 +678,55 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
       : '') +
     // Nx and Turbo cache whichever outputs exist, so an Nx test target's
     // coverage dir, written only with coverage on, failed every other run.
-    (!noWrite &&
-    !elsewhere &&
-    wroteNone(missing, [
-      ...policy.outputs.map((g) => [node.projectDir, g] as const),
-      ...policy.wsOutputs.map((g) => [args.run.workspaceRoot, g] as const),
-    ])
+    (!noWrite && facts.wroteNone === true
       ? ` — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it`
       : '') +
-    (files.length > 0
-      ? ` — a folder was declared, a file was written: ${[...new Set(files)].join(', ')}`
-      : '') +
+    (files.length > 0 ? ` — a folder was declared, a file was written: ${files.join(', ')}` : '') +
     (left.length > 0
       ? ` — ${left.map(printable).join(', ')} survived the clean, which the task declares neither input nor ` +
         `output: a tool that reads such a file back (an incremental build's state) may take the cleaned ` +
         `outputs as built` +
         declareStateHint(left)
       : '') +
-    bracketLiteralHint([
-      ...policy.outputs.map((g) => [node.projectDir, g] as const),
-      ...policy.wsOutputs.map((g) => [args.run.workspaceRoot, g] as const),
-    ])
+    (facts.bracket ?? '')
   warnOf(log)(secrets.text(line))
   return missing
+}
+
+function bracketOnly(
+  policy: MissRun['policy'],
+  projectDir: string,
+  root: string,
+): OutputsMissingFacts {
+  const bracket = bracketLiteralHint([
+    ...policy.outputs.map((g) => [projectDir, g] as const),
+    ...policy.wsOutputs.map((g) => [root, g] as const),
+  ])
+  return bracket === '' ? {} : { bracket }
+}
+
+/**
+ * Why outputs `missing` matched nothing, as this disk shows it: what a
+ * refusal names beside them. An executor that ran the command elsewhere
+ * asks it where the files are (`ExecuteResult.outputsMissingFacts`).
+ */
+export function outputsMissingFacts(
+  missing: readonly string[],
+  sets: readonly { readonly base: string; readonly globs: readonly string[] }[],
+): OutputsMissingFacts {
+  const pairs = sets.flatMap((s) => s.globs.map((g) => [s.base, g] as const))
+  const folderAsFile = sets.flatMap((s) =>
+    folderWrittenAsFile(
+      s.base,
+      missing.filter((g) => s.globs.includes(g)),
+    ),
+  )
+  const bracket = bracketLiteralHint(pairs)
+  return {
+    ...(wroteNone(missing, pairs) ? { wroteNone: true as const } : {}),
+    ...(folderAsFile.length > 0 ? { folderAsFile: [...new Set(folderAsFile)] } : {}),
+    ...(bracket !== '' ? { bracket } : {}),
+  }
 }
 
 /** Fails server `id`'s outcome among `upstream`, through groups: a dependant's view of it. */

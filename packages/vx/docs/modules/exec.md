@@ -656,7 +656,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations; outputs?; changed?; outputsMissing?; deadServers?; where?; queuedMs? }` —
+- `ExecuteResult extends RunResult { violations; outputs?; changed?; outputsMissing?; outputsMissingFacts?; deadServers?; where?; queuedMs? }` —
   `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
   (outputs left remote, fetched only if a local consumer needs them), or,
   to a `trailing` request alone, `{ kind: 'trailing'; landed }`: on their
@@ -665,7 +665,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   A `remote` executor checks the declared outputs where they were written
   (`missingOutputs`, core's rule) and returns the globs that matched
   nothing as `outputsMissing`: core fails the task naming them, as it
-  does for one run here.
+  does for one run here. `outputsMissingFacts` (`outputsMissingFacts()`,
+  read there) says why, as a run here does: this machine's disk lacks
+  what the command wrote.
   A `servers` executor names in `deadServers` each server of the request
   that failed where it ran (`{ taskId, exitCode, began }`): core fails
   that server's row, and with `began: false` (it died or never became

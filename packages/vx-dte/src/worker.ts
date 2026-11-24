@@ -15,6 +15,7 @@ import {
   ui,
   machineParallelism,
   missingOutputs,
+  outputsMissingFacts,
   workerRuntime,
   isUserError,
   UserError,
@@ -633,6 +634,14 @@ async function serve(
               { base: opts.root, globs: m.outputs.workspaceFiles, nestedDirs: [] },
             ])
           : []
+      // Why, read here: the orchestrator's disk lacks what the command wrote.
+      const outputsWhy =
+        outputsMissing.length === 0
+          ? {}
+          : outputsMissingFacts(outputsMissing, [
+              { base: path.join(opts.root, m.project), globs: m.outputs.files },
+              { base: opts.root, globs: m.outputs.workspaceFiles },
+            ])
       if (outputsMissing.length > 0)
         ui.print('err', ui.status('error', m.task, `no file matched ${outputsMissing.join(', ')}`))
       // Its violations name the orchestrator's paths. As JSON first: the swap
@@ -696,7 +705,7 @@ async function serve(
         ...(cpuShare === undefined ? {} : { cpuShare }),
         ...(changed.length === 0 ? {} : { changed }),
         ...(removed.length === 0 ? {} : { removed }),
-        ...(outputsMissing.length === 0 ? {} : { outputsMissing }),
+        ...(outputsMissing.length === 0 ? {} : { outputsMissing, outputsMissingFacts: outputsWhy }),
       })
     } finally {
       running.delete(m.task)
