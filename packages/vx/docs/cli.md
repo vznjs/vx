@@ -2957,6 +2957,7 @@ Default: no bound, which clears the whole cache. No run ever evicts anything: to
 - `--older-than 30d --max-size 10G`: both bounds may be combined. Age-based eviction runs first, then LRU while the total is over the size.
 - `--older-than` allows up to an hour of slack.
 - Sizes are on disk, as `du` counts them. A 5 KB file holds a whole block, so a store of small files is bigger than their lengths.
+- The store keeps each output whole: a sparse file at its full length, and hard-linked files as separate copies. A restore writes them back the same way.
 - Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
 **History**
