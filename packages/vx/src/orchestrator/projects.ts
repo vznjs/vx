@@ -907,7 +907,11 @@ async function asLockHolds(
       for (const m of metas) fresh.set(m.dir, staged.stage?.get(m.dir))
       reads = staged.reads
     }
-  } catch {
+  } catch (err) {
+    // A config or mapping that no longer evaluates: its error, as `vx lock
+    // --check` names it. Read as "changed since the last `vx lock`" alone, the
+    // fix was hidden behind a `vx lock` that refused it again.
+    if (isUserError(err)) throw err
     return metas.map(named)
   }
   const same = metas.filter((m) => {

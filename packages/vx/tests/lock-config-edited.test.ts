@@ -118,6 +118,19 @@ describe('a config edited since vx lock', () => {
     expect(out).toContain('changed since the last `vx lock`')
   })
 
+  // An edit that no longer evaluates read only "changed since the last
+  // `vx lock`": the error `vx lock --check` names was hidden, stamped or not.
+  for (const stamped of [true, false]) {
+    it(`names the error of an edit that does not evaluate ${stamped ? 'beside stamps' : 'with no stamps'}`, async () => {
+      if (!stamped) await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
+      await writeFile(file, "throw new Error('boom in the config')\n")
+      const { code, out } = await vx(root, ['run', 'say', '--all'])
+      expect(code).toBe(1)
+      expect(out).toContain('boom in the config')
+      expect(out).toContain('packages/core/vx.config.mjs')
+    })
+  }
+
   // A cache dir two checkouts share (`VX_CACHE_DIR`) holds the other's stamps.
   it("takes no answer from another workspace's stamps", async () => {
     const at = path.join(root, '.vx', 'cache', 'config-stamps.json')
