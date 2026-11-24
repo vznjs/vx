@@ -650,27 +650,150 @@ it('answers 502 naming the bucket on every route while the bucket fails', async 
         502,
         {
           code: 'bad_gateway',
-          message: 'the bucket could not be read: the bucket answered GET 500',
+          message: 'the bucket could not be read: the bucket answered GET 500 InternalError',
         },
       ],
       [
         502,
         {
           code: 'bad_gateway',
-          message: 'the bucket could not be read: the bucket answered HEAD 500',
+          message: 'the bucket could not be read: the bucket answered HEAD 500 InternalError',
         },
       ],
       [
         502,
         {
           code: 'bad_gateway',
-          message: 'the bucket could not be read: the bucket answered HEAD 500',
+          message: 'the bucket could not be read: the bucket answered HEAD 500 InternalError',
         },
       ],
     ])
     expect((await ask('HEAD', '/v1/artifacts/ab')).status).toBe(502)
   } finally {
     await down.stop(true)
+  }
+})
+
+// A bucket that refuses the server's signatures for its clock (S3's
+// RequestTimeTooSkewed) answered "the bucket answered HEAD 403" on every
+// check and download, as a wrong key does: the operator could not tell a
+// clock from a credential. The bucket's own reason is named.
+it("names the bucket's reason for a refused read: a skewed clock is not a wrong key", async () => {
+  const skewed =
+    '<?xml version="1.0" encoding="UTF-8"?><Error><Code>RequestTimeTooSkewed</Code>' +
+    '<Message>The difference between the request time and the current time is too large.</Message></Error>'
+  const s3 = fakeS3(0, () => new Response(skewed, { status: 403 }))
+  try {
+    const handle = createCacheServer({
+      blobs: s3Blobs(
+        new Bun.S3Client({ endpoint: s3.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
+      ),
+      authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
+    })
+    const headers = {
+      ...NAMED,
+      authorization: `Bearer ${await iss.sign(MAIN_JOB, 'http://x.test')}`,
+      'vx-scope': scopeOf('refs/heads/main'),
+      'content-type': 'application/json',
+    }
+    const logged = spyOn(console, 'error').mockImplementation(() => {})
+    const said = async (method: string, path: string, body?: string) => {
+      const res = await handle(new Request(`http://x.test${path}`, { method, headers, body }))
+      return [res.status, ((await res.json()) as { message: string }).message]
+    }
+    const reason =
+      '403 RequestTimeTooSkewed: The difference between the request time and the current time is too large.'
+    expect([
+      await said('GET', '/v1/artifacts/ab'),
+      await said(
+        'POST',
+        '/v1/artifacts',
+        JSON.stringify({ hashes: ['ab'], scopes: [scopeOf('refs/heads/main')] }),
+      ),
+    ]).toEqual([
+      [502, `the bucket could not be read: the bucket answered GET ${reason}`],
+      [502, `the bucket could not be read: the bucket answered HEAD ${reason}`],
+    ])
+    logged.mockRestore()
+  } finally {
+    await s3.stop()
+  }
+})
+
+// A throttled part (S3's 503 SlowDown) is retried, then the upload is
+// aborted: no object, no part left behind, and the client told 502.
+it('stores nothing of a multipart upload whose part the bucket keeps throttling', async () => {
+  const slow = fakeS3(0, (req, url) =>
+    req.method === 'PUT' && url.searchParams.get('partNumber') === '2'
+      ? new Response(
+          '<Error><Code>SlowDown</Code><Message>Please reduce your request rate.</Message></Error>',
+          { status: 503 },
+        )
+      : undefined,
+  )
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({ endpoint: slow.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
+    )
+    const size = 12 * 1024 * 1024
+    await expect(blobs.put('m', new Blob([new Uint8Array(size)]).stream(), size)).rejects.toThrow(
+      'Please reduce your request rate.',
+    )
+    const aborted = () => slow.log.some((l) => l.startsWith('DELETE /b/m?uploadId='))
+    for (let i = 0; i < 100 && !aborted(); i++) await Bun.sleep(50)
+    expect([
+      aborted(),
+      slow.log.some((l) => l.startsWith('POST /b/m?uploadId=')),
+      slow.objects.size,
+    ]).toEqual([true, false, 0])
+  } finally {
+    await slow.stop()
+  }
+})
+
+// A bucket that cuts a download short after its headers: the server has
+// already answered 200, so the cut must reach the client as a failed
+// transfer (vxCache reads it as a miss), never a clean end it could cache.
+it('passes a download the bucket cut short on as a failed transfer, never a whole body', async () => {
+  const sent = 'a'.repeat(200_000)
+  const cut = Bun.listen({
+    hostname: '127.0.0.1',
+    port: 0,
+    socket: {
+      data(sock, d) {
+        const line = Buffer.from(d).toString('latin1')
+        if (!line.includes('\r\n\r\n')) return
+        const head = `HTTP/1.1 200 OK\r\ncontent-length: ${sent.length + 100}\r\nconnection: close\r\n\r\n`
+        sock.write(line.startsWith('HEAD') ? head : head + sent)
+        sock.end()
+      },
+    },
+  })
+  const handle = createCacheServer({
+    blobs: s3Blobs(
+      new Bun.S3Client({
+        endpoint: `http://127.0.0.1:${cut.port}`,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    ),
+    authorize: oidcAuth({ allow: ALLOW, fetchJson: iss.fetchJson }),
+  })
+  const served = listen(handle, '127.0.0.1', 0)
+  try {
+    const res = await fetch(`${served.url.origin}/v1/artifacts/ab`, {
+      headers: {
+        ...NAMED,
+        authorization: `Bearer ${await iss.sign(MAIN_JOB, served.url.origin)}`,
+        'vx-scope': scopeOf('refs/heads/main'),
+      },
+    })
+    expect([res.status, res.headers.get('vx-size')]).toEqual([200, String(sent.length + 100)])
+    await expect(res.arrayBuffer()).rejects.toThrow()
+  } finally {
+    await served.stop(true)
+    cut.stop(true)
   }
 })
 

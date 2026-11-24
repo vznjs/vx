@@ -9,7 +9,11 @@ export interface FakeS3 {
   stop(): Promise<void>
 }
 
-export function fakeS3(port = 0): FakeS3 {
+/** `misbehave` answers a request in the bucket's stead when it returns a Response. */
+export function fakeS3(
+  port = 0,
+  misbehave?: (req: Request, url: URL) => Response | undefined,
+): FakeS3 {
   const objects = new Map<string, Uint8Array>()
   const uploads = new Map<string, Map<number, Uint8Array>>()
   const log: string[] = []
@@ -22,6 +26,11 @@ export function fakeS3(port = 0): FakeS3 {
       const name = decodeURIComponent(url.pathname)
       const q = url.searchParams
       log.push(`${req.method} ${url.pathname}${url.search}`)
+      const instead = misbehave?.(req, url)
+      if (instead !== undefined) {
+        await req.arrayBuffer()
+        return instead
+      }
       if (req.method === 'POST' && q.has('uploads')) {
         const id = String(++next)
         uploads.set(id, new Map())

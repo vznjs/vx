@@ -96,6 +96,11 @@ bun packages/vx-cache-server/src/bun.ts --port 8080
 - S3 settings are those Bun's S3 client reads (`S3_REGION` too).
 - A node keeps no state of its own, so any number of them serve one
   bucket behind a balancer.
+- A read the bucket refuses is `502`, naming the bucket's reason, such
+  as `403 RequestTimeTooSkewed` (fix the node's clock) or `503 SlowDown`.
+  vx reads it as a miss and runs the task.
+- A download the bucket cuts short fails as a transfer, never a whole
+  artifact. An upload it fails midway stores nothing.
 
 ## With Docker
 

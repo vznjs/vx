@@ -37,10 +37,22 @@ export function s3Blobs(client: Bun.S3Client): Blobs {
       return null
     }
     if (!res.ok) {
-      await res.body?.cancel()
-      throw new Error(`the bucket answered ${method} ${res.status}`)
+      const said = method === 'GET' ? await res.text() : (await res.body?.cancel(), await why(name))
+      throw new Error(`the bucket answered ${method} ${res.status}${reasonOf(said)}`)
     }
     return res
+  }
+  /**
+   * A HEAD's refusal has no body; a GET of its first byte names why. A
+   * skewed clock (RequestTimeTooSkewed) read as a wrong key did, 403.
+   */
+  const why = async (name: string): Promise<string> => {
+    try {
+      const res = await fetch(client.presign(name), { headers: { range: 'bytes=0-0' } })
+      return res.ok ? (await res.body?.cancel(), '') : await res.text()
+    } catch {
+      return ''
+    }
   }
   /** Its size, off a HEAD: null when the bucket has none. */
   const sizeOf = async (name: string): Promise<number | null> => {
@@ -85,6 +97,15 @@ export function s3Blobs(client: Bun.S3Client): Blobs {
     },
     size: sizeOf,
   }
+}
+
+/** ` <Code>: <Message>` of an S3 error document, or nothing. */
+function reasonOf(xml: string): string {
+  const tag = (t: string) => new RegExp(`<${t}>([^<]{1,400})</${t}>`).exec(xml)?.[1]
+  const code = tag('Code')
+  if (code === undefined) return ''
+  const said = tag('Message')
+  return ` ${code}${said === undefined ? '' : `: ${said}`}`
 }
 
 /**
