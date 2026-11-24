@@ -311,7 +311,8 @@ Rules:
 - Those are the same files, cleaned only where git tracks none (see the wildcard rule below).
 - As an input, `""`, `"."` and `"./"` are every package file, `**/*`.
 - `$TURBO_ROOT$/<path>` is `outputs.workspaceFiles`.
-- Turbo caches whichever outputs a run wrote; vx fails a task that writes none. A `coverage` output is written only with coverage on, so the migration names it as a todo unless the command turns coverage on (`--coverage`).
+- Turbo caches whichever outputs a run wrote; vx fails a task that writes none.
+- A `coverage` output is written only with coverage on, so the migration names it as a todo unless the command turns coverage on (`--coverage`).
 
 <details><summary>Details</summary>
 
