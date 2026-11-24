@@ -2280,6 +2280,35 @@ it('advises the workers that would have run it best, from the same replay', asyn
   }
 })
 
+// Cut by its time budget, the advice is no number at all, and the footer
+// says it was not worked out: a fleet cut short read as no better fleet,
+// and `any` named the cheapest of those that finished as if exact.
+it('says the advice was not worked out when its replays ran out of time', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const sizes = [{ name: 'small', max: 2, cpu: 4, memory: 1e10 }]
+    h.o.asked(1, 2, 2, 400, [])
+    const w = await h.worker(4)
+    await Bun.sleep(50)
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await w.batches()
+    const done = { exitCode: 0, durationMs: 200, cpuMs: 200 }
+    await w.finish('t1', 'k-t1', done)
+    await w.finish('t2', 'k-t2', done)
+    await Promise.all(runs)
+    await h.stop()
+    expect(h.o.advice(() => [], sizes, 0)).toEqual([])
+    const rows = h.o
+      .footer(undefined, undefined, () => h.o.advice(() => [], sizes, 0))
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.filter((r) => /^(best|more|any) /.test(r))).toEqual([
+      'best      not worked out: replaying the run on each fleet took past its 2s',
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
 // 2026-11-20: advice's eight replays took 15 s of one core on a
 // 200-task run once the uncapped fleets planned again; played side by
 // side they must say what one thread says.

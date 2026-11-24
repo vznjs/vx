@@ -1328,8 +1328,9 @@ next time (`TaskExecutor.advice`).
 - Raise a size's `max`, or change its `cpu` and `memory`, by them.
 - They are in the footer and the run summary, and `@vzn/vx-ci` prints them
   under "Workers to declare".
-- The replays get 2 s at the run's end. A line whose replay is not done
-  by then is left out, so a big run ends without it.
+- The replays get 2 s at the run's end. Past that, no `best`, `more` or
+  `any` line is given, not even from the replays that finished, and the
+  footer says `best  not worked out` instead; the summary has none.
 
 <details><summary>Details</summary>
 

@@ -456,19 +456,26 @@ export class RunReport<W extends RecordedWorker> {
    * cores. With no sizes (workers that join on their own), the shapes
    * that joined stand for them, as many as joined.
    */
-  advice(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): WorkerAdvice[] {
+  advice(
+    depsOf: (id: string) => readonly string[],
+    sizes: readonly Size[],
+    budgetMs = ADVICE_MS,
+  ): WorkerAdvice[] {
     // The footer and the summary each ask once the run ended: played once.
     if (this.ended && this.advised !== undefined) return this.advised
-    const out = this.advise(depsOf, sizes)
+    const out = this.advise(depsOf, sizes, budgetMs)
     if (this.ended) this.advised = out
     return out
   }
 
   private advised: WorkerAdvice[] | undefined
+  /** The advice's replays ran past their budget: it was not worked out. */
+  private adviceCut = false
 
   private advise(
     depsOf: (id: string) => readonly string[],
     sizes: readonly Size[],
+    budgetMs: number,
   ): WorkerAdvice[] {
     const r = this.replay(depsOf)
     if (r === undefined) return []
@@ -492,8 +499,12 @@ export class RunReport<W extends RecordedWorker> {
               .values(),
           ]
     // Bounded: the replays grow faster than the run, and a 2,000-task run's
-    // held its end for good. Past the budget, the advice is left out.
-    const a = advise(r.tasks, shapes, r.warm, playAside(r.tasks, r.warm, Date.now() + ADVICE_MS))
+    // held its end for good. Past the budget, no line is given: a fleet
+    // cut short reads as no better, so what finished is not exact either.
+    const deadline = Date.now() + budgetMs
+    const a = advise(r.tasks, shapes, r.warm, playAside(r.tasks, r.warm, deadline))
+    this.adviceCut = Date.now() >= deadline
+    if (this.adviceCut) return []
     const wire = (of: WorkerAdvice['of'], f: Fleets | undefined): WorkerAdvice[] =>
       f === undefined
         ? []
@@ -795,6 +806,16 @@ export class RunReport<W extends RecordedWorker> {
                   ),
                 ] as [string, ui.Inline],
             ),
+            ...(advice !== undefined && this.adviceCut
+              ? [
+                  [
+                    '',
+                    ui.dim(
+                      `${'best'.padEnd(width)}  not worked out: replaying the run on each fleet took past its ${ADVICE_MS / 1000}s`,
+                    ),
+                  ] as [string, ui.Inline],
+                ]
+              : []),
             ...(this.unmeasured.length === 0
               ? []
               : [
