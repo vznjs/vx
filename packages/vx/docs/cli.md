@@ -3257,7 +3257,7 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 - Stamps are kept per lock, the last 8, so a branch checked out again keeps its own.
 - A lock with none (a pull, a fresh clone, a branch another `vx lock` left) has the configs the run reads evaluated once, as `vx lock --check` does.
 - Then an edit is refused, and the rest are stamped once the cache folder exists (`--dry` makes none).
-- A file a `project` plugin made a config from is checked only beside a lock `vx lock` stamped.
+- A file a `project` plugin made a config from is stamped then only when every mapping that read it holds: a refused one stays refused, in every project that read it.
 - A config edit committed without relocking is refused like an uncommitted one.
 - A file a config imports is not checked.
 - A file a `project` plugin made a config from is otherwise checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`.

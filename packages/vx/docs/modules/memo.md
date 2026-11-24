@@ -309,7 +309,10 @@ every `project` plugin's mapping once, as `vx lock --check` does (the lock
 holds what the stage left: the bare config differed, and a fresh clone
 refused what the check passed); `restampConfigs` stamps those that match,
 with the files each mapping read, into a cache dir that
-exists only (a plan makes none). The config stamps are taken before the
+exists only (a plan makes none). Each mapping's reads are kept, and a file
+read by one that no longer holds is stamped for none: stamped for the ones
+that held, a project with no config (every turbo() and nx() project) ran
+its locked mapping, green. The config stamps are taken before the
 evaluation: one edited during it was stamped as the lock holds. The one entry held only the last lock's stamps, so after `vx lock`
 on a branch an unlocked edit on main ran the locked config, green. A commit since changes nothing: a config
 edit committed with no `vx lock` is refused, and so is a pulled one whose

@@ -317,3 +317,54 @@ describe('no stamps beside a lock a project plugin mapped', () => {
     expect(out).toContain('packages/core/vx.config.mjs changed since the last `vx lock`')
   })
 })
+
+// One file every project's mapping reads, each its own part of it (as root
+// turbo.json holds every package's tasks), and a project with no config
+// that only its mapping makes (every turbo() and nx() project). With no
+// stamps beside the lock, the file was stamped as locked by the project
+// whose mapping still held, so after one refusal the edited project ran its
+// locked mapping, green: no config of its own was there to stay unstamped.
+describe('a mapped-from file one project reads otherwise since vx lock', () => {
+  const MAPPER = pluginSource(
+    'org/parts',
+    `{ project(config, ctx) {
+        const fs = require('node:fs')
+        const at = require('node:path').join(ctx.workspaceRoot, 'parts.json')
+        ctx.read(at)
+        const word = JSON.parse(fs.readFileSync(at, 'utf8'))[ctx.name]
+        config.tasks = { ...config.tasks, say: { exec: { command: 'echo ' + word } } }
+      } }`,
+  )
+  let root: string
+  const parts = (core: string, other: string) =>
+    writeFile(path.join(root, 'parts.json'), JSON.stringify({ core, other }))
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-lock-parts-' })
+    await addProject(root, 'core', config('core'))
+    await addProject(root, 'other')
+    await parts('one', 'one')
+    await writeFile(path.join(root, '.vx', 'workspace.mjs'), localWorkspaceSource([MAPPER]))
+    expect((await vx(root, ['lock'])).code).toBe(0)
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  for (const stamped of [true, false]) {
+    it(`keeps refusing the project whose part moved ${stamped ? 'beside stamps' : 'with no stamps'}`, async () => {
+      if (!stamped) await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
+      await parts('one', 'two')
+      const first = await vx(root, ['run', 'core#say'])
+      expect([first.code, first.out]).toEqual([
+        1,
+        expect.stringContaining('changed since the last `vx lock`'),
+      ])
+      const again = await vx(root, ['run', 'other#say'])
+      expect([again.code, again.out]).toEqual([
+        1,
+        expect.stringContaining('changed since the last `vx lock`'),
+      ])
+      expect((await vx(root, ['lock', '--check'])).code).toBe(1)
+    })
+  }
+})

@@ -922,17 +922,30 @@ async function asLockHolds(
       Bun.deepEquals(fresh.get(m.dir), locked.config, true)
     )
   })
-  if (same.length > 0) {
+  // A file a mapping that no longer holds read is stamped for none: the
+  // mappings that hold vouched for it, and a project with no config, which
+  // only its mapped-from files guard, ran its locked mapping, green.
+  const failedReads = new Set(
+    metas
+      .filter((m) => !same.includes(m))
+      .flatMap((m) => [...(reads?.get(m.dir) ?? [])].map((f) => relPosix(root, f))),
+  )
+  // Every mapping's reads are kept, so a later run asks them of each project.
+  const byDir: Record<string, string[]> = {}
+  for (const m of metas) {
+    const got = reads?.get(m.dir)
+    if (got !== undefined && got.size > 0)
+      byDir[lockKey(root, m.dir)] = [...got].map((f) => relPosix(root, f)).sort()
+  }
+  if (same.length > 0 || Object.keys(byDir).length > 0) {
     const kept = new Set(same.flatMap((m) => (m.configPath === null ? [] : [named(m)])))
-    const byDir: Record<string, string[]> = {}
-    for (const m of same) {
-      const got = reads?.get(m.dir)
-      if (got !== undefined && got.size > 0)
-        byDir[lockKey(root, m.dir)] = [...got].map((f) => relPosix(root, f)).sort()
-    }
     // Stamped after the stage read them, as `vx lock` stamps them.
     const mapped = await takeConfigStamps(root, [
-      ...new Set(Object.values(byDir).flatMap((rels) => rels.map((r) => path.join(root, r)))),
+      ...new Set(
+        Object.values(byDir).flatMap((rels) =>
+          rels.filter((r) => !failedReads.has(r)).map((r) => path.join(root, r)),
+        ),
+      ),
     ])
     await restampConfigs(root, args.cacheDir, digest, {
       at: taken.at,
