@@ -705,57 +705,6 @@ So before execution starts, `run()` kicks off **background prefetches**:
    remote GET per key**, whether it was served by the prefetch, the
    lazy read-through, or both.
 
-## A current tree: when a warm hit restores nothing
-
-A hit whose outputs are already on disk should cost a few stats, not an
-extraction. Two checks decide, both against rows the cache recorded when
-the tree last matched the entry (`output_files`, and since 2026-09-03
-`output_dirs`):
-
-1. **The set.** The files under the declared output globs must be exactly
-   the entry's files — no strays, nothing missing — because a restore
-   wipes and rewrites the declared outputs, and a stray left in place
-   would be a stale file the hit silently kept. Until Wave 6 this was a
-   glob walk on every hit (0.36 ms each; 365 ms of CPU on a warm
-   1000-project run). Now every glob names the directory its matches
-   live under (`outputDirPrefixes`): `<dir>/**` and a bare literal `<dir>`
-   are that tree (a literal that names a file is recorded as a file,
-   `mtime_ms` -2, and holds while a regular file stands there, its bytes
-   being the per-file check's), any other glob the tree under its static
-   prefix (`dist/*.js` is `dist`), and a root-anchored one (Turbo's
-   `**/dist/**`) the whole project. The cache records every directory
-   under each with its mtime after each save and restore; on the next
-   hit, unchanged mtimes on all of them prove the set unchanged, since a
-   file added or removed anywhere the glob could see bumps its parent
-   directory, and a new directory bumps the recorded directory that
-   contains it. The rows are taken per task and written together — one
-   transaction at the first read, at prune, at stats or at close, since
-   item 622; a thousand commits at run end were the whole snapshot stage
-   before — and a reader in the same process flushes them first. A
-   save's or restore's snapshot is taken once the directories are past
-   the racy window: while the run goes, two seconds after the save or
-   restore, held to the rows the process stamped then, so no statement
-   makes a run's work depend on its length (the run-end walks of 8,002
-   tasks held a cold run's exit ~40 ms), else at run end. A tree a
-   dependant's glob adds to waits for the end, so its walk sees those
-   files. By then a later task or another process may have written into
-   them: the walk collects the files it passes and
-   records nothing unless the files the globs take there are the entry's
-   rows (item 1087), so a source file beside the outputs is no stray. A
-   glob that leaves the project, a missing row set (a remote ingest
-   records none), a moved directory, or more than 8,192 directories
-   (`OUTPUT_DIRS_CAP`, recorded as one never-current row, `mtime_ms` -3,
-   so the hit does not snapshot it again) keeps the walk — and a walk that
-   proves the tree current records the directories so the following hit
-   can skip it.
-2. **The files.** Every recorded file's `(size, mode)` and the stamped
-   `(mtime-ms, inode, ctime)` must match. This never left: the directory rule only replaces the
-   enumeration, not the fingerprint.
-
-The trade is the one every mtime-based skip accepts, already documented
-for files: a deliberately forged directory mtime (`touch -r`) hides a
-stray. Both directions are pinned in `tests/output-dirs.test.ts`.
-
 Hard invariants of the remote prefetch:
 
 - **Remote-only.** This entire path is gated on a `LayeredCache` being
@@ -874,6 +823,57 @@ when a real run needs them. Locally the probe reads whether the entry's
 row is there and stats the artifact, never the row itself: the whole
 row, its stored stdout included, made a 200-task plan over 1 MB outputs
 230 ms against 28 (min of 11, 2026-10-02).
+
+## A current tree: when a warm hit restores nothing
+
+A hit whose outputs are already on disk should cost a few stats, not an
+extraction. Two checks decide, both against rows the cache recorded when
+the tree last matched the entry (`output_files`, and since 2026-09-03
+`output_dirs`):
+
+1. **The set.** The files under the declared output globs must be exactly
+   the entry's files — no strays, nothing missing — because a restore
+   wipes and rewrites the declared outputs, and a stray left in place
+   would be a stale file the hit silently kept. Until Wave 6 this was a
+   glob walk on every hit (0.36 ms each; 365 ms of CPU on a warm
+   1000-project run). Now every glob names the directory its matches
+   live under (`outputDirPrefixes`): `<dir>/**` and a bare literal `<dir>`
+   are that tree (a literal that names a file is recorded as a file,
+   `mtime_ms` -2, and holds while a regular file stands there, its bytes
+   being the per-file check's), any other glob the tree under its static
+   prefix (`dist/*.js` is `dist`), and a root-anchored one (Turbo's
+   `**/dist/**`) the whole project. The cache records every directory
+   under each with its mtime after each save and restore; on the next
+   hit, unchanged mtimes on all of them prove the set unchanged, since a
+   file added or removed anywhere the glob could see bumps its parent
+   directory, and a new directory bumps the recorded directory that
+   contains it. The rows are taken per task and written together — one
+   transaction at the first read, at prune, at stats or at close, since
+   item 622; a thousand commits at run end were the whole snapshot stage
+   before — and a reader in the same process flushes them first. A
+   save's or restore's snapshot is taken once the directories are past
+   the racy window: while the run goes, two seconds after the save or
+   restore, held to the rows the process stamped then, so no statement
+   makes a run's work depend on its length (the run-end walks of 8,002
+   tasks held a cold run's exit ~40 ms), else at run end. A tree a
+   dependant's glob adds to waits for the end, so its walk sees those
+   files. By then a later task or another process may have written into
+   them: the walk collects the files it passes and
+   records nothing unless the files the globs take there are the entry's
+   rows (item 1087), so a source file beside the outputs is no stray. A
+   glob that leaves the project, a missing row set (a remote ingest
+   records none), a moved directory, or more than 8,192 directories
+   (`OUTPUT_DIRS_CAP`, recorded as one never-current row, `mtime_ms` -3,
+   so the hit does not snapshot it again) keeps the walk — and a walk that
+   proves the tree current records the directories so the following hit
+   can skip it.
+2. **The files.** Every recorded file's `(size, mode)` and the stamped
+   `(mtime-ms, inode, ctime)` must match. This never left: the directory rule only replaces the
+   enumeration, not the fingerprint.
+
+The trade is the one every mtime-based skip accepts, already documented
+for files: a deliberately forged directory mtime (`touch -r`) hides a
+stray. Both directions are pinned in `tests/output-dirs.test.ts`.
 
 ## Cache policy (read/write axes)
 
