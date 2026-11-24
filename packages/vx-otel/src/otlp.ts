@@ -750,33 +750,58 @@ function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
     strAttr(VX_ATTR.taskProject, project),
     strAttr(VX_ATTR.taskTask, task),
   ]
-  const exemplars = (p: TaskMetricPoint, value: number, timeUnixNano: string) =>
-    p.span === undefined
-      ? {}
-      : { exemplars: [{ timeUnixNano, asDouble: value, filteredAttributes: [], ...p.span }] }
+  // One task's points share its attribute array: the JSON is the same, and
+  // up to nine copies a task were 10k tasks' largest allocation.
+  const exemplars = (
+    span: { traceId: string; spanId: string },
+    value: number,
+    timeUnixNano: string,
+  ) => [
+    {
+      timeUnixNano,
+      asDouble: value,
+      filteredAttributes: [],
+      traceId: span.traceId,
+      spanId: span.spanId,
+    },
+  ]
   for (const p of points) {
+    const span = p.span
     if (p.kind === 'sample') {
-      const at = (value: number) => ({
-        asDouble: value,
-        timeUnixNano: p.timeUnixNano,
-        attributes: taskAttrs(p.taskId, p.project, p.task),
-        ...exemplars(p, value, p.timeUnixNano),
-      })
+      const attributes = taskAttrs(p.taskId, p.project, p.task)
+      const at = (value: number) =>
+        span === undefined
+          ? { asDouble: value, timeUnixNano: p.timeUnixNano, attributes }
+          : {
+              asDouble: value,
+              timeUnixNano: p.timeUnixNano,
+              attributes,
+              exemplars: exemplars(span, value, p.timeUnixNano),
+            }
       add('vx.task.cpu_usage', '1', at(p.cpuUsage))
       add('vx.task.memory', 'By', at(p.rssBytes))
       continue
     }
     const t = p.task
-    const at = (value: number) => ({
-      asDouble: value,
-      startTimeUnixNano: p.startUnixNano,
-      timeUnixNano: p.endUnixNano,
-      attributes: [
-        ...taskAttrs(t.taskId, t.project, t.task),
-        strAttr(VX_ATTR.cacheSource, t.cacheSource),
-      ],
-      ...exemplars(p, value, p.endUnixNano),
-    })
+    const attributes = [
+      ...taskAttrs(t.taskId, t.project, t.task),
+      strAttr(VX_ATTR.cacheSource, t.cacheSource),
+    ]
+    const at = (value: number) =>
+      span === undefined
+        ? {
+            asDouble: value,
+            startTimeUnixNano: p.startUnixNano,
+            timeUnixNano: p.endUnixNano,
+            attributes,
+          }
+        : {
+            asDouble: value,
+            startTimeUnixNano: p.startUnixNano,
+            timeUnixNano: p.endUnixNano,
+            attributes,
+            exemplars: exemplars(span, value, p.endUnixNano),
+          }
     add('vx.task.duration', 'ms', at(t.durationMs))
     if (t.cpuMs !== undefined) add('vx.task.cpu_time', 'ms', at(t.cpuMs))
     if (t.peakRssBytes !== undefined) add('vx.task.peak_memory', 'By', at(t.peakRssBytes))
