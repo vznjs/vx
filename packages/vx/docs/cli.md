@@ -3226,7 +3226,7 @@ With `--format json` it prints `{ dry, cleared, bytesFreed }` (`schemas/cache.js
 | Code | When                                                                                                                                                                                                                        |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `0`  | pruning completed (zero or more entries evicted). A workspace that never ran has no cache, nor does a directory holding nothing vx wrote (`--cache-dir build`): `› vx cache clean  nothing to free`, and nothing is created |
-| `1`  | parse error, missing policy, or workspace-discovery error                                                                                                                                                                   |
+| `1`  | parse error, a bound that evicts everything (`--max-size 0`, `--older-than 0d`), or workspace-discovery error                                                                                                               |
 
 ## Runs read the lock
 
