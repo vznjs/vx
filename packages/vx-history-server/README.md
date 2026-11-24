@@ -124,7 +124,7 @@ names it.
 - A statement D1 fails with an error Cloudflare says to retry ("Network
   connection lost", an object reset) is sent up to three times, as the
   cache server asks R2 again.
-- A write retried that had landed folds once: a row already written at
+- A write retried that had landed counts once: a row already written at
   that write's time is left.
 - A database whose `timings`, `outcomes` or `sweeps` table another tool
   made fails each request 500, saying so, and is left as it was.
