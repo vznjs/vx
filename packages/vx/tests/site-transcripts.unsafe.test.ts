@@ -1076,7 +1076,7 @@ export default {
     expect(sh('git', 'commit', '-qam', 'ci')).toBe(0)
     expect(vxSync('pipeline', 'main', '--filter', '@demo/web')).toBe(0)
     expect(sh('git', 'checkout', '-qb', 'feature')).toBe(0)
-    await write('packages/web/src/index.ts', '2\n')
+    await write('packages/web/src/main.js', '2\n')
     expect(sh('git', 'commit', '-qam', 'web')).toBe(0)
     const r = await phone('pipeline', 'pr', '--dry')
     expect(sh('git', 'checkout', '-q', 'main')).toBe(0)
