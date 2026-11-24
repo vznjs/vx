@@ -702,6 +702,43 @@ describe('migrateScripts', () => {
     expect(outputsOf({ rootDir: 'src', outDir: 'lib' })).toBe("'lib/**', 'tsconfig.tsbuildinfo'")
   })
 
+  // A plain `tsc` (no `-b`, not incremental) keeps no buildinfo, and its
+  // outDir was read only beside one: the TODO said `dist/**` for a build
+  // that writes `lib/`, and the block pasted as written failed every run.
+  it('the cache TODO names the outDir a plain `tsc` emits into', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-scripts-tsc-'))
+    try {
+      writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({ extends: './base.json' }))
+      writeFileSync(
+        path.join(dir, 'base.json'),
+        JSON.stringify({ compilerOptions: { outDir: 'lib' } }),
+      )
+      writeFileSync(
+        path.join(dir, 'tsconfig.build.json'),
+        JSON.stringify({ compilerOptions: { outDir: 'out' } }),
+      )
+      const outputsOf = (build: string): string | undefined => {
+        const todo = migrateScripts([
+          {
+            name: 'app',
+            dir,
+            packageJson: { name: 'app', scripts: { build } } as never,
+            configPath: null,
+          },
+        ])
+          .projects[0]?.tasks.find((t) => t.name === 'build')
+          ?.todos.find((d) => d.startsWith('cache: add'))
+        return /outputs: \{ files: \[(.*?)\] \}/.exec(todo ?? '')?.[1]
+      }
+      expect(outputsOf('tsc')).toBe("'lib/**'")
+      expect(outputsOf('tsc -p tsconfig.build.json')).toBe("'out/**'")
+      // CONTROL: `--noEmit` writes nothing; the guess stays.
+      expect(outputsOf('tsc --noEmit')).toBe("'dist/**'")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   // nestjs/nest: the root's `tsc -b packages` writes each member's buildinfo
   // in that member; the TODO listed them under `files`, which `vx lock`
   // refuses (a project's globs never reach another project).

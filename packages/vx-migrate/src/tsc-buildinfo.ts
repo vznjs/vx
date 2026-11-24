@@ -73,7 +73,7 @@ function projectOf(
   read: ReadText,
   file: string,
   build: boolean,
-): { info: string; outDir: string | undefined; noEmit: boolean } | null {
+): { info: string | null; outDir: string | undefined; noEmit: boolean } | null {
   const configDir = path.dirname(file)
   const opts: { [K in keyof Options]?: string | boolean } = {}
   const seen = new Set<string>()
@@ -109,10 +109,12 @@ function projectOf(
   // buildinfo for it, only for the projects it references.
   const { files, include } = own as { files?: unknown; include?: unknown }
   if (Array.isArray(files) && files.length === 0 && include === undefined) return null
-  // tsc 5.6+ writes a buildinfo for every project `-b` builds.
-  if (!build && opts.incremental !== true && opts.composite !== true) return null
   const outDir = opts.outDir as string | undefined
   const noEmit = opts.noEmit === true
+  // tsc 5.6+ writes a buildinfo for every project `-b` builds. A plain `tsc`
+  // writes none, but still emits into its outDir.
+  if (!build && opts.incremental !== true && opts.composite !== true)
+    return { info: null, outDir, noEmit }
   if (typeof opts.tsBuildInfoFile === 'string')
     return { info: opts.tsBuildInfoFile, outDir, noEmit }
   const bare = (p: string) => p.slice(0, p.length - path.extname(p).length)
@@ -322,7 +324,7 @@ export function undeclaredTscTodo(
  */
 export function ownBuildInfo(read: ReadText, dir: string): { info: string; outDir: string } | null {
   const p = projectOf(read, path.join(dir, 'tsconfig.json'), false)
-  if (p === null || p.outDir === undefined) return null
+  if (p === null || p.info === null || p.outDir === undefined) return null
   const rel = (f: string) => path.relative(dir, f).split(path.sep).join('/')
   const info = rel(p.info)
   const outDir = rel(p.outDir)

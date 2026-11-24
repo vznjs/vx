@@ -1486,7 +1486,7 @@ import type { ProjectConfig } from '@vzn/vx/config'
   - `storybook-static/**` for Storybook
 - For any other command, it names the directory the command gives with `--outDir` / `--out-dir` / `-d`.
 - Else it names the ones the command cleans first (`del-cli distribution`, `rimraf lib types`), unless it makes one again with `mkdir`.
-- Else it names the outDir its incremental `tsc` emits into, read from the tsconfig.
+- Else it names the outDir its `tsc` emits into, read from the tsconfig.
 - Example: docusaurus's `lib/`, where `dist/**` restored only the buildinfo.
 - A package in a cycle of builds gets, instead of `^build`, an edge to each build outside its cycle that `^build` would reach.
 - It also gets a TODO to order the cycle, since `^build` there refuses the run.
