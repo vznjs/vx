@@ -1018,8 +1018,8 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2141,
-        "can": 2141,
+        "pass": 2140,
+        "can": 2140,
         "of": 2210
       },
       "correctness": {
@@ -1028,8 +1028,8 @@
         "of": 1787
       },
       "efficiency": {
-        "pass": 326,
-        "can": 326,
+        "pass": 325,
+        "can": 325,
         "of": 333
       },
       "data": {
@@ -1063,8 +1063,8 @@
         "of": 128
       },
       "inputs": {
-        "pass": 481,
-        "can": 481,
+        "pass": 480,
+        "can": 480,
         "of": 493
       },
       "outputs": {
@@ -9188,7 +9188,8 @@
       ],
       "outcomes": {
         "vx": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "`vx lock` refuses a glob that names its way into a nested project (`gen/**` over `gen/sub`), so it never skips that project’s files silently; a `!gen/sub/**` entry takes it back."
         },
         "turbo": {
           "status": "fail",

@@ -34,6 +34,14 @@ const HEADER = /^(\w+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/
  * same PR.
  */
 export const STEPS: Readonly<Record<string, { title?: string; steps: string }>> = {
+  'fix(graph): refuse a glob that names its way into a nested project': {
+    title: 'A glob that names its way into a nested project is refused',
+    steps: [
+      '`vx lock` refuses a glob that reaches into a nested project, such as a root `packages/**/*.log` over a member. Those files were skipped silently.',
+      '',
+      "Let the member's task own them, or take them back with `!packages/a/**`. A leading `**` is not refused.",
+    ].join('\n'),
+  },
   'refactor(cli)!: drop the lock merge driver, name it .vx/projects.lock': {
     steps: [
       'Delete the old lock, the old attributes file and the merge driver, then lock again:',

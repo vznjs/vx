@@ -18,6 +18,12 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
+### A glob that names its way into a nested project is refused
+
+`vx lock` refuses a glob that reaches into a nested project, such as a root `packages/**/*.log` over a member. Those files were skipped silently.
+
+Let the member's task own them, or take them back with `!packages/a/**`. A leading `**` is not refused.
+
 ### Duplicate names, an empty deny and hook returns fail
 
 `vx lock` refuses a name listed twice in `inputs.env`, `exec.env.passThrough`, `exec.env.secret` or `tags`. Keep one of each.

@@ -35,6 +35,8 @@ export const vx: Adapter = {
     'determinism-check':
       'No vx run rebuilds a cached task to compare its bytes with the stored ones.',
     'ready-port': 'A server’s ready signal is a line it prints, never a port it opens.',
+    'glob-into-nested-project':
+      '`vx lock` refuses a glob that names its way into a nested project (`gen/**` over `gen/sub`), so it never skips that project’s files silently; a `!gen/sub/**` entry takes it back.',
     'dependency-bin':
       'vx runs the tools the machine has and installs none, so no task puts programs on its dependants’ PATH.',
     'without-git':

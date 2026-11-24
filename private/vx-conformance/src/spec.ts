@@ -342,6 +342,8 @@ export type Feature =
   | 'determinism-check'
   /** Holding a persistent task's dependants until it accepts connections on a port. */
   | 'ready-port'
+  /** A glob that names a folder holding a nested project, which skips that project's files. */
+  | 'glob-into-nested-project'
   /**
    * A package manager's workspace: dependencies named in package.json, a
    * lockfile, packages installed into node_modules and the programs they link.
