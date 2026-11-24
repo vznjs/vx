@@ -39,6 +39,7 @@ import {
   checkBlobSizes,
   lazyGitEnumeration,
   DEFAULT_STORE,
+  setProjectDirs,
 } from '../cache/index.js'
 import { clockDir, measureFsClockLag } from '../memo/index.js'
 import {
@@ -640,6 +641,11 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
   // its files under its default `build`, so a parent's glob that folded or
   // cleaned them crossed a boundary.
   const nestedDirsByProject = computeNestedProjectDirs(projectMetas)
+  // A link input never keys into another project's files (linked-inputs.ts).
+  setProjectDirs(
+    workspaceRoot,
+    projectMetas.map((m) => m.dir),
+  )
   const nestedWorkspaces = discoveryOf(projectMetas).walls ?? []
   if (nestedWorkspaces.length > 0)
     outputWalls.set(nestedDirsByProject, computeNestedProjectDirs(projectMetas, nestedWorkspaces))

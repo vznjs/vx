@@ -34,7 +34,9 @@ the `history` module's (history.md), and the tables `index-db`'s
   directory (caching.md § key). `filesBehind(dir)` lists what a linked
   directory keys; `vx watch` judges a change to one by the same list.
   `behindLink(link, hashFile)` is the digest the key folds for one; the
-  inputs re-check follows each linked input again with it.
+  inputs re-check follows each linked input again with it. It keys nothing
+  behind a link into another project, by the directories
+  `setProjectDirs(workspaceRoot, dirs)` names as a run loads its projects.
 - `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
   (`checkpointOffThread`), the index's WAL checkpoints run PASSIVE on a
   thread of their own every 100 ms, through a second connection, and the
@@ -197,13 +199,16 @@ export function historyRetentionMs(): number
 export function filesBehind(dir: string): string[]
 
 // The content behind a symlinked input as the key folds it: a file's
-// identity, or a digest of every file `filesBehind` lists. The run's
-// re-check compares it again before a miss is saved.
+// identity, or a digest of every file `filesBehind` lists, none in another
+// project. The run's re-check compares it again before a miss is saved.
 export function behindLink(
   link: string,
   hashFile: (file: string) => Promise<string>,
-  seen?: ReadonlySet<string>,
 ): Promise<string>
+
+// Each project's directory, set as a run loads its projects: `behindLink`
+// follows no link into a project other than its own.
+export function setProjectDirs(workspaceRoot: string, dirs: readonly string[]): void
 
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the

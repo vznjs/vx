@@ -448,8 +448,14 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     it, as Nx reads a linked file where it points: a file's identity, or
     for a directory every file beneath it at any depth, tracked or not
     (`.git`, `node_modules`, `.vx/cache` and `.yarn/cache` aside, as Nx's walker skips them), a link
-    among them followed in turn. The target may be anywhere: in the
-    project, elsewhere in the workspace, outside it. Retargeting a link
+    among them followed in turn. The target may be in the project,
+    elsewhere in the workspace or outside it, but never in another
+    project: a link there keys its target string alone, and a linked
+    directory's walk skips another project's directory. What a task
+    reads of another project reaches its key through `dependsOn` (that
+    task's input key). Followed, `b/src/a -> ../../a` keyed `a`'s
+    git-ignored `dist`, so `a`'s restore re-keyed `b`, which was never
+    saved (2026-11-24). Retargeting a link
     changes the key, to equal bytes too; an edit behind it changes the
     key. A dangling link, or a loop of links, keys its target string
     alone. `--affected` selects a link whose target changed (a file
