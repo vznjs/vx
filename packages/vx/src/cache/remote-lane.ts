@@ -3,7 +3,13 @@
 // a miss), its upload pool, and its failures said once per class. Order across
 // remotes and provenance are `LayeredCache`'s.
 
-import { machineParallelism, maskedLine, notify, thrownMessage } from '../util/index.js'
+import {
+  hookStarted,
+  machineParallelism,
+  maskedLine,
+  notify,
+  thrownMessage,
+} from '../util/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { ArtifactInfo, RemoteCacheLayer } from './layered-cache.js'
 
@@ -156,6 +162,20 @@ export class RemoteLane {
     this.endpoint = printableEndpoint(resolved.remote.endpoint)
   }
 
+  /**
+   * A call into the plugin's layer, marked as its hook until it settles: one
+   * that never does strands the run, and the exit names the plugin.
+   */
+  private async asked<T>(method: string, call: () => T | Promise<T>): Promise<T> {
+    if (this.resolved.plugin === undefined) return call()
+    const settled = hookStarted(this.resolved.plugin, `cache ${method}`)
+    try {
+      return await call()
+    } finally {
+      settled()
+    }
+  }
+
   get read(): boolean {
     return this.resolved.read
   }
@@ -174,7 +194,7 @@ export class RemoteLane {
     if (this.absent.has(hash)) return null
     let found: unknown
     try {
-      found = await this.remote.has(hash)
+      found = await this.asked('has', () => this.remote.has(hash))
     } catch (err) {
       this.report('probe', hash, err)
       return null
@@ -197,10 +217,11 @@ export class RemoteLane {
    * absent; `null` when this remote cannot batch or the probe failed.
    */
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
-    if (this.remote.hasMany === undefined) return null
+    const remote = this.remote
+    if (remote.hasMany === undefined) return null
     let found: unknown
     try {
-      found = await this.remote.hasMany(hashes)
+      found = await this.asked('hasMany', () => remote.hasMany!(hashes))
     } catch (err) {
       this.report('probe', batchOf(hashes), err)
       return null
@@ -245,7 +266,9 @@ export class RemoteLane {
         const h = hashes[next++]!
         let found: unknown
         try {
-          found = this.held.get(h) ?? (this.absent.has(h) ? null : await this.remote.has(h))
+          found =
+            this.held.get(h) ??
+            (this.absent.has(h) ? null : await this.asked('has', () => this.remote.has(h)))
         } catch (err) {
           this.report('probe', h, err)
           failed = true
@@ -273,7 +296,7 @@ export class RemoteLane {
     if (!fresh && this.absent.has(hash)) return null
     let result: unknown
     try {
-      result = await this.remote.get(hash)
+      result = await this.asked('get', () => this.remote.get(hash))
     } catch (err) {
       this.report('download', hash, err)
       return undefined
@@ -368,7 +391,7 @@ export class RemoteLane {
         release = got.release
         if (known) this.remote.missing?.(hash)
         const meta = distrusted ? { durationMs, replace: true as const } : { durationMs }
-        if ((await this.remote.put(hash, got.body, meta)) === false) return
+        if ((await this.asked('put', () => this.remote.put(hash, got.body, meta))) === false) return
         holds = true
         tally.count++
         tally.bytes += got.body.size

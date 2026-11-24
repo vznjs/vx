@@ -2046,7 +2046,8 @@ export async function settleStranded(): Promise<void>
   more included, and never throws (`Promise.allSettled`).
 - `hookStarted` marks a plugin's hook as awaited until the call it
   returns: `plugin-host.ts`'s `safe` (every stage and factory),
-  `setup`, a plugin executor's `execute` and a plugin verb's `run`. `unsettledHooks` lists those still
+  `setup`, a plugin executor's `execute`, a plugin remote's calls
+  (`RemoteLane`) and a plugin verb's `run`. `unsettledHooks` lists those still
   awaited, as `plugin 'p' never settled its h hook` (`its command 'v'`
   for a verb), for `bin.ts`'s line.
 - `owedIfStranded` registers work until the call it returns withdraws
