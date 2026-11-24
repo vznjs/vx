@@ -1460,7 +1460,9 @@ A failed Linux task whose output's tail holds Node's
 `NODE_USE_ENV_PROXY=1` (`selfLookupHint`): the task has no DNS, and Node's
 fetch and https dial the host themselves instead of the proxy in
 `HTTPS_PROXY`, so the proxy refused nothing and no violation said why. The
-hint adds `allow: { network: ['<host>'] }` when no entry covers the host
+hint says Node 22 then warns at start, and adds
+`allow: { network: ['<host>'] }` when no entry covers the host. vx does
+not set the variable itself: on Node 22 every process would print that warning
 (`sandbox-dns-hint.unsafe.test.ts`).
 
 `releaseBridges` also unlinks each port's socket. The task's socat dies

@@ -17,7 +17,7 @@ import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox DNS hint test')
 const proxyLine =
-  "vx: the task looked up example.com itself (getaddrinfo EAI_AGAIN): a sandboxed task resolves no names and reaches a host only through the proxy vx puts in HTTPS_PROXY. Node's fetch and https skip it unless NODE_USE_ENV_PROXY=1 (Node 22.21+, 24.5+): `exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`."
+  "vx: the task looked up example.com itself (getaddrinfo EAI_AGAIN): a sandboxed task resolves no names and reaches a host only through the proxy vx puts in HTTPS_PROXY. Node's fetch and https skip it unless NODE_USE_ENV_PROXY=1 (Node 22.21+, 24.5+): `exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`. Node 22 then prints an experimental warning at start; Node 24 does not."
 
 describe.skipIf(!available || process.platform !== 'linux')(
   'a sandboxed Node client that resolves a host itself',

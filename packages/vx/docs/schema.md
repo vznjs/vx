@@ -2370,8 +2370,10 @@ export default defineProject({
 - A task resolves no names: Node's `fetch` and `https` look the host up
   themselves and fail `getaddrinfo EAI_AGAIN <host>`, granted or not.
   They take the proxy with `NODE_USE_ENV_PROXY=1` (Node 22.21+, 24.5+):
-  `exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`. On Linux the
-  failure names it, and the grant when the host has none.
+  `exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`. Node 22 then
+  prints an experimental warning at start; Node 24 does not. vx sets no
+  such variable itself. On Linux the failure names it, and the grant when
+  the host has none.
 - A host `deny.network` holds gets no `allow.network` entry in the
   `fix:` line: no allow lifts it.
 - `ignore: { network: ['example.com:443'] }` silences one refusal,

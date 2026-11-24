@@ -491,7 +491,8 @@ function selfLookupHint(
       `vx: the task looked up ${host} itself (getaddrinfo ${m[1]}): a sandboxed task resolves ` +
       'no names and reaches a host only through the proxy vx puts in HTTPS_PROXY. ' +
       "Node's fetch and https skip it unless NODE_USE_ENV_PROXY=1 (Node 22.21+, 24.5+): " +
-      "`exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`." +
+      "`exec: { env: { define: { NODE_USE_ENV_PROXY: '1' } } }`. Node 22 then prints an " +
+      'experimental warning at start; Node 24 does not.' +
       (covered ? '' : ` It also needs the host: \`allow: { network: ['${host}'] }\`.`),
   }
 }
