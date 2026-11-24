@@ -732,7 +732,8 @@ describe('migrateScripts', () => {
         ?.tasks.find((t) => t.name === 'build')
         ?.todos.find((d) => d.startsWith('cache: add'))
       expect(todo).toContain(
-        "outputs: { files: ['dist/**', 'packages/tsconfig.tsbuildinfo'], workspaceFiles: ['packages/lib/tsconfig.build.tsbuildinfo'] }",
+        // packages/tsconfig.json is a solution (`files: []`): it writes no buildinfo.
+        "outputs: { files: ['dist/**'], workspaceFiles: ['packages/lib/tsconfig.build.tsbuildinfo'] }",
       )
     } finally {
       rmSync(root, { recursive: true, force: true })

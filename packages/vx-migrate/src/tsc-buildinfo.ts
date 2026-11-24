@@ -103,7 +103,12 @@ function projectOf(
   }
   visit(file, 0)
   // No project there: tsc fails, and writes nothing.
-  if (parse(read, file) === null) return null
+  const own = parse(read, file)
+  if (own === null) return null
+  // A solution (`files: []`, no `include`) compiles nothing: tsc writes no
+  // buildinfo for it, only for the projects it references.
+  const { files, include } = own as { files?: unknown; include?: unknown }
+  if (Array.isArray(files) && files.length === 0 && include === undefined) return null
   // tsc 5.6+ writes a buildinfo for every project `-b` builds.
   if (!build && opts.incremental !== true && opts.composite !== true) return null
   const outDir = opts.outDir as string | undefined

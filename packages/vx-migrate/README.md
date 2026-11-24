@@ -353,6 +353,7 @@ Rules:
 - Core never cleans a file git tracks, so it survives and the task keeps its cache.
 - A task whose command runs `tsc` that writes a `.tsbuildinfo` outside its outputs also outputs that file.
 - That is tsc with `-b`, `composite` or `incremental`, read through the tsconfig's `extends` and, for `-b`, its `references`.
+- A solution tsconfig (`files: []`, references only) writes none: Vite's react-ts starter has one.
 - Why: tsc re-emits only what its buildinfo calls changed.
 - With `rootDir: "src"` and `outDir: "dist"`, its `tsconfig.tsbuildinfo` beside the tsconfig survived the clean before a miss.
 - That miss cached a `dist/` holding only the edited file. Nx infers the file as an output; Turbo never cleans `dist/`.
