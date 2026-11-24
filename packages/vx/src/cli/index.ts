@@ -308,7 +308,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // that returned 256 (a count of failures, say) exited 0.
         if (!Number.isInteger(code) || code < 0 || code > 255) {
           throw new UserError(
-            `plugin '${resolved.plugin.name}': command '${command}' resolved ${typeof code === 'bigint' ? `${String(code)}n` : typeof code === 'number' || code === undefined ? String(code) : JSON.stringify(code)} instead of an exit code (an integer 0–255)`,
+            `plugin '${resolved.plugin.name}': command '${command}' resolved ${typeof code === 'bigint' ? `${String(code)}n` : typeof code === 'number' || code === undefined ? String(code) : jsonOr(code)} instead of an exit code (an integer 0–255)`,
           )
         }
         return code
@@ -431,4 +431,13 @@ function verbSourceNote(resolved: unknown, declaredVerbs: readonly string[]): st
   }
   const here = resolved === null ? 'there is no workspace here' : 'no plugin here adds one'
   return `  A plugin declared in .vx/workspace.ts can add verbs; ${here}.\n`
+}
+
+/** `v` as JSON, or inspected where JSON cannot say it (a BigInt, a cycle). */
+function jsonOr(v: unknown): string {
+  try {
+    return JSON.stringify(v)
+  } catch {
+    return Bun.inspect(v, { compact: true })
+  }
 }

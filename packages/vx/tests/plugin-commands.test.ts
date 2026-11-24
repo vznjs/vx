@@ -314,6 +314,7 @@ describe('plugin commands', () => {
           below: { description: 'negative', async run() { return -1 } },
           nan: { description: 'not a number', async run() { return NaN } },
           top: { description: 'control', async run() { return 255 } },
+          big: { description: 'holds a bigint', async run() { return { n: 1n } } },
         } }`,
         ),
       ]),
@@ -327,6 +328,10 @@ describe('plugin commands', () => {
     // JSON.stringify(NaN) is "null": the verb returned no null.
     await expect(cli(['nan'])).rejects.toThrow(
       "plugin 'org/counts': command 'nan' resolved NaN instead of an exit code (an integer 0–255)",
+    )
+    // JSON cannot say a BigInt: the refusal was vx's own TypeError and stack.
+    await expect(cli(['big'])).rejects.toThrow(
+      "plugin 'org/counts': command 'big' resolved { n: 1n } instead of an exit code (an integer 0–255)",
     )
     expect(await cli(['top'])).toBe(255) // CONTROL: the top of the range passes through
   })
