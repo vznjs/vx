@@ -2831,6 +2831,7 @@ export interface RunSummaryRecord {
   failedCount: number
   abortedCount: number
   notRunCount?: number
+  notRun?: readonly string[] // the ids of the tasks notRunCount counts
   hitCount: number
   hitLocalCount: number
   hitRemoteCount: number

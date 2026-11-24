@@ -1022,6 +1022,20 @@ describe('the summary, as its second sweep found it unheld', () => {
     expect(early.split('\n')[0]).toBe('## ⏹️ vx run')
   })
 
+  // A stopped local run said `4 tasks · 1 not run` over three rows, as its
+  // terminal's `4 total` over three: the task the stop reached first is a row.
+  it('tables each task the stop reached before it started', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'c#q', durationMs: 57 })], {
+        notRunCount: 1,
+        notRun: ['c#after|x'],
+        exitOk: false,
+      }),
+    ).split('\n')
+    const rows = md.filter((l) => l.startsWith('| c#'))
+    expect(rows).toEqual(['| c#q | ✅ ran | 57ms |', '| c#after\\|x | ⏹️ not run |  |'])
+  })
+
   it('violations: none says nothing, one is singular, two plural', () => {
     const failure = (sandboxViolations: number) =>
       line(

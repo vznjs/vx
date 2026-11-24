@@ -1951,7 +1951,12 @@ async function runOnBus(
         exitOk: runOk,
         // As the terminal counts them: `1 aborted · 1 not run`.
         abortedCount: tasks.filter((t) => t.status === 'aborted').length,
-        notRunCount: final.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length,
+        ...(() => {
+          const notRun = final
+            .filter((o) => neverStarted(o) && !isGroupTask(o.node))
+            .map((o) => o.node.id)
+          return { notRunCount: notRun.length, notRun }
+        })(),
         stages: stageTimes(),
         uploads: prepared.localCache.uploads,
         machines: executors.flatMap(reports.machines),

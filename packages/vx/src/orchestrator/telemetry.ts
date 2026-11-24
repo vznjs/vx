@@ -274,6 +274,8 @@ export interface RunSummaryRecord {
    * Not in `tasks`, since they never ran. Absent when none. Additive.
    */
   notRunCount?: number
+  /** Those tasks' ids, in the run's order: a sink lists them as the terminal counts them. Absent when none. Additive. */
+  notRun?: readonly string[]
   hitCount: number
   /** Hits by the layer that answered, up-to-date ones included. */
   hitLocalCount: number
@@ -339,6 +341,7 @@ export function assembleRunSummary(
     exitOk: boolean
     abortedCount: number
     notRunCount?: number
+    notRun?: readonly string[]
     stages?: readonly RunStage[]
     uploads?: { count: number; bytes: number; ms: number; failed: number }
     machines?: readonly MachineReport[]
@@ -375,6 +378,7 @@ export function assembleRunSummary(
     ...(timing.notRunCount !== undefined && timing.notRunCount > 0
       ? { notRunCount: timing.notRunCount }
       : {}),
+    ...(timing.notRun !== undefined && timing.notRun.length > 0 ? { notRun: timing.notRun } : {}),
     hitCount: hitLocalCount + hitRemoteCount,
     hitLocalCount,
     hitRemoteCount,

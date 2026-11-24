@@ -42,7 +42,7 @@ The block holds:
 - Failures, called out above the per-task table, and the tasks each
   failure blocked.
 - The per-task table: rows by status, failures first, then the longest
-  first.
+  first. A task a stop reached before it started is a `not run` row, last.
 - A footer line: the vx version, the command, tasks passed and outputs
   restored.
 - The command in the footer counts what follows `--`, not quoted.

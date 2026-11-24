@@ -257,6 +257,10 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
     ]
     lines.push(`| ${cells.join(' | ')} |`)
   }
+  // The tasks the stop reached first, last: the stats line counts them, as the
+  // terminal's total does, and a count over fewer rows read as a lost task.
+  for (const id of summary.notRun ?? [])
+    lines.push(`| ${escapeMarkdownCell(escapeInline(id))} | ⏹️ not run |  |`)
   lines.push('')
 
   // A one-line footer so a page with several vx runs stays attributable.

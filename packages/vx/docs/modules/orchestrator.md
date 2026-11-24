@@ -3845,6 +3845,7 @@ interface RunSummaryRecord {
   failedCount: number
   abortedCount: number // started, then stopped by a signal or an abort; in `tasks` (v3)
   notRunCount?: number // the stop reached them first; not in `tasks`, absent when none
+  notRun?: readonly string[] // those tasks' ids, so a sink lists them as the terminal counts them; absent when none
   hitCount: number
   hitLocalCount: number // hits by the layer that answered, up-to-date ones included
   hitRemoteCount: number
