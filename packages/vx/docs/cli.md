@@ -340,6 +340,8 @@ vx run build --all                 # every project that declares build
   every `!` exclude, so an exclude removes what any include added.
 - Includes add up: `--affected --filter other` runs other's tasks
   whether or not the change reaches them.
+- That holds for `--affected=main --filter '...[main]'` too: the filter
+  runs every task of the projects it picks.
 - `--all` with a filter is the filter's selection: `--all --filter
 '!docs'` is everything but docs.
 

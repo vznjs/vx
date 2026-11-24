@@ -468,7 +468,7 @@ export async function resolveFilters(
   cwd: string,
   raw: string[],
   load: CliLoadOptions = {},
-  /** The filter `--affected` became: its diff is kept per path for the run. */
+  /** The filter `--affected` became, first in `raw`: its diff is kept per path for the run. */
   affected?: AffectedFilter,
   /** The verb a warning names: `vx show` and `vx watch` select as a run does. */
   verb: 'run' | 'show' | 'watch' = 'run',
@@ -483,6 +483,9 @@ export async function resolveFilters(
     await loadWorkspaceProjects(cwd, load)
     return refusalOf(err)
   }
+  // By place, not text: a typed `--filter '...[main]'` beside `--affected=main`
+  // was taken for it, and its whole projects never ran.
+  const byAffected = affected === undefined ? undefined : parsed[0]
   // A git-diffing filter reads untracked files from the run's whole-tree walk,
   // which the run reuses. The walk needs only the root, so it starts before the
   // workspace config and discovery.
@@ -546,7 +549,7 @@ export async function resolveFilters(
     }
     // A typed `[<since>]` needs only the projects, not the per-task paths,
     // but its changed paths too: they say whether the tree is clean.
-    const diff = (): Promise<AffectedChanges> => affectedChanges(args, f.raw === affected?.filter)
+    const diff = (): Promise<AffectedChanges> => affectedChanges(args, f === byAffected)
     const started = previous === undefined ? diff() : previous.then(diff)
     started.catch(() => {})
     diffs.set(f, started)
@@ -595,7 +598,7 @@ export async function resolveFilters(
       const answer = await diff
       let names = answer.projects
       if (answer.changed.length > 0 || answer.nested !== undefined) changedAny.add(f)
-      if (f.raw === affected?.filter) {
+      if (f === byAffected) {
         changes = answer
         // A `graph` plugin may tie any task to a changed path, and only the run
         // builds that graph: every project is a candidate, and the run keeps
@@ -614,11 +617,7 @@ export async function resolveFilters(
     } catch (err) {
       const refusal = refusalOf(err)
       // A base the variable gave was reported as if typed.
-      if (
-        affected?.env !== undefined &&
-        f.raw === affected.filter &&
-        refusal.code === 'VX_E_AFFECTED_BASE'
-      )
+      if (affected?.env !== undefined && f === byAffected && refusal.code === 'VX_E_AFFECTED_BASE')
         return { ...refusal, error: `VX_AFFECTED_BASE=${affected.env}: ${refusal.error}` }
       return refusal
     }
@@ -690,7 +689,7 @@ export async function resolveFilters(
     )
   // Each include is a union: `--filter other` runs its tasks whether or not the
   // `--affected` diff reaches them; an exclude still removes.
-  const others = parsed.filter((f) => f.negate || f.raw !== affected?.filter)
+  const others = parsed.filter((f) => f !== byAffected)
   const outright =
     changes !== undefined && others.some((f) => !f.negate)
       ? [
