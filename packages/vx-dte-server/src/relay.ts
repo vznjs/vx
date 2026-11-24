@@ -165,6 +165,24 @@ function overMax(text: string): boolean {
   room ??= new Uint8Array(MAX_BODY)
   return new TextEncoder().encodeInto(text, room).read < text.length
 }
+/** Far above any vx message; each level past it cost Bun's JSON CPU (3 to 7 s at 100k). */
+const MAX_DEPTH = 64
+/** Whether `text` nests arrays and objects past MAX_DEPTH, read without parsing it. */
+function nestsTooDeep(text: string): boolean {
+  let depth = 0
+  let inString = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i)
+    if (inString) {
+      if (c === 92) i++ // a backslash escapes the next unit
+      else if (c === 34) inString = false
+    } else if (c === 34) inString = true
+    else if (c === 91 || c === 123) {
+      if (++depth > MAX_DEPTH) return true
+    } else if (c === 93 || c === 125) depth--
+  }
+  return false
+}
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
@@ -442,15 +460,8 @@ export function createRelay(opts: RelayOptions): Relay {
           : undefined
     if (to === undefined || to === from) throw new HttpError(404, 'unknown to')
     const m = { from: from.role === 'host' ? 'host' : from.id, body: body.body }
-    // Serialized before the push: a body parsed but nested past what the
-    // runtime serializes threw in it, and that unplugged the receiver.
-    let text: string
-    try {
-      text = JSON.stringify({ messages: [m] })
-    } catch {
-      throw new HttpError(400, 'body nests too deep to pass')
-    }
-    deliver(to, m, false, text)
+    // A frame past MAX_DEPTH never got here, so this serializes.
+    deliver(to, m, false, JSON.stringify({ messages: [m] }))
   }
 
   const live = (key: string): Session => {
@@ -633,6 +644,11 @@ export function createRelay(opts: RelayOptions): Relay {
           const k = /^\{"n":(\d+)[,}]/.exec(text)?.[1]
           if (k !== undefined) n = Number(k)
           throw new HttpError(413, 'body over 1 MiB')
+        }
+        if (nestsTooDeep(text)) {
+          const k = /^\{"n":(\d+)[,}]/.exec(text)?.[1]
+          if (k !== undefined) n = Number(k)
+          throw new HttpError(400, `frame nests deeper than ${MAX_DEPTH}`)
         }
         let body: {
           n?: unknown
@@ -826,6 +842,7 @@ async function authorize(
 }
 
 function parse(text: string): Record<string, unknown> {
+  if (nestsTooDeep(text)) throw new HttpError(400, `body nests deeper than ${MAX_DEPTH}`)
   try {
     const v: unknown = JSON.parse(text)
     if (typeof v === 'object' && v !== null && !Array.isArray(v))

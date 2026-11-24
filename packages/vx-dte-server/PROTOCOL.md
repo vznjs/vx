@@ -106,9 +106,10 @@ A participant sends:
   answered by its `n` when the frame starts `{"n":`. One past its
   runtime's own limit (16 MiB on Bun, 32 MiB on Workers) never reaches
   the relay: the runtime closes the socket `1009`.
-- A send whose `body` the relay cannot pass (nested deeper than its
-  runtime serializes) is `400` in its result; its receiver keeps its
-  socket.
+- A frame or join body nesting arrays and objects deeper than 64 is
+  `400` (`frame nests deeper than 64`), answered by its `n` when the
+  frame starts `{"n":`; the relay refuses it before parsing it, and no
+  receiver's socket is touched.
 - A removed peer's socket is closed `4404` after what waited for it; the
   host is not told it left.
 

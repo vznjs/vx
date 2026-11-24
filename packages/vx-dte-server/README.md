@@ -9,6 +9,8 @@ CI workers.
   its workers all dial out to a relay, which passes their messages on.
 - It admits only CI OIDC tokens of the repositories it names.
 - It binds each run to the repository that started it.
+- It refuses a frame over 1 MiB, or nested deeper than 64, before
+  parsing it (PROTOCOL.md § Frames).
 
 The relay is one package with one runtime dependency, not even vx
 itself:
