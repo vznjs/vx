@@ -10,7 +10,13 @@ let umask = 0
  */
 export function peekUmask(): number {
   if (process.platform === 'linux') {
-    const m = /^Umask:\s*([0-7]+)$/m.exec(readFileSync('/proc/self/status', 'latin1'))
+    let status = ''
+    try {
+      status = readFileSync('/proc/self/status', 'latin1')
+    } catch {
+      // Out of descriptors (EMFILE): the restore's own first open names it.
+    }
+    const m = /^Umask:\s*([0-7]+)$/m.exec(status)
     if (m !== null) return parseInt(m[1]!, 8)
   }
   return process.umask()

@@ -1340,6 +1340,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'ui',
     'ui-only-output.unsafe',
     'ulid',
+    'umask-read-race',
     'uncached-key-once',
     'unpassed-env',
     'upstream-input-moved',
