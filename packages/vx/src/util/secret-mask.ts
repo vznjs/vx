@@ -124,6 +124,12 @@ export function secretMask(
     for (const b64 of base64Spellings(value)) if (b64.length >= min) values.add(b64)
     const json = JSON.stringify(value).slice(1, -1)
     if (json !== value) values.add(json)
+    // Python's json.dumps (`ensure_ascii`): every non-ASCII code unit as `\uXXXX`.
+    const ascii = json.replace(
+      /[\u007f-\uffff]/g,
+      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+    )
+    if (ascii !== json) values.add(ascii)
     // A multi-line value (a PEM key) is also masked line by line, as GitHub
     // Actions does: a tool that indents or reflows it prints no copy of the
     // whole value, and every line leaked.

@@ -1139,7 +1139,8 @@ interface ExecEnv {
   (`'\''`).
 - It is also masked URL-encoded (`ab%2Fcd` for `ab/cd`, a token in a
   query string; the escapes' hex in any case, `%2f` too) and as a JSON
-  string spells it (`pa\"ss`, `\n`).
+  string spells it (`pa\"ss`, `\n`), also with non-ASCII escaped as
+  Python's `json.dumps` writes it (`p\u00e4ss`).
 - URL-encoded as JavaScript, curl, Python's `quote()` and `quote_plus()`
   and `URLSearchParams` each spell it (`ab/cd%2B` from `quote()`, `+` for
   a space).

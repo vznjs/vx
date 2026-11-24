@@ -91,6 +91,16 @@ describe('a secret in its encoded spellings', () => {
     expect(blank.mask('[zzz999yyy]')).toBe(`[${MASKED}]`)
   })
 
+  // Python's json.dumps escapes every non-ASCII character (`ensure_ascii`),
+  // a character past U+FFFF as its surrogate pair: a password with an
+  // umlaut or emoji printed whole.
+  it('masks the value inside a JSON string with non-ASCII escaped', () => {
+    const ascii = secretMask([{ DB_PASSWORD: 'pässwörd-ünï😀"x' }])!
+    expect(ascii.mask('{"pw": "p\\u00e4ssw\\u00f6rd-\\u00fcn\\u00ef\\ud83d\\ude00\\"x"}')).toBe(
+      `{"pw": "${MASKED}"}`,
+    )
+  })
+
   it('CONTROL: a value with nothing to encode is masked once, as before', () => {
     const plain = secretMask([{ API_TOKEN: 'plainsekretvalue1' }])!
     expect(plain.mask('x plainsekretvalue1 y')).toBe(`x ${MASKED} y`)
