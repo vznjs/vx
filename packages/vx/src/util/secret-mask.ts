@@ -298,8 +298,12 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     for (const [i, raw] of sorted.entries()) {
       const v = folds[i] ?? raw
       const t = piece(text, i)
+      // A prefix ends on the text's last character: a compare of one
+      // character skips each other length (15 spellings a secret made the
+      // whole compare 5x slower per chunk).
+      const last = t.charCodeAt(t.length - 1)
       for (let k = Math.min(v.length - 1, t.length); k > longest; k--) {
-        if (t.endsWith(v.slice(0, k))) {
+        if (v.charCodeAt(k - 1) === last && t.endsWith(v.slice(0, k))) {
           longest = k
           break
         }
@@ -313,8 +317,9 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     for (const [i, raw] of sorted.entries()) {
       const v = folds[i] ?? raw
       const t = piece(text, i)
+      const first = t.charCodeAt(0)
       for (let k = Math.min(v.length - 1, t.length); k > longest; k--) {
-        if (t.startsWith(v.slice(v.length - k))) {
+        if (v.charCodeAt(v.length - k) === first && t.startsWith(v.slice(v.length - k))) {
           longest = k
           break
         }
