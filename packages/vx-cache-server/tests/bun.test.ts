@@ -782,15 +782,17 @@ it('passes a download the bucket cut short on as a failed transfer, never a whol
   })
   const served = listen(handle, '127.0.0.1', 0)
   try {
-    const res = await fetch(`${served.url.origin}/v1/artifacts/ab`, {
-      headers: {
-        ...NAMED,
-        authorization: `Bearer ${await iss.sign(MAIN_JOB, served.url.origin)}`,
-        'vx-scope': scopeOf('refs/heads/main'),
-      },
+    const authorization = `Bearer ${await iss.sign(MAIN_JOB, served.url.origin)}`
+    // The cut may land before the server sent its headers (a loaded machine
+    // relays no byte first): then the request itself fails. Either way, no
+    // body ends clean.
+    const ended = fetch(`${served.url.origin}/v1/artifacts/ab`, {
+      headers: { ...NAMED, authorization, 'vx-scope': scopeOf('refs/heads/main') },
+    }).then(async (res) => {
+      expect([res.status, res.headers.get('vx-size')]).toEqual([200, String(sent.length + 100)])
+      await res.arrayBuffer()
     })
-    expect([res.status, res.headers.get('vx-size')]).toEqual([200, String(sent.length + 100)])
-    await expect(res.arrayBuffer()).rejects.toThrow()
+    await expect(ended).rejects.toThrow()
   } finally {
     await served.stop(true)
     cut.stop(true)
