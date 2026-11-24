@@ -1729,7 +1729,12 @@ export class BoundedCapture {
     tailChars: number,
     through: (chunks: CapturedChunk[]) => CapturedChunk[] = (c) => c,
   ): BoundedCapture {
-    const to = new BoundedCapture(headChars, tailChars)
+    // A cut tighter than the new bounds stays the cut: its head and tail fit
+    // the new head whole, and the dropped line fell after both.
+    const to =
+      this.dropped === 0
+        ? new BoundedCapture(headChars, tailChars)
+        : new BoundedCapture(Math.min(headChars, this.headLen), Math.min(tailChars, this.tailChars))
     const sides = this.dropped === 0 ? [[...this.head, ...this.tail]] : [this.head, this.tail]
     for (const side of sides) for (const c of through(side)) to.push(c.text, c.err)
     to.dropped += this.dropped
