@@ -6,8 +6,9 @@
 
 <p align="center">
   <strong>Task orchestration you own.</strong><br>
-  vx runs the tasks of a JavaScript monorepo in the right order, many at once,<br>
-  and never does the same work twice. No cloud, no account, no paywall.
+  vx is a task orchestrator. It runs your tasks in the right order, many at once,<br>
+  and never does the same work twice. JavaScript support comes from plugins,<br>
+  and any other system can hook in the same way. No cloud, no account, no paywall.
 </p>
 
 <p align="center">

@@ -1,7 +1,8 @@
 # @vzn/vx
 
-vx runs the tasks of a JavaScript monorepo in the right order, many at
-once, and never does the same work twice.
+vx is a task orchestrator. It runs your tasks in the right order, many
+at once, and never does the same work twice. JavaScript support comes
+from plugins, and any other system can hook in the same way.
 
 ```sh
 bunx @vzn/vx init       # installs vx and writes .vx/workspace.ts

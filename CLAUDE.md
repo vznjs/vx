@@ -9,9 +9,10 @@ not change week to week.
 
 ## What vx is
 
-The Vite of task orchestration: a Bun-native task runner and
-content-addressed cache for JS monorepos, built as a **pipeline with
-seams**. Core discovers projects, evaluates `vx.config.ts` files, builds a
+The Vite of task orchestration: a Bun-native task orchestrator and
+content-addressed cache, built as a **pipeline with seams**. Not a JS or
+monorepo tool (M 2026-11-24): JS support is plugins, and any other system
+can hook in the same way. Core discovers projects, evaluates `vx.config.ts` files, builds a
 task graph, derives cache keys, and schedules. Plugins decide where a task
 runs (`executor`), where artifacts live (`cache`), who observes
 (`telemetry`), and — as the seams widen — how the graph is shaped and which

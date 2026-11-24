@@ -6,7 +6,7 @@ This is the design map of `@vzn/vx`. Read it after
 ## Repository shape
 
 The repo is a Bun workspace of `packages/*`. Core is `@vzn/vx` in
-`packages/vx` — the task runner, and the only thing a plain `vx run`
+`packages/vx` — the task orchestrator, and the only thing a plain `vx run`
 ever needs. Its sibling packages integrate with core exclusively
 through its public API (`src/index.ts`, imported as the bare `@vzn/vx`
 specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):

@@ -6,6 +6,7 @@
   "keywords": [
     "vx",
     "vx-plugin",
+    "task-orchestrator",
     "monorepo",
     "lockfile",
     "pnpm",

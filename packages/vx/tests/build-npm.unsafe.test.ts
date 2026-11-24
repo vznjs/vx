@@ -223,8 +223,9 @@ describe('the published plugin packages', async () => {
 
   // npm search ranks on description and keywords; the release shipped
   // @vzn/vx as "An open, extensible monorepo task runner." with its homepage
-  // on the GitHub README, and every plugin with no keywords at all.
-  it('are found on npm by vx and monorepo, @vzn/vx pointing at the docs site', async () => {
+  // on the GitHub README, and every plugin with no keywords at all. vx is a
+  // task orchestrator, not a JS monorepo tool (M 2026-11-24).
+  it('are found on npm by vx and task-orchestrator, @vzn/vx pointing at the docs site', async () => {
     const found: unknown[] = []
     for (const dir of [mainDir, ...emitted.map((e) => e.dir)]) {
       const m = (await Bun.file(path.join(dir, 'package.json')).json()) as {
@@ -236,7 +237,7 @@ describe('the published plugin packages', async () => {
         name: m.name,
         described: (m.description ?? '').length > 0,
         vx: m.keywords?.includes('vx') ?? false,
-        monorepo: m.keywords?.includes('monorepo') ?? false,
+        orchestrator: m.keywords?.includes('task-orchestrator') ?? false,
       })
     }
     expect(found).toEqual(
@@ -244,7 +245,7 @@ describe('the published plugin packages', async () => {
         name,
         described: true,
         vx: true,
-        monorepo: true,
+        orchestrator: true,
       })),
     )
     const main = (await Bun.file(path.join(mainDir, 'package.json')).json()) as Record<

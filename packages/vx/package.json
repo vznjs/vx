@@ -6,7 +6,7 @@
   "homepage": "https://vznjs.github.io/vx/",
   "keywords": [
     "vx",
-    "monorepo",
+    "task-orchestrator",
     "task-runner",
     "build-cache",
     "build-system",
