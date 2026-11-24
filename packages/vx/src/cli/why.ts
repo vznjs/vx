@@ -642,13 +642,16 @@ function pluginTodo(
 async function fingerprintFiles(at: VerbWorkspace): Promise<Map<string, string[]>> {
   try {
     const { plugins } = await at.workspace()
-    return new Map(
-      plugins.flatMap((p) =>
-        p.fingerprint === undefined || p.fingerprint.files.length === 0
-          ? []
-          : [[p.name, [...p.fingerprint.files]] as [string, string[]]],
-      ),
-    )
+    // One package's plugins (`bun()`, `npm()`) share its name, and a part
+    // names no instance: a map built last-wins named only the last's files.
+    const claims = new Map<string, string[]>()
+    for (const p of plugins) {
+      if (p.fingerprint === undefined || p.fingerprint.files.length === 0) continue
+      const had = claims.get(p.name)
+      if (had === undefined) claims.set(p.name, [...p.fingerprint.files])
+      else had.push(...p.fingerprint.files)
+    }
+    return claims
   } catch {
     return new Map()
   }
