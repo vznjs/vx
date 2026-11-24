@@ -752,6 +752,8 @@ export async function loadProjectConfigs(
     validateProjectConfig(copy, configPath, configPath, true)
     return copy
   }
+  const into = root ?? process.cwd()
+  if (prepared.length > 0) await enterRoot(into)
   // One worker for every repeat load in this round, however many there are.
   const endRound = beginEvalRound()
   try {
@@ -844,7 +846,30 @@ export async function loadProjectConfigs(
     unredirectFd?.()
     unredirect?.()
     endRound()
+    if (prepared.length > 0) leaveRoot()
   }
+}
+
+/**
+ * Rounds in one process share its cwd, `PWD` and env: rounds for one root
+ * overlap, one for another root waits until they end. Two runs of different
+ * workspaces in one process (the API) moved each other's cwd mid-evaluation,
+ * and both were refused as a config's chdir.
+ */
+let roundRoot = ''
+let roundsIn = 0
+let roundsOut = Promise.withResolvers<void>()
+
+async function enterRoot(root: string): Promise<void> {
+  while (roundsIn > 0 && roundRoot !== root) await roundsOut.promise
+  if (roundsIn++ === 0) {
+    roundRoot = root
+    roundsOut = Promise.withResolvers<void>()
+  }
+}
+
+function leaveRoot(): void {
+  if (--roundsIn === 0) roundsOut.resolve()
 }
 
 /**
