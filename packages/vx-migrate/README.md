@@ -1716,6 +1716,7 @@ Below the environment, in Turbo's order, the plugin reads:
 - Prefix, hash, team id and body are each length-prefixed, under HMAC-SHA256, and sent base64 in `x-artifact-tag`.
 - A signed body is written to a temp file before its tag can be checked.
 - So one past core's artifact ceiling (2 GiB, at zstd's bound) is refused as it passes it, and is a miss.
+- A download with no `x-artifact-tag` is a miss that says so. turborepo-remote-cache keeps the tag only with its own `TURBO_REMOTE_CACHE_SIGNATURE_KEY` set; without it, every signed read misses.
 
 **Streaming.** Artifacts stream both ways on both wires.
 

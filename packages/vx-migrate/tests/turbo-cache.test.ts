@@ -504,9 +504,13 @@ describe('TurboRemoteCache against the spec server', () => {
     // Tampered on the server: the tag no longer covers the bytes.
     srv.store.get('cc33')!.body = new TextEncoder().encode('tampered')
     await expect(c.get('cc33')).rejects.toThrow(/signature did not verify/)
-    // Unsigned on the server (written without a key): also a miss when we verify.
+    // Unsigned on the server (written without a key, or a server that keeps no
+    // tag: turborepo-remote-cache drops it unless it has a key): also a miss,
+    // naming the missing tag, not a mismatch.
     await cache().put('dd44', new Blob([body]), { durationMs: 1 })
-    await expect(c.get('dd44')).rejects.toThrow(/signature did not verify/)
+    await expect(c.get('dd44')).rejects.toThrow(
+      'the server sent no x-artifact-tag, so the signature cannot verify — treated as a miss; turborepo-remote-cache stores the tag only with its own TURBO_REMOTE_CACHE_SIGNATURE_KEY set',
+    )
     // Without a key configured nothing is verified (control).
     expect(await cache().get('dd44')).not.toBeNull()
   })
@@ -601,7 +605,7 @@ describe('TurboRemoteCache against the spec server', () => {
         {},
       )!
       const c = new TurboRemoteCache(config, untagged, tempDir)
-      await expect(c.get('ab78')).rejects.toThrow(/signature did not verify/)
+      await expect(c.get('ab78')).rejects.toThrow(/sent no x-artifact-tag/)
       expect(cancelled).toBe(true)
       expect(await readdir(tempDir)).toEqual([])
     })

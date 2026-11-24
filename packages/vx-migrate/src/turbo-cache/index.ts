@@ -869,7 +869,11 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const tag = res.headers.get('x-artifact-tag')
     if (tag === null) {
       await res.body?.cancel()
-      throw refused()
+      // Said apart from a mismatch: a server that keeps no tag fails every
+      // signed read, and "did not verify" pointed at the key.
+      throw new Error(
+        'the server sent no x-artifact-tag, so the signature cannot verify — treated as a miss; turborepo-remote-cache stores the tag only with its own TURBO_REMOTE_CACHE_SIGNATURE_KEY set',
+      )
     }
     const temp = path.join(this.tempDir, `vx-turbo-${hash}-${crypto.randomUUID()}`)
     trackTemp(temp)
