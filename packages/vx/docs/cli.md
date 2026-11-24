@@ -4050,13 +4050,13 @@ and the footer keeps only their count. Kept per run like the steps, the
 newest 50, as `warnings` rows, written only by a run that warned.
 
 **Re-run what failed.** A replayed run with
-failures ends with the command that re-runs them (`re-run what failed:
-vx run @demo/web#test -- …`, with the arguments the run forwarded to the
+failures ends with a `next` row, the command that re-runs them
+(`next  vx run @demo/web#test -- …`, with the arguments the run forwarded to the
 tasks that got them; a failed dependency, which never got them, gets a
 line of its own without them, X-140). The
-replayed `$ vx run …` or `$ vx watch …` line and that one keep each
+`command` row (`vx run …` or `vx watch …`) and `next` keep each
 argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49);
-the re-run line quotes a task id the same way (`'@demo/web#it'\''s boom'`).
+`next` quotes a task id the same way (`'@demo/web#it'\''s boom'`).
 
 **No runs yet.** Before any run, every form says so
 (`› vx last  no runs yet` with `fix  vx run`, exit 1; `--list` prints
