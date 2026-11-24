@@ -233,7 +233,9 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         await chmod(ro, 0o555)
         const pruned = await vx(['cache', 'clean', '--max-size', '1K'])
         expect(pruned.code).toBe(1)
-        expect(pruned.err).toMatch(/^✗ vx cache clean  cache directory .* is not writable \(EACCES: /)
+        expect(pruned.err).toMatch(
+          /^✗ vx cache clean  cache directory .* is not writable \(EACCES: /,
+        )
         expect(pruned.err).not.toContain('\n    at ')
         const dry = await vx(['cache', 'clean', '--max-size', '1K', '--dry'])
         expect(`${dry.code}\n${dry.err}`).toStartWith('0\n')
