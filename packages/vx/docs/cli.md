@@ -5402,7 +5402,8 @@ unreported`: the sandbox works but cannot report the reads it denies.
 - `cache store` is the store this workspace's checkouts share
   (`docs/caching.md`), with its size on disk.
 - The store reads `none: the cache dir holds the entries` when the
-  workspace names its own cache dir.
+  workspace names its own cache dir, or when `HOME` is not a directory
+  this user can write: set `HOME` to one to share the entries.
 - `cache store` is the store the next run opens, before a first run too.
   It is not one the index recorded under a home since moved.
 - After one `sudo vx run`, a store a run would not use (another user's)

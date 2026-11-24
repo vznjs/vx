@@ -373,7 +373,9 @@ async function collectWorkspaceInfo(
         declared: sandboxed,
       }
     : { ...probed, declared: sandboxed }
-  const cacheStore = indexStore ?? storeRoot
+  // A home the store cannot live in leaves the entries in the cache dir
+  // (store-index.ts): no store, not one shared by the checkouts.
+  const cacheStore = indexStore === cacheDir ? null : (indexStore ?? storeRoot)
   return {
     vx: VERSION,
     vxPath: vxPath(),
