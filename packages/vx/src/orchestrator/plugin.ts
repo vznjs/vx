@@ -747,6 +747,12 @@ function pluginPackageName(dir: string): string {
  * package alone.
  */
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin {
+  const dir =
+    origin.dir ?? (origin.url !== undefined ? path.dirname(fileURLToPath(origin.url)) : undefined)
+  if (dir === undefined) {
+    throw new UserError(`definePlugin: the first argument must be the plugin module's import.meta`)
+  }
+  const name = pluginPackageName(dir)
   // The hooks are copied by spread, which takes own fields only: a class
   // instance's methods stayed on its prototype and the plugin loaded
   // without them, saying nothing.
@@ -758,18 +764,14 @@ export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
         ? String(hooks)
         : `a ${(hooks as object).constructor?.name || 'class instance'}`
     throw new UserError(
-      `definePlugin: the hooks must be a plain object ({ setup() { … } }), got ${got}`,
+      `plugin '${name}': definePlugin's hooks must be a plain object ({ setup() { … } }), got ${got}`,
     )
   }
   if ('name' in hooks) {
-    throw new UserError(`definePlugin: a plugin's name is its package name — drop the 'name' field`)
+    throw new UserError(
+      `plugin '${name}': a plugin's name is its package name — drop the 'name' field`,
+    )
   }
-  const dir =
-    origin.dir ?? (origin.url !== undefined ? path.dirname(fileURLToPath(origin.url)) : undefined)
-  if (dir === undefined) {
-    throw new UserError(`definePlugin: the first argument must be the plugin module's import.meta`)
-  }
-  const name = pluginPackageName(dir)
   return { ...hooks, name, [PLUGIN_PACKAGE]: name } as VxPlugin
 }
 
