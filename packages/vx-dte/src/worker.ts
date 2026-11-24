@@ -441,7 +441,9 @@ async function serve(
     work.add(p)
   }
 
-  /** The first probe this machine answers otherwise than the orchestrator did. */
+  /** Why this worker answers a keyed runtime fact otherwise: it runs no more. */
+  let differing: string | undefined
+  /** The first probe this machine answers otherwise than the orchestrator did, each learned once (`rt.probe`). */
   const runtimeDiffers = async (m: RunOrder): Promise<string | undefined> => {
     for (const r of m.runtime ?? []) {
       const dir = r.workspace === true ? '' : m.project
@@ -461,15 +463,14 @@ async function serve(
     const stop = new AbortController()
     running.set(m.task, stop)
     try {
+      // A fact the run's keys hold answers otherwise here: this worker runs
+      // nothing of the run, and the orchestrator refuses it, as another tree.
+      if (differing !== undefined) return
       const differs = await runtimeDiffers(m)
+      if (differing !== undefined) return
       if (differs !== undefined) {
-        ui.print('err', ui.status('error', m.task, differs))
-        await reply(m, m.runKey, undefined, {
-          exitCode: 1,
-          durationMs: 0,
-          output: [{ text: `${differs}\n`, err: true }],
-          violations: [],
-        })
+        differing = differs
+        await say({ type: 'differs', task: m.task, reason: differs }).catch(unsent('differs'))
         return
       }
       for (const d of m.deps) {

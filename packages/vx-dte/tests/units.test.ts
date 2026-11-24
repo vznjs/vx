@@ -926,6 +926,78 @@ it('a worker stopped by a signal stops its tasks before it exits', async () => {
   }
 })
 
+// A worker whose keyed runtime fact differs runs nothing of the run: it
+// says so once and the orchestrator refuses it (a failed task there failed
+// the run while workers that answered alike sat idle).
+it('a worker whose runtime probe answers otherwise says so and runs nothing more', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, 'worker-child.ts'), served.url, R, root],
+      { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, NO_COLOR: '1' } },
+    )
+    const order = (task: string, runtime?: RunOrder['runtime']): RunOrder => ({
+      task,
+      key: `k-${task}`,
+      runKey: runKey(R, task),
+      deps: [],
+      nested: [],
+      command: `echo ${task} >> runs.txt`,
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+      ...(runtime === undefined ? {} : { runtime }),
+    })
+    const said: { type: string; reason?: string }[] = []
+    for (let i = 0; i < 100 && !said.some((m) => m.type === 'differs'); i++)
+      for (const { from, body } of flat(await o.poll())) {
+        const m = body as { type: string; id?: string; reason?: string }
+        if (from === 'relay') {
+          if (m.type !== 'joined') continue
+          await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          await o.send(m.id!, {
+            type: 'batch',
+            n: 1,
+            root,
+            realRoot: root,
+            tasks: [order('t', [{ command: 'echo 1.4.3', output: '1.4.4' }])],
+          })
+          continue
+        }
+        said.push(m)
+        if (m.type === 'differs') {
+          // A batch already on its way: nothing of it runs.
+          await o.send(from, { type: 'batch', n: 2, root, realRoot: root, tasks: [order('u')] })
+          await o.send(from, { type: 'refused', reason: m.reason! })
+        }
+      }
+    const [code, err] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect(
+      said.filter((m) => ['start', 'ran', 'end', 'fault', 'differs'].includes(m.type)),
+    ).toEqual([
+      expect.objectContaining({
+        type: 'differs',
+        task: 't',
+        reason:
+          '`echo 1.4.3` answers "1.4.3" on this worker, "1.4.4" on the run\'s machine, whose answer its key holds',
+      }),
+    ])
+    expect([code, err]).toEqual([1, expect.stringContaining('refused: `echo 1.4.3` answers')])
+    expect(existsSync(path.join(root, 'runs.txt'))).toBe(false)
+  } finally {
+    await served.stop()
+  }
+})
+
 // A warm run ended before it took the workers started by hand for it: each
 // exited 0 and said nothing, so the terminals read as if nothing happened.
 it('a worker started by hand that the run ends before taking says so', async () => {

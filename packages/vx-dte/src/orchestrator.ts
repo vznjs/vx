@@ -2142,6 +2142,30 @@ export class Orchestrator extends RunReport<Worker> {
             j.startedAt = here(m.startedAt) ?? j.startedAt ?? now
             j.ranAt = here(m.ranAt) ?? now
             this.pumpSoon()
+          } else if (m.type === 'differs') {
+            // Refused as another tree is: it began nothing, so its tasks go
+            // back with no fault, to workers that answer alike. One this run
+            // started is a failed start: its replacements are bounded, then
+            // the run says no worker could start.
+            this.refused.push(m.reason)
+            this.warn(`dte: refused worker ${a.label}: ${m.reason}`)
+            this.post(a, { type: 'refused', reason: m.reason })
+            a.started.clear()
+            this.workers.delete(a.id)
+            this.bound?.lost(a.label, this.clock())
+            a.usage.to = performance.now()
+            this.trace.left(a.label, 'refused', a.usage.to)
+            for (const k of this.parts.keys()) if (k.startsWith(`${a.id}\0`)) this.parts.delete(k)
+            const back: Job[] = []
+            for (const j of [...a.busy.values()]) {
+              const again = this.retry(a, j, 'refused')
+              if (again !== undefined) back.push(again)
+            }
+            this.enqueue(back)
+            if (this.spawnedAt.has(a.label)) this.failed(a.label, `refused: ${m.reason}`)
+            else this.pump()
+            this.pumpSoon()
+            break
           } else if (m.type === 'fault') {
             const j = a.busy.get(m.task)
             if (j === undefined) continue
@@ -2417,7 +2441,7 @@ function wiredFrame(body: unknown): ToOrchestrator[] | undefined {
     if (m['load'] !== undefined && !record(m['load'])) return undefined
     if (m['type'] === 'report') {
       if (!Array.isArray(m['running'])) return undefined
-    } else if (['ran', 'fault', 'part', 'end'].includes(m['type'])) {
+    } else if (['ran', 'fault', 'differs', 'part', 'end'].includes(m['type'])) {
       if (typeof m['task'] !== 'string') return undefined
       const lists = m['type'] === 'end' ? m['result'] : m
       if (!record(lists)) return undefined

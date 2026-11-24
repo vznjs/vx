@@ -54,13 +54,18 @@ it('runs a task whose runtime probe answers a path under the checkout root', () 
   expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([0, expect.anything()])
 }, 60_000)
 
-it('fails a task on a worker whose runtime probe answers otherwise', () => {
+// A worker on another Bun failed each task keyed on \`bun --version\`, and
+// so the run, while workers that answered alike sat idle. It is refused, as
+// one on another commit is; with none left the run says so.
+it('refuses a worker whose runtime probe answers otherwise, and says when none is left', () => {
   const r = vx(['run', 'r#here'], 'e2e-probe')
   const out = r.stdout.toString() + r.stderr.toString()
-  expect([r.exitCode, out]).toEqual([
-    1,
-    expect.stringContaining('`git rev-parse --git-dir` answers'),
-  ])
+  expect(r.exitCode).toBe(1)
+  expect(out).toMatch(
+    /dte: refused worker \S+: `git rev-parse --git-dir` answers "[^"]+\/worktrees\/\d+" on this worker, "[^"]+\/\.git" on the run's machine/,
+  )
+  expect(out).toContain('no worker could start')
+  expect(out).not.toContain('failed on 2 workers')
 }, 60_000)
 
 it('fails a task that fails on its worker, with its output', () => {

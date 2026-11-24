@@ -768,8 +768,13 @@ a plugin changes where a command runs, never what it is.
   sets it on a local task.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first.
-- The worker fails the task when it answers otherwise than this machine
-  did.
+- A worker that answers otherwise than this machine did is refused, as
+  one on another tree is: `[vx] dte: refused worker <id>: \`bun --version\`
+  answers "1.4.3" on this worker, "1.4.4" on the run's machine, …`.
+- It runs nothing more, and its tasks go to workers that answer alike.
+- One the run started counts as a failed start: with none left, the run
+  says no worker could start.
+- A worker answers each probe once, in each directory it is asked in.
 - A path under the worker's checkout root reads as the same path under this
   machine's, as the task's environment does.
 
