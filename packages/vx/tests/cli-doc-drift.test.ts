@@ -267,6 +267,7 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
         'plugins',
         'sandbox',
         'workers',
+        'workspaceError',
       ]),
     )
     const off = shapes.filter(([name, keys]) => sourceKeys(name!) !== keys)
