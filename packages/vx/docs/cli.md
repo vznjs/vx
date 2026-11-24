@@ -2105,22 +2105,60 @@ Default: off. A run without `--dry` executes.
 
 `--dry --format json` emits the same data as one JSON object on one line, alone on stdout. Indented here to read:
 
+```sh
+vx run build test --filter @demo/web... --dry --format json
+```
+
 ```json
 {
   "tasks": [
     {
-      "id": "@vzn/vx#lint",
-      "project": "@vzn/vx",
-      "task": "lint",
-      "description": "oxlint with tsgolint-backed type-aware checks",
-      "hash": "d66cfed2...",
+      "id": "@demo/ui#build",
+      "project": "@demo/ui",
+      "task": "build",
+      "hash": "048c3a3df13acfff",
       "cacheStatus": "hit-local",
       "deps": [],
-      "command": "oxlint --type-aware --type-check src tests",
-      "p50Ms": 72640
+      "command": "vite build",
+      "p50Ms": 1055
+    },
+    {
+      "id": "@demo/web#build",
+      "project": "@demo/web",
+      "task": "build",
+      "hash": "36121304ff7e9b50",
+      "cacheStatus": "hit-local",
+      "deps": ["@demo/ui#build"],
+      "command": "vite build",
+      "p50Ms": 497
+    },
+    {
+      "id": "@demo/ui#test",
+      "project": "@demo/ui",
+      "task": "test",
+      "hash": "2482ed258adc10aa",
+      "cacheStatus": "miss",
+      "deps": [],
+      "command": "vitest run src",
+      "p50Ms": 3384
+    },
+    {
+      "id": "@demo/web#test",
+      "project": "@demo/web",
+      "task": "test",
+      "hash": "c5d95df67d047d6c",
+      "cacheStatus": "miss",
+      "deps": ["@demo/ui#build"],
+      "command": "vitest run src",
+      "p50Ms": 2610
     }
   ],
-  "predicted": { "wallMs": 0, "workMs": 0, "unknownCount": 0, "criticalPath": [] }
+  "predicted": {
+    "wallMs": 3384,
+    "workMs": 5994,
+    "unknownCount": 0,
+    "criticalPath": ["@demo/ui#test"]
+  }
 }
 ```
 
@@ -3608,17 +3646,22 @@ the lock. It writes nothing, and exits 1 on any difference.
 
 On CI: `vx lock --check && vx run …`.
 
-With `--format json`, it prints the audit as one document:
+With `--format json`, it prints the audit as one document. Here a
+config edited after `vx lock` adds a `dependsOn` loop:
 
 ```json
 {
   "upToDate": false,
-  "audited": 1,
+  "audited": 4,
   "notAudited": 0,
   "problems": [
     {
+      "code": "VX_E_LOCK",
+      "message": "packages/api/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n  tasks.lint.dependsOn: (none) → [\"test\"]\n  tasks.test.dependsOn[1]: (none) → \"lint\""
+    },
+    {
       "code": "VX_E_CYCLE",
-      "message": "dependsOn cycle: p#x -> p#y -> p#x — remove one edge of the loop"
+      "message": "dependsOn cycle: @demo/api#test -> @demo/api#lint -> @demo/api#test — remove one edge of the loop"
     }
   ]
 }

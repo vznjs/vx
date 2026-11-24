@@ -299,13 +299,14 @@ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 
 Every `--format json` prints **one document on one line** to stdout. Notices go to stderr, so stdout always parses.
 
-Every shape is a JSON Schema (draft 2020-12) in `node_modules/@vzn/vx/schemas/`, with a closed key set: a new field is a schema change, never a surprise.
+Every shape is a JSON Schema (draft 2020-12) in `node_modules/@vzn/vx/schemas/`, with a closed key set: a new field is a schema change, never a surprise. Each field's `description` says what it holds.
 
 | Command | Prints | Schema |
 | --- | --- | --- |
 | `vx show --format json` | every project: `name`, `dir`, `tags`, `tasks` | `show.json` |
 | `vx show <project> --format json` | one project's `config`, as a run reads it | `show.json` |
 | `vx run … --dry --format json` | the plan: `tasks`, `predicted`, `affectedBase` | `plan.json` |
+| `vx pipeline <name> --dry --format json` | the same plan, for that pipeline's run | `plan.json` |
 | `vx last --format json` | the run: `invocation` and one row per task in `tasks` | `last.json` |
 | `vx why <task> --format json` | `why`, `diff`, `roots`, `writers` | `why.json` |
 | `vx info --format json` | versions, projects, plugins, workers, cache, settings | `info.json` |
