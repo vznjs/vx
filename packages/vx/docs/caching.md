@@ -57,15 +57,18 @@ over (in order):
    against e.g. `pkg-a#build` accidentally cache-hitting on a
    `pkg-b#build` entry.
 3. **Task config hash** — `xxh3(JSON.stringify(hashableConfig(node.config)))`
-   of the _evaluated_ task config. The projection is one field wide:
-   `exec.remote` is dropped, because it says WHERE a task runs and not
-   what it does (§ What's NOT in the key). Its keys are sorted all the
+   of the _evaluated_ task config. The projection drops only
+   `exec.remote` and `exec.worker`, because they say WHERE a task runs
+   and not what it does (§ What's NOT in the key). Its keys are sorted all the
    way down, so the order a config or a plugin spells them in moves no
    key; `vx lock` writes them sorted, so a run only checks. So are the
    lists that are sets: env names, input and output globs (a `!`
    subtracts in any order) and `dependsOn`, so reordering one replays.
    Captures:
-   - `exec` block (command, env declarations, timeout, persistent).
+   - `exec` block (command, env declarations, timeout, persistent,
+     sandbox). Turning `exec.sandbox` on or off, or widening a grant
+     (a `fix:` line applied), re-keys the task: an entry saved under one
+     sandbox is never replayed under another.
    - `dependsOn` and `inputs.tasks` declarations.
    - `outputs.files`, `inputs.files`, `inputs.env`,
      `inputs.runtime` / `workspaceRuntime` declarations (the
@@ -2749,7 +2752,7 @@ moat.
   `--affected` change sets. So are the files `vx lock` and `vx init`
   write beside it: each project's `vx.lock.json` review copy,
   `.vx/.gitattributes`, `.vx/.gitignore` and `.vx/dependencies.lock`.
-- **`exec.remote`.** Pure PLACEMENT: it decides _where_ a task runs,
+- **`exec.remote` and `exec.worker`.** Pure PLACEMENT: it decides _where_ a task runs,
   never what it produces, so pinning a task to this machine does not
   bust its cache. It must not — the
   whole contract of a remote executor is that the same command over the
