@@ -6,7 +6,6 @@
 // run reads that and maps nothing. `turbo()` and `nx()` share this
 // skeleton; what differs is only how the mapping is made.
 
-import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { definePlugin, type ProjectHookContext, type VxPlugin } from '@vzn/vx'
 import { type AdoptionMapping, cachedMapping, codeId } from './mapping-cache.js'
@@ -82,15 +81,9 @@ export function adoptionPlugin(
   const plugin = definePlugin(meta, {
     async project(config, ctx) {
       // A run reads the lock, never these: an edit with no `vx lock` ran the
-      // old command, green.
-      for (const f of reads) {
-        const file = path.join(ctx.workspaceRoot, f)
-        if (existsSync(file)) ctx.read(file)
-      }
-      for (const f of own) {
-        const file = path.join(ctx.dir, f)
-        if (existsSync(file)) ctx.read(file)
-      }
+      // old command, green. Named present or not: one appearing is an edit.
+      for (const f of reads) ctx.read(path.join(ctx.workspaceRoot, f))
+      for (const f of own) ctx.read(path.join(ctx.dir, f))
       if (mappedFor !== ctx.projects) {
         mappedFor = ctx.projects
         // The key's other reads overlap the plugin's own.

@@ -494,27 +494,34 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // directory (`ProjectHookContext.read`): `vx lock` stamps them.
   const reads = hooks ? new Map<string, Set<string>>() : undefined
   // The stamped reads, asked once a load; each file stat'd once a load.
-  let stamped: Promise<Record<string, string[]> | undefined> | undefined
+  let stamped: ReturnType<typeof readsBesideLock> | undefined
   const statted = new Set<string>()
+  // `moved`: gone, or there when the lock found it absent: edited either way.
   const pluginReads = async (
     digest: string,
     metas: readonly ProjectMeta[],
-  ): Promise<{ file: string; size: number; mtimeMs: number }[]> => {
-    const all = await (stamped ??= readsBesideLock(workspaceRoot, args.cacheDir, digest))
-    if (all === undefined) return []
+  ): Promise<{ moved: string[]; present: { file: string; size: number; mtimeMs: number }[] }> => {
+    const got = await (stamped ??= readsBesideLock(workspaceRoot, args.cacheDir, digest))
+    if (got === undefined) return { moved: [], present: [] }
     const files = metas.flatMap((m) => {
       const dir = lockKey(workspaceRoot, m.dir)
-      const rels = Object.hasOwn(all, dir) ? all[dir]! : []
+      const rels = Object.hasOwn(got.reads, dir) ? got.reads[dir]! : []
       return rels.filter((rel) => !statted.has(rel) && (statted.add(rel), true))
     })
-    // A file gone since is an edit: size -1.
-    return Promise.all(
+    const moved: string[] = []
+    const present: { file: string; size: number; mtimeMs: number }[] = []
+    await Promise.all(
       files.map(async (rel) => {
         const file = path.join(workspaceRoot, rel)
         const st = await stat(file).catch(() => null)
-        return { file, size: st?.size ?? -1, mtimeMs: st?.mtimeMs ?? 0 }
+        const was = got.present(rel)
+        if (st === null) {
+          if (was) moved.push(rel)
+        } else if (!was) moved.push(rel)
+        else present.push({ file, size: st.size, mtimeMs: st.mtimeMs })
       }),
     )
+    return { moved: moved.sort(), present }
   }
   while (pending.length > 0) {
     const round = pending.splice(0, pending.length)
@@ -580,19 +587,20 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       args.asLocked === true || hooks || (fromLock.length === 0 && unstaged.length === 0)
         ? undefined
         : lockDigest(await lock())
-    const mappedFrom = digest === undefined ? [] : await pluginReads(digest, unstaged)
+    const mappedFrom =
+      digest === undefined ? { moved: [], present: [] } : await pluginReads(digest, unstaged)
     const edited =
       digest === undefined
         ? []
         : [
-            ...mappedFrom.flatMap((f) => (f.size < 0 ? [relPosix(workspaceRoot, f.file)] : [])),
+            ...mappedFrom.moved,
             ...(await configsEditedSinceLock(workspaceRoot, args.cacheDir, digest, [
               ...withFile.flatMap((m, i) =>
                 recordedOf(m) === undefined
                   ? [{ file: m.configPath, size: stats[i]!.size, mtimeMs: stats[i]!.mtimeMs }]
                   : [],
               ),
-              ...mappedFrom.filter((f) => f.size >= 0),
+              ...mappedFrom.present,
             ])),
           ]
     if (edited.length > 0)

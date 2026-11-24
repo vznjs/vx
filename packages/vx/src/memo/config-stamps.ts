@@ -25,7 +25,7 @@ export interface ConfigStamps {
   /**
    * The files a `project` plugin made each project's config from
    * (`ProjectHookContext.read`), by project directory, workspace-relative;
-   * each one's stamp is in `configs`.
+   * each one's stamp is in `configs`, or none when it was absent.
    */
   reads?: Record<string, string[]>
 }
@@ -106,17 +106,19 @@ async function readStamps(cacheDir: string): Promise<Stamps | null> {
 
 /**
  * The files a `project` plugin made each project's config from, by project
- * directory, as stamped beside the lock whose digest is `lock`; undefined
- * when none were.
+ * directory, as stamped beside the lock whose digest is `lock`, with the
+ * ones present then (stamped); undefined when none were.
  */
 export async function readsBesideLock(
   root: string,
   cacheDir: string,
   lock: string,
-): Promise<Record<string, string[]> | undefined> {
+): Promise<{ reads: Record<string, string[]>; present: (rel: string) => boolean } | undefined> {
   const stamps = await readStamps(cacheDir)
   if (stamps === null || stamps.root !== root || stamps.lock !== lock) return undefined
-  return typeof stamps.reads === 'object' && stamps.reads !== null ? stamps.reads : undefined
+  const { reads, configs } = stamps
+  if (typeof reads !== 'object' || reads === null || typeof configs !== 'object') return undefined
+  return { reads, present: (rel) => Object.hasOwn(configs, rel) }
 }
 
 /**

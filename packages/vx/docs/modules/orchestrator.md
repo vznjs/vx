@@ -3157,7 +3157,7 @@ a project loads its recorded config, or `{ tasks: {} }` when the lock
 holds none (2026-11-11: "we
 never relock during runs ... it should always follow the lock blindly").
 `vx lock --check` names the drift. One exception: a file a hook named
-with `ctx.read` is stat'ed, and once it changed the run refuses, naming
+with `ctx.read` is stat'ed, and once it changed, appeared or went the run refuses, naming
 `vx lock`, as for an edited `vx.config`.
 
 `loadWorkspacePlugins` runs the `config` stage on a copy of the

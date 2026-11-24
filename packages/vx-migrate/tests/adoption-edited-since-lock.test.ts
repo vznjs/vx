@@ -51,6 +51,19 @@ describe('turbo(): a file the lock was mapped from, edited since', () => {
   )
 
   it(
+    'refuses the run for a package turbo.json that appeared since',
+    async () => {
+      await lock(ws.root)
+      await writeFile(
+        path.join(ws.root, 'packages', 'lib', 'turbo.json'),
+        JSON.stringify({ extends: ['//'], tasks: { build: { env: ['MODE'] } } }),
+      )
+      await expect(plan()).rejects.toThrow(said('packages/lib/turbo.json'))
+    },
+    TIMEOUT,
+  )
+
+  it(
     'runs when a file was rewritten with the same bytes',
     async () => {
       await lock(ws.root)
@@ -62,7 +75,7 @@ describe('turbo(): a file the lock was mapped from, edited since', () => {
   )
 })
 
-describe('nx(): a project.json edited since the lock', () => {
+describe('nx(): a file the lock was mapped from, edited since', () => {
   let root: string
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'vx-nx-edited-'))
@@ -108,6 +121,20 @@ describe('nx(): a project.json edited since the lock', () => {
         path.join(root, 'packages', 'lib', 'project.json'),
         JSON.stringify({ name: 'lib', targets: { lint: { command: 'echo edited' } } }),
       )
+      await expect(plan()).rejects.toThrow(said('packages/lib/project.json'))
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'refuses the run for a project.json that appeared since',
+    async () => {
+      const project = path.join(root, 'packages', 'lib', 'project.json')
+      await rm(project)
+      await lock(root)
+      const plan = () => planRun({ cwd: root, tasks: ['lint'], log: silent() })
+      expect((await plan()).tasks.length).toBe(1)
+      await writeFile(project, JSON.stringify({ name: 'lib' }))
       await expect(plan()).rejects.toThrow(said('packages/lib/project.json'))
     },
     TIMEOUT,

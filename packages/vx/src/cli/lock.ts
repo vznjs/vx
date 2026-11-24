@@ -321,9 +321,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         ...new Set([...reads.values()].flatMap((f) => [...f])),
       ])
       const taken = out.stamps.taken
-      // A file absent is not watched: its stamp was not taken.
-      for (const dir of Object.keys(byDir))
-        byDir[dir] = byDir[dir]!.filter((f) => Object.hasOwn(read.configs, f))
+      // A file absent has no stamp: a run refuses once it appears.
       out.stamps.taken = { ...taken, configs: { ...taken.configs, ...read.configs }, reads: byDir }
     }
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)

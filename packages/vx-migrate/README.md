@@ -112,6 +112,7 @@ vx lock --check  # name each package the mapping now says otherwise for
 - A run reads that record and maps nothing. It reads no `turbo.json`, manifest, git or environment for the mapping.
 - So an edit to `turbo.json` or a script runs only after the next `vx lock`.
 - Until then a run on this machine refuses: `turbo.json changed since the last \`vx lock\` — run \`vx lock\``, as for an edited `vx.config`.
+- A package `turbo.json` added since counts as an edit too.
 - A package added since has no tasks until `vx lock`.
 - Adding or dropping `turbo()` changes nothing until then either.
 
@@ -984,7 +985,7 @@ A different key, or no snapshot, runs `node_modules/.bin/nx graph --file=<snapsh
 - A touch without an edit, or a stray file a task writes at the root, does not.
 - Outside a git worktree the plugin falls back to the manifests' mtimes.
 - A run never exports, maps or reads the graph. `vx lock` records the projects the `discover` stage names and the edges Nx derives (`implicitDependencies`, an `import`).
-- So a `project.json` edit, a new edge included, changes what runs only after the next `vx lock`. Until then a run on this machine refuses, naming the file.
+- So a `project.json` edit, a new edge included, changes what runs only after the next `vx lock`. Until then a run on this machine refuses, naming the file. So does a new `project.json`.
 - An edit elsewhere (a source `import`, `vite.config.ts`) is not refused; `vx lock --check` names it.
 - That holds under `vx watch` as in a run: a re-lock is the next cycle's event.
 

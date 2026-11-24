@@ -3244,7 +3244,7 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 - It checks only while the lock is the one written then. So a pull that brings a new lock, or a fresh clone, is never refused.
 - A config edit committed without relocking is refused like an uncommitted one.
 - A file a config imports is not checked.
-- A file a `project` plugin made a config from is checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` under `nx()`. The plugin names it (`ProjectHookContext.read`).
+- A file a `project` plugin made a config from is checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` under `nx()`. A named file that appears or goes counts as an edit. The plugin names it (`ProjectHookContext.read`).
 - In a pipeline, `vx lock --check` first re-evaluates every config and checks the rules.
 
 </div>
