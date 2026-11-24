@@ -41,6 +41,7 @@ ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://gitla
 ```
 
 - Only jobs of a workflow it names get in; any other job is refused.
+- `ALLOW` names repositories, not ids: if an owner is renamed and someone takes the old name, their jobs get in. Update `ALLOW` when you rename an owner or repository.
 - With `ALLOW` empty, the server does not start. A Worker refuses every
   request instead.
 - Two CIs' tokens are read: GitHub Actions' issuer, and GitLab's

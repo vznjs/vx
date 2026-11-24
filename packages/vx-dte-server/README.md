@@ -32,6 +32,7 @@ The button copies this directory into a new repository of yours and
 deploys it. It asks for one var, `ALLOW`: who may take part.
 
 - `ALLOW` is space separated, each entry `issuer:owner/repo:workflow`.
+- `ALLOW` names repositories, not ids: if an owner is renamed and someone takes the old name, their jobs get in. Update `ALLOW` when you rename an owner or repository.
 - It is not a secret: keep it in your copy's `wrangler.jsonc`, since
   each deploy sets vars from that file.
 - `https://token.actions.githubusercontent.com:vznjs/vx:ci.yml` admits

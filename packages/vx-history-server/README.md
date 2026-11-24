@@ -50,6 +50,7 @@ Every request carries a CI job's own OIDC token, checked by
   `issuer:owner/repo:workflow` entries.
 - A job of a workflow `ALLOW` names writes its own branch. Any other job
   is refused.
+- `ALLOW` names repositories, not ids: if an owner is renamed and someone takes the old name, their jobs get in. Update `ALLOW` when you rename an owner or repository.
 - A row is the issuer, repository, ref and task hash, stored plainly,
   and its numbers.
 - A run sends one query: its repository, the refs it reads and every
