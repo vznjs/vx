@@ -307,6 +307,34 @@ describe('renderJobSummary', () => {
     expect(broken).toContain('1 on this machine: a#x # y.')
   })
 
+  it('a worker machine busy with other work is not read as its tasks using every core', () => {
+    // Seen on a local() run: `0.0 of 4` used beside `100%` "used of all
+    // cores". The last column is the machine's busy time, any process's.
+    const md = renderJobSummary(
+      summary([task({ where: 'w' })], {
+        machines: [
+          {
+            name: 'w',
+            status: 'ok',
+            cores: 4,
+            memoryBytes: 16e9,
+            done: 1,
+            failed: 0,
+            onlineMs: 1000,
+            busyMs: 1000,
+            cpuPeak: 0,
+            cpuAvg: 0,
+            memoryPeakBytes: 1e6,
+            memoryAvgBytes: 1e6,
+            utilization: 1,
+          },
+        ],
+      }),
+    )
+    expect(md).toContain('| Used cores, avg | Peak RAM | Machine busy, any process |')
+    expect(md).toContain('| 0.0 of 4 | 1 MB of 16.0 GB | 100% |')
+  })
+
   it('a worker with no booked cores is not read as 0% booked', () => {
     const m = {
       name: 'w',

@@ -322,7 +322,7 @@ function renderWorkers(
   const lines = [
     '### Workers',
     '',
-    '| Worker | Status | Started at | Total | Warm-up | Online after warm-up | Idle while online | Tasks | Booked cores, avg | Used cores, avg | Peak RAM | Used of all cores |',
+    '| Worker | Status | Started at | Total | Warm-up | Online after warm-up | Idle while online | Tasks | Booked cores, avg | Used cores, avg | Peak RAM | Machine busy, any process |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ]
   let coreMs = 0
