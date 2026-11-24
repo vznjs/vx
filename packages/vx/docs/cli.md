@@ -2634,7 +2634,7 @@ Every other flag is `vx run`'s ([Flags](#flags)).
 
 **Exit**
 
-- `SIGINT` (`Ctrl+C`) exits 0. `vx watch: stopped` is the last line, once the cycle in flight is down.
+- `SIGINT` (`Ctrl+C`), `SIGTERM` or `SIGHUP` exits 0. `vx watch: stopped` is the last line, once the cycle in flight is down.
 
 </div>
 </details>
