@@ -435,6 +435,7 @@ export function armWatcher(
   onLimit?: (code: string) => void, // Linux recursive: the watch limit refused a directory made after the arm
 ): ArmedWatcher
 export function modifiedBefore(abs: string, t: number): boolean
+export function realDir(dir: string, realpath?: (p: string) => string): string | undefined // one not there: under its nearest ancestor that is
 export const CLOSED: WatchHandle // watches nothing: a dropped slot, an arm not made
 export class WatcherPool {
   constructor(skip: (dir: string, rel: string) => boolean) // what the poller leaves unsampled
@@ -613,7 +614,10 @@ git checkout packages`) was no event to its own arm, nor to the
      nothing after it. A re-arm that swapped `apps/`'s arms lost `apps/`
      made again, and every edit after it (macOS CI, 2026-11-04). Under
      `VX_DEBUG_WATCH` each arm line says its watch count, and on macOS
-     it holds still across a removal and a restore.
+     it holds still across a removal and a restore. A directory not
+     there is placed by its nearest ancestor that is (`realDir`): judged
+     by its absence, a project made back before its own arm (a stalled
+     loop) got a watch of its own.
    - Filter out `node_modules` (save an input named through it, or a
      file git tracks under it) / `.git` / `.vx/cache` path segments,
      `.vx/tmp` (restore staging), the `~` suffix (editor swap files), the RESOLVED

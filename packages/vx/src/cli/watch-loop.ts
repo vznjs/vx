@@ -32,7 +32,7 @@ import {
   makeWatchIgnore,
   shapesWatchedSet,
 } from './watch-filter.js'
-import { CLOSED, type WatchHandle, WatcherPool } from './watch-fs.js'
+import { CLOSED, realDir, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import type { KeptResults } from './watch-kept.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
@@ -744,12 +744,8 @@ class WatchLoop {
   private toStream(all: readonly ProjectMeta[]): Streamed[] {
     const out: Streamed[] = []
     for (const proj of all) {
-      let real: string
-      try {
-        real = fs.realpathSync(proj.dir)
-      } catch {
-        continue
-      }
+      const real = realDir(proj.dir)
+      if (real === undefined) continue
       const rel = path.relative(this.realRoot, real)
       if (rel.startsWith('..') || path.isAbsolute(rel)) continue
       out.push({ proj, real })
@@ -771,11 +767,7 @@ class WatchLoop {
     if (!this.oneStream) return false
     const rel = path.relative(this.workspaceRoot, dir)
     if (rel.startsWith('..') || path.isAbsolute(rel)) return false
-    try {
-      return fs.realpathSync(dir) === path.join(this.realRoot, rel)
-    } catch {
-      return false
-    }
+    return realDir(dir) === path.join(this.realRoot, rel)
   }
 
   private heardInStream(filename: string): void {
