@@ -3767,7 +3767,7 @@ config edited after `vx lock` adds a `dependsOn` loop:
   `vx: unhandled rejection: …`. The lock is still written.
 - A Ctrl-C (or SIGTERM, SIGHUP) ends it by that signal, also while a
   config is still loading. It leaves no temp file and writes no lock.
-  A SIGINT or SIGHUP it was started with ignored (`nohup`) stays ignored.
+- A SIGINT or SIGHUP it was started with ignored (`nohup`) stays ignored.
 
 </div>
 </details>
