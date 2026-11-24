@@ -1096,12 +1096,12 @@
     "turbo": {
       "all": {
         "pass": 1395,
-        "can": 1812,
+        "can": 1811,
         "of": 2211
       },
       "correctness": {
         "pass": 1121,
-        "can": 1465,
+        "can": 1464,
         "of": 1788
       },
       "efficiency": {
@@ -1146,7 +1146,7 @@
       },
       "outputs": {
         "pass": 236,
-        "can": 306,
+        "can": 305,
         "of": 319
       },
       "env": {
@@ -1173,12 +1173,12 @@
     "nx": {
       "all": {
         "pass": 1393,
-        "can": 1847,
+        "can": 1846,
         "of": 2211
       },
       "correctness": {
         "pass": 1080,
-        "can": 1490,
+        "can": 1489,
         "of": 1788
       },
       "efficiency": {
@@ -1223,7 +1223,7 @@
       },
       "outputs": {
         "pass": 225,
-        "can": 306,
+        "can": 305,
         "of": 319
       },
       "env": {
@@ -1250,12 +1250,12 @@
     "vite-task": {
       "all": {
         "pass": 1028,
-        "can": 1396,
+        "can": 1395,
         "of": 2211
       },
       "correctness": {
         "pass": 863,
-        "can": 1175,
+        "can": 1174,
         "of": 1788
       },
       "efficiency": {
@@ -1300,7 +1300,7 @@
       },
       "outputs": {
         "pass": 208,
-        "can": 306,
+        "can": 305,
         "of": 319
       },
       "env": {
@@ -1327,12 +1327,12 @@
     "nix": {
       "all": {
         "pass": 1102,
-        "can": 1391,
+        "can": 1390,
         "of": 2211
       },
       "correctness": {
         "pass": 945,
-        "can": 1195,
+        "can": 1194,
         "of": 1788
       },
       "efficiency": {
@@ -1377,7 +1377,7 @@
       },
       "outputs": {
         "pass": 237,
-        "can": 313,
+        "can": 312,
         "of": 319
       },
       "env": {
@@ -1404,12 +1404,12 @@
     "moon": {
       "all": {
         "pass": 1280,
-        "can": 1743,
+        "can": 1742,
         "of": 2211
       },
       "correctness": {
         "pass": 1009,
-        "can": 1424,
+        "can": 1423,
         "of": 1788
       },
       "efficiency": {
@@ -1454,7 +1454,7 @@
       },
       "outputs": {
         "pass": 193,
-        "can": 309,
+        "can": 308,
         "of": 319
       },
       "env": {
@@ -33197,29 +33197,24 @@
           "status": "pass"
         },
         "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
+          "status": "n/a",
+          "detail": "Turborepo’s `outputs` are globs; its docs give a trailing slash no meaning of its own, so `dist/` is not declared a folder."
         },
         "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
+          "status": "n/a",
+          "detail": "Nx’s `outputs` name a file or directory path; its docs give a trailing slash no meaning, so nothing declares an output a folder."
         },
         "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
+          "status": "n/a",
+          "detail": "Vite Task’s docs give a trailing slash in an output no meaning, so nothing declares an output a folder."
         },
         "nix": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
+          "status": "n/a",
+          "detail": "A derivation’s output is its whole `$out`; there is no output path to declare as a folder."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
+          "status": "n/a",
+          "detail": "moon’s `outputs` take files and folders alike; its docs give a trailing slash no meaning of its own, so `dist/` is not declared a folder."
         }
       }
     },

@@ -342,6 +342,8 @@ export type Feature =
   | 'determinism-check'
   /** Holding a persistent task's dependants until it accepts connections on a port. */
   | 'ready-port'
+  /** An output path whose trailing slash (`dist/`) declares it a folder. */
+  | 'folder-output'
   /** A glob that names a folder holding a nested project, which skips that project's files. */
   | 'glob-into-nested-project'
   /**
