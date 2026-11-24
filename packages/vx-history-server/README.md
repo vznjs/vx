@@ -115,6 +115,11 @@ bunx wrangler deploy
 The Worker reads its D1 database as the binding `DB`, as `wrangler.jsonc`
 names it.
 
+- A statement D1 fails with an error Cloudflare says to retry ("Network
+  connection lost", an object reset) is sent up to three times, as the
+  cache server asks R2 again.
+- A write retried that had landed folds that run's reports twice.
+
 ## API
 
 The same server as a `fetch` handler, over storage of your own
