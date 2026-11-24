@@ -1433,6 +1433,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'suite-coverage.unsafe',
     'supply-chain.unsafe',
     'telemetry-doc',
+    'test-hook-cleanup.unsafe',
     'third-party-notices.unsafe',
     'try-it.unsafe',
     'turbo-nx-support',

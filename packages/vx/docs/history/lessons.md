@@ -441,3 +441,9 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   `bun add` then installed it as 0.0.661. Point at the build instead
   (`VX_HANDED_OFF=1`, or run it by path), and purge the cache entry if it
   happened (2026-11-24).
+- Bun ignores a function a `beforeEach` or `beforeAll` returns (vitest
+  runs it as cleanup): big-inputs' returned `rm` never ran and each test
+  left 600 MiB in TMPDIR until the disk filled. Clean up in `afterEach` /
+  `afterAll` (`test-hook-cleanup.unsafe.test.ts`). Bun's test runner fires
+  no `process.on('exit')` either. To find a leak, run each file alone
+  under an empty TMPDIR and list what is left (2026-11-24).

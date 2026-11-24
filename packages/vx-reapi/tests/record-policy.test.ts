@@ -2,7 +2,7 @@
 // gates the remote layer. A `--cache-policy=remote:` run replayed a record
 // and wrote one; a run off CI, which uploads no artifact, wrote one a CI run
 // on a fresh cache then replayed and uploaded as its own.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -100,10 +100,9 @@ beforeEach(async () => {
   git('init', '-q')
   git('add', '-A')
   git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'init')
-  return async () => {
-    await rm(root, { recursive: true, force: true })
-  }
 })
+// Not a function beforeEach returns: Bun ignores it.
+afterEach(() => rm(root, { recursive: true, force: true }))
 
 describe.if(CHUNKING_SUPPORTED)('the execution record follows the run policy', () => {
   it('a run with the remote off neither replays a record nor writes one', async () => {
