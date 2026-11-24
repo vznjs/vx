@@ -1818,6 +1818,7 @@ owner-only; vx closes one of yours that others can read (chmod 700), and one oth
 ~/.vx/<id>/cache/                           the shared store
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, task_durations,
+│                                           task_outcomes, blob_sizes,
 │                                           plugin_blobs, remote_hits, store_meta; artifacts
 │                                           up to `cache.store.embeddings` (v33)
 └── <hash>.tree/                            the larger artifacts, as plain files (below)
