@@ -34,7 +34,12 @@ export function takeFleets(job: ReplayJob): void {
     if (z >= job.fleets.length) return
     let done = FAILED
     try {
-      const r = replay(job.tasks, job.fleets[z]!, (p) => job.warm[p ?? ''] ?? 0, job.deadline)
+      const r = replay(
+        job.tasks,
+        job.fleets[z]!,
+        (p) => job.warm[p ?? ''] ?? 0,
+        () => Date.now() > job.deadline,
+      )
       out[z * width] = r.endMs
       out[z * width + 1] = r.heldMs
       out.set(r.asked, z * width + 2)
@@ -82,7 +87,7 @@ export function playAside(
       return fleets.map((f, z): Replayed => {
         Atomics.wait(state, 1 + z, OPEN)
         // a thread's failure, played here: the error is this thread's to throw
-        if (state[1 + z] !== PLAYED) return replay(tasks, f, warm, deadline)
+        if (state[1 + z] !== PLAYED) return replay(tasks, f, warm, () => Date.now() > deadline)
         return {
           endMs: out[z * width]!,
           heldMs: out[z * width + 1]!,
