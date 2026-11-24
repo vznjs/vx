@@ -37,6 +37,10 @@ const RACY_MS = 120
 // window when it lands, which under load moves by a dozen rows; the
 // rest of SQLite's work is exact.
 const RACY_STATEMENTS = [/\boutput_dirs\b/, /^SELECT 1 FROM entries WHERE hash = \?$/]
+// The outputs read ahead while git answers (`warmOutputs`) stop when it
+// does, so whether a turn lands moved two statements between runs on one
+// box. Told apart by the stack, since the probe runs the same SQL.
+const RACY_CALLERS = /\bwarmOutputs\b/
 
 // ---------------------------------------------------------------- counters
 
@@ -76,7 +80,9 @@ wrap(Bun.CryptoHasher.prototype, 'update', () => 'hash blob update')
 // one, and re-wrapping it per call counts each call many times
 // (sqlite-tally.ts).
 const sqlLabel = (sql: string) => () =>
-  RACY_STATEMENTS.some((r) => r.test(sql)) ? null : 'sqlite statement'
+  RACY_STATEMENTS.some((r) => r.test(sql)) || RACY_CALLERS.test(new Error().stack ?? '')
+    ? null
+    : 'sqlite statement'
 const seen = new WeakSet<object>()
 for (const m of ['prepare', 'query'] as const) {
   const orig = Database.prototype[m] as unknown as Loose
