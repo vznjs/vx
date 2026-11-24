@@ -446,6 +446,9 @@ readers that reach it here.
   Not the project's own directory: the cwd is the process's (the worker's
   too) and loads overlap, so a cwd per config would serialize them.
   `import.meta.dir` is the config's own directory.
+  Rounds for one root overlap; a round for another root waits until they
+  end: two workspaces' runs in one process (the API) moved each other's
+  cwd mid-evaluation, and both were refused as a config's chdir.
 - `.vx/workspace.ts` gets the same guard: it runs in this process too, and
   its `Object.prototype.exec` ran in a project's group task. Built-ins,
   `process.env`, the cwd and the umask are snapshotted around its load, put
