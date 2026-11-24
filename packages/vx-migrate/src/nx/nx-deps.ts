@@ -222,6 +222,12 @@ export function mapNxDeps(
       // `ignore` is Nx's default; only `forward` asks for something vx lacks.
       if (o.params === 'forward') forwards.params = true
       const raw = o.projects ?? (o.dependencies === true ? 'dependencies' : undefined)
+      // Nx 24 refuses these strings at run (`assertNotLegacyProjectsString`),
+      // unless a project carries the name; read as older Nx read them.
+      if ((o.projects === 'self' || o.projects === 'dependencies') && !metaByNode.has(o.projects))
+        todos.push(
+          `dependsOn ${JSON.stringify(d)}: Nx 24 refuses \`projects: "${o.projects}"\` (run \`nx repair\`); vx reads it as older Nx did`,
+        )
       // Nx reads a lone string as a one-entry list (`projects: "b"`); it was
       // not representable here, and the edge dropped.
       const projects =

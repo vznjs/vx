@@ -633,6 +633,7 @@ With this file, `vx run build --all` maps every project's `build` target the way
 - That edge is no edge where ui lacks `build:ci`.
 - This project's own target wins over a project name.
 - `{ target, projects }` becomes each matched project's task.
+- `projects: "self"` and `projects: "dependencies"` are read as older Nx read them (own target, `^target`), with a todo: Nx 24 refuses both at run and names `nx repair`.
 
 <details><summary>Details</summary>
 
