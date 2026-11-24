@@ -139,8 +139,12 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
   }
 
   it(
-    'a run never opens the config and reads the lock once, cold or warm',
+    'a run opens the config only with no stamps beside the lock, and reads the lock once',
     async () => {
+      // The cold run has no stamps beside the lock, so it evaluates the
+      // config once as `vx lock --check` does (Bun's import, the stamp's
+      // hash) and, a plan making no cache dir, stamps nothing; with stamps,
+      // a run only stats it.
       // The cold run loads the workspace config from source (vx's read,
       // Bun's import); the next builds its bytecode bundle, which Bun.build
       // reads again, once per config change; from then on only vx reads it
@@ -153,9 +157,13 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
           await writeFile(path.join(root, '.vx', 'cache', 'config-stamps.json'), stamps)
         }
         const run = await tracedRun(name)
-        expect(run('packages/a/vx.config.mjs')).toEqual(['statx'])
-        expect(run('packages/a/package.json')).toEqual([])
-        expect(run('packages/a')).toEqual([])
+        expect(run('packages/a/vx.config.mjs')).toEqual(
+          name === 'cold' ? ['openat', 'openat', 'statx', 'statx'] : ['statx'],
+        )
+        // The evaluation's import, as under `vx lock`: Bun resolves the
+        // module in its directory, beside its package.json.
+        expect(run('packages/a/package.json')).toEqual(name === 'cold' ? ['openat'] : [])
+        expect(run('packages/a')).toEqual(name === 'cold' ? ['openat', 'openat'] : [])
         if (name === 'cold')
           expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
         if (name === 'warm') expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat'])

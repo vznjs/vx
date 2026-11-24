@@ -299,12 +299,15 @@ export class IndexRemoteHits implements RemoteHits {}
 
 `vx lock` and a passing `vx lock --check` stamp each config file (size,
 mtime, xxh3 of its bytes, ctime, inode) before evaluating it, and keep the stamps with
-the lock's digest in the cache dir's `config-stamps.json`. A run reads its
-configs from the lock, so `stampsBesideLock(…).edited` names the in-scope
-config files whose bytes moved since: the run refuses them with "run
-`vx lock`". Asked only while the lock's bytes are the stamped ones and the
-stamps are this workspace's (a pull, a clone or a cache dir another
-checkout shares asks nothing). A commit since changes nothing: a config
+the lock's digest in the cache dir's `config-stamps.json`, one entry per
+workspace and lock, the last 8 used. A run reads its configs from the lock,
+so `stampsBesideLock(…).edited` names the in-scope config files whose bytes
+moved since, or that the entry lacks: the run refuses them with "run
+`vx lock`". A lock with no entry (a pull, a clone, a branch another
+`vx lock` left) returns undefined, and the run evaluates every config it
+reads; `restampConfigs` stamps those that match, into a cache dir that
+exists only (a plan makes none). The one entry held only the last lock's stamps, so after `vx lock`
+on a branch an unlocked edit on main ran the locked config, green. A commit since changes nothing: a config
 edit committed with no `vx lock` is refused, and so is a pulled one whose
 commit kept the lock. Read once per version of the file. The stat match only ever skips the read, and
 it holds ctime and the inode as the file-hash memo does: size and mtime alone

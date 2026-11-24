@@ -103,21 +103,45 @@ describe('a config edited since vx lock', () => {
     expect(listed).not.toContain('.vx/cache')
   })
 
-  it('runs a lock no stamp was taken beside, as a fresh clone has', async () => {
+  // No stamp beside the lock (a fresh clone, a cleared cache): the run
+  // evaluates the configs once, as `vx lock --check` does. One that the lock
+  // holds runs and is stamped; an edit is refused, never run silently.
+  it('evaluates a lock no stamp was taken beside, as a fresh clone has', async () => {
+    await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
+    expect((await vx(root, ['run', 'say', '--all'])).code).toBe(0)
     await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
     await writeFile(file, config('after'))
-    const { code } = await vx(root, ['run', 'say', '--all'])
-    expect(code).toBe(0)
+    const { code, out } = await vx(root, ['run', 'say', '--all'])
+    expect(code).toBe(1)
+    expect(out).toContain('changed since the last `vx lock`')
   })
 
-  // A cache dir two checkouts share (`VX_CACHE_DIR`) holds the last one's stamps.
-  it("asks nothing of another workspace's stamps", async () => {
+  // A cache dir two checkouts share (`VX_CACHE_DIR`) holds the other's stamps.
+  it("takes no answer from another workspace's stamps", async () => {
     const at = path.join(root, '.vx', 'cache', 'config-stamps.json')
-    const stamps = JSON.parse(await readFile(at, 'utf8')) as { root: string }
+    const stamps = JSON.parse(await readFile(at, 'utf8')) as Record<string, unknown>
     await writeFile(at, JSON.stringify({ ...stamps, root: '/another/checkout' }))
     await writeFile(file, config('after'))
-    const { code } = await vx(root, ['run', 'say', '--all'])
-    expect(code).toBe(0)
+    const { code, out } = await vx(root, ['run', 'say', '--all'])
+    expect(code).toBe(1)
+    expect(out).toContain('changed since the last `vx lock`')
+  })
+
+  // The stamps held one lock's: `vx lock` on a branch turned the reminder
+  // off back on main, and an unlocked edit there ran the locked config, green.
+  it('refuses an unlocked edit on a branch whose lock another `vx lock` left', async () => {
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'locked')
+    git(root, 'checkout', '-q', '-b', 'feat')
+    await writeFile(file, config('feat'))
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    git(root, 'commit', '-q', '-am', 'feat, relocked')
+    git(root, 'checkout', '-q', '-')
+    expect((await vx(root, ['run', 'say', '--all'])).code).toBe(0)
+    await writeFile(file, config('after'))
+    const { code, out } = await vx(root, ['run', 'say', '--all'])
+    expect(code).toBe(1)
+    expect(out).toContain('changed since the last `vx lock`')
   })
 
   it('a passing `vx lock --check` takes the stamp too', async () => {

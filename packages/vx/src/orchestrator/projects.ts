@@ -11,7 +11,9 @@ import {
   checkProjectNames,
   DEPENDENCIES_LOCK_NAME,
   frozenProjectConfigs,
+  LOCK_INVALID,
   LOCKFILE_NAME,
+  lockEntryBroken,
   lockedDependencies,
   lockDigest,
   lockedProjects,
@@ -538,7 +540,10 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   ): Promise<string[]> => {
     if (files.length === 0) return []
     const got = await (stamped ??= stampsBesideLock(workspaceRoot, args.cacheDir, digest))
-    return got === undefined ? [] : got.edited(files)
+    // No stamps beside this lock: each config is asked, evaluated below.
+    return got === undefined
+      ? files.map((f) => path.relative(workspaceRoot, f.file))
+      : got.edited(files)
   }
   while (pending.length > 0) {
     const round = pending.splice(0, pending.length)
@@ -635,10 +640,15 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     if (edited.length > 0 && digest !== undefined) {
       const same = await evaluatesAsLocked(workspaceRoot, edited, withFile, await lock())
       if (same.length > 0) {
-        edited.splice(0, edited.length, ...edited.filter((rel) => !same.includes(rel)))
+        const matched = new Set(same)
+        edited.splice(0, edited.length, ...edited.filter((rel) => !matched.has(rel)))
         await restampConfigs(workspaceRoot, args.cacheDir, digest, same)
       }
     }
+    // A hand-broken entry differs from every evaluation: named as itself,
+    // as a crash it causes is (cli/index.ts), on this failure path only.
+    if (edited.length > 0 && lockEntryBroken(workspaceRoot))
+      throw new UserError(LOCK_INVALID, 'VX_E_LOCK')
     if (edited.length > 0)
       throw new UserError(
         `${listed(edited, 5)} changed since the last \`vx lock\` — run \`vx lock\``,
@@ -832,7 +842,8 @@ async function evaluatesAsLocked(
   metas: readonly (ProjectMeta & { configPath: string })[],
   lock: Lockfile,
 ): Promise<string[]> {
-  const asked = metas.filter((m) => edited.includes(path.relative(root, m.configPath)))
+  const named = new Set(edited)
+  const asked = metas.filter((m) => named.has(path.relative(root, m.configPath)))
   if (asked.length === 0) return []
   let fresh: ProjectConfig[]
   try {

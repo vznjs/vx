@@ -1,12 +1,13 @@
-// Each config file as `vx lock` (or a passing `--check`) last read it, kept
-// beside cache.db in `config-stamps.json`: a run reads configs only from
-// `.vx/projects.lock`, so an edit with no `vx lock` after it ran the old
-// config, green. Machine-local, never committed: a run asks it only while
-// the lock's bytes are the ones it was taken beside, so a pull that brings
-// a new lock, or a clone with no memo, asks nothing. A config edit committed
-// with no `vx lock` keeps the stamped lock, so it is asked: a pull bringing
-// a config with no relock is too. A failure of any kind reads as no memo: it
-// is a warning light, never a requirement.
+// Each config file as `vx lock` (or a passing `--check`, or a run that
+// evaluated it) last read it, kept beside cache.db in `config-stamps.json`:
+// a run reads configs only from `.vx/projects.lock`, so an edit with no
+// `vx lock` after it ran the old config, green. Machine-local, never
+// committed. Kept per workspace and lock digest, the last `KEPT` used: a
+// branch checked out again finds its lock's stamps. A lock with none (a
+// pull, a clone, a branch another `vx lock` left) has its configs evaluated
+// once by the run, as `vx lock --check` does (orchestrator/projects.ts),
+// and stamped then. A config edit committed with no `vx lock` keeps the
+// stamped lock, so it is asked. A memo that fails to read reads as none.
 
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -37,11 +38,19 @@ export interface ConfigStamps {
 }
 
 interface Stamps extends ConfigStamps {
-  /** The workspace they are of: a cache dir two checkouts share holds one. */
+  /** The workspace they are of: a cache dir two checkouts share holds both. */
   root: string
   /** xxh3 of `.vx/projects.lock`'s bytes when taken. */
   lock: string
 }
+
+/** The file: each workspace's and lock's stamps, the last used first. */
+interface StampsFile {
+  entries: Stamps[]
+}
+
+/** How many locks' stamps the file keeps: a few branches checked out in turn. */
+const KEPT = 8
 
 /**
  * Each config's stamp, taken before its evaluation: an edit during it reads
@@ -73,22 +82,18 @@ export async function writeConfigStamps(
 ): Promise<void> {
   try {
     const lock = xxh3hex(await readFile(path.join(root, '.vx', 'projects.lock')))
-    await mkdir(cacheDir, { recursive: true })
-    const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
-    const temp = `${file}.${process.pid}.tmp`
-    const kept: Stamps = { root, lock, ...stamps }
-    // Renamed in: a run reading beside this write sees the old file or the new.
-    await writeFile(temp, JSON.stringify(kept))
-    await rename(temp, file)
+    await keep(cacheDir, { root, lock, ...stamps }, true)
   } catch {
-    // No memo: a run asks nothing.
+    // No memo: the next run evaluates the configs.
   }
 }
 
 /**
- * Stamp `rels` (workspace-relative) again beside the stamps kept for lock
- * `lock`, as they are now: a run found them to evaluate as the lock holds.
- * The others and `at` stay as they were.
+ * Stamp `rels` (workspace-relative) as they are now beside lock `lock`: a
+ * run found them to evaluate as the lock holds. The lock's other stamps and
+ * `at` stay; a lock with none gets these. Only into a cache dir a run or
+ * `vx lock` made: a plan makes none (`clockDir`), so until one exists each
+ * run evaluates again.
  */
 export async function restampConfigs(
   root: string,
@@ -97,29 +102,49 @@ export async function restampConfigs(
   rels: readonly string[],
 ): Promise<void> {
   try {
-    const stamps = await readStamps(cacheDir)
-    if (stamps === null || stamps.root !== root || stamps.lock !== lock) return
     const taken = await takeConfigStamps(
       root,
       rels.map((rel) => path.join(root, rel)),
     )
-    const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
-    const temp = `${file}.${process.pid}.tmp`
-    const kept: Stamps = { ...stamps, configs: { ...stamps.configs, ...taken.configs } }
-    await writeFile(temp, JSON.stringify(kept))
-    await rename(temp, file)
+    const was = (await readStamps(cacheDir))?.entries.find(
+      (e) => e.root === root && e.lock === lock,
+    )
+    await keep(
+      cacheDir,
+      was === undefined
+        ? { root, lock, ...taken }
+        : { ...was, configs: { ...was.configs, ...taken.configs } },
+      false,
+    )
   } catch {
     // No memo: the next run evaluates again.
   }
 }
 
 /**
+ * `entry` first, replacing its workspace's and lock's, the rest after it up
+ * to `KEPT`. Without `make`, no cache dir fails the write.
+ */
+async function keep(cacheDir: string, entry: Stamps, make: boolean): Promise<void> {
+  const others = ((await readStamps(cacheDir))?.entries ?? []).filter(
+    (e) => e.root !== entry.root || e.lock !== entry.lock,
+  )
+  if (make) await mkdir(cacheDir, { recursive: true })
+  const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
+  const temp = `${file}.${process.pid}.tmp`
+  const out: StampsFile = { entries: [entry, ...others].slice(0, KEPT) }
+  // Renamed in: a run reading beside this write sees the old file or the new.
+  await writeFile(temp, JSON.stringify(out))
+  await rename(temp, file)
+}
+
+/**
  * One parse per version of the file: a run's rounds and loads ask again,
  * and a `vx watch` outlives a `vx lock` another shell runs.
  */
-const read = new Map<string, { version: string; stamps: Promise<Stamps | null> }>()
+const read = new Map<string, { version: string; stamps: Promise<StampsFile | null> }>()
 
-async function readStamps(cacheDir: string): Promise<Stamps | null> {
+async function readStamps(cacheDir: string): Promise<StampsFile | null> {
   const file = path.join(cacheDir, CONFIG_STAMPS_FILE)
   const s = await stat(file).catch(() => null)
   if (s === null) return null
@@ -129,7 +154,10 @@ async function readStamps(cacheDir: string): Promise<Stamps | null> {
     got = {
       version,
       stamps: readFile(file, 'utf8').then(
-        (text) => JSON.parse(text) as Stamps,
+        (text) => {
+          const parsed = JSON.parse(text) as Partial<StampsFile> | null
+          return Array.isArray(parsed?.entries) ? { entries: parsed.entries } : null
+        },
         () => null,
       ),
     }
@@ -154,7 +182,8 @@ export interface LockStamps {
   /** Whether `rel` was there (stamped) when `vx lock` ran. */
   present: (rel: string) => boolean
   /**
-   * The configs of `files` whose bytes differ from their stamp: size,
+   * The configs of `files` whose bytes differ from their stamp, or that
+   * have none: size,
    * mtime, ctime and inode (the caller's stat) first, the bytes only when
    * those moved or the
    * stamp was taken inside the file's racy window (a same-size edit then
@@ -166,16 +195,18 @@ export interface LockStamps {
 
 /**
  * The stamps taken beside the lock whose digest is `lock` in this
- * workspace; undefined when none were (a pull, a clone, another checkout's
- * cache dir).
+ * workspace; undefined when none were (a pull, a clone, a branch another
+ * `vx lock` left): the run then evaluates every config it reads.
  */
 export async function stampsBesideLock(
   root: string,
   cacheDir: string,
   lock: string,
 ): Promise<LockStamps | undefined> {
-  const stamps = await readStamps(cacheDir)
-  if (stamps === null || stamps.root !== root || stamps.lock !== lock) return undefined
+  const stamps = (await readStamps(cacheDir))?.entries.find(
+    (e) => e?.root === root && e.lock === lock,
+  )
+  if (stamps === undefined) return undefined
   const { reads, configs, at } = stamps
   if (typeof configs !== 'object' || configs === null) return undefined
   return {
@@ -185,8 +216,9 @@ export async function stampsBesideLock(
       const edited = await Promise.all(
         files.map(async ({ file, size, mtimeMs, ctimeMs, ino }) => {
           const rel = path.relative(root, file)
-          const was = configs[rel]
-          if (!Array.isArray(was)) return null
+          // None: a run stamped only the configs it evaluated beside this lock.
+          const was = Object.hasOwn(configs, rel) ? configs[rel] : undefined
+          if (!Array.isArray(was)) return rel
           if (
             size === was[0] &&
             mtimeMs === was[1] &&

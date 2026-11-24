@@ -3246,7 +3246,7 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 **What a run never does**
 
 - It never walks for configs. An `--all` run asks git for the names alone, to refuse one the lock lacks.
-- It never checks the graph rules (`run.rules`) and never writes the lock. Only `vx lock` does. It evaluates a config only when the reminder below finds its bytes moved.
+- It never checks the graph rules (`run.rules`) and never writes the lock. Only `vx lock` does. It evaluates a config only when the reminder below finds its bytes moved, or no stamp beside the lock.
 
 **The local reminder**
 
@@ -3254,10 +3254,11 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 - The message: `` <file> changed since the last `vx lock` — run `vx lock` ``.
 - It compares the file's size, mtime and bytes with those `vx lock` read, kept in the cache folder's `config-stamps.json`.
 - A file whose bytes moved is then evaluated, as `vx lock --check` does: one that evaluates as the lock holds (a comment, a config restored with its lock) runs, and is stamped again.
-- It checks only while the lock is the one written then. So a pull that brings a new lock, or a fresh clone, is never refused.
+- Stamps are kept per lock, the last 8, so a branch checked out again keeps its own. A lock with none (a pull, a fresh clone, a branch another `vx lock` left) has the configs the run reads evaluated once, as `vx lock --check` does: an edit is refused, the rest are stamped once the cache folder exists (`--dry` makes none).
+- A file a `project` plugin made a config from is checked only beside a lock `vx lock` stamped.
 - A config edit committed without relocking is refused like an uncommitted one.
 - A file a config imports is not checked.
-- A file a `project` plugin made a config from is checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`.
+- A file a `project` plugin made a config from is otherwise checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`.
 - A named file that appears or goes counts as an edit. The plugin names it (`ProjectHookContext.read`).
 - In a pipeline, `vx lock --check` first re-evaluates every config and checks the rules.
 
