@@ -34,6 +34,7 @@
     "flakyTasks",
     "lockfile",
     "lockError",
+    "workspaceError",
     "sandbox"
   ],
   "properties": {
@@ -146,6 +147,18 @@
     "lockError": {
       "type": ["string", "null"],
       "description": "Why a run refuses the lock that is there (run `vx lock`); null when a run reads it or there is none."
+    },
+    "workspaceError": {
+      "description": "Why .vx/workspace did not load (a syntax error, a plugin hook that threw); null when it loads. While set, the facts the file decides read as with no file, and vx info exits 1.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": { "code": { "type": "string" }, "message": { "type": "string" } }
+        }
+      ]
     },
     "sandbox": {
       "type": "object",

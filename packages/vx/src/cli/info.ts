@@ -58,7 +58,8 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
   })
   if (parsed.format === 'json') ui.data('out', `${JSON.stringify(facts)}\n`)
   else ui.print('out', infoReport(facts))
-  return 0
+  // Every run refuses this workspace: the report is whole, the setup is not.
+  return facts.workspaceError === null ? 0 : 1
 }
 
 /** `vx info` as text: the report's lines for `colors`. */
@@ -84,8 +85,12 @@ function infoReport(f: InfoFacts): ui.Block {
     ['git', f.git ?? '(not found)'],
     ['git status cache', renderGitStatusCache(f.gitStatusCache)],
     ['workspace root', tildePath(f.workspaceRoot)],
+    // First among the workspace's rows: the ones below it that the file decides say so.
+    ...(f.workspaceError === null
+      ? []
+      : ([['workspace config', `refused: ${f.workspaceError.message}`]] as [string, string][])),
     ['projects', describeProjects(f)],
-    ['plugins', describePlugins(f.plugins)],
+    ['plugins', f.workspaceError === null ? describePlugins(f.plugins) : UNLOADED],
     [
       'workers',
       // The count is the default a run never reaches: it refuses the setting.
@@ -96,7 +101,7 @@ function infoReport(f: InfoFacts): ui.Block {
     ['memory', describeMemory(f.memory)],
     [
       'cache dir',
-      `${tildePath(f.cacheDir)} (${formatBytes(f.cacheDirBytes)}, ${f.cacheStore === null ? 'the entries and ' : ''}this workspace's run history)`,
+      `${tildePath(f.cacheDir)} (${formatBytes(f.cacheDirBytes)}, ${f.cacheStore === null ? 'the entries and ' : ''}this workspace's run history${f.workspaceError === null ? '' : '; a cache.dir the workspace sets is not read'})`,
     ],
     [
       'cache store',
@@ -129,7 +134,15 @@ function infoReport(f: InfoFacts): ui.Block {
           : ')'),
     ],
     ['flaky tasks', describeFlakyTasks(f.flakyTasks)],
-    ['sandbox', describeSandbox(f.sandbox)],
+    // The declared count is the projects', which an unloaded workspace hides.
+    [
+      'sandbox',
+      f.workspaceError === null
+        ? describeSandbox(f.sandbox)
+        : f.sandbox.available
+          ? 'available'
+          : `unavailable — ${f.sandbox.reason}`,
+    ],
     [
       'projects lock',
       typeof f.lockError === 'string' ? `refused: ${f.lockError}` : f.lockfile ? 'yes' : 'no',
@@ -137,6 +150,9 @@ function infoReport(f: InfoFacts): ui.Block {
   ]
   return ui.report('vx info', rows)
 }
+
+/** A row the workspace file decides, while it does not load. */
+const UNLOADED = '— (.vx/workspace did not load)'
 
 /** `812 (1.2 GB)`, or why the index cannot be read and its fix. */
 function describeEntries(f: InfoFacts): string {
@@ -207,6 +223,7 @@ function trimCores(n: number): string {
 /** `2 — app#test (3 of 7 runs failed on unchanged inputs); api#e2e (1 of 4)`, or `none`. */
 function describeProjects(f: InfoFacts): string {
   // The count is the lock's: with none read, 0 would say the workspace has no project.
+  if (f.workspaceError !== null) return UNLOADED
   if (f.lockError != null) return '— (the lock is refused)'
   if (!f.lockfile) return '— (no lock: `vx lock`)'
   return `${f.projects} (${f.tasks} task${f.tasks === 1 ? '' : 's'})`

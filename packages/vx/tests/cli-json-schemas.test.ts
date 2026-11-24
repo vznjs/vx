@@ -391,6 +391,16 @@ beforeAll(async () => {
   // A config that does not load: \`vx info\` names it.
   await addProject(root, 'broken', { config: 'export default { tasks: 1 }' })
   json('info', [])
+  // A workspace file that does not load: \`vx info\` prints its facts and the error, exit 1.
+  const wsFile = path.join(root, '.vx', 'workspace.mjs')
+  const wsSource = readFileSync(wsFile, 'utf8')
+  await writeFile(wsFile, 'export default {\n')
+  const unloaded = vx(['info', '--format', 'json'])
+  await writeFile(wsFile, wsSource)
+  if (unloaded.code !== 1)
+    throw new Error(`vx info under a broken workspace: ${unloaded.code}\n${unloaded.err}`)
+  printed.push({ what: 'vx info (workspace file does not load)', out: unloaded.out })
+  outputs['info']!.push(JSON.parse(unloaded.out))
   json('cache', ['clean', '--max-size', '1K', '--dry'])
   // Runs past the history's retention: the real prune names the rows it drops.
   const aged = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
@@ -600,6 +610,7 @@ describe('each schema object is its source type', () => {
         flakyTasks: true,
         lockfile: true,
         lockError: true,
+        workspaceError: true,
         sandbox: true,
       }),
     )

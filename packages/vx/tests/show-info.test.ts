@@ -902,6 +902,7 @@ describe('vx info — the rendered rows', () => {
     flakyTasks: [],
     lockfile: true,
     lockError: null,
+    workspaceError: null,
     sandbox: { available: true, reason: '', declared: 1, untraced: null },
   }
 

@@ -5119,6 +5119,12 @@ It counts tasks from the lock, as a run does, and evaluates no config.
 - A lock a run would refuse: `projects` reads `—` and `projects lock`
   reads `refused:` and why. JSON: `lockError`, the counts zero.
 - A broken config is `vx lock`'s to report, not `vx info`'s.
+- A `.vx/workspace` that does not load (a syntax error, a plugin hook
+  that threw): the report still prints, with a `workspace config` row
+  reading `refused:` and why, and exits `1`.
+- Then `projects` and `plugins` read `—`, the sandbox row names no
+  count, and the cache dir is the one a workspace with no file uses.
+  JSON: `workspaceError` (`{ code, message }`).
 
 </div>
 </details>
@@ -5173,6 +5179,7 @@ the JSON keeps them absolute.
 | ------------------ | -------------------------------------------------------- |
 | `git`              | git's version, or `(not found)`                          |
 | `git status cache` | whether git's two speed-ups for `git status` are on      |
+| `workspace config` | why `.vx/workspace` did not load; only then printed      |
 | `plugins`          | each plugin `.vx/workspace.*` declares, and its seams    |
 | `workers`          | how many tasks a run starts at once, and why             |
 | `memory`           | the memory a memory-packing schedule budgets             |
@@ -5374,6 +5381,7 @@ no second source.
 | `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`) | empty when none                                                                                                                                                                                                |
 | `lockfile`                                                           | whether there is a lock                                                                                                                                                                                        |
 | `lockError`                                                          | why a run refuses the lock there, null when it reads it or there is none                                                                                                                                       |
+| `workspaceError` (`{ code, message }`)                               | why `.vx/workspace` did not load, null when it loads                                                                                                                                                           |
 | `sandbox` (`{ available, reason, declared, untraced }`)              | (`declared` the count of tasks with `exec.sandbox`; `untraced` why denied reads go unreported, or null)                                                                                                        |
 
 </div>
@@ -5381,10 +5389,11 @@ no second source.
 
 ### Exit codes
 
-| Code | When                                         |
-| ---- | -------------------------------------------- |
-| `0`  | the facts printed, with no lock included     |
-| `1`  | no workspace here or above, or a parse error |
+| Code | When                                                |
+| ---- | --------------------------------------------------- |
+| `0`  | the facts printed, with no lock included            |
+| `1`  | no workspace here or above, or a parse error        |
+| `1`  | the facts printed, and `.vx/workspace` did not load |
 
 ## `vx why`
 

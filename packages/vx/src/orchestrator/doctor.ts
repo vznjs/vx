@@ -146,6 +146,13 @@ export interface InfoFacts {
   /** Why a run refuses the lock that is there; null when it reads it (or there is none). */
   lockError: string | null
   /**
+   * Why `.vx/workspace` did not load (its code and message: a syntax error,
+   * a plugin hook that threw); null when it loads. While set, every fact the
+   * file decides (projects, plugins, settings, a `cache.dir`) is left at what
+   * a workspace with no file would read, and `vx info` exits 1.
+   */
+  workspaceError: { code: string; message: string } | null
+  /**
    * Whether this host can run a task's `exec.sandbox`, and how many loaded
    * tasks declare one. A declared sandbox whose runtime cannot start is a
    * hard failure at run time, not a downgrade — so the doctor says so
@@ -201,10 +208,18 @@ function refusedSettings(): Map<string, { name: string; raw: string; reason: str
 
 async function collectInfoChecked(cwd: string, opts: CollectInfoOptions): Promise<InfoFacts> {
   const warn = opts.warn ?? warnToStderr
-  // Both first: outside a workspace, or under a workspace config that does
-  // not load, the doctor refuses at once, with no probe (~180 ms) ahead.
+  // Both first: outside a workspace the doctor refuses at once, with no
+  // probe (~180 ms) ahead.
   const root = await findWorkspaceRoot(cwd)
-  const workspace = await loadWorkspacePlugins(root, warn)
+  // A workspace file that does not load is a fact of the report, not a
+  // refusal of it: the doctor is where a broken setup is diagnosed, and it
+  // refused before saying which Bun or sandbox this host has.
+  let workspaceError: InfoFacts['workspaceError'] = null
+  const workspace = await loadWorkspacePlugins(root, warn).catch((err: unknown) => {
+    if (!isUserError(err)) throw err
+    workspaceError = { code: err.code, message: err.message }
+    return { workspaceConfig: null, plugins: [], branch: {}, settingPlugins: new Map() }
+  })
   // The sandbox probe asks nothing of the workspace, so it runs under the
   // loads below instead of after them. Awaited on every path: it resets
   // the runtime it brought up, whose sockets would hold the process open.
@@ -212,7 +227,7 @@ async function collectInfoChecked(cwd: string, opts: CollectInfoOptions): Promis
   // Rejects only if the reset does; awaited below, never unhandled.
   probing.catch(() => {})
   try {
-    return await collectWorkspaceInfo(cwd, root, workspace, opts, probing)
+    return await collectWorkspaceInfo(cwd, root, workspace, workspaceError, opts, probing)
   } catch (err) {
     // The workspace's refusal is the error worth reporting.
     await probing.catch(() => {})
@@ -224,6 +239,7 @@ async function collectWorkspaceInfo(
   cwd: string,
   root: string,
   { workspaceConfig, plugins, settingPlugins }: Awaited<ReturnType<typeof loadWorkspacePlugins>>,
+  workspaceError: InfoFacts['workspaceError'],
   opts: CollectInfoOptions,
   probing: Promise<Omit<InfoFacts['sandbox'], 'declared'>>,
 ): Promise<InfoFacts> {
@@ -238,17 +254,23 @@ async function collectWorkspaceInfo(
   // A lock a run refuses is said, not swallowed: "projects lock yes" with no
   // task hid why every run failed.
   let refused: string | null = null
-  const held = await lock()
-    // The graph beside it too: a conflicted dependencies lock refused the whole report.
-    .then(lockedDependencies)
-    .then(
-      () => true,
-      (err: unknown) => {
-        if (!isUserError(err)) throw err
-        refused = err.message
-        return false
-      },
-    )
+  // Under a workspace file that did not load, no plugin discovered or
+  // staged the projects: a count from the lock alone would be another
+  // workspace's.
+  const held =
+    workspaceError !== null
+      ? false
+      : await lock()
+          // The graph beside it too: a conflicted dependencies lock refused the whole report.
+          .then(lockedDependencies)
+          .then(
+            () => true,
+            (err: unknown) => {
+              if (!isUserError(err)) throw err
+              refused = err.message
+              return false
+            },
+          )
   const metas = held ? await discoverProjects(root, lock) : []
   const storeRoot =
     opts.cacheDir === undefined ? await resolveStoreRoot(root, workspaceConfig) : null
@@ -294,32 +316,33 @@ async function collectWorkspaceInfo(
   // so the doctor's task count is the number a run would see. No lock, or
   // one a run would refuse, counts zero: broken configs are `vx lock`'s
   // to report.
-  try {
-    const loaded = await loadProjects({
-      workspaceRoot: root,
-      cacheDir,
-      plugins,
-      projectMetas: metas,
-      seeds: 'all',
-      closure: false,
-      configs: lock,
-      warn,
-    })
-    for (const p of loaded.projects.values()) {
-      const tasks = p.config.tasks ?? {}
-      // The default build is no declared task: `vx run build` denies it, and
-      // right after `vx init` the doctor said `1 (1 task)` of `tasks: {}`.
-      taskCount += Object.values(tasks).filter((t) => !isDefaultBuild(t)).length
-      for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
+  if (workspaceError === null)
+    try {
+      const loaded = await loadProjects({
+        workspaceRoot: root,
+        cacheDir,
+        plugins,
+        projectMetas: metas,
+        seeds: 'all',
+        closure: false,
+        configs: lock,
+        warn,
+      })
+      for (const p of loaded.projects.values()) {
+        const tasks = p.config.tasks ?? {}
+        // The default build is no declared task: `vx run build` denies it, and
+        // right after `vx init` the doctor said `1 (1 task)` of `tasks: {}`.
+        taskCount += Object.values(tasks).filter((t) => !isDefaultBuild(t)).length
+        for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
+      }
+    } catch (err) {
+      if (!isUserError(err)) throw err
+      // A lock refusal the load meets (a config edited since `vx lock`, or
+      // gone): every run refuses with it, so it is the lock's error.
+      if (refused === null && err.code === 'VX_E_LOCK') refused = err.message
+      taskCount = 0
+      sandboxed = 0
     }
-  } catch (err) {
-    if (!isUserError(err)) throw err
-    // A lock refusal the load meets (a config edited since `vx lock`, or
-    // gone): every run refuses with it, so it is the lock's error.
-    if (refused === null && err.code === 'VX_E_LOCK') refused = err.message
-    taskCount = 0
-    sandboxed = 0
-  }
 
   const lockPresent = await Bun.file(lockfilePath(root)).exists()
   // No lock is its own row, `lockfile`.
@@ -394,6 +417,7 @@ async function collectWorkspaceInfo(
     flakyTasks: flaky,
     lockfile: lockPresent,
     lockError,
+    workspaceError,
     sandbox,
   }
 }
