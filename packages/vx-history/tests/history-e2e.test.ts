@@ -312,10 +312,13 @@ describe('vx-history plugin end to end', () => {
           cmd: [process.execPath, CORE_BIN, 'history', flag],
           cwd: root,
         })
-        expect([help.exitCode, Bun.stripANSI(help.stdout.toString()).split('\n')[0]]).toEqual([
+        const text = Bun.stripANSI(help.stdout.toString())
+        expect([help.exitCode, text.split('\n')[0]]).toEqual([
           0,
           'Usage: vx history [--format pretty|json]',
         ])
+        // Core help is written at 80 columns; this ran to 95.
+        expect(text.split('\n').filter((l) => l.length > 80)).toEqual([])
       }
     },
     TIMEOUT,

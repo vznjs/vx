@@ -1030,7 +1030,7 @@ async function historyCmd(
       ui.print('out', ui.gap())
       ui.say(
         'info',
-        'What vx-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.',
+        'What vx-history learned per task (p50, peak RSS, CPU parallelism) and the\nreservation it packs.',
         'out',
       )
       return 0

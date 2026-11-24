@@ -204,11 +204,13 @@ const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
 const HELP = [
   USAGE,
   '',
-  "  vx dte init      Write the CI that spreads one vx run over this workspace's workers.",
+  "  vx dte init      Write the CI that spreads one vx run over this workspace's",
+  '                   workers.',
   '      --dry        Print the files instead of writing them.',
   '      --force      Overwrite files that exist.',
-  '  vx dte worker    Join the run VX_DTE_RUN names, over VX_DTE_RELAY or dte({ relay }),',
-  '                   and run the tasks it is handed. A CI job runs it after install.',
+  '  vx dte worker    Join the run VX_DTE_RUN names, over VX_DTE_RELAY or',
+  '                   dte({ relay }), and run the tasks it is handed. A CI job runs',
+  '                   it after install.',
 ].join('\n')
 
 /**

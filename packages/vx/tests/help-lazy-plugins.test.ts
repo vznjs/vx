@@ -61,3 +61,27 @@ it(
   },
   TIMEOUT,
 )
+
+// Core help is written at 80 columns; a plugin verb's entry wrapped at 88,
+// so `vx --help` ran wider than a terminal of 80.
+it(
+  "a plugin verb's long description wraps at 80 columns, as core's entries do",
+  async () => {
+    await Bun.write(path.join(dir, 'p/package.json'), '{"name":"p"}\n')
+    await Bun.write(
+      path.join(dir, 'p/index.mjs'),
+      `import { definePlugin } from ${JSON.stringify(path.join(SRC, 'index.ts'))}
+export default definePlugin(import.meta, { commands: { deploy: { description: ${JSON.stringify(
+        'Ship the build to every region the workspace names, then wait for each health check to pass before it says done.',
+      )}, run: () => 0 } } })\n`,
+    )
+    await Bun.write(
+      path.join(dir, '.vx/workspace.mjs'),
+      "import p from '../p/index.mjs'\nexport default { plugins: [p] }\n",
+    )
+    const { lines } = await helpLines()
+    expect(lines.length).toBeGreaterThan(1)
+    expect(lines.filter((l) => l.length > 80)).toEqual([])
+  },
+  TIMEOUT,
+)

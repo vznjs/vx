@@ -363,7 +363,7 @@ export async function pluginCommandHelp(cwd = process.cwd()): Promise<string[]> 
  * column `head` ends at, at core's reference width, so a plugin's long
  * description reads as core's own entries do.
  */
-function helpLines(head: string, text: string, width = 88): string[] {
+function helpLines(head: string, text: string, width = 80): string[] {
   const indent = ' '.repeat(head.length)
   const lines: string[] = []
   let line = head
