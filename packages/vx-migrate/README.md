@@ -1038,6 +1038,7 @@ A different key, or no snapshot, runs `node_modules/.bin/nx graph --file=<snapsh
 - Without one, for `build` and `prepare`, it takes `dist/{projectRoot}` and `{projectRoot}/dist`.
 - Nx's `{projectRoot}/build` and `{projectRoot}/public` are outputs too when git tracks nothing under them; one that holds a tracked file is a todo.
 - That is because vx cleans an output before the run.
+- Nx keeps whichever of these exist, so each maps as the tree under it (`dist/**`): it may match nothing, as long as the build writes one of them.
 - Nx adds an `nx-release-publish` target (`@nx/js:release-publish`) to every project with a `package.json`.
 - It comes along as one `nx-exec` task per package, run only when asked (`vx run nx-release-publish --filter <pkg>`).
 - It counts in `vx info`'s task total.

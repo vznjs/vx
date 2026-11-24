@@ -410,7 +410,7 @@ describe('a cached target that declares no outputs', () => {
       prepare: { command: 'r', cache: true, outputs: [] },
     })
     expect(got['b#build']).toEqual({
-      outputs: { files: ['dist'], workspaceFiles: ['dist/packages/b'] },
+      outputs: { files: ['dist/**'], workspaceFiles: ['dist/packages/b/**'] },
       todos: [
         'no outputs declared: Nx also caches packages/b/build and packages/b/public for this target — vx cleans an output before the run, so add them to the outputs by hand only if they hold nothing committed',
       ],
@@ -435,11 +435,14 @@ describe('a cached target that declares no outputs', () => {
       return { outputs: t.task!['outputs'] as unknown, todos: t.todos }
     }
     expect(await mapped(['packages/b/src/a.ts', 'packages/b/package.json'])).toEqual({
-      outputs: { files: ['dist', 'build', 'public'], workspaceFiles: ['dist/packages/b'] },
+      outputs: {
+        files: ['dist/**', 'build/**', 'public/**'],
+        workspaceFiles: ['dist/packages/b/**'],
+      },
       todos: [],
     })
     expect(await mapped(['packages/b/src/a.ts', 'packages/b/public/logo.svg'])).toEqual({
-      outputs: { files: ['dist', 'build'], workspaceFiles: ['dist/packages/b'] },
+      outputs: { files: ['dist/**', 'build/**'], workspaceFiles: ['dist/packages/b/**'] },
       todos: [
         'no outputs declared: Nx also caches packages/b/public for this target — vx cleans an output before the run, so add it to the outputs by hand only if it holds nothing committed',
       ],

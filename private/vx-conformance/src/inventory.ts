@@ -773,6 +773,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/nx-command-sweep',
     'vx-migrate/nx-config-name-clash',
     'vx-migrate/nx-coverage-output',
+    'vx-migrate/nx-default-outputs-optional',
     'vx-migrate/nx-dependent-outputs',
     'vx-migrate/nx-deps-dedupe',
     'vx-migrate/nx-deps-projects',

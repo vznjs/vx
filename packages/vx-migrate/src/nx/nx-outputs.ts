@@ -109,11 +109,14 @@ export function nxDefaultOutputs(
     todos.push(
       `no outputs declared: Nx also caches ${held.map((d) => path.posix.join(root, d)).join(' and ')} for this target — vx cleans an output before the run, so add ${held.length === 1 ? 'it' : 'them'} to the outputs by hand only if ${held.length === 1 ? 'it holds' : 'they hold'} nothing committed`,
     )
-  // The root project's two are one path.
+  // Nx keeps whichever of these exist, and vx requires a literal output to:
+  // as `dist`, a build writing only `{root}/dist` failed on `dist/{root}`. A
+  // tree may match nothing beside one that matched. The root project's two
+  // are one path.
   return [
     ...new Set([root === '' ? 'dist' : '{workspaceRoot}/dist/{projectRoot}', at('dist')]),
     ...['build', 'public'].filter((d) => !held.includes(d)).map(at),
-  ]
+  ].map((p) => `${p}/**`)
 }
 
 /** `outputs` with `{options.x}` resolved against `options`; `projectRel` is the project dir, `.` for the root. */

@@ -628,8 +628,8 @@ describe('a project dir holding glob characters stays literal', () => {
     })
     const defaults = nxDefaultOutputs('build', {}, 'packages/a{b}', todos, new Set())
     expect(mapNxOutputs(defaults, {}, 'packages/a{b}', 'a', todos)).toEqual({
-      outFiles: ['dist', 'build', 'public'],
-      wsOutFiles: ['dist/packages/a\\{b\\}', 'dist/packages/a\\{b\\}/**'],
+      outFiles: ['dist/**', 'build/**', 'public/**'],
+      wsOutFiles: ['dist/packages/a\\{b\\}/**'],
     })
     expect(todos).toEqual([])
   })
