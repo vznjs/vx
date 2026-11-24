@@ -353,6 +353,9 @@ export function grantAlternatives(grant: string): string[]
 // Linux: `dir` is under `/dev`, which the sandbox mounts afresh, so no
 // sandboxed task runs there (refused by the request builder; `vx info`).
 export function replacedBySandbox(dir: string): boolean
+// Why no sandboxed task can run in `dir` (a line break, a Linux backslash, a
+// macOS wildcard), with the rest of the message; null when it can.
+export function unmountable(dir: string): { why: string; rest: string } | null
 // The one path a grant names: a literal, or one whose only brackets are
 // escaped (`out/\[id\]` names `out/[id]`); undefined for a pattern.
 export function namedPath(grant: string): string | undefined
