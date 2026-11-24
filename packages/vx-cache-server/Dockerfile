@@ -19,4 +19,7 @@ FROM oven/bun:1.4.4-slim@sha256:1846adf22496bd711036aae8be147e57bdebbaea2e5264e3
 COPY --from=build /out/vx-cache-server.js /app/
 USER bun
 EXPOSE 8080
+# Up once it answers HTTP: a 401 or 404 is a live server; no answer, or a
+# 5xx, is not. A server that refused at boot never reports healthy.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD ["bun", "-e", "const r = await fetch('http://127.0.0.1:8080/v1/capabilities').catch(() => null); process.exit(r !== null && r.status < 500 ? 0 : 1)"]
 ENTRYPOINT ["bun", "--no-env-file", "--no-install", "/app/vx-cache-server.js"]

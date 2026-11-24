@@ -99,6 +99,8 @@ docker run -p 8080:8080 -e ALLOW=https://gitlab.com:group/app:.gitlab-ci.yml \
   -e AUDIENCE=https://relay.example.com ghcr.io/vznjs/vx-dte-server
 ```
 
+The image runs as `bun` and reports healthy once it answers on port 8080 inside the container: publish another port with `-p`, not `--port`.
+
 All vx servers at once, this relay included:
 [`private/vx-servers/compose.yaml`](../../private/vx-servers/compose.yaml)
 (`docker compose up`). The relay stores nothing, so it needs no volume.

@@ -124,6 +124,8 @@ docker run -p 8080:8080 -e ALLOW='…' -e AUDIENCE=https://cache.example.com -e 
   -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… vx-cache-server
 ```
 
+The image runs as `bun` and reports healthy once it answers on port 8080 inside the container: publish another port with `-p`, not `--port`.
+
 With vx's other servers: [`compose.yaml`](https://github.com/vznjs/vx/blob/main/private/vx-servers/compose.yaml)
 builds and runs all three (`docker compose up -d`).
 

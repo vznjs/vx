@@ -103,6 +103,8 @@ docker run -p 8080:8080 -v vx-history:/data -e ALLOW='…' -e AUDIENCE=https://h
 
 The database is `/data/vx-history.sqlite`.
 
+The image runs as `bun` and reports healthy once it answers on port 8080 inside the container: publish another port with `-p`, not `--port`.
+
 With vx's other servers: [`compose.yaml`](https://github.com/vznjs/vx/blob/main/private/vx-servers/compose.yaml)
 builds and runs all three (`docker compose up -d`).
 
