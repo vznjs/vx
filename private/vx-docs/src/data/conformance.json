@@ -51353,7 +51353,7 @@
         "moon": {
           "status": "fail",
           "step": 1,
-          "detail": "ran a#build, expected it replayed or left out"
+          "detail": "ran a#prep, a#build, expected it replayed or left out"
         }
       }
     },
