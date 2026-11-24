@@ -160,6 +160,8 @@ a job of `acme/app`'s `ci.yml` passes the repository and workflow rules.
   any other is `403`.
   - The workflow is `job_workflow_ref` on GitHub, `ci_config_ref_uri` on
     GitLab, up to its last `@`, before the ref or SHA.
+  - Its repository part matches in any case; its file name only in its
+    own case, as git keeps it: `CI.yml` is not `ci.yml`.
 - With `readAccess: 'public'` (`READ_ACCESS`), a request with no token
   reads the repository it names when `ALLOW` names it, else `403`.
   - It writes nothing.

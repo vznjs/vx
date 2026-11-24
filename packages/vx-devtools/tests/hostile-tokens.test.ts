@@ -72,6 +72,18 @@ describe('hostile tokens', () => {
     expect(await refusal(hs)).toEqual([401, 'alg is not RS256'])
   })
 
+  // File names keep their case: ALLOW's ci.yml admitted a job of the same
+  // repository's CI.yml, another workflow. The repository part ignores case.
+  it('refuses a workflow file of another case, and takes the repository in any', async () => {
+    const ran = async (ref: string) =>
+      refusal(await sign({ alg: 'RS256', kid: 'k1' }, { job_workflow_ref: ref }))
+    expect(await ran('acme/app/.github/workflows/CI.yml@refs/heads/main')).toEqual([
+      403,
+      "job_workflow_ref acme/app/.github/workflows/CI.yml is not in this server's ALLOW",
+    ])
+    expect(await ran('Acme/App/.github/workflows/ci.yml@refs/heads/main')).toBe('admitted')
+  })
+
   it('refuses an unknown crit extension and a payload swapped under a signature', async () => {
     const [header, payload, sig] = good.split('.')
     const crit = `${enc({ alg: 'RS256', kid: 'k1', crit: ['x'], x: 1 })}.${payload}.${sig}`

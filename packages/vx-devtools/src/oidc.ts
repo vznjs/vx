@@ -27,7 +27,7 @@ export interface Allowed {
   readonly issuer: string
   /** `owner/repo` (a GitLab project's full path), matched without case. */
   readonly repository: string
-  /** The workflow file its jobs are defined in (`ci.yml`, GitLab's `.gitlab-ci.yml`), matched without case. */
+  /** The workflow file its jobs are defined in (`ci.yml`, GitLab's `.gitlab-ci.yml`), matched in its case, as git keeps file names. */
   readonly workflow: string
 }
 
@@ -98,11 +98,22 @@ export function parseAllow(list: string): Allowed[] {
     })
 }
 
-/** What `workflowClaimOf(iss)` says, up to the `@` before its ref, for a job of `workflow` in `repository`. */
-function workflowPath(iss: string, repository: string, workflow: string): string {
-  return iss === GITHUB
-    ? `${repository}/.github/workflows/${workflow}`
-    : `${iss.replace(/^https?:\/\//, '').replace(/\/$/, '')}/${repository}//${workflow}`
+/**
+ * Whether `ran`, what `workflowClaimOf(iss)` says up to the `@` before its
+ * ref, is a job of `workflow` in `repository`: the repository in any case,
+ * the file in its own, as git keeps it (`CI.yml` is another workflow than
+ * `ci.yml`, and passed as it).
+ */
+function ranIn(iss: string, ran: string, repository: string, workflow: string): boolean {
+  const dir =
+    iss === GITHUB
+      ? `${repository}/.github/workflows/`
+      : `${iss.replace(/^https?:\/\//, '').replace(/\/$/, '')}/${repository}//`
+  return (
+    ran.length === dir.length + workflow.length &&
+    same(ran.slice(0, dir.length), dir) &&
+    ran.slice(dir.length) === workflow
+  )
 }
 
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
@@ -474,7 +485,7 @@ export function oidcClaims(opts: {
       const at = ran.lastIndexOf('@')
       const workflow = at < 0 ? ran : ran.slice(0, at)
       const repo = String(named)
-      if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!))))
+      if (!ofRepo.some((a) => ranIn(iss, workflow, a.repository ?? repo, a.workflow!)))
         throw new Refusal(403, notIn(`${wclaim} ${workflow}`))
     }
     return { iss, claims }
