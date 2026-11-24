@@ -664,7 +664,7 @@ Paste what vx printed, or open a code:
 
 - **`… has unknown field "<key>"`.** A typo, or a Turbo or Nx key. The message lists the fields vx allows.
 - **`dependsOn cycle`.** Two tasks wait for each other: remove one `dependsOn` from the loop it prints.
-- **`dependsOn …, but` `no project is named …` / `… declares no task …`.** Use the name it suggests, or add that task to that package.
+- **`dependsOn …, but` `no project is named …` / `… declares no task …`.** Use the name it suggests or one of the projects it lists, add that task to that package, or remove the entry.
 - **`timed out after …`.** The task ran past its time limit: raise `exec.timeout` or `--timeout` ([Handle failures and hangs](#5-handle-failures-and-hangs)).
 
 - **`inputs matched no files`.** The globs find nothing. Paths are

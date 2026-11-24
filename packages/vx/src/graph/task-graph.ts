@@ -501,11 +501,20 @@ function missingCrossTargetError(
     owner === undefined
       ? `no project is named ${project}`
       : `${project} declares no task ${task}${meant === undefined && tasks.length > 0 ? ` (its tasks: ${tasks.join(', ')})` : ''}`
+  // Nothing near and no such project: the projects there are, as the
+  // refusal of a run's unknown project lists them, and the way out.
+  const names = [...projects.keys()].sort()
+  const known =
+    names.length > 12
+      ? `${names.slice(0, 12).join(', ')} and ${names.length - 12} more`
+      : names.join(', ')
   const fix = remove
     ? ` — remove ${target} from dependsOn`
-    : meant === undefined
-      ? ''
-      : `. Did you mean ${meant}?`
+    : meant !== undefined
+      ? `. Did you mean ${meant}?`
+      : owner === undefined
+        ? ` (projects: ${known}) — name one of them, or remove ${target} from dependsOn`
+        : ''
   return new UserError(`${node.id}: dependsOn ${target}, but ${what}${fix}`, 'VX_E_DEPENDS_ON')
 }
 
