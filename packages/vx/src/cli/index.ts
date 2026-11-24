@@ -10,6 +10,7 @@ import {
   errorDocument,
   hasControl,
   hideEnvFromTasks,
+  hookStarted,
   isFsRefusal,
   isOutOfFds,
   isUserError,
@@ -286,9 +287,12 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       const resolved = await (await plugins()).resolvePluginCommand(command)
       if (resolved !== null && !('loadError' in resolved) && !('declaredVerbs' in resolved)) {
         let code: number
+        const settled = hookStarted(resolved.plugin.name, `command '${command}'`)
         try {
           code = await resolved.command.run(rest, resolved.ctx)
+          settled()
         } catch (err) {
+          settled()
           // A verb's own refusal is its one line; anything else is the
           // plugin's crash, named as every other stage names one.
           if (isUserError(err)) throw err

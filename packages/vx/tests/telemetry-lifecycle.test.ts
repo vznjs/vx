@@ -271,6 +271,21 @@ describe('a hook that never settles', () => {
     ])
   }, 30_000)
 
+  it('in a plugin verb: the plugin and its verb are named', async () => {
+    const root = await fixture(
+      `{ commands: { probe: { description: 'p', run() { return new Promise(() => {}) } } } }`,
+    )
+    const r = Bun.spawnSync({
+      cmd: [process.execPath, path.resolve(import.meta.dir, '../src/bin.ts'), 'probe'],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    expect([r.exitCode, new TextDecoder().decode(r.stderr)]).toEqual([
+      1,
+      "vx: the run stopped before it finished: plugin 'org/hang' never settled its command 'probe'\n",
+    ])
+  }, 30_000)
+
   it.each(['key', 'schedule'])(
     'in %s: the plugin is torn down and named, as on every other exit',
     async (hook) => {
