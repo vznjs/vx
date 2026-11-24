@@ -2,7 +2,7 @@
 // to one with no `vx lock` after it ran the old command, green (a script
 // edit even missed the cache, the old command saved under the new key). As
 // for an edited vx.config, the run refuses, naming the file and `vx lock`.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -59,6 +59,26 @@ describe('turbo(): a file the lock was mapped from, edited since', () => {
         JSON.stringify({ extends: ['//'], tasks: { build: { env: ['MODE'] } } }),
       )
       await expect(plan()).rejects.toThrow(said('packages/lib/turbo.json'))
+    },
+    TIMEOUT,
+  )
+
+  // The stamp is held to ctime and the inode, as a vx.config's is: a
+  // same-length edit with its mtime set back skipped the byte check.
+  it(
+    'refuses a same-length turbo.json edit whose mtime was set back',
+    async () => {
+      const turbo = path.join(ws.root, 'turbo.json')
+      const text = await Bun.file(turbo).text()
+      const old = new Date(Date.now() - 3_600_000)
+      await utimes(turbo, old, old)
+      await lock(ws.root)
+      const before = await stat(turbo)
+      await writeFile(turbo, text.replace('dist/**', 'dust/**'))
+      await utimes(turbo, before.atime, before.mtime)
+      const now = await stat(turbo)
+      expect([now.size, now.mtimeMs]).toEqual([before.size, before.mtimeMs])
+      await expect(plan()).rejects.toThrow(said('turbo.json'))
     },
     TIMEOUT,
   )
