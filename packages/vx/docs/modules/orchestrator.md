@@ -3167,7 +3167,7 @@ with `ctx.read` is stat'ed, and once it changed, appeared or went the run refuse
 `vx lock`, as for an edited `vx.config`. The workspace file is stamped
 too: once it moved, `workspaceHolds` runs `discover` and the `project`
 stage with its plugins as `vx lock --check` does, and refuses it when a
-name, an edge or a mapping differs (a plugin's options edited ran the
+name, an edge, a mapping or a recorded dependency digest differs (a plugin's options edited ran the
 locked commands, green); one that holds is stamped. And a run with no stamps beside
 its lock (a fresh clone, CI, a new `--cache-dir`) evaluates every config
 and runs the stage once, as `vx lock --check` does, to verify the lock

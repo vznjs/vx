@@ -496,3 +496,47 @@ describe('a workspace file edited after the run loaded it', () => {
     })
   }
 })
+
+// A claimant's options live in `.vx/workspace.*` too: an edit that moves
+// the digests `vx lock` recorded was refused by the key path as the claimed
+// file having changed, which it had not.
+describe('a claimant option edited since vx lock', () => {
+  const claimant = (word: string) =>
+    pluginSource(
+      'org/claim',
+      `{
+        fingerprint: {
+          files: ['deps.txt'],
+          affected: () => undefined,
+          digests: (_file, ctx) => ({
+            hash: 'h',
+            projects: Object.fromEntries(ctx.projects.map((p) => [p.name, '${word}'])),
+          }),
+        },
+        key: () => ({}),
+      }`,
+    )
+  let root: string
+  const workspace = (word: string) =>
+    writeFile(path.join(root, '.vx', 'workspace.mjs'), localWorkspaceSource([claimant(word)]))
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-lock-claimant-' })
+    await addProject(root, 'core', config('core'))
+    await writeFile(path.join(root, 'deps.txt'), 'deps\n')
+    await workspace('one')
+    expect((await vx(root, ['lock'])).code).toBe(0)
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('names the workspace file, not the claimed one', async () => {
+    await workspace('two')
+    const { code, out } = await vx(root, ['run', 'core#say'])
+    expect([code, out]).toEqual([
+      1,
+      expect.stringContaining('.vx/workspace.mjs changed since the last `vx lock` — run `vx lock`'),
+    ])
+    expect(out).not.toContain('deps.txt')
+  })
+})

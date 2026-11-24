@@ -15,6 +15,8 @@ import {
   LOCKFILE_NAME,
   lockEntryBroken,
   lockedDependencies,
+  dependenciesLock,
+  sameRecord,
   lockDigest,
   lockedProjects,
   NO_LOCK,
@@ -58,7 +60,14 @@ import {
 } from '../memo/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { workspaceFile, workspaceRootOf } from '../handoff.js'
-import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
+import {
+  applyConfigHooks,
+  applyDiscoverHooks,
+  applyProjectHooks,
+  claimedDigests,
+  fingerprintClaims,
+  hasHook,
+} from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
 import { freezeDeep, readOnly } from './read-only.js'
 import { holdLockFiles } from './run-lock.js'
@@ -883,8 +892,8 @@ async function workspaceStat(root: string): Promise<ConfigStat | null> {
 /**
  * Whether the plugins as the workspace file declares them now discover and
  * map every project as the lock holds, as `vx lock --check` compares them:
- * the names, the plugin that added each, the edges, then each config after
- * the `project` stage. Asked only once the file moved since its stamp.
+ * the names, the plugin that added each, the edges, the dependency digests
+ * `.vx/dependencies.lock` records, then each config after the `project` stage. Asked only once the file moved since its stamp.
  */
 async function workspaceHolds(
   args: LoadProjectsArgs,
@@ -911,6 +920,23 @@ async function workspaceHolds(
     ),
   })
   if (!Bun.deepEquals(shape(fresh), shape(args.projectMetas), true)) return false
+  // A claimant's options move the digests `vx lock` recorded: the key path
+  // named the claimed file, which had not changed.
+  const recorded = lockedDependencies(held)
+  if (recorded !== undefined) {
+    const ctx = {
+      workspaceRoot: root,
+      cacheDir: args.cacheDir,
+      warn: args.warn,
+      projects: fresh.map((m) => ({ name: m.name, dir: m.dir })),
+    }
+    const files = new Map<string, NonNullable<Awaited<ReturnType<typeof claimedDigests>>>>()
+    for (const [file, plugin] of fingerprintClaims(args.plugins)) {
+      const answer = await claimedDigests(plugin, file, ctx)
+      if (answer !== undefined) files.set(file, answer)
+    }
+    if (!sameRecord(recorded, dependenciesLock(fresh, files))) return false
+  }
   const drifted = await asLockHolds(
     args,
     digest,
