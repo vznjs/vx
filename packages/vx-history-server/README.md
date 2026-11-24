@@ -126,7 +126,8 @@ names it.
   cache server asks R2 again.
 - A write retried that had landed counts once: a row already written at
   that write's time is left. Each upload a server takes gets its own
-  time, so two in one millisecond each count.
+  time, so two in one millisecond each count, on one node or two (each
+  node folds at its own residue of 1,024 ms; two share one 1 in 1,024).
 - A database whose `timings`, `outcomes` or `sweeps` table another tool
   made fails each request 500, saying so, and is left as it was.
 
