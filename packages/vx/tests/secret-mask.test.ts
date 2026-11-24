@@ -54,6 +54,28 @@ describe('secretMask', () => {
     expect(m.maskCut('a abcdef123456xyz789', 'b')).toEqual([`a ${MASKED}`, 'b'])
   })
 
+  // A span ending where a held tail began was held whole, to merge with a
+  // value the next chunk might complete: back-to-back values in chunks that
+  // each end inside one (a placeholder `xxxxxx` key and a run of `x`) held
+  // the whole stream, emitted nothing, and re-scanned it per chunk (47 s at 9 MB).
+  it('emits back-to-back values as they come, masked as the whole text is', () => {
+    const m = secretMask([{ API_TOKEN: SECRET }])!
+    const s = m.stream()
+    const chunk = `${SECRET.slice(5)}${SECRET}${SECRET.slice(0, 5)}`
+    let all = SECRET.slice(0, 5)
+    let out = s.push(all)
+    for (let i = 0; i < 3; i++) {
+      const piece = s.push(chunk)
+      all += chunk
+      // The first value goes out at once; the rest join its mask.
+      expect(piece).toBe(i === 0 ? MASKED : '')
+      out += piece
+    }
+    out += s.push(`${SECRET.slice(5)} done`) + s.end()
+    expect(out).toBe(m.mask(`${all}${SECRET.slice(5)} done`))
+    expect(out).toBe(`${MASKED} done`)
+  })
+
   it("a URL's password is masked whatever the variable is named", () => {
     const m = secretMask([
       {

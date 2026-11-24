@@ -283,8 +283,8 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     }
     return out
   }
-  const mask = (text: string): string => {
-    const found = spans(text)
+  const mask = (text: string): string => render(text, spans(text))
+  const render = (text: string, found: ReadonlyArray<[number, number]>): string => {
     if (found.length === 0) return text
     let out = ''
     let at = 0
@@ -334,15 +334,10 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     }
     return longest
   }
-  /**
-   * `text` cut where nothing after the cut could begin a value, and no
-   * masked span runs across it or ends at it with text after: a span
-   * ending there may yet merge with a value the next chunk completes.
-   */
+  /** `text` cut where nothing after the cut could begin a value, and no masked span runs across it. */
   const safeCut = (text: string): number => {
     let cut = text.length - partialTail(text)
-    for (const [s, e] of spans(text))
-      if (s < cut && (e > cut || (e === cut && cut < text.length))) cut = s
+    for (const [s, e] of spans(text)) if (s < cut && e > cut) cut = s
     return cut
   }
   return {
@@ -360,6 +355,18 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     },
     stream() {
       let carry = ''
+      // What went out ends in a mask: a value starting right after it joins
+      // that mask, as in the whole text. Holding the span back for that held
+      // back-to-back values forever and re-scanned them per chunk.
+      let joined = false
+      const out = (text: string): string => {
+        if (text === '') return ''
+        const found = spans(text)
+        let masked = render(text, found)
+        if (joined && found[0]?.[0] === 0) masked = masked.slice(MASKED.length)
+        joined = found.at(-1)?.[1] === text.length
+        return masked
+      }
       return {
         push(chunk) {
           const text = carry + chunk
@@ -367,10 +374,10 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
           // cannot be one is never delayed (a `readyWhen` line, a marker).
           const cut = safeCut(text)
           carry = text.slice(cut)
-          return mask(text.slice(0, cut))
+          return out(text.slice(0, cut))
         },
         end() {
-          const rest = mask(carry)
+          const rest = out(carry)
           carry = ''
           return rest
         },
