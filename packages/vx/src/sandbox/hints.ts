@@ -149,6 +149,12 @@ export function addHints(
         [...loopbackPorts(args.config.network), ...bridgedPorts(args.config)],
       )
       if (refused !== undefined) violations.push(refused)
+      if (args.config.unixSockets === undefined) {
+        const unix = refusedUnixSocketHint(
+          `${outTail.text()}\n${errTail.text()}`.split('\n').slice(-64),
+        )
+        if (unix !== undefined) violations.push(unix)
+      }
       // Last, and only when nothing else was said: a grant inside the cwd
       // lists it (bwrap builds the path to a bind), but only that grant, so
       // `bun test` and Vitest scan it, find no test file, and fail with no
@@ -446,6 +452,36 @@ function refusedLoopbackHint(
       `${ports.join(', ')}, which a process on this machine listens on: a sandboxed task has ` +
       `a loopback of its own. Grant ${ports.length === 1 ? 'it' : 'them'}: ` +
       `\`allow: { network: [${grants}] }\`.`,
+  }
+}
+
+/**
+ * Linux blocks `socket(AF_UNIX)` unless `allow.unixSockets` grants it, and
+ * the block is traced nowhere: the task's client says `Operation not
+ * permitted` (socat `socket(1, 1, 0)`, Docker `dial unix …: socket`,
+ * Python `PermissionError` under `socket.py`), and the one hint left was
+ * the working directory's, which changed nothing. Named only when the
+ * output pairs that refusal with a socket; the path, when the client names
+ * one, is the grant (Linux allows any path once one is granted).
+ */
+function refusedUnixSocketHint(lines: readonly string[]): SandboxViolation | undefined {
+  const at = lines.findIndex((l, i) => {
+    if (!/operation not permitted/i.test(l)) return false
+    const near = lines.slice(Math.max(0, i - 3), i + 1).join('\n')
+    return /socket\(1,|\bsocket\b|AF_UNIX|\bunix\b/i.test(near)
+  })
+  if (at < 0) return undefined
+  const sock = lines
+    .slice(Math.max(0, at - 3), at + 1)
+    .join('\n')
+    .match(/(?:unix|UNIX-CONNECT:|connect\(')\s*(\/[^\s:'"),]+)/i)?.[1]
+  const grant = sock === undefined ? 'true' : `[${JSON.stringify(sock)}]`
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      'vx: the task was refused a unix socket: this sandbox blocks them unless granted. ' +
+      `If it needs one, grant it: \`allow: { unixSockets: ${grant} }\`.`,
   }
 }
 

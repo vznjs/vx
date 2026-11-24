@@ -2390,8 +2390,12 @@ export default defineProject({
   unix socket) lifts the `socket(AF_UNIX)` block for that task only,
   never for the run's other sandboxed tasks.
 - `socket(1, 1, 0): Operation not permitted` from a Docker, ssh-agent
-  or database client: on Linux the block is reported nowhere else. The
-  grant is `unixSockets`.
+  or database client: on Linux no violation names the block. A failed
+  task whose output pairs that refusal with a socket gets the grant,
+  `allow: { unixSockets: ['/var/run/docker.sock'] }` when the client
+  names the path, else `unixSockets: true`.
+- A socket outside the project is hidden as any path is: the next run
+  names its read grant.
 
 **Ignoring a report**
 
