@@ -967,6 +967,8 @@ The key is what Nx computes the graph from:
 - Root files: manifests, lockfiles, `tsconfig*.json`, and the tool configs an inferring `@nx/*` plugin reads.
 - Anything in the directory of a local plugin `nx.json` names by path (`./tools/plugin.js`). At the root, that is the file itself, any extension.
 
+The files an inferred target came from (its `vite.config.ts`) are Nx's `source-maps.json`, in `.nx/workspace-data`, or where `NX_WORKSPACE_DATA_DIRECTORY` (or the older `NX_PROJECT_GRAPH_CACHE_DIRECTORY`) points, as for Nx.
+
 <details><summary>Details</summary>
 
 - The git status is core's own for the run (`DiscoverContext.worktreeChanges`), so the tree is walked once. Walking it again took ~96 ms per run on refine.

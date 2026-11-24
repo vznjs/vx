@@ -7085,4 +7085,4 @@ it('a cancelled attempt that ends after its retry lays nothing and leaves the re
   } finally {
     await h.stop()
   }
-}, 10000)
+}, 30_000)

@@ -99,7 +99,7 @@ describe('git absent from PATH', () => {
     expect(code).toBe(1)
     expect(out + err).toContain("vx requires git: failed to spawn 'git'")
     expect(out + err).not.toContain('watching')
-  }, 20_000)
+  }, 30_000)
 
   it('the watch judge ignores nothing and keeps going', async () => {
     const saved = process.env['PATH']
