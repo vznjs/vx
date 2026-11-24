@@ -982,9 +982,8 @@ describe('Cache storage (v10)', () => {
   it('a restore whose staged files another process removes is named an interruption, not a corrupt artifact', async () => {
     // Two runs on one workspace: the other one's clean of `dist/**` takes
     // the `.vx-tmp-*` files this restore staged, and its commit meets
-    // ENOENT. A deleter loop plays the other run for the whole restore.
+    // ENOENT.
     const { mkdir, writeFile } = await import('node:fs/promises')
-    const { readdirSync, unlinkSync } = await import('node:fs')
     const dist = path.join(projectDir, 'dist')
     await mkdir(dist, { recursive: true })
     const files: string[] = []
@@ -1001,45 +1000,33 @@ describe('Cache storage (v10)', () => {
     })
     // Other bytes on disk: a file already as the entry has it is not restaged.
     for (const f of files) await writeFile(f, 'ho'.repeat(100))
-    let stop = false
+    // The other run takes each staged file the moment before its commit: a
+    // loop on this thread struck only where the restore yielded, and under a
+    // 16-way load the renames landed first and the restore read whole.
+    const fsp = await import('node:fs/promises')
+    const { unlinkSync } = await import('node:fs')
+    const real = fsp.rename.bind(fsp)
     let removed = 0
-    // The other run strikes SYNCHRONOUSLY on each turn of the loop — one
-    // readdirSync and every unlinkSync in the same tick — so whatever the
-    // restore has staged when it yields is gone before its commit renames
-    // the next batch. A 1 ms timer with an awaited unlink per file got one
-    // unlink per commit yield, aimed at a name in directory order, and 2
-    // restores in 60 under a 12-way load renamed every file it aimed at
-    // first (the gate, 2026-09-16).
-    const deleter = (async () => {
-      while (!stop) {
-        let names: string[] = []
-        try {
-          names = readdirSync(dist)
-        } catch {}
-        for (const name of names) {
-          if (!name.includes('.vx-tmp-')) continue
-          try {
-            unlinkSync(path.join(dist, name))
-            removed++
-          } catch {}
-        }
-        await new Promise<void>((r) => setImmediate(r))
+    const struck = spyOn(fsp, 'rename').mockImplementation(async (from, to) => {
+      if (String(from).includes('.vx-tmp-')) {
+        unlinkSync(from)
+        removed++
       }
-    })()
+      return real(from, to)
+    })
     let caught: unknown
     try {
       await cache.restoreOutputs('h-race', projectDir)
     } catch (err) {
       caught = err
     } finally {
-      stop = true
-      await deleter
+      struck.mockRestore()
     }
     expect(caught).toBeInstanceOf(UserError)
     expect((caught as Error).message).toMatch(
       /^restore of h-race into .* was interrupted: a file it had just written vanished \(ENOENT: .*\.vx-tmp-.*\)\. Another vx run is using this workspace — re-run once it is done\.$/,
     )
-    // The loop did play the other run: it took staged files out from under both restores.
+    // The other run did strike: it took staged files out from under the restore.
     expect(removed).toBeGreaterThan(0)
   }, 30_000)
 
