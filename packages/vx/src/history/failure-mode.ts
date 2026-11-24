@@ -7,7 +7,7 @@
 
 import type { Database } from 'bun:sqlite'
 import { KEYED_RUNS_SQL } from '../index-db/index.js'
-import { expandHits } from './run-history.js'
+import { expandHitOutcomes, expandHits } from './run-history.js'
 import { isCacheHit, TASK_STATUSES } from '../graph/index.js'
 
 // SQL hit set derived from the predicate — never a hand-typed list and never
@@ -167,8 +167,11 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
     (c) => c.status === 'failed' || c.attempts > 1 || everFailed.has(keyOf(c)),
   )
   if (suspects.length === 0) return []
-  // A kept hit is a pass of its key: written out before the passes are counted.
-  expandHits(db)
+  // A kept hit is a pass of its key: in the record before the passes are counted.
+  expandHitOutcomes(
+    db,
+    suspects.map((c) => c.hash),
+  )
   const counts = new Map<string, { passes: number; failures: number; relapses: number }>()
   chunked(suspects, (chunk) => {
     const rows = db
@@ -206,7 +209,8 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
  * a retry. Asked only after a failure, so a green run never reads it.
  */
 export function knownFlaky(db: Database, project: string, task: string, hash: string): boolean {
-  expandHits(db)
+  // Another key's kept pass went into the record before its failure did.
+  expandHitOutcomes(db, [hash])
   const passed = db
     .query(
       `SELECT 1 FROM ${OUTCOMES} WHERE hash = ? AND project = ? AND task = ?

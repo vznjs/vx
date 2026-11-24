@@ -154,15 +154,23 @@ it('stores the keys of runs that hit the same tasks once', () => {
 
 // The flaky record orders a key's outcomes by when they were written: a
 // kept pass written out after a later failure read as a recovery.
-it('writes kept hits out before a failure of a key is recorded', () => {
+it("writes a failed key's kept pass into the flaky record before the failure", () => {
   const cache = new Cache(path.join(dir, 'cache'))
   const db = indexDb(cache)
   runHistory(cache).recordRuns([], undefined, hitsOf('run-1', 4))
   runHistory(cache).recordRuns([failed(2, 'run-2')])
-  expect(count(db, 'main.run_hits')).toBe(0)
   expect(
-    all(db, `SELECT status FROM task_outcomes WHERE hash = '${hashOf(2)}' ORDER BY id`),
-  ).toEqual([{ status: 'cache-hit' }, { status: 'failed' }])
+    all(
+      db,
+      `SELECT status, recorded_at AS at FROM task_outcomes WHERE hash = '${hashOf(2)}' ORDER BY id`,
+    ),
+  ).toEqual([
+    { status: 'cache-hit', at: T + 2 },
+    { status: 'failed', at: T + 50 },
+  ])
+  // Written out later, the hits add no second pass of the key.
+  expandHits(db)
+  expect(count(db, `task_outcomes WHERE hash = '${hashOf(2)}'`)).toBe(2)
   cache.close()
 })
 
@@ -171,6 +179,27 @@ it('reads a kept hit as a pass of its key', () => {
   runHistory(cache).recordRuns([], undefined, hitsOf('run-1', 4))
   expect(knownFlaky(indexDb(cache), 'p3', 'build', hashOf(3))).toBe(true)
   cache.close()
+})
+
+// A failing run wrote out every hit every run had kept since the last
+// reader: 10,000 green runs of 200 tasks made one red run wait 35-46 s.
+// It writes none of them now, however many runs kept some.
+it('a failing run writes out no kept hits, however many runs kept them', () => {
+  const written = (runs: number): number[] => {
+    const cache = new Cache(path.join(dir, `c${runs}`))
+    const db = indexDb(cache)
+    for (let i = 0; i < runs; i++)
+      runHistory(cache).recordRuns([], undefined, hitsOf(`run-${i}`, 4, T + i))
+    knownFlaky(db, 'p2', 'build', hashOf(2))
+    runHistory(cache).recordRuns([failed(2, 'run-red')])
+    const out = [count(db, 'main.runs'), count(db, 'main.run_hits'), count(db, 'task_outcomes')]
+    cache.close()
+    return out
+  }
+  expect([written(3), written(60)]).toEqual([
+    [1, 3, 2],
+    [1, 60, 2],
+  ])
 })
 
 it('marks a kept hit whose upload failed after the run', () => {

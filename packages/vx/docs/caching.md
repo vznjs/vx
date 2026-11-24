@@ -2318,7 +2318,8 @@ CREATE TABLE run_ids (
 -- out as its `runs` rows, ids `first_id` on, which the run reserved, and
 -- the flaky record's first hit of a key; every reader of `runs` calls it
 -- first, `vx last` and `vx why` on opening. A plan reads `hit_keys` where
--- it lies.
+-- it lies. A failing run writes out only its failed keys' first kept hit
+-- (`expandHitOutcomes`), so it never pays for every past run.
 CREATE TABLE run_hits (
   run        INTEGER PRIMARY KEY,  -- the run's run_ids row
   first_id   INTEGER NOT NULL,     -- the runs id of its first hit
