@@ -3508,6 +3508,9 @@ For review, it also writes each project's resolved config, pretty, to
   `[vx] waiting for another vx lock (pid N) on this workspace to finish…`.
 - Then it evaluates and writes, so the review copies and the lock always
   come from one run.
+- It does not wait for a `vx run`: a run keeps the lock it read at its
+  start, so a task it starts later runs the config it was keyed on. The
+  next run reads the new lock.
 
 </div>
 </details>
