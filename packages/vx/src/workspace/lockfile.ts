@@ -41,6 +41,7 @@ import {
   xxh3hex,
 } from '../util/index.js'
 import { validateProjectConfig } from './config-schema.js'
+import { unreadable } from './load-reads.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 import {
   DEPENDENCIES_LOCK_NAME,
@@ -185,7 +186,8 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   let text: string | undefined
   let read: Decoded
   try {
-    text = await file.text()
+    // A refused read is not bad JSON: "re-run `vx lock`" could not help.
+    text = await file.text().catch((err: unknown) => unreadable(err, lockfilePath(root)))
     read = decoded(text)
   } catch (err) {
     // First: a merge's markers can break an entry before any line reads as one.
