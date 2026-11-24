@@ -527,7 +527,7 @@ The loader validates each task's shape at load time and surfaces a
 `UserError` (clean output, no stack) on malformed configs. Among the
 rules enforced: `exec.persistent` rejects malformed shapes; a
 persistent task with `cache: true` is rejected (no exit to cache);
-group tasks (no `exec`) must declare `dependsOn` or a `cache` with no outputs; `inputs.files`
+group tasks (no `exec`) must declare `dependsOn` or `inputs` and take no `cache`; `inputs.files`
 and `outputs.files` are required when `cache` is set;
 `.vx/workspace.ts`'s `plugins` array is shape-checked too.
 
