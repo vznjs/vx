@@ -423,3 +423,14 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   that fork over: its one fork that does not wait, `cmd &`, ignores
   SIGINT and SIGQUIT in a non-interactive shell (POSIX), for good. A
   small process that forks every shell does (`vx-measure`, 2026-11-22).
+- Stage files by name, never `git add -A` or `git commit -a` on a tree
+  you did not just check: an absolute symlink to another worktree's
+  checkout (`packages/vx-lockfile/vx-lockfile`) was committed twice that
+  way, and a bare `bun test` there ran the other tree's tests (119 false
+  failures, 674fa7866, 2026-11-24).
+- A new test file needs its row in `private/vx-conformance/src/inventory.ts`
+  in the same commit: `inventory.test.ts` goes red on the branch for
+  everyone else until it lands (2026-11-24).
+- Never reset, check out, stash-pop or clean in another agent's worktree,
+  even to "help": its uncommitted work is gone for good. Work in yours;
+  ask its owner (2026-11-24).
