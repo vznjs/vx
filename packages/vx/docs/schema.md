@@ -2190,6 +2190,17 @@ The credential stores:
 - A dotfiles repository at `~`: the tree holding home stays readable;
   only its git dir is denied.
 
+**The workspace's `.gitignore`**
+
+- A task sees nothing above its project, so not the workspace's
+  `.gitignore` or `.git`, and no violation says so.
+- A tool that reads its ignore rules there then works on files they
+  hide. oxlint 1.83 linted every file `node_modules` links to: 7739
+  files in 299 s, not 488 in 7 s.
+- oxlint's config `ignorePatterns` did not stop that walk. Give the
+  ignores on the command (`oxlint --ignore-pattern node_modules`), or in
+  a `.gitignore` in the project.
+
 **`hermetic: true`**
 
 - `hermetic: true` moves the read wall from the workspace root to `/`:

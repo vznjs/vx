@@ -2356,6 +2356,7 @@ Default: no sandbox. The full reference is [`modules/sandbox.md`](./modules/sand
 - For a task that declares `cache`, a linked package is granted only when its key includes a task of that package.
 - So declaring `cache` narrows core's grant and widens nothing.
 - Enforcement starts at the workspace root: a task never leaves its project.
+- So a tool in it never reads the workspace's `.gitignore`: give it its ignores in the project ([`schema.md`](./schema.md#execsandbox-optional)).
 - Only denials inside the project, or under a withheld linked package, are reported.
 
 **On a violation**
