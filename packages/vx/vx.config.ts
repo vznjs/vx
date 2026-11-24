@@ -309,7 +309,8 @@ const compileTasks = Object.fromEntries(
 // vx-release-worker.yml; scripts/release*.ts). Uncached, since each has a
 // side effect. A darwin step runs on a Mac (it can re-sign), a linux one on
 // linux-x64; an uncached step that writes files keeps its dependants on its
-// worker, so each platform's chain stays on one machine. Order: the binaries
+// worker, so each platform's chain stays on one machine, and no task of one
+// platform depends on the other's. Order: the binaries
 // proven, the npm platform packages, attestations, the GitHub uploads (the
 // darwin one publishes the release), then @vzn/vx and the plugins on npm,
 // then the server images.
@@ -356,7 +357,8 @@ const binaries = (os: 'linux' | 'darwin') =>
 const releaseTasks = {
   release: {
     description: 'the whole release: GitHub assets, npm packages and server images',
-    dependsOn: ['release.docker'],
+    // The darwin chain on its own: nothing linux depends on it.
+    dependsOn: ['release.docker', 'release.github.darwin.upload'],
   },
   ...Object.fromEntries(
     (['linux', 'darwin'] as const).flatMap((os) => [
@@ -366,6 +368,7 @@ const releaseTasks = {
           description: 'make sure npm can publish with provenance (>= 11.5.1, sigstore intact)',
           exec: {
             command: 'bun scripts/release.ts npm',
+            timeout: '5m',
             platforms: releasePlatform(os),
             sandbox: {
               allow: {
@@ -385,6 +388,7 @@ const releaseTasks = {
           dependsOn: [`compile.bun.${os}-x64`, `compile.bun.${os}-arm64`],
           exec: {
             command: `bun scripts/release.ts prove ${os}`,
+            timeout: '5m',
             platforms: releasePlatform(os),
             env: RELEASE_VERSION,
             sandbox: {
@@ -424,6 +428,7 @@ const releaseTasks = {
           dependsOn: [`release.npm.${os}.prove`, ...binaries(os)],
           exec: {
             command: `bun scripts/release.ts assemble ${os}`,
+            timeout: '5m',
             platforms: releasePlatform(os),
             env: RELEASE_VERSION,
             sandbox: {
@@ -441,15 +446,15 @@ const releaseTasks = {
         `release.npm.${os}.publish`,
         {
           description: `npm publish the ${os} packages under dist/npm, skipping any already on the registry`,
-          // @vzn/vx after the darwin packages its optionalDependencies name:
-          // the darwin upload follows the darwin publish on its Mac.
-          dependsOn: [
-            `release.npm.${os}.assemble`,
-            `release.npm.${os}.check`,
-            ...(os === 'linux' ? ['release.github.darwin.upload'] : []),
-          ],
+          // No edge to a darwin task: a linux worker cannot have what the
+          // uncached darwin steps leave on their Mac, which dte() refuses
+          // (v0.0.660). `@vzn/vx` waits on the registry for the darwin
+          // packages instead (scripts/release.ts, publishSettled).
+          dependsOn: [`release.npm.${os}.assemble`, `release.npm.${os}.check`],
           exec: {
             command: `bun scripts/release.ts publish ${os}`,
+            // The linux one waits up to 25 min for the darwin packages.
+            timeout: '30m',
             platforms: releasePlatform(os),
             env: { passThrough: NPM_OIDC_ENV, secret: ['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] },
             sandbox: {
@@ -470,6 +475,7 @@ const releaseTasks = {
           dependsOn: [`release.npm.${os}.prove`, ...binaries(os)],
           exec: {
             command: `bun scripts/release-attest.ts ${os}`,
+            timeout: '5m',
             platforms: releasePlatform(os),
             env: {
               // The job's OIDC token signs it; the repo's API stores it.
@@ -518,6 +524,7 @@ const releaseTasks = {
           ],
           exec: {
             command: `bun scripts/release-assets.ts ${os}${os === 'darwin' ? ' --publish' : ''}`,
+            timeout: '10m',
             platforms: releasePlatform(os),
             env: {
               passThrough: ['VX_RELEASE_VERSION', 'GITHUB_REPOSITORY', 'GH_TOKEN'],
@@ -543,6 +550,7 @@ const releaseTasks = {
     dependsOn: ['release.npm.linux.publish'],
     exec: {
       command: 'bun scripts/release.ts served',
+      timeout: '30m',
       platforms: LINUX,
       env: RELEASE_VERSION,
       sandbox: { allow: { read: ['.'], network: ['registry.npmjs.org'] } },
@@ -555,6 +563,7 @@ const releaseTasks = {
     dependsOn: ['release.npm.served'],
     exec: {
       command: 'bun scripts/release-images.ts',
+      timeout: '20m',
       platforms: LINUX,
       env: {
         passThrough: ['VX_RELEASE_VERSION', 'GITHUB_ACTOR', 'GITHUB_TOKEN'],

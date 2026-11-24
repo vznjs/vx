@@ -456,3 +456,49 @@ describe('awaitServed', () => {
     expect(err).toBe('npm does not serve:\n  b')
   })
 })
+
+// dte() refuses a task whose upstream, uncached and writing files, runs on
+// another platform: its files stay on that machine (v0.0.660's npm run
+// stopped there, the linux publish waiting on the darwin upload).
+describe('the release graph', () => {
+  it('keeps each platform’s chain apart from the other’s', async () => {
+    type Task = {
+      dependsOn?: string[]
+      cache?: boolean
+      exec?: {
+        command?: string
+        platforms?: readonly string[]
+        sandbox?: { allow?: { write?: readonly string[] } }
+      }
+    }
+    const tasks = (await import('../vx.config.ts')).default.tasks as Record<string, Task>
+    const leaves = (t: Task): boolean =>
+      t.cache !== true &&
+      (t.exec?.sandbox === undefined || (t.exec.sandbox.allow?.write?.length ?? 0) > 0)
+    const below = new Map<string, string[]>()
+    for (const [id, t] of Object.entries(tasks))
+      for (const d of t.dependsOn ?? []) below.set(d, [...(below.get(d) ?? []), id])
+    const crossed: string[] = []
+    for (const [id, t] of Object.entries(tasks)) {
+      const at = t.exec?.platforms?.[0]
+      if (
+        !id.startsWith('release.') ||
+        t.exec?.command === undefined ||
+        at === undefined ||
+        !leaves(t)
+      )
+        continue
+      const seen = new Set<string>()
+      const walk = [...(below.get(id) ?? [])]
+      for (let d = walk.pop(); d !== undefined; d = walk.pop()) {
+        if (seen.has(d)) continue
+        seen.add(d)
+        const there = tasks[d]?.exec
+        if (there?.command !== undefined && (there.platforms?.[0] ?? at) !== at)
+          crossed.push(`${id} → ${d}`)
+        walk.push(...(below.get(d) ?? []))
+      }
+    }
+    expect(crossed).toEqual([])
+  })
+})

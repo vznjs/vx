@@ -3757,17 +3757,17 @@ The tasks are `@vzn/vx`'s `release.*`, all uncached; the `release`
 pipeline runs the `release` group. A darwin task runs on a Mac, a linux
 one on linux-x64:
 
-| Task                         | Does                                                                                                                                     |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `release.npm.<os>.check`     | checks npm can publish with provenance (>= 11.5.1, `sigstore` loads); else installs npm into `dist/npm-cli/`                             |
-| `release.npm.<os>.prove`     | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta) |
-| `release.npm.<os>.assemble`  | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                     |
-| `release.npm.<os>.publish`   | `npm publish --provenance` each in order, skipping one the registry holds; `@vzn/vx` only once the darwin packages are out               |
-| `release.github.<os>.attest` | a Sigstore-signed build-provenance attestation of `dist/vx-<os>-*` (`scripts/release-attest.ts`), darwin's after its re-sign             |
-| `release.github.<os>.upload` | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                            |
-| `release.npm.served`         | waits (up to 15 min) until npm's CDN answers 200 for every published tarball: it 404ed v0.0.646's for minutes, failing installs          |
-| `release.docker`             | pushes the three server images to `ghcr.io/vznjs/<server>` at the version (amd64 + arm64); `latest` follows npm's                        |
-| `release.github.tag`         | `auto-release.yml`'s: decides the version, creates the draft release with its notes, dispatches `npm.yml`                                |
+| Task                         | Does                                                                                                                                         |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `release.npm.<os>.check`     | checks npm can publish with provenance (>= 11.5.1, `sigstore` loads); else installs npm into `dist/npm-cli/`                                 |
+| `release.npm.<os>.prove`     | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta)     |
+| `release.npm.<os>.assemble`  | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                         |
+| `release.npm.<os>.publish`   | `npm publish --provenance` each in order, skipping one the registry holds; `@vzn/vx` only once npm serves the darwin packages (up to 25 min) |
+| `release.github.<os>.attest` | a Sigstore-signed build-provenance attestation of `dist/vx-<os>-*` (`scripts/release-attest.ts`), darwin's after its re-sign                 |
+| `release.github.<os>.upload` | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                                |
+| `release.npm.served`         | waits (up to 25 min) until npm's CDN answers 200 for every published tarball: it 404ed v0.0.646's for minutes, failing installs              |
+| `release.docker`             | pushes the three server images to `ghcr.io/vznjs/<server>` at the version (amd64 + arm64); `latest` follows npm's                            |
+| `release.github.tag`         | `auto-release.yml`'s: decides the version, creates the draft release with its notes, dispatches `npm.yml`                                    |
 
 The version reaches them as `VX_RELEASE_VERSION` (the tag). Each task
 refuses one that is not a version.
