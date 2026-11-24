@@ -118,6 +118,7 @@ run(
     'build',
     '--compile',
     '--no-compile-autoload-dotenv',
+    '--no-compile-autoload-bunfig',
     '--compile-autoload-package-json',
     '--minify',
     '--bytecode',

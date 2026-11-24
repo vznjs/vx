@@ -59,6 +59,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'cli-task-names',
     'committed-case',
     'committed-through-link',
+    'compiled-bunfig',
     'configless-default-build',
     'default-build-cycle-key',
     'default-build-not-declared',

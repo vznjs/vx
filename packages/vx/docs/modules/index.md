@@ -125,8 +125,8 @@ compiled binary no second copy of core transpiled from `node_modules`
    shebang `#!/usr/bin/env -S bun --no-env-file --no-install`. Bun runs the
    TypeScript directly.
 2. **As a standalone binary** — `bun build --compile
---no-compile-autoload-dotenv --compile-autoload-package-json --minify
---bytecode --format=esm --splitting --target=bun-<target> src/bin.ts
+--no-compile-autoload-dotenv --no-compile-autoload-bunfig
+--compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-<target> src/bin.ts
 --outfile dist/vx-<target>`. The cross-target binaries are published on
    each GitHub release. Split into ES chunks, the binary loads only the
    code a verb imports: one bundle loaded all of it first, ~4 ms of every
@@ -138,6 +138,11 @@ where every `passThrough` and essential variable and every `VX_*` switch
 is read: a task saw a value no shell had set (item 1089). Running the
 source as `bun src/bin.ts`, as this repository's own gate does, is not
 the shebang, and Bun loads a `.env` there.
+
+`--no-compile-autoload-bunfig` keeps the binary from reading the working
+directory's `bunfig.toml`: its `preload` ran inside vx, even for
+`vx --version` (`tests/compiled-bunfig.test.ts`). The script form still
+reads it, as any `bun` does.
 
 `--compile-autoload-package-json` makes the binary read an on-disk
 package's `package.json` when it resolves one. Without it a compiled

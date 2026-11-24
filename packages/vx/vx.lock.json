@@ -7262,7 +7262,7 @@
         "install"
       ],
       "exec": {
-        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-x64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-linux-x64",
+        "command": "bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-x64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-linux-x64",
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION"
@@ -7320,7 +7320,7 @@
         "install"
       ],
       "exec": {
-        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-arm64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-linux-arm64",
+        "command": "bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-linux-arm64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-linux-arm64",
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION"
@@ -7378,7 +7378,7 @@
         "install"
       ],
       "exec": {
-        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-x64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-darwin-x64",
+        "command": "bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-x64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-darwin-x64",
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION"
@@ -7436,7 +7436,7 @@
         "install"
       ],
       "exec": {
-        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-arm64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-darwin-arm64",
+        "command": "bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-darwin-arm64 --define \"VX_RELEASE=\\\"${VX_RELEASE_VERSION#v}\\\"\" src/bin.ts --outfile dist/vx-darwin-arm64",
         "env": {
           "passThrough": [
             "VX_RELEASE_VERSION"
