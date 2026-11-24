@@ -929,6 +929,9 @@ The cache key:
   different cache entries.
 - A frame's `$ <command>` line shows the command as it ran, so a
   requested task's carries the args and a dependency's does not.
+- `--dry` shows that same command, quoted as the run quotes it: a
+  `command` row under the task that gets the args, and `command` on
+  every task with one in `--format json`.
 
 A short flag before `--`:
 
@@ -2109,6 +2112,7 @@ Default: off. A run without `--dry` executes.
       "hash": "d66cfed2...",
       "cacheStatus": "hit-local",
       "deps": [],
+      "command": "oxlint --type-aware --type-check src tests",
       "p50Ms": 72640
     }
   ],

@@ -1898,6 +1898,8 @@ export interface PlannedTask {
   hash: string
   cacheStatus: CacheStatus
   deps: readonly string[]
+  command?: string
+  forwarded?: true
   p50Ms?: number
   executor?: string
   download?: 'deferred'

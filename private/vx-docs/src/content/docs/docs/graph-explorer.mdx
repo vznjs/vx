@@ -202,6 +202,7 @@ Each task:
 | `hash` | the task's cache key; empty when the run computes none |
 | `cacheStatus` | what the run would do (table below) |
 | `deps` | the ids it waits on directly |
+| `command` | *sometimes*: the command as the run would run it, with any args forwarded after `--`; absent on a group |
 | `p50Ms` | *sometimes*: its usual run time in milliseconds, from history |
 | `executor` | *sometimes*: where it would run, when the workspace has more than one place to run tasks |
 | `download` | *sometimes*: `deferred` when its outputs would stay in the remote cache (`--cache-download`) |

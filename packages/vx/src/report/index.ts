@@ -38,6 +38,7 @@ export {
   formatSize,
   planList,
   type PlannedRow,
+  shownCommand,
   taskList,
 } from './framed-output.js'
 export { createForecast } from './forecast.js'

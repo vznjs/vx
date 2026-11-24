@@ -828,6 +828,7 @@ describe('each schema object is its source type', () => {
         hash: true,
         cacheStatus: true,
         deps: true,
+        command: true,
         p50Ms: true,
         executor: true,
         download: true,

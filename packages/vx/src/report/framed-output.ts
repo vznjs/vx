@@ -1078,7 +1078,7 @@ export function formatFrameClose(
 }
 
 /** What ran: a requested task gets the args after `--`, as execute-task.ts appends them. */
-function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
+export function shownCommand(node: TaskNode, forwardArgs: readonly string[]): string {
   const exec = node.config.exec
   return maskedCommand(
     withForwardArgs(exec?.command ?? '', node.requested ? forwardArgs : []),

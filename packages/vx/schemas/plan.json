@@ -37,6 +37,10 @@
             "description": "skipped: exec.platforms leave this machine out, or a task it depends on is skipped; the run skips it too"
           },
           "deps": { "type": "array", "items": { "type": "string" } },
+          "command": {
+            "type": "string",
+            "description": "the command as the run would run it, a requested task's with the args after --; absent on a group"
+          },
           "p50Ms": {
             "type": "number",
             "description": "typical executed duration, when history has one"

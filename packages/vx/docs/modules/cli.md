@@ -1229,6 +1229,7 @@ export interface PlanTaskJson {
   affected?: AffectedReason // why `--affected` kept it (affected-tasks.md)
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string } // a `skipped` task's own platforms, and this machine's
   blockedBy?: string // a `skipped` task's root: the task off this machine's platform it depends on
+  command?: string // the command as the run would run it, forwarded args included; absent on a group
 }
 export function formatPlanJson(plan: RunPlan, affectedBase?: string): string
 ```

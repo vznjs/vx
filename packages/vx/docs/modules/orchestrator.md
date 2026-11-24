@@ -2233,6 +2233,8 @@ export interface PlannedTask {
   affected?: AffectedReason // why `--affected` kept this requested task (affected-tasks.md)
   otherPlatform?: { readonly needs: readonly string[]; readonly host: string } // a `skipped` task's own platforms, and this machine's
   blockedBy?: string // a `skipped` task's root: the task off this machine's platform it depends on
+  command?: string // the command as the run would run it, a requested task's with the args after `--`; absent on a group
+  forwarded?: true // set when `command` carries args forwarded after `--`
 }
 
 export interface PlanPrediction {

@@ -20,6 +20,7 @@
     "tasks[].affected.via[]": "string",
     "tasks[].blockedBy": "string",
     "tasks[].cacheStatus": "string",
+    "tasks[].command": "string",
     "tasks[].deps": "array",
     "tasks[].deps[]": "string",
     "tasks[].description": "string",

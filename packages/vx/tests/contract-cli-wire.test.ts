@@ -79,6 +79,8 @@ function fixturePlan(): Required<RunPlan> {
     affected: { kind: 'input', file: 'a/src/x.ts', project: 'a', via: ['a#gen'] },
     otherPlatform: { needs: ['darwin'], host: 'linux' },
     blockedBy: 'a#gen',
+    command: 'true --fix',
+    forwarded: true,
   }
   const bare: PlannedTask = { node: node('a#gen'), hash: 'h0', cacheStatus: 'hit-local', deps: [] }
   const predicted: Required<PlanPrediction> = {
