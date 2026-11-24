@@ -6417,6 +6417,8 @@ milliseconds.
 - `--format json` prints each row as SQLite yields it, with no bound:
   a query whose rows never end streams until Ctrl+C, or until its reader
   leaves (`| head`), which ends it with exit 0.
+- A row SQLite fails on after rows went out (`integer overflow`) ends
+  the stream: the refusal's JSON follows on its own last line, exit 1.
 - The table needs every row for its column widths, so it holds at most
   100,000. Past that it is refused (exit 1) before any row prints: add
   a `LIMIT`, or use `--format json`.

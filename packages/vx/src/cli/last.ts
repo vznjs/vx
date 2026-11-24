@@ -475,16 +475,21 @@ function* jsonRows(
   refused: (err: unknown) => never,
 ): Generator<string> {
   let piece = '{"rows":['
+  let sent = false
   let row = first
   for (let n = 0; row.done !== true; n++) {
     piece += `${n === 0 ? '' : ','}${JSON.stringify(row.value)}`
     if (piece.length >= 65_536) {
       yield piece
       piece = ''
+      sent = true
     }
     try {
       row = rest.next()
     } catch (err) {
+      // Rows already out: the refusal's one-line document follows on a line
+      // of its own, not glued to the cut array where no reader could take it.
+      if (sent) yield '\n'
       refused(err)
     }
   }
