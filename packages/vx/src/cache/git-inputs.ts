@@ -2605,7 +2605,13 @@ async function refreshedIndex(
     if (run === null || run.exitCode !== 0) throw new Error('refresh failed')
     renameSync(tmp, copy)
   } catch {
-    rmSync(tmp, { force: true })
+    // A read-only checkout made no copy, and its `rm` throws too: `force`
+    // drops only ENOENT, and the EROFS failed the run.
+    try {
+      rmSync(tmp, { force: true })
+    } catch {
+      // nothing written there
+    }
     return undefined
   }
   const stale = Date.now() - STALE_INDEX_MS

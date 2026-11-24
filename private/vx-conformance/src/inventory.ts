@@ -1217,6 +1217,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'prune-inline-frees',
     'read-off',
     'read-once.unsafe',
+    'read-only-checkout.unsafe',
     'reading-verbs-git',
     'ready-wait-notice',
     'real-path',
