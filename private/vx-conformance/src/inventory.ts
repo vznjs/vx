@@ -1413,6 +1413,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'release-provenance.unsafe',
     'schema-doc-drift',
     'schema-doc-samples',
+    'server-settings-documented.unsafe',
     'shard-partition',
     'signed-cache-guide.unsafe',
     'site-bench-percent.unsafe',

@@ -222,7 +222,7 @@ Each run is one Durable Object. 20 websocket messages count as one request, agai
 | --- | --- | --- | --- |
 | `ALLOW` | required | who takes part: space-separated `issuer:owner/repo:workflow` | `https://gitlab.com:group/project:.gitlab-ci.yml` |
 | `AUDIENCE` | Cloudflare: the relay's URL. Bun and Docker: required | the `aud` every CI token must name, with or without a trailing slash | `https://relay.example.com` |
-| `RELAY` | | Cloudflare: the Durable Object binding, class `RelayRun` | |
+| `RELAY` | Cloudflare: required | Cloudflare: the Durable Object binding, class `RelayRun` | `{ "name": "RELAY", "class_name": "RelayRun" }` |
 | `--port` | 8080 | Bun: the port it listens on | `--port 9000` |
 | `--host` | `0.0.0.0`; `127.0.0.1` with `--no-auth` | Bun: the address it listens on | `--host ::1` |
 | `--no-auth` | off | Bun: no token check, loopback only | `--no-auth` |

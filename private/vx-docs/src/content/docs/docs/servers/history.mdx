@@ -226,7 +226,7 @@ TIMING_DAYS=90
 | `AUDIENCE` | Workers: the URL it is reached at. Bun and Docker: required | the `aud` a CI token must name, read as its origin | `https://history.example.com` |
 | `READ_ACCESS` | unset: every request needs a token | `public`: a request with no token reads a repository `ALLOW` names | `public` |
 | `TIMING_DAYS` | 30 | whole days a row is kept after its last report | `90` |
-| `DB` | | Workers: the D1 database binding | `vx-history` |
+| `DB` | Workers: required | Workers: the D1 database binding | `vx-history` |
 | `--db` | `vx-history.sqlite` | Bun: the SQLite file | `--db /var/lib/vx-history.sqlite` |
 | `--port` | 8080 | Bun: the port it listens on | `--port 9000` |
 | `--host` | `0.0.0.0` | Bun: the address it listens on | `--host 127.0.0.1` |

@@ -265,7 +265,7 @@ echo "$(h https://token.actions.githubusercontent.com)/$(h acme/app)/$(h refs/he
 | `MAX_CHECK_HASHES` | 500 (6 on Workers) | lookups one check may make, results × branches | `100` |
 | `MAX_UPLOAD_BYTES` | 100 MB | the largest result it takes | `500000000` |
 | `EXPIRY_DAYS` | unset | Workers: your bucket's expiry, so a repeat check skips R2 | `1` |
-| `BLOBS` | | Workers: the R2 bucket binding | `vx-cache` |
+| `BLOBS` | Workers: required | Workers: the R2 bucket binding | `vx-cache` |
 | `--port` | 8080 | Bun: the port it listens on | `--port 9000` |
 | `--host` | `0.0.0.0` | Bun: the address it listens on | `--host 127.0.0.1` |
 
