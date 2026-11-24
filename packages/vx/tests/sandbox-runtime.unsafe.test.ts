@@ -1023,6 +1023,37 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
   )
 
   it(
+    'a literal write grant that meant a directory: the note stands beside a violation too',
+    async () => {
+      // Bun reads `bunfig.toml` first: that refused read was reported, the
+      // note held back, and the fix line named the read alone (2026-11-24).
+      await addProject(fixture.root, 'dirgrant2', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: 'cat opt.cfg 2>/dev/null; mkdir -p dist && cp src/x.txt dist/out.txt',
+                  sandbox: { allow: { read: ['src/'], write: ['dist'] } },
+                },
+                inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      const outcome = r.outcomes.find((o) => o.node.id === 'dirgrant2#build')
+      const lines = outcome?.sandbox?.lines ?? []
+      expect(outcome?.status).toBe('failed')
+      expect(lines.some((l) => l.includes('opt.cfg'))).toBe(true)
+      expect(lines.some((l) => l.includes('spell the grant `dist/`'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a `dist/` write grant is a directory the task may fill',
     async () => {
       // `vfs.disk-space`: macOS 27's `cp` and bash ask it, and an ungranted

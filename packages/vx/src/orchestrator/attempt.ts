@@ -485,9 +485,10 @@ async function classifyExit(
   }
   // A placeholder the task never wrote is not its output: take it back
   // before the outputs are collected. On a failure it is also the one clue
-  // to a grant that meant a directory: say so beside the failure.
+  // to a grant that meant a directory: say so beside the failure, and
+  // beside any violation too (Bun's refused `bunfig.toml` read held it back).
   const untouched = await sweepPlaceholders(m.sandbox.placeholders)
-  if (res.exitCode !== 0 && violations.length === 0) {
+  if (res.exitCode !== 0) {
     for (const p of untouched) {
       violations.push({
         timestamp: new Date(),
