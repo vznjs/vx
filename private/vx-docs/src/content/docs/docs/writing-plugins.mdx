@@ -977,7 +977,9 @@ A layer needs the three `RemoteCacheLayer` methods, `has`, `get` and `put`:
 
 Off CI a run only reads a remote. To try your `put` on your machine, run with `--cache-policy local:rw,remote:rw`.
 
-An entry never changes: a `put` of a key the remote holds keeps the stored bytes. A remote error is a miss and one warning. vx bounds only a `get`, by `run.pluginTimeout` (then a miss), so give every request a deadline of its own:
+An entry never changes: a `put` of a key the remote holds keeps the stored bytes. A remote error is a miss and one warning.
+
+vx bounds only a `get`, by `run.pluginTimeout` (then a miss), so give every request a deadline of its own:
 
 ```ts
 import { definePlugin, defineWorkspace, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'

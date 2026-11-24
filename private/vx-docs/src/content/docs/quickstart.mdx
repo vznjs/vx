@@ -314,7 +314,9 @@ Read **restored-local** and `local 1↓`: vx copied `dist/` back from its cache.
 
 <Deeper level="details" title="Where the cache lives">
 
-`vx info` prints it. The saved outputs sit in `~/.vx/<workspace id>/cache`, shared by every checkout of this workspace. The workspace's run history sits in `.vx/cache`.
+`vx info` prints it. The workspace's run history sits in `.vx/cache`.
+
+Once the repository has a commit, the saved outputs sit in `~/.vx/<workspace id>/cache`, shared by every checkout of this workspace. Before that, they sit in `.vx/cache` too.
 
 To share the cache with CI and your team, see [Remote cache](../docs/remote-cache/).
 
