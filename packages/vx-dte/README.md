@@ -63,6 +63,8 @@ The relay reads nothing they say. Each worker and the orchestrator run a
 - With no adapter and no GitHub, set the same `VX_DTE_SECRET` on the run
   and on each worker.
 - A message the relay changes loses its worker; one it replays is dropped.
+- A worker's join the relay delivers again admits no second worker: under
+  its id it is dropped, under another it is refused.
 - The key never encrypts a message, so a leaked key opens no past run.
 
 You start workers with `local()`, `docker()`, `github()` and `gitlab()`.
