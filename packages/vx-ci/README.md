@@ -139,7 +139,12 @@ For example, a push to `feat-x` in `acme/app` names `acme/app:feat-x`.
 - It reads the ref (`GITHUB_REF`, `GITHUB_REF_NAME`, `GITHUB_HEAD_REF`,
   `GITHUB_REPOSITORY`) and the `GITHUB_EVENT_PATH` payload.
 - A push to the default branch names no scope. The default branch is
-  the workspace's `baseBranch`, else the event's.
+  the workspace's `baseBranch`, else the event's. A `schedule` event
+  names none, so its ref is the default branch: GitHub runs a schedule
+  only there.
+- A missing runner variable (`GITHUB_REF`, `GITHUB_REF_NAME`,
+  `GITHUB_REPOSITORY`, `GITHUB_EVENT_NAME`, `GITHUB_EVENT_PATH`) or an
+  event file it cannot read is named in a warning.
 - A push to, or a pull request from, a branch names
   `<owner>/<repo>:<branch>` of the repository the branch lives in.
 - So a fork's pull request names the fork.
@@ -209,6 +214,8 @@ reads GitLab's predefined variables.
 - For a fork, that project is `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`.
 - A merge train's pipeline (`CI_MERGE_REQUEST_EVENT_TYPE=merge_train`)
   builds what lands on the target, so it is trusted: no scope.
+- A missing `CI_PROJECT_PATH`, `CI_COMMIT_REF_NAME` or
+  `CI_DEFAULT_BRANCH` is named in a warning.
 - As on Actions, the scope keys only plugin entries.
 - `gitlab({ cacheScope: false })` (`GitlabPluginOptions`) turns it off.
   `VX_CACHE_SCOPE` overrides it.

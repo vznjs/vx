@@ -4,6 +4,7 @@
 // costs nothing on a laptop.
 import { type BranchFacts, branchCacheScope, definePlugin, type VxPlugin } from '@vzn/vx'
 import path from 'node:path'
+import { warnMissing } from './cache-scope.js'
 
 export interface GitlabPluginOptions {
   /**
@@ -34,10 +35,14 @@ export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined 
     },
     config(workspace, ctx) {
       if (options.cacheScope === false) return
+      // GitLab sets each on every job; one that lacks them lost them.
+      warnMissing(process.env, GITLAB_VARS, 'gitlab()', (m) => ctx.warn(m))
       ctx.setBranch(gitlabBranch(process.env, workspace.baseBranch))
     },
   })
 }
+
+const GITLAB_VARS = ['CI_PROJECT_PATH', 'CI_COMMIT_REF_NAME', 'CI_DEFAULT_BRANCH']
 
 /**
  * What a GitLab CI job knows of its branch. A merge request pipeline names its

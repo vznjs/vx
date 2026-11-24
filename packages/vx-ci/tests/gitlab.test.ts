@@ -174,3 +174,27 @@ it('off GitLab CI it declines; with cacheScope: false it names nothing; an unkno
     branchOf(job('feat-x'), { cachescope: true } as Parameters<typeof gitlab>[0]),
   ).rejects.toThrow('gitlab()')
 })
+
+// 2026-11-24: a job that lost a predefined variable fell back silently;
+// the variable it missed is named.
+it('a missing predefined variable is named', async () => {
+  const saved = GITLAB_KEYS.map((k) => [k, process.env[k]] as const)
+  for (const k of GITLAB_KEYS) delete process.env[k]
+  Object.assign(process.env, { GITLAB_CI: 'true', CI_DEFAULT_BRANCH: 'main' })
+  const warns: string[] = []
+  try {
+    await gitlab()!.config!(
+      {},
+      { workspaceRoot: '/ws', warn: (m) => warns.push(m), setBranch: () => {} },
+    )
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  }
+  expect(warns).toEqual([
+    '[vx] vx-ci: CI_PROJECT_PATH and CI_COMMIT_REF_NAME are not set, so gitlab() cannot name the branch',
+  ])
+  expect(await branchOf(job('feat-x'))).not.toBe('declined')
+})
