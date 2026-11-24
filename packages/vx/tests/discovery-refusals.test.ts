@@ -53,6 +53,10 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
     expect(await refusal({ dir: 'packages/a', reach: [1] })).toBe(
       `plugin 'p' named project {"dir":"packages/a","reach":[1]}${expected}`,
     )
+    // JSON cannot say a BigInt: the refusal was vx's own TypeError and stack.
+    expect(await refusal({ dir: 1n, name: undefined })).toBe(
+      `plugin 'p' named project { dir: 1n }${expected}`,
+    )
   })
 
   it('a name no task spec can address', async () => {

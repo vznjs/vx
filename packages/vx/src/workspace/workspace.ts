@@ -832,8 +832,17 @@ export async function discoveredProject(
     !dirList(entry.deps) ||
     !dirList(entry.reach)
   ) {
+    let shown: string
+    try {
+      shown = JSON.stringify(entry)
+    } catch {
+      // A BigInt or a cycle, which JSON cannot say; an unset field is
+      // left out, as JSON leaves it.
+      const set = Object.entries(entry).filter(([, v]) => v !== undefined)
+      shown = Bun.inspect(Object.fromEntries(set), { compact: true })
+    }
     throw new UserError(
-      `${where} ${JSON.stringify(entry)}: expected { dir: string, name?: string, deps?: string[], reach?: string[] }`,
+      `${where} ${shown}: expected { dir: string, name?: string, deps?: string[], reach?: string[] }`,
     )
   }
   const name = entry.name
