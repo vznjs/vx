@@ -26,16 +26,26 @@ vx run build test lint --all
 
 ## Add `local()`
 
-Give `dte()` one group of workers, here named `linux`. `local()` starts each worker as a process in its own **git worktree**: a second checkout of your workspace, made by git.
+Add `dte()` beside the plugins and pipelines you have. Give it one group of workers, here named `linux`.
 
-```ts title=".vx/workspace.ts" ins={2,8-21}
+`local()` starts each worker as a process in its own **git worktree**: a second checkout of your workspace, made by git.
+
+```ts title=".vx/workspace.ts" ins={5,16-29}
 import { defineWorkspace } from '@vzn/vx/config'
-import { dte, local } from '@vzn/vx-dte'
+import { vxCache } from '@vzn/vx-cache'
+import { github } from '@vzn/vx-ci'
 import { bun } from '@vzn/vx-lockfile'
+import { dte, local } from '@vzn/vx-dte'
 
 export default defineWorkspace({
   plugins: [
     bun(),
+    github(),
+    vxCache({
+      url: 'https://vx-cache-server.acme.workers.dev',
+      issuer: 'https://token.actions.githubusercontent.com',
+      repository: 'acme/app',
+    }),
     dte({
       workers: {
         linux: {
@@ -51,6 +61,10 @@ export default defineWorkspace({
       adapter: local({ prepare: 'bun install' }),
     }),
   ],
+  pipelines: {
+    pr: { tasks: ['lint', 'test', 'build'], affected: true },
+    main: { tasks: ['lint', 'test', 'build'] },
+  },
 })
 ```
 
