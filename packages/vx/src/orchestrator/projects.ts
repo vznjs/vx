@@ -46,7 +46,7 @@ import {
   resolveCacheDir,
   validateWorkspace,
 } from '../workspace/index.js'
-import { configsEditedSinceLock, readsBesideLock } from '../memo/index.js'
+import { stampsBesideLock } from '../memo/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { workspaceFile } from '../handoff.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
@@ -493,15 +493,15 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // What each project's `project` plugins said they made it from, by
   // directory (`ProjectHookContext.read`): `vx lock` stamps them.
   const reads = hooks ? new Map<string, Set<string>>() : undefined
-  // The stamped reads, asked once a load; each file stat'd once a load.
-  let stamped: ReturnType<typeof readsBesideLock> | undefined
+  // The stamps beside the lock, read once a load; each file stat'd once a load.
+  let stamped: ReturnType<typeof stampsBesideLock> | undefined
   const statted = new Set<string>()
   // `moved`: gone, or there when the lock found it absent: edited either way.
   const pluginReads = async (
     digest: string,
     metas: readonly ProjectMeta[],
   ): Promise<{ moved: string[]; present: { file: string; size: number; mtimeMs: number }[] }> => {
-    const got = await (stamped ??= readsBesideLock(workspaceRoot, args.cacheDir, digest))
+    const got = await (stamped ??= stampsBesideLock(workspaceRoot, args.cacheDir, digest))
     if (got === undefined) return { moved: [], present: [] }
     const files = metas.flatMap((m) => {
       const dir = lockKey(workspaceRoot, m.dir)
@@ -522,6 +522,14 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       }),
     )
     return { moved: moved.sort(), present }
+  }
+  const editedSinceLock = async (
+    digest: string,
+    files: readonly { file: string; size: number; mtimeMs: number }[],
+  ): Promise<string[]> => {
+    if (files.length === 0) return []
+    const got = await (stamped ??= stampsBesideLock(workspaceRoot, args.cacheDir, digest))
+    return got === undefined ? [] : got.edited(files)
   }
   while (pending.length > 0) {
     const round = pending.splice(0, pending.length)
@@ -594,7 +602,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         ? []
         : [
             ...mappedFrom.moved,
-            ...(await configsEditedSinceLock(workspaceRoot, args.cacheDir, digest, [
+            ...(await editedSinceLock(digest, [
               ...withFile.flatMap((m, i) =>
                 recordedOf(m) === undefined
                   ? [{ file: m.configPath, size: stats[i]!.size, mtimeMs: stats[i]!.mtimeMs }]

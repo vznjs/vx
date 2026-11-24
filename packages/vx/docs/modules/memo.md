@@ -300,7 +300,7 @@ export class IndexRemoteHits implements RemoteHits {}
 `vx lock` and a passing `vx lock --check` stamp each config file (size,
 mtime, xxh3 of its bytes) before evaluating it, and keep the stamps with
 the lock's digest in the cache dir's `config-stamps.json`. A run reads its
-configs from the lock, so `configsEditedSinceLock` names the in-scope
+configs from the lock, so `stampsBesideLock(…).edited` names the in-scope
 config files whose bytes moved since: the run refuses them with "run
 `vx lock`". Asked only while the lock's bytes are the stamped ones and the
 stamps are this workspace's (a pull, a clone or a cache dir another
@@ -324,18 +324,17 @@ export function writeConfigStamps(
   cacheDir: string,
   stamps: ConfigStamps,
 ): Promise<void>
-export function configsEditedSinceLock(
-  root: string,
-  cacheDir: string,
-  lock: string | undefined,
-  files: readonly { file: string; size: number; mtimeMs: number }[],
-): Promise<string[]>
-// The files a `project` plugin made each project's config from, as stamped beside the lock `lock`
-export function readsBesideLock(
+// The stamps beside the lock `lock`, one stat a load: undefined when none were taken here
+export interface LockStamps {
+  reads: Record<string, string[]> // the files a `project` plugin made each project's config from, by dir
+  present: (rel: string) => boolean // whether `rel` was there when `vx lock` ran
+  edited: (files: readonly { file: string; size: number; mtimeMs: number }[]) => Promise<string[]>
+}
+export function stampsBesideLock(
   root: string,
   cacheDir: string,
   lock: string,
-): Promise<Record<string, string[]> | undefined>
+): Promise<LockStamps | undefined>
 ```
 
 ## `src/memo/lockfile-memo.ts` — a lockfile claimant's parse

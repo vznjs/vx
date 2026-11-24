@@ -4,8 +4,8 @@
 // store opens; a memo is a speed-up, never the source of a cache answer.
 export {
   type ConfigStamps,
-  configsEditedSinceLock,
-  readsBesideLock,
+  type LockStamps,
+  stampsBesideLock,
   takeConfigStamps,
   writeConfigStamps,
   CONFIG_STAMPS_FILE,

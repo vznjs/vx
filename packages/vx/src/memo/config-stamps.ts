@@ -104,60 +104,56 @@ async function readStamps(cacheDir: string): Promise<Stamps | null> {
   return got.stamps.catch(() => null)
 }
 
-/**
- * The files a `project` plugin made each project's config from, by project
- * directory, as stamped beside the lock whose digest is `lock`, with the
- * ones present then (stamped); undefined when none were.
- */
-export async function readsBesideLock(
-  root: string,
-  cacheDir: string,
-  lock: string,
-): Promise<{ reads: Record<string, string[]>; present: (rel: string) => boolean } | undefined> {
-  const stamps = await readStamps(cacheDir)
-  if (stamps === null || stamps.root !== root || stamps.lock !== lock) return undefined
-  const { reads, configs } = stamps
-  if (typeof reads !== 'object' || reads === null || typeof configs !== 'object') return undefined
-  return { reads, present: (rel) => Object.hasOwn(configs, rel) }
+/** The stamps `vx lock` took beside one lock, read once (one stat) per load. */
+export interface LockStamps {
+  /** The files a `project` plugin made each project's config from, by project directory. */
+  reads: Record<string, string[]>
+  /** Whether `rel` was there (stamped) when `vx lock` ran. */
+  present: (rel: string) => boolean
+  /**
+   * The configs of `files` whose bytes differ from their stamp: size and
+   * mtime (the caller's stat) first, the bytes only when those moved or the
+   * stamp was taken inside the file's racy window (a same-size edit then
+   * keeps both). A commit since changes nothing: a config it moved under
+   * the same lock was not relocked.
+   */
+  edited: (files: readonly { file: string; size: number; mtimeMs: number }[]) => Promise<string[]>
 }
 
 /**
- * The configs of `files` whose bytes differ from the stamp taken beside
- * the lock whose digest is `lock`: size and mtime (the caller's stat)
- * first, the bytes only when those moved or the stamp was taken inside
- * the file's racy window (a same-size edit then keeps both). Empty when
- * no stamp was taken beside this lock in this workspace. A commit since
- * changes nothing: a config it moved under the same lock was not relocked.
+ * The stamps taken beside the lock whose digest is `lock` in this
+ * workspace; undefined when none were (a pull, a clone, another checkout's
+ * cache dir).
  */
-export async function configsEditedSinceLock(
+export async function stampsBesideLock(
   root: string,
   cacheDir: string,
-  lock: string | undefined,
-  files: readonly { file: string; size: number; mtimeMs: number }[],
-): Promise<string[]> {
-  if (lock === undefined || files.length === 0) return []
+  lock: string,
+): Promise<LockStamps | undefined> {
   const stamps = await readStamps(cacheDir)
-  if (
-    stamps === null ||
-    stamps.root !== root ||
-    stamps.lock !== lock ||
-    typeof stamps.configs !== 'object'
-  )
-    return []
-  const edited = await Promise.all(
-    files.map(async ({ file, size, mtimeMs }) => {
-      const rel = path.relative(root, file)
-      const was = stamps.configs[rel]
-      if (!Array.isArray(was)) return null
-      if (
-        size === was[0] &&
-        mtimeMs === was[1] &&
-        stamps.at - mtimeMs > racyWindowMs(mtimeMs, FILE_HASH_RACY_MS)
+  if (stamps === null || stamps.root !== root || stamps.lock !== lock) return undefined
+  const { reads, configs, at } = stamps
+  if (typeof configs !== 'object' || configs === null) return undefined
+  return {
+    reads: typeof reads === 'object' && reads !== null ? reads : {},
+    present: (rel) => Object.hasOwn(configs, rel),
+    edited: async (files) => {
+      const edited = await Promise.all(
+        files.map(async ({ file, size, mtimeMs }) => {
+          const rel = path.relative(root, file)
+          const was = configs[rel]
+          if (!Array.isArray(was)) return null
+          if (
+            size === was[0] &&
+            mtimeMs === was[1] &&
+            at - mtimeMs > racyWindowMs(mtimeMs, FILE_HASH_RACY_MS)
+          )
+            return null
+          const bytes = await readFile(file).catch(() => null)
+          return bytes !== null && xxh3hex(bytes) !== was[2] ? rel : null
+        }),
       )
-        return null
-      const bytes = await readFile(file).catch(() => null)
-      return bytes !== null && xxh3hex(bytes) !== was[2] ? rel : null
-    }),
-  )
-  return edited.filter((f) => f !== null)
+      return edited.filter((f) => f !== null)
+    },
+  }
 }
