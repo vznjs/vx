@@ -113,7 +113,8 @@ export interface LentAccess {
  * throw is a miss reported to `onError`. The bytes are the local
  * `<hash>.tar.zst` verbatim. See docs/modules/cache.md.
  *
- * Core bounds no call, so each request carries the layer's own deadline.
+ * Core bounds only `get` (`run.pluginTimeout`, then a miss), so each request
+ * carries the layer's own deadline too.
  */
 export interface RemoteCacheLayer {
   /**

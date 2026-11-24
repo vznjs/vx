@@ -65,7 +65,8 @@ function timerSettingMs(variable: string, defaultMs: number, zero = false): numb
 }
 
 /**
- * The bound on one end-of-run flush or teardown (`run.pluginTimeout`): a
+ * The bound on one end-of-run flush or teardown, and on a remote cache's
+ * answer to a download (`run.pluginTimeout`): a
  * plugin's flush cannot hold the run's exit hostage.
  */
 export function teardownTimeoutMs(): number {

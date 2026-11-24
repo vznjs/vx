@@ -295,8 +295,37 @@ describe('a hook that never settles', () => {
     ])
   }, 30_000)
 
-  // A `get` that never settles holds its task (docs/modules/cache.md); a
-  // `put` strands the run at its upload drain.
+  it("in a remote cache's get: a miss said by plugin, and the task runs here", async () => {
+    const root = await fixture(
+      `{ cache() { return { has: async () => null, get() { return new Promise(() => {}) }, put: async () => {} } } }`,
+    )
+    const r = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
+        'run',
+        'ok',
+        '--all',
+      ],
+      cwd: root,
+      env: {
+        ...process.env,
+        NO_COLOR: '1',
+        VX_CACHE_POLICY: 'local:rw,remote:r',
+        VX_RUN_PLUGIN_TIMEOUT: '200ms',
+      },
+    })
+    const err = new TextDecoder().decode(r.stderr) + new TextDecoder().decode(r.stdout)
+    expect([
+      r.exitCode,
+      /\[vx\] plugin 'org\/hang': download \S+ failed: get\(\) did not answer within 200 ms/.test(
+        err,
+      ),
+      await Bun.file(path.join(root, 'pkg-a/out.txt')).text(),
+    ]).toEqual([0, true, 'hi\n'])
+  }, 30_000)
+
+  // A `put` that never settles strands the run at its upload drain.
   it("in a remote cache's put: the plugin is named", async () => {
     const root = await fixture(
       `{ cache() { return { has: async () => null, get: async () => null, put() { return new Promise(() => {}) } } } }`,

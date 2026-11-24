@@ -126,7 +126,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'run.pluginTimeout',
     kind: { type: 'duration', timer: true, zero: true },
     default: "'3s'",
-    doc: "How long one plugin's end-of-run flush or teardown may take before the run ends without it; `'0ms'` waits for nothing not already done.",
+    doc: "How long one plugin's end-of-run flush or teardown, or a remote cache's answer to a download, may take before the run goes on without it (a download is then a miss); `'0ms'` waits for nothing not already done.",
   },
   {
     path: 'run.logs.captureHead',

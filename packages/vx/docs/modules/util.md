@@ -1481,7 +1481,7 @@ dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void // die of it, waiting (1 s 
   drain, the open-line wait, the ready and config notices, the self-signal
   window): `VX_TEST_<name>`, a duration, read per call; undocumented and
   in no settings table.
-- `teardownTimeoutMs` is 3 s (`run.pluginTimeout`, `VX_RUN_PLUGIN_TIMEOUT`).
+- `teardownTimeoutMs` is 3 s (`run.pluginTimeout`, `VX_RUN_PLUGIN_TIMEOUT`): it bounds a flush, a teardown and a remote `get` (`RemoteLane`).
 - `settleWithin` returns true when `p` fulfilled before the deadline,
   false when the deadline won; the caller decides whether a lost result
   is worth a warning. A rejection before the deadline is not a timeout:

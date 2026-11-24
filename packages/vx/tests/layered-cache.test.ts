@@ -422,6 +422,29 @@ describe('LayeredCache', () => {
     expect(await local.get('h-shape')).toBeNull()
   })
 
+  // A remote never breaks a run: a get that never settles held its task
+  // and the run forever. Bounded by `run.pluginTimeout`, then a miss said.
+  it('get() that never settles is a miss said once the plugin deadline passes', async () => {
+    const errors: Error[] = []
+    const hung = {
+      has: async () => ({}),
+      get: () => new Promise(() => {}),
+      put: async () => {},
+    } as unknown as RemoteCacheLayer
+    const prev = process.env['VX_RUN_PLUGIN_TIMEOUT']
+    process.env['VX_RUN_PLUGIN_TIMEOUT'] = '50ms'
+    try {
+      const layered = layeredOver(local, hung, { onRemoteError: (e) => errors.push(e) })
+      expect(await layered.get('h-hung', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
+    } finally {
+      if (prev === undefined) delete process.env['VX_RUN_PLUGIN_TIMEOUT']
+      else process.env['VX_RUN_PLUGIN_TIMEOUT'] = prev
+    }
+    expect(errors.map((e) => e.message)).toEqual([
+      'download h-hung failed: get() did not answer within 50 ms (run.pluginTimeout) — degraded to a miss',
+    ])
+  })
+
   it('get() that resolves the pre-stream bytes shape is refused, naming the new one', async () => {
     // No bytes union (streaming-remote-2026-09): a layer still resolving
     // `{ body: Uint8Array }` is an unported plugin, refused at the boundary

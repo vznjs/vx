@@ -8,6 +8,7 @@ import {
   machineParallelism,
   maskedLine,
   notify,
+  teardownTimeoutMs,
   thrownMessage,
 } from '../util/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
@@ -176,6 +177,28 @@ export class RemoteLane {
     }
   }
 
+  /**
+   * `answer`, or a throw once `run.pluginTimeout` passes: a remote never
+   * breaks a run, and a `get` that never settled held its task and the
+   * run forever. The throw is a miss, said as every failure is.
+   */
+  private bounded<T>(answer: Promise<T>): Promise<T> {
+    const ms = teardownTimeoutMs()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `get() did not answer within ${ms} ms (run.pluginTimeout) — degraded to a miss`,
+            ),
+          ),
+        ms,
+      )
+    })
+    return Promise.race([answer, late]).finally(() => clearTimeout(timer))
+  }
+
   get read(): boolean {
     return this.resolved.read
   }
@@ -296,7 +319,7 @@ export class RemoteLane {
     if (!fresh && this.absent.has(hash)) return null
     let result: unknown
     try {
-      result = await this.asked('get', () => this.remote.get(hash))
+      result = await this.bounded(this.asked('get', () => this.remote.get(hash)))
     } catch (err) {
       this.report('download', hash, err)
       return undefined
