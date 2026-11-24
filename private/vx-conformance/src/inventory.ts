@@ -1390,6 +1390,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'contract-versioning-doc',
     'conventional',
     'conventional-commits.unsafe',
+    'core-test-helpers-keyed.unsafe',
     'dependency-licenses.unsafe',
     'dependency-rules',
     'dependency-spec',

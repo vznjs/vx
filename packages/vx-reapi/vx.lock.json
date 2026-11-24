@@ -51,6 +51,9 @@
           "package.json",
           "tsconfig.json"
         ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
+        ],
         "env": [
           "VX_REAPI_TEST_ENDPOINT",
           "VX_REQUIRE_REAPI",
@@ -91,6 +94,9 @@
           "package.json",
           "tsconfig.json"
         ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
+        ],
         "env": [
           "VX_REAPI_TEST_ENDPOINT",
           "VX_REQUIRE_REAPI",
@@ -130,6 +136,9 @@
           "tests/**",
           "package.json",
           "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_REAPI_TEST_ENDPOINT",
@@ -226,6 +235,9 @@
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {

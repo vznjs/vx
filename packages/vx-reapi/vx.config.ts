@@ -100,6 +100,8 @@ const shard = (i: number, files: readonly string[]) => ({
   },
   inputs: {
     files: ['src/**', 'tests/**', 'package.json', 'tsconfig.json'],
+    // The tests import core's test helpers; ^build keys only core's src/**.
+    workspaceFiles: ['packages/vx/tests/helpers/**'],
     env: [
       'VX_REAPI_TEST_ENDPOINT',
       'VX_REQUIRE_REAPI',
@@ -194,6 +196,8 @@ export default defineProject({
       dependsOn: ['install'],
       inputs: {
         files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,

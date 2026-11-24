@@ -47,6 +47,9 @@
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {
@@ -134,6 +137,9 @@
           "tests/**",
           "package.json"
         ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
+        ],
         "env": [
           "VX_NX_MODULES",
           "VX_REQUIRE_NX",
@@ -191,6 +197,9 @@
           "src/**",
           "tests/**",
           "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",
@@ -250,6 +259,9 @@
           "tests/**",
           "package.json"
         ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
+        ],
         "env": [
           "VX_NX_MODULES",
           "VX_REQUIRE_NX",
@@ -307,6 +319,9 @@
           "src/**",
           "tests/**",
           "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",

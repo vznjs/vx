@@ -28,6 +28,8 @@ export default defineProject({
       dependsOn: ['install'],
       inputs: {
         files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,
@@ -74,7 +76,11 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
-      inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+      inputs: {
+        files: ['src/**', 'tests/**', 'package.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
+      },
       outputs: { files: [] },
       cache: true,
     },

@@ -46,6 +46,8 @@ const testShard = (i: number) => ({
   dependsOn: ['install'],
   inputs: {
     files: ['src/**', 'tests/**', 'package.json'],
+    // The tests import core's test helpers; ^build keys only core's src/**.
+    workspaceFiles: ['packages/vx/tests/helpers/**'],
     env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],
   },
   outputs: { files: [] },
@@ -80,6 +82,8 @@ export default defineProject({
       dependsOn: ['install'],
       inputs: {
         files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,
