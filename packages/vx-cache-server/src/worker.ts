@@ -11,6 +11,7 @@ import {
   parseAllow,
   Refusal,
 } from '@vzn/vx-devtools'
+import { isCount } from './protocol.js'
 import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
@@ -137,7 +138,13 @@ export function r2Blobs(
       const key = keyOf(name)
       const hit = await (await cache).match(key)
       // No mark from this copy: it can outlive R2's.
-      if (hit?.body) return { body: hit.body, size: Number(hit.headers.get('content-length')) }
+      if (hit?.body) {
+        const length = hit.headers.get('content-length')
+        const size = length === null || length.trim() === '' ? Number.NaN : Number(length)
+        // Number(null) is 0: a client held to that read every hit as a miss.
+        if (isCount(size)) return { body: hit.body, size }
+        await hit.body.cancel()
+      }
       const o = await again(() => bucket.get(name))
       if (o === null) {
         // R2 let it go before its expiry (a deletion by hand): the next
