@@ -6,6 +6,8 @@
 // run reads that and maps nothing. `turbo()` and `nx()` share this
 // skeleton; what differs is only how the mapping is made.
 
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { definePlugin, type ProjectHookContext, type VxPlugin } from '@vzn/vx'
 import { type AdoptionMapping, cachedMapping, codeId } from './mapping-cache.js'
 import { warnGaps } from './plugin-gaps.js'
@@ -64,6 +66,10 @@ export function adoptionPlugin(
   // Turbo's `concurrency`) that the workspace itself leaves unset.
   // `discover`: a project the tool has that no member glob lists.
   stages: Pick<VxPlugin, 'config' | 'discover'> = {},
+  // Each package's own files the mapping reads (`package.json`'s scripts,
+  // `project.json`), named to core with `reads` so a run refuses once one
+  // changes, naming `vx lock` (`ProjectHookContext.read`).
+  own: readonly string[] = [],
 ): VxPlugin {
   // One mapping per pass (`vx lock`, `--check`), not per process: the workspace
   // module — and so this plugin instance — can outlive a pass, and a mapping
@@ -75,6 +81,16 @@ export function adoptionPlugin(
   let warned = false
   const plugin = definePlugin(meta, {
     async project(config, ctx) {
+      // A run reads the lock, never these: an edit with no `vx lock` ran the
+      // old command, green.
+      for (const f of reads) {
+        const file = path.join(ctx.workspaceRoot, f)
+        if (existsSync(file)) ctx.read(file)
+      }
+      for (const f of own) {
+        const file = path.join(ctx.dir, f)
+        if (existsSync(file)) ctx.read(file)
+      }
       if (mappedFor !== ctx.projects) {
         mappedFor = ctx.projects
         // The key's other reads overlap the plugin's own.

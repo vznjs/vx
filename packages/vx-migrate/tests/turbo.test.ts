@@ -1248,6 +1248,7 @@ describe('the mapping reads the projects the run has', () => {
       dir: ghost.dir,
       projects: [ghost],
       lock: false,
+      read() {},
     })
     expect(config.tasks?.build?.exec?.command).toBe('echo ghost')
   })
@@ -1513,7 +1514,7 @@ describe('turbo() under vx lock', () => {
   // the lock blindly." A run mapped turbo.json and the scripts afresh, so
   // an edit ran with no `vx lock`.
   it(
-    'a run follows the mapping vx lock made: an edit maps only at the next vx lock',
+    'a run refuses an edit vx lock has not mapped, naming the files and vx lock',
     async () => {
       expect(vx('lock').code).toBe(0)
       const kept = await Array.fromAsync(
@@ -1524,9 +1525,12 @@ describe('turbo() under vx lock', () => {
       // Unreadable to the mapper: a run that mapped would refuse it.
       await writeFile(path.join(root, 'turbo.json'), '{ not json')
       const stale = vx('run', 'lib#build', '--no-cache')
-      expect({ code: stale.code, err: stale.err }).toEqual({ code: 0, err: '' })
+      expect(stale.code).toBe(1)
+      expect(stale.err).toContain(
+        'packages/lib/package.json, turbo.json changed since the last `vx lock` — run `vx lock`',
+      )
       const lib = path.join(root, 'packages', 'lib', 'dist', 'lib.js')
-      expect(await Bun.file(lib).text()).toBe('lib\n')
+      expect(await Bun.file(lib).exists()).toBe(false)
       // Nothing was mapped, so nothing was kept.
       expect(
         await Array.fromAsync(

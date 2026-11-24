@@ -111,7 +111,8 @@ vx lock --check  # name each package the mapping now says otherwise for
 - A package with no `vx.config` is included.
 - A run reads that record and maps nothing. It reads no `turbo.json`, manifest, git or environment for the mapping.
 - So an edit to `turbo.json` or a script runs only after the next `vx lock`.
-- A run follows the record blindly. A package added since has no tasks until `vx lock`.
+- Until then a run on this machine refuses: `turbo.json changed since the last \`vx lock\` — run \`vx lock\``, as for an edited `vx.config`.
+- A package added since has no tasks until `vx lock`.
 - Adding or dropping `turbo()` changes nothing until then either.
 
 ### What it does not do
@@ -122,7 +123,7 @@ vx lock --check  # name each package the mapping now says otherwise for
 - They are warnings instead of `TODO(vx-migrate)` comments. `bunx @vzn/vx-migrate --dry` lists the same set once.
 - The cost is `vx lock`'s: on a 1,000-package workspace with no `vx.config` files, the mapping takes about 42 ms.
 - A run pays none of it; it reads the lock.
-- Under `vx watch`, as on any run, a `package.json` script or `turbo.json` edit changes no task until `vx lock`.
+- Under `vx watch`, as on any run, a `package.json` script or `turbo.json` edit is refused until `vx lock`.
 
 <details><summary>Details</summary>
 
@@ -983,7 +984,7 @@ A different key, or no snapshot, runs `node_modules/.bin/nx graph --file=<snapsh
 - A touch without an edit, or a stray file a task writes at the root, does not.
 - Outside a git worktree the plugin falls back to the manifests' mtimes.
 - A run never exports, maps or reads the graph. `vx lock` records the projects the `discover` stage names and the edges Nx derives (`implicitDependencies`, an `import`).
-- So a `project.json` edit, a new edge included, changes what runs only after the next `vx lock`. `vx lock --check` names it.
+- So a `project.json` edit, a new edge included, changes what runs only after the next `vx lock`. Until then a run on this machine refuses, naming the file. An edit elsewhere (a source `import`, `vite.config.ts`) is not refused; `vx lock --check` names it.
 - That holds under `vx watch` as in a run: a re-lock is the next cycle's event.
 
 <details><summary>Details</summary>

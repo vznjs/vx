@@ -22,6 +22,12 @@ export interface ConfigStamps {
   at: number
   /** Each config, workspace-relative → [size, mtimeMs, xxh3 of its bytes]. */
   configs: Record<string, [number, number, string]>
+  /**
+   * The files a `project` plugin made each project's config from
+   * (`ProjectHookContext.read`), by project directory, workspace-relative;
+   * each one's stamp is in `configs`.
+   */
+  reads?: Record<string, string[]>
 }
 
 interface Stamps extends ConfigStamps {
@@ -96,6 +102,21 @@ async function readStamps(cacheDir: string): Promise<Stamps | null> {
     read.set(file, got)
   }
   return got.stamps.catch(() => null)
+}
+
+/**
+ * The files a `project` plugin made each project's config from, by project
+ * directory, as stamped beside the lock whose digest is `lock`; undefined
+ * when none were.
+ */
+export async function readsBesideLock(
+  root: string,
+  cacheDir: string,
+  lock: string,
+): Promise<Record<string, string[]> | undefined> {
+  const stamps = await readStamps(cacheDir)
+  if (stamps === null || stamps.root !== root || stamps.lock !== lock) return undefined
+  return typeof stamps.reads === 'object' && stamps.reads !== null ? stamps.reads : undefined
 }
 
 /**

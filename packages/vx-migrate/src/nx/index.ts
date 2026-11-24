@@ -252,6 +252,7 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
         return [...entries, ...named.filter((n) => !covered.has(n.dir))]
       },
     },
+    ['project.json', 'package.json'],
   )
 }
 

@@ -420,6 +420,14 @@ export interface ProjectHookContext extends BaseContext {
    * plugin's mapping could not say.
    */
   readonly lock: boolean
+  /**
+   * Names a file this project's config was made from (absolute or
+   * workspace-relative): `turbo.json`, a `package.json`'s scripts. A run
+   * reads the lock, never the file, so once it differs from what `vx lock`
+   * read here, a run refuses, naming `vx lock`, as for an edited vx.config.
+   * A file absent here is not watched.
+   */
+  read(file: string): void
 }
 
 export interface GraphHookContext extends BaseContext {

@@ -300,7 +300,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         )
       }
     }
-    const { projects, stage } = await loadProjects({
+    const { projects, stage, reads } = await loadProjects({
       workspaceRoot: root,
       cacheDir,
       plugins,
@@ -311,6 +311,21 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       warn,
       lock: true,
     })
+    // The files a `project` plugin made a config from, stamped as configs are
+    // (after the stage read them: one edited in between reads as unchanged).
+    if (reads !== undefined && reads.size > 0 && out.stamps !== undefined) {
+      const byDir: Record<string, string[]> = {}
+      for (const [dir, files] of reads)
+        byDir[lockKey(root, dir)] = [...files].map((f) => relPosix(root, f)).sort()
+      const read = await takeConfigStamps(root, [
+        ...new Set([...reads.values()].flatMap((f) => [...f])),
+      ])
+      const taken = out.stamps.taken
+      // A file absent is not watched: its stamp was not taken.
+      for (const dir of Object.keys(byDir))
+        byDir[dir] = byDir[dir]!.filter((f) => Object.hasOwn(read.configs, f))
+      out.stamps.taken = { ...taken, configs: { ...taken.configs, ...read.configs }, reads: byDir }
+    }
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     // Each project as the stages left it, and nothing of the steps there: a
     // run reads its name, its config after the `project` stage and its

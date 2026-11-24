@@ -5,6 +5,7 @@
 export {
   type ConfigStamps,
   configsEditedSinceLock,
+  readsBesideLock,
   takeConfigStamps,
   writeConfigStamps,
   CONFIG_STAMPS_FILE,

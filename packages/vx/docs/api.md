@@ -2266,6 +2266,7 @@ export interface ProjectHookContext extends BaseContext {
   readonly dir: string
   readonly projects: readonly ProjectMeta[]
   readonly lock: boolean
+  read(file: string): void
 }
 ```
 
