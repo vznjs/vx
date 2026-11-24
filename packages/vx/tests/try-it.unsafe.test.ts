@@ -280,11 +280,11 @@ function printedPlain(fence: string): string {
  * install. The guide's reader runs vx-migrate through bun x, so a release
  * also installs @vzn/vx and @vzn/vx-migrate; here both are installed
  * first, so a checkout installs neither and removes the vx-migrate a
- * native run no longer needs.
+ * native run no longer needs. A coloured title row is padded to the
+ * report's width.
  */
 function versionless(out: string): string {
   return out
-    // A coloured title row is padded to the report's width.
     .replace(/^  (vx-migrate|vx init) \S+ *$/m, '  $1')
     .replace(/^  ran +npm uninstall @vzn\/vx-migrate\n/m, '')
     .replace(
