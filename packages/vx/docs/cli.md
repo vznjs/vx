@@ -5415,7 +5415,8 @@ unreported`: the sandbox works but cannot report the reads it denies.
 - `cache store` is the store the next run opens, before a first run too.
   It is not one the index recorded under a home since moved.
 - After one `sudo vx run`, a store a run would not use (another user's)
-  reads as the cache dir, where runs keep the entries then.
+  reads `none: the cache dir holds the entries` too: runs keep them there
+  then.
 - A bare `vx cache clean` frees both sizes.
 - `cache entries` reads `unreadable: <why and the fix>` when SQLite cannot
   read the index. The history rows read 0; the report still prints, exit 0.
