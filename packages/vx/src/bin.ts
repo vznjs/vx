@@ -231,7 +231,9 @@ function listenForReadersGone(): void {
     if (err.code === 'EPIPE' || failed !== undefined) return
     failed = err
     const full = err.code === 'ENOSPC' || err.code === 'EDQUOT'
-    process.stderr.write(
+    const ui = require('./ui/index.js') as typeof import('./ui/index.js')
+    ui.say(
+      'error',
       `vx: write error on stdout: ${err.message}${full ? ' — the disk it goes to is full' : ''}\n`,
     )
   })
