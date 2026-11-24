@@ -180,7 +180,7 @@ export function paint(style: Style, text: string, c: ColorSupport, bold = false)
 /** A meter's cells: 50, or fewer so the bar fits a narrower terminal. */
 export function barWidth(c: ColorSupport): number {
   const columns = c.columns
-  return columns === undefined ? BAR_MAX : Math.max(10, Math.min(BAR_MAX, columns - BAR_LABEL))
+  return columns === undefined ? BAR_MAX : Math.max(1, Math.min(BAR_MAX, columns - BAR_LABEL))
 }
 
 /** A rule's width: flush with the bars beside their labels. */

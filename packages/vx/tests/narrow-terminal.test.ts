@@ -50,22 +50,22 @@ const footer = (columns?: number): string[] =>
 const furniture = (lines: string[]): string[] => lines.filter((l) => /[▰▱]|^ {2}Summary/.test(l))
 
 describe('on a terminal narrower than the footer', () => {
-  it.each([40, 50, 61])('every bar and rule fits %i columns', (columns) => {
+  it.each([20, 40, 50, 61])('every bar and rule fits %i columns', (columns) => {
     const rows = furniture(footer(columns))
     expect(rows.length).toBe(4)
     for (const row of rows) expect(row.length).toBeLessThanOrEqual(columns)
   })
 
-  it('a failed task frame’s section rule fits too', () => {
+  it.each([20, 40])('a failed task frame’s section rule fits %i columns too', (columns) => {
     const block = formatTaskBlock(
       node('b#build'),
       outcome('b#build', 'failed'),
       { output: [{ text: 'boom\n', err: true }] },
-      { enabled: false, columns: 40 },
+      { enabled: false, columns },
     )
     const rules = block.split('\n').filter((l) => l.startsWith('├─'))
     expect(rules.length).toBe(1)
-    expect(rules[0]!.length).toBeLessThanOrEqual(40)
+    expect(rules[0]!.length).toBeLessThanOrEqual(columns)
   })
 
   it('CONTROL: off a terminal and on a wide one the bars keep their 62 columns', () => {

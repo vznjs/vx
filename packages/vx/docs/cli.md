@@ -7065,7 +7065,7 @@ kept server's own output follows it.
 
 **Narrow terminals.** The footer is 62 columns: a 12-column gutter and
 50-cell bars. On a narrower terminal the bars and a frame's section
-rules shrink, so none wraps.
+rules shrink, so none wraps, down to 13 columns.
 
 Off a terminal they keep their width.
 
