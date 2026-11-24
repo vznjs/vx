@@ -117,7 +117,7 @@ over (in order):
    the resolved config (step 3), their _output_ is resolved live every
    run. Folded with the command count + each `command\0output` pair.
 7. **`inputs.workspaceRuntime` resolved output** — same as step
-   8 but commands run at the **workspace root**, and the pairs fold
+   6 but commands run at the **workspace root**, and the pairs fold
    into a **distinct namespace** (`ws-runtime-values:`) so an identical
    `(command, output)` never aliases the project-cwd `runtime` values.
 8. **Filtered upstream task cache hashes** — every upstream task's
