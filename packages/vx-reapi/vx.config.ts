@@ -25,6 +25,7 @@ const SHARDS: readonly (readonly string[])[] = [
   ],
   [
     'encoding',
+    'executor-hostile-cas',
     'executor-no-stale-replay',
     'factory-capabilities',
     'merkle',
