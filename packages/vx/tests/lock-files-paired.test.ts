@@ -7,7 +7,7 @@ import { mkdirSync } from 'node:fs'
 import { readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { runLockPath } from '../src/orchestrator/run-lock.js'
+import { holdLockFiles, runLockPath } from '../src/orchestrator/run-lock.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -74,4 +74,35 @@ it('a run started between the two renames of `vx lock` reads both new files', as
   expect(out).not.toContain('holds other projects')
   expect(code).toBe(0)
   expect(out).toMatch(/success .* extra#say/)
+}, 30_000)
+
+it('`vx lock` waits for a run reading the locks, even on an empty lock file', async () => {
+  const file = `${runLockPath(root)}-files`
+  mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  await writeFile(file, '')
+  const RUN_LOCK = path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'run-lock.ts')
+  const reader = Bun.spawn(
+    [
+      process.execPath,
+      '-e',
+      `const { holdLockFiles } = await import(${JSON.stringify(RUN_LOCK)})
+       await holdLockFiles(${JSON.stringify(root)}, 'shared')
+       console.log('held')
+       await Bun.sleep(60_000)`,
+    ],
+    { stdout: 'pipe', stderr: 'inherit' },
+  )
+  const out = reader.stdout.getReader()
+  expect(new TextDecoder().decode((await out.read()).value)).toContain('held')
+  let taken = false
+  const writer = holdLockFiles(root, 'exclusive').then((release) => {
+    taken = true
+    return release
+  })
+  await Bun.sleep(500)
+  expect(taken).toBe(false)
+  reader.kill()
+  await reader.exited
+  ;(await writer)()
+  expect(taken).toBe(true)
 }, 30_000)
