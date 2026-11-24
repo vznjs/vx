@@ -19,13 +19,17 @@
       "additionalProperties": false,
       "required": ["name", "dir", "tags", "tasks"],
       "properties": {
-        "name": { "type": "string" },
+        "name": { "type": "string", "description": "the project name" },
         "dir": {
           "type": "string",
           "description": "relative to the workspace root, POSIX separators"
         },
-        "tags": { "$ref": "#/$defs/stringList" },
-        "tasks": { "type": "array", "items": { "type": "string" } }
+        "tags": { "$ref": "#/$defs/stringList", "description": "the project's tags" },
+        "tasks": {
+          "type": "array",
+          "description": "the task names it declares",
+          "items": { "type": "string" }
+        }
       }
     },
     "project": {
@@ -33,16 +37,23 @@
       "additionalProperties": false,
       "required": ["name", "dir", "config"],
       "properties": {
-        "name": { "type": "string" },
-        "dir": { "type": "string" },
+        "name": { "type": "string", "description": "the project name" },
+        "dir": {
+          "type": "string",
+          "description": "relative to the workspace root, POSIX separators"
+        },
         "config": {
           "type": ["object", "null"],
           "description": "null when the project has no vx config and no plugin gave it one",
           "additionalProperties": false,
           "properties": {
-            "name": { "type": "string" },
-            "tags": { "$ref": "#/$defs/stringList" },
-            "tasks": { "type": "object", "additionalProperties": { "$ref": "#/$defs/taskConfig" } }
+            "name": { "type": "string", "description": "the project name" },
+            "tags": { "$ref": "#/$defs/stringList", "description": "the project's tags" },
+            "tasks": {
+              "type": "object",
+              "description": "each task by name, resolved",
+              "additionalProperties": { "$ref": "#/$defs/taskConfig" }
+            }
           }
         }
       }
@@ -52,10 +63,13 @@
       "additionalProperties": false,
       "required": ["name", "dir", "task", "config"],
       "properties": {
-        "name": { "type": "string" },
-        "dir": { "type": "string" },
-        "task": { "type": "string" },
-        "config": { "$ref": "#/$defs/taskConfig" }
+        "name": { "type": "string", "description": "the project name" },
+        "dir": {
+          "type": "string",
+          "description": "the project's directory, relative to the workspace root, POSIX separators"
+        },
+        "task": { "type": "string", "description": "the task name" },
+        "config": { "$ref": "#/$defs/taskConfig", "description": "the task's resolved config" }
       }
     },
     "stringList": { "type": "array", "items": { "type": "string" } },
@@ -63,37 +77,74 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "description": { "type": "string" },
-        "dependsOn": { "$ref": "#/$defs/stringList" },
+        "description": { "type": "string", "description": "as declared; absent when none" },
+        "dependsOn": {
+          "$ref": "#/$defs/stringList",
+          "description": "the tasks it depends on, as declared"
+        },
         "exec": {
           "type": "object",
+          "description": "how and where it runs; absent on a group",
           "additionalProperties": false,
           "required": ["command"],
           "properties": {
-            "command": { "type": "string" },
-            "remote": { "enum": [true, false, "only"] },
+            "command": {
+              "type": "string",
+              "description": "the shell command, run from the project's directory"
+            },
+            "remote": {
+              "enum": [true, false, "only"],
+              "description": "false: only this machine; only: only a remote worker; true: either"
+            },
             "timeout": { "type": "string", "description": "a duration as written, like '30s'" },
-            "retries": { "type": "integer" },
+            "retries": {
+              "type": "integer",
+              "description": "max additional attempts after a failure"
+            },
             "env": {
               "type": "object",
+              "description": "the variables it sees",
               "additionalProperties": false,
               "properties": {
-                "passThrough": { "$ref": "#/$defs/stringList" },
-                "define": { "type": "object", "additionalProperties": { "type": "string" } },
-                "secret": { "$ref": "#/$defs/stringList" }
+                "passThrough": {
+                  "$ref": "#/$defs/stringList",
+                  "description": "names copied from the shell; not in the key"
+                },
+                "define": {
+                  "type": "object",
+                  "description": "fixed values set for the task; in the key",
+                  "additionalProperties": { "type": "string" }
+                },
+                "secret": {
+                  "$ref": "#/$defs/stringList",
+                  "description": "names whose values are masked (***) in output"
+                }
               }
             },
             "persistent": {
               "type": "object",
+              "description": "a long-running task, like a dev server",
               "additionalProperties": false,
-              "properties": { "readyWhen": { "type": "string" } }
+              "properties": {
+                "readyWhen": {
+                  "type": "string",
+                  "description": "a regex; the first output line it matches marks it ready"
+                }
+              }
             },
-            "interactive": { "type": "boolean" },
+            "interactive": {
+              "type": "boolean",
+              "description": "it reads the terminal: a prompt, a REPL"
+            },
             "platforms": {
               "type": "array",
+              "description": "the machines it can run on, any of them",
               "items": { "enum": ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"] }
             },
-            "worker": { "type": "string" },
+            "worker": {
+              "type": "string",
+              "description": "the worker type a distributed run runs it on"
+            },
             "sandbox": {
               "type": "object",
               "description": "as declared; its fields are the `exec.sandbox` section of the config schema"
@@ -102,36 +153,72 @@
         },
         "inputs": {
           "type": "object",
+          "description": "what it reads, its key; absent when not declared",
           "additionalProperties": false,
           "required": ["files"],
           "properties": {
-            "files": { "$ref": "#/$defs/stringList" },
-            "workspaceFiles": { "$ref": "#/$defs/stringList" },
-            "env": { "$ref": "#/$defs/stringList" },
-            "tasks": { "$ref": "#/$defs/stringList" },
-            "runtime": { "$ref": "#/$defs/stringList" },
-            "workspaceRuntime": { "$ref": "#/$defs/stringList" },
+            "files": {
+              "$ref": "#/$defs/stringList",
+              "description": "globs in the project's directory"
+            },
+            "workspaceFiles": {
+              "$ref": "#/$defs/stringList",
+              "description": "globs from the workspace root"
+            },
+            "env": {
+              "$ref": "#/$defs/stringList",
+              "description": "variable names whose values are keyed"
+            },
+            "tasks": {
+              "$ref": "#/$defs/stringList",
+              "description": "the upstream tasks whose keys fold into its key, as written; absent: all of them"
+            },
+            "runtime": {
+              "$ref": "#/$defs/stringList",
+              "description": "commands whose output is keyed, run in the project's directory"
+            },
+            "workspaceRuntime": {
+              "$ref": "#/$defs/stringList",
+              "description": "commands whose output is keyed, run at the workspace root"
+            },
             "stability": {
               "type": "object",
+              "description": "what a run does when an input changes while the task runs",
               "additionalProperties": false,
               "properties": {
-                "strategy": { "enum": ["immutable", "mutable", "unchecked"] },
-                "severity": { "enum": ["warn", "error"] }
+                "strategy": {
+                  "enum": ["immutable", "mutable", "unchecked"],
+                  "description": "immutable: any write to an input skips the save; mutable: rewriting the same bytes is fine; unchecked: not checked"
+                },
+                "severity": {
+                  "enum": ["warn", "error"],
+                  "description": "warn: keep the result and say why; error: fail the task"
+                }
               }
             }
           }
         },
         "outputs": {
           "type": "object",
+          "description": "what it writes; absent when not declared",
           "additionalProperties": false,
           "required": ["files"],
           "properties": {
-            "files": { "$ref": "#/$defs/stringList" },
-            "workspaceFiles": { "$ref": "#/$defs/stringList" },
-            "clean": { "type": "boolean" }
+            "files": {
+              "$ref": "#/$defs/stringList",
+              "description": "globs in the project's directory"
+            },
+            "workspaceFiles": {
+              "$ref": "#/$defs/stringList",
+              "description": "globs from the workspace root"
+            },
+            "clean": {
+              "type": "boolean",
+              "description": "false keeps the outputs on a miss instead of deleting them first"
+            }
           }
         },
-        "cache": { "type": "boolean" }
+        "cache": { "type": "boolean", "description": "caching is on (opt-in)" }
       }
     }
   }

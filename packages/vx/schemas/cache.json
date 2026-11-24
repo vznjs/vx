@@ -9,7 +9,10 @@
       "additionalProperties": false,
       "required": ["dry", "evicted", "bytesFreed", "orphans", "orphanBytes"],
       "properties": {
-        "dry": { "type": "boolean" },
+        "dry": {
+          "type": "boolean",
+          "description": "true with --dry: nothing was removed, the counts are what a real clean would remove"
+        },
         "evicted": {
           "type": "integer",
           "description": "index entries evicted by the age / size policy"
@@ -22,7 +25,10 @@
           "type": "integer",
           "description": "artifacts and temp files with no index row, reaped"
         },
-        "orphanBytes": { "type": "integer" },
+        "orphanBytes": {
+          "type": "integer",
+          "description": "bytes on disk of those orphaned artifacts"
+        },
         "historyRows": {
           "type": "integer",
           "description": "run history and hash-memo rows older than 30 days, dropped; absent on a dry run or when none was"
@@ -38,16 +44,13 @@
       "additionalProperties": false,
       "required": ["dry", "cleared", "bytesFreed"],
       "properties": {
-        "dry": { "type": "boolean" },
+        "dry": { "type": "boolean", "description": "true with --dry: nothing was removed" },
         "cleared": {
           "type": "array",
           "items": { "type": "string" },
           "description": "the cache directory and the store deleted: workspace-relative inside it, else absolute"
         },
-        "bytesFreed": {
-          "type": "integer",
-          "description": "bytes under those directories"
-        }
+        "bytesFreed": { "type": "integer", "description": "bytes under those directories" }
       }
     }
   }

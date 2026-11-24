@@ -222,7 +222,7 @@ beforeAll(async () => {
   // so a setting's source reads \`plugin\` (the schema refused it).
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', "{ setup() {}, config(ws) { ws.run = { ...ws.run, timeout: '9m' } } }")}, ${edgesSource({ app: ['lib'] })}] }\n`,
+    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', "{ setup() {}, config(ws) { ws.run = { ...ws.run, timeout: '9m' } } }")}, ${edgesSource({ app: ['lib'] })}], pipelines: { ci: { tasks: ['build'], filter: ['app...'] } } }\n`,
   )
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
   expect(vx(['run', 'lib#stamp']).code).toBe(0)
@@ -331,6 +331,10 @@ beforeAll(async () => {
   expect(dry.code).toBe(0)
   printed.push({ what: 'vx run --dry --format json', out: dry.out })
   outputs['plan']!.push(JSON.parse(dry.out))
+  const piped = vx(['pipeline', 'ci', '--dry', '--format', 'json'])
+  expect(piped.code).toBe(0)
+  printed.push({ what: 'vx pipeline --dry --format json', out: piped.out })
+  outputs['plan']!.push(JSON.parse(piped.out))
   // What a workspace with two executors and a remote shows, built by hand:
   // the fields only those plugins provoke.
   const node = (id: string, description?: string) =>
@@ -519,6 +523,21 @@ describe('read verbs hold their --format json to a checked-in schema', () => {
     expect(
       validate(schema('info'), { ...facts, workers: { ...facts.workers, source: 'env' } }),
     ).toEqual([])
+  })
+
+  // A tool author reads a field's meaning from its schema: one with only a
+  // type left them to guess what `keys` or `declared` counts.
+  it('every field a schema declares says what it holds', () => {
+    const bare: string[] = []
+    const walk = (node: unknown, at: string): void => {
+      if (node === null || typeof node !== 'object') return
+      const o = node as Schema
+      for (const [k, v] of Object.entries((o['properties'] ?? {}) as Record<string, Schema>))
+        if (typeof v['description'] !== 'string' || v['description'] === '') bare.push(`${at}/${k}`)
+      for (const [k, v] of Object.entries(o)) walk(v, `${at}/${k}`)
+    }
+    for (const verb of VERBS) walk(schema(verb), verb)
+    expect(bare).toEqual([])
   })
 
   it('every object a schema declares closes its key set', () => {

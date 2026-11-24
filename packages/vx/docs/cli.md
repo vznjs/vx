@@ -4536,22 +4536,27 @@ tasks.
 
 ## Machine-readable output
 
-`vx show`, `vx info`, `vx why`, `vx last` and `vx cache clean` take
-`--format json`. Each prints one JSON document on one line.
+These take `--format json` and print one JSON document on one line:
 
-Each document's shape is a JSON Schema shipped with the package:
+| Command                             | Schema               |
+| ----------------------------------- | -------------------- |
+| `vx show`                           | `schemas/show.json`  |
+| `vx info`                           | `schemas/info.json`  |
+| `vx why`                            | `schemas/why.json`   |
+| `vx last`                           | `schemas/last.json`  |
+| `vx cache clean`                    | `schemas/cache.json` |
+| `vx lock --check`                   | `schemas/lock.json`  |
+| `vx run --dry`, `vx pipeline --dry` | `schemas/plan.json`  |
+| `vx init --dry`                     | `schemas/init.json`  |
+| `vx docs`                           | `schemas/docs.json`  |
+| any of them, refused                | `schemas/error.json` |
 
-| Verb             | Schema               |
-| ---------------- | -------------------- |
-| `vx show`        | `schemas/show.json`  |
-| `vx info`        | `schemas/info.json`  |
-| `vx why`         | `schemas/why.json`   |
-| `vx last`        | `schemas/last.json`  |
-| `vx cache clean` | `schemas/cache.json` |
+Each schema ships with the package. Every field in it has a `type` and a
+`description` that says what it holds.
 
 A run's result as JSON is `vx last --format json`, read from the run
 history after the run: one row per task, with its status, key and cache
-result. `vx run --dry --format json` prints the plan.
+result.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -4562,8 +4567,10 @@ result. `vx run --dry --format json` prints the plan.
 - Every object closes its key set, so a field vx adds is a schema
   change, never a surprise.
 - `tests/cli-json-schemas.test.ts` holds each verb's output to its
-  schema, each declared field to some output, and each object's keys to
-  the source type.
+  schema, each declared field to some output and to a description, and
+  each object's keys to the source type.
+- A renamed field fails those tests. Until 1.0 a rename ships with no
+  alias; the release notes name it.
 - `tests/cli-json-doc.test.ts` holds this page to the schemas: each
   `{ … }` a verb's section shows is an object its schema closes with
   those keys.

@@ -8,10 +8,16 @@
       "additionalProperties": false,
       "required": ["taskId", "runId", "why", "diff", "roots", "writers"],
       "properties": {
-        "taskId": { "type": "string" },
-        "runId": { "type": "string" },
-        "why": { "$ref": "#/$defs/why" },
-        "diff": { "$ref": "#/$defs/diff" },
+        "taskId": { "type": "string", "description": "project#task" },
+        "runId": { "type": "string", "description": "the run explained: --run, else the latest" },
+        "why": {
+          "$ref": "#/$defs/why",
+          "description": "the task's row in that run against the run before it"
+        },
+        "diff": {
+          "$ref": "#/$defs/diff",
+          "description": "which parts of its key moved since its previous run"
+        },
         "roots": {
           "type": "array",
           "description": "The tasks under moved upstreams whose own key components moved in this run, each with the chain from the asked task down to it.",
@@ -20,19 +26,36 @@
             "additionalProperties": false,
             "required": ["chain", "entries"],
             "properties": {
-              "chain": { "type": "array", "items": { "type": "string" } },
+              "chain": {
+                "type": "array",
+                "description": "project#task ids from the asked task down to the root",
+                "items": { "type": "string" }
+              },
               "entries": {
                 "type": "array",
+                "description": "the root's own key parts that moved",
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
                   "required": ["kind", "name", "change", "before", "after"],
                   "properties": {
-                    "kind": { "type": "string" },
-                    "name": { "type": "string" },
-                    "change": { "enum": ["added", "removed", "changed"] },
-                    "before": { "type": ["string", "null"] },
-                    "after": { "type": ["string", "null"] }
+                    "kind": { "type": "string", "description": "files, env, runtime, upstream, …" },
+                    "name": {
+                      "type": "string",
+                      "description": "the part: a file, a variable, a command, a task"
+                    },
+                    "change": {
+                      "enum": ["added", "removed", "changed"],
+                      "description": "added, removed or changed since the previous run"
+                    },
+                    "before": {
+                      "type": ["string", "null"],
+                      "description": "the part's hash in the previous run; null when added"
+                    },
+                    "after": {
+                      "type": ["string", "null"],
+                      "description": "the part's hash in this run; null when removed"
+                    }
                   }
                 }
               }
@@ -47,9 +70,16 @@
             "additionalProperties": false,
             "required": ["taskId", "file", "writers"],
             "properties": {
-              "taskId": { "type": "string" },
-              "file": { "type": "string" },
-              "writers": { "type": "array", "items": { "type": "string" } }
+              "taskId": {
+                "type": "string",
+                "description": "the task whose input moved: project#task"
+              },
+              "file": { "type": "string", "description": "the moved input, workspace-relative" },
+              "writers": {
+                "type": "array",
+                "description": "project#task ids running when it last changed",
+                "items": { "type": "string" }
+              }
             }
           }
         }
@@ -60,10 +90,13 @@
       "additionalProperties": false,
       "required": ["taskId", "why", "diff", "explanation"],
       "properties": {
-        "taskId": { "type": "string" },
-        "why": { "type": "null" },
-        "diff": { "type": "null" },
-        "explanation": { "$ref": "#/$defs/explanation" }
+        "taskId": { "type": "string", "description": "project#task" },
+        "why": { "type": "null", "description": "null: the history predates run ids" },
+        "diff": { "type": "null", "description": "null: the history predates run ids" },
+        "explanation": {
+          "$ref": "#/$defs/explanation",
+          "description": "the task's latest cache entry"
+        }
       }
     }
   ],
@@ -73,11 +106,12 @@
       "additionalProperties": false,
       "required": ["runId", "taskId", "found", "thisRun", "previousRun", "hashChanged", "note"],
       "properties": {
-        "runId": { "type": "string" },
-        "taskId": { "type": "string" },
-        "found": { "const": true },
+        "runId": { "type": "string", "description": "the run asked about" },
+        "taskId": { "type": "string", "description": "project#task" },
+        "found": { "const": true, "description": "always true: the task has a row in the run" },
         "thisRun": {
           "type": "object",
+          "description": "the task's row in this run",
           "additionalProperties": false,
           "required": ["hash", "status", "cacheHit", "restored", "cached", "startedAt"],
           "properties": {
@@ -85,8 +119,14 @@
               "type": "string",
               "description": "empty for a task that never ran (skipped)"
             },
-            "status": { "type": "string" },
-            "cacheHit": { "type": ["boolean", "null"] },
+            "status": {
+              "type": "string",
+              "description": "success, cache-hit, cache-hit-remote, failed, skipped or aborted"
+            },
+            "cacheHit": {
+              "type": ["boolean", "null"],
+              "description": "true when its outputs came from the cache; null when there was no cache outcome"
+            },
             "restored": {
               "type": ["boolean", "null"],
               "description": "on a hit: true when outputs were restored, false when up-to-date"
@@ -104,21 +144,27 @@
           "additionalProperties": false,
           "required": ["hash", "status", "cacheHit", "restored", "startedAt"],
           "properties": {
-            "hash": { "type": "string" },
-            "status": { "type": "string" },
-            "cacheHit": { "type": ["boolean", "null"] },
+            "hash": { "type": "string", "description": "its cache key then" },
+            "status": {
+              "type": "string",
+              "description": "success, cache-hit, cache-hit-remote, failed, skipped or aborted"
+            },
+            "cacheHit": {
+              "type": ["boolean", "null"],
+              "description": "true when its outputs came from the cache; null when there was no cache outcome"
+            },
             "restored": {
               "type": ["boolean", "null"],
               "description": "on a hit: true when outputs were restored, false when up-to-date"
             },
-            "startedAt": { "type": "integer" }
+            "startedAt": { "type": "integer", "description": "epoch ms" }
           }
         },
         "hashChanged": {
           "type": ["boolean", "null"],
           "description": "null when either run has no key"
         },
-        "note": { "type": "string" }
+        "note": { "type": "string", "description": "the verdict, plain text; may change" }
       }
     },
     "diff": {
@@ -134,27 +180,43 @@
         "note"
       ],
       "properties": {
-        "runId": { "type": "string" },
-        "taskId": { "type": "string" },
-        "found": { "type": "boolean" },
-        "previousRunId": { "type": ["string", "null"] },
+        "runId": { "type": "string", "description": "the run asked about" },
+        "taskId": { "type": "string", "description": "project#task" },
+        "found": { "type": "boolean", "description": "false when the task has no row in that run" },
+        "previousRunId": {
+          "type": ["string", "null"],
+          "description": "the run compared against; null when there is none"
+        },
         "entries": {
           "type": "array",
+          "description": "each key part that changed, appeared or went; unchanged ones are only counted",
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["kind", "name", "change", "before", "after"],
             "properties": {
               "kind": { "type": "string", "description": "files, env, runtime, upstream, …" },
-              "name": { "type": "string" },
-              "change": { "enum": ["added", "removed", "changed"] },
-              "before": { "type": ["string", "null"] },
-              "after": { "type": ["string", "null"] }
+              "name": {
+                "type": "string",
+                "description": "the part: a file, a variable, a command, a task"
+              },
+              "change": {
+                "enum": ["added", "removed", "changed"],
+                "description": "added, removed or changed since the previous run"
+              },
+              "before": {
+                "type": ["string", "null"],
+                "description": "the part's hash in the previous run; null when added"
+              },
+              "after": {
+                "type": ["string", "null"],
+                "description": "the part's hash in this run; null when removed"
+              }
             }
           }
         },
-        "unchangedCount": { "type": "integer" },
-        "note": { "type": "string" }
+        "unchangedCount": { "type": "integer", "description": "key parts that did not move" },
+        "note": { "type": "string", "description": "the verdict, plain text; may change" }
       }
     },
     "explanation": {
@@ -162,23 +224,24 @@
       "additionalProperties": false,
       "required": ["taskId", "project", "task", "latestEntry", "note"],
       "properties": {
-        "taskId": { "type": "string" },
-        "project": { "type": "string" },
-        "task": { "type": "string" },
+        "taskId": { "type": "string", "description": "project#task" },
+        "project": { "type": "string", "description": "the project name" },
+        "task": { "type": "string", "description": "the task name" },
         "latestEntry": {
           "type": ["object", "null"],
+          "description": "its newest cache entry; null when it has none",
           "additionalProperties": false,
           "required": ["hash", "command", "exitCode", "durationMs", "sizeBytes", "createdAt"],
           "properties": {
-            "hash": { "type": "string" },
-            "command": { "type": "string" },
-            "exitCode": { "type": "integer" },
-            "durationMs": { "type": "number" },
-            "sizeBytes": { "type": "integer" },
-            "createdAt": { "type": "integer" }
+            "hash": { "type": "string", "description": "the cache key" },
+            "command": { "type": "string", "description": "the command that made it" },
+            "exitCode": { "type": "integer", "description": "the command's exit code" },
+            "durationMs": { "type": "number", "description": "how long the command ran" },
+            "sizeBytes": { "type": "integer", "description": "the entry's size on disk" },
+            "createdAt": { "type": "integer", "description": "epoch ms" }
           }
         },
-        "note": { "type": "string" }
+        "note": { "type": "string", "description": "plain text; may change" }
       }
     }
   }

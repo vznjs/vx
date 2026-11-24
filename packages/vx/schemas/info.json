@@ -38,62 +38,106 @@
     "sandbox"
   ],
   "properties": {
-    "vx": { "type": "string" },
-    "vxPath": { "type": "string" },
-    "handedOffFrom": { "type": ["string", "null"] },
-    "bun": { "type": "string" },
-    "bunSupported": { "type": "boolean" },
-    "git": { "type": ["string", "null"] },
+    "vx": { "type": "string", "description": "vx's version" },
+    "vxPath": {
+      "type": "string",
+      "description": "the file that ran: the compiled binary, or the source entry"
+    },
+    "handedOffFrom": {
+      "type": ["string", "null"],
+      "description": "the vx that handed this call to the project's own (VX_HANDED_OFF); null when none did"
+    },
+    "bun": { "type": "string", "description": "Bun's version" },
+    "bunSupported": {
+      "type": "boolean",
+      "description": "false below the Bun vx needs (engines.bun)"
+    },
+    "git": {
+      "type": ["string", "null"],
+      "description": "git's version; null when git is not found"
+    },
     "gitStatusCache": {
       "type": ["object", "null"],
+      "description": "the git settings that speed up the status vx reads; null when git could not answer",
       "additionalProperties": false,
       "required": ["fsmonitor", "untrackedCache"],
-      "properties": { "fsmonitor": { "type": "boolean" }, "untrackedCache": { "type": "boolean" } }
+      "properties": {
+        "fsmonitor": { "type": "boolean", "description": "git's core.fsmonitor is on" },
+        "untrackedCache": { "type": "boolean", "description": "git's core.untrackedCache is on" }
+      }
     },
-    "workspaceRoot": { "type": "string" },
-    "projects": { "type": "integer" },
-    "tasks": { "type": "integer" },
+    "workspaceRoot": { "type": "string", "description": "the workspace root, absolute" },
+    "projects": { "type": "integer", "description": "how many projects the workspace has" },
+    "tasks": { "type": "integer", "description": "how many tasks they declare" },
     "plugins": {
       "type": "array",
+      "description": "each loaded plugin, in declared order",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["name", "seams"],
         "properties": {
-          "name": { "type": "string" },
-          "seams": { "type": "array", "items": { "type": "string" } }
+          "name": { "type": "string", "description": "the plugin's package name" },
+          "seams": {
+            "type": "array",
+            "description": "the pipeline stages it fills, in pipeline order",
+            "items": { "type": "string" }
+          }
         }
       }
     },
     "workers": {
       "type": "object",
+      "description": "the worker count a run defaults to, and where it comes from",
       "additionalProperties": false,
       "required": ["count", "source", "cores", "cpuQuota"],
       "properties": {
-        "count": { "type": "integer" },
-        "source": { "enum": ["env", "workspace", "cgroup", "cores"] },
-        "cores": { "type": "integer" },
-        "cpuQuota": { "type": ["number", "null"] }
+        "count": { "type": "integer", "description": "the worker count" },
+        "source": {
+          "enum": ["env", "workspace", "cgroup", "cores"],
+          "description": "env: VX_RUN_CONCURRENCY; workspace: run.concurrency; cgroup: the CPU quota; cores: the CPU count"
+        },
+        "cores": { "type": "integer", "description": "the cores this process may use" },
+        "cpuQuota": {
+          "type": ["number", "null"],
+          "description": "the cgroup CPU quota, in cores; null when none binds"
+        }
       }
     },
     "memory": {
       "type": "object",
+      "description": "what a memory-packing policy budgets",
       "additionalProperties": false,
       "required": ["usableBytes", "totalBytes", "cgroupLimitBytes"],
       "properties": {
-        "usableBytes": { "type": "integer" },
-        "totalBytes": { "type": "integer" },
-        "cgroupLimitBytes": { "type": ["integer", "null"] }
+        "usableBytes": {
+          "type": "integer",
+          "description": "totalBytes capped by cgroupLimitBytes"
+        },
+        "totalBytes": { "type": "integer", "description": "the machine's memory" },
+        "cgroupLimitBytes": {
+          "type": ["integer", "null"],
+          "description": "the cgroup memory limit; null when none binds"
+        }
       }
     },
-    "cacheDir": { "type": "string" },
-    "cacheDirBytes": { "type": "integer" },
-    "cacheStore": { "type": ["string", "null"] },
-    "cacheStoreBytes": { "type": ["integer", "null"] },
-    "cacheVersion": { "type": "string" },
-    "schemaVersion": { "type": "string" },
-    "cacheEntries": { "type": "integer" },
-    "cacheBytes": { "type": "integer" },
+    "cacheDir": { "type": "string", "description": "the cache dir, absolute" },
+    "cacheDirBytes": {
+      "type": "integer",
+      "description": "bytes on disk under cacheDir: the index and run history, and the entries when no store holds them"
+    },
+    "cacheStore": {
+      "type": ["string", "null"],
+      "description": "the shared store holding the entries; null when cacheDir holds them"
+    },
+    "cacheStoreBytes": {
+      "type": ["integer", "null"],
+      "description": "bytes on disk under cacheStore, shared by the workspace's checkouts; null with no store"
+    },
+    "cacheVersion": { "type": "string", "description": "the cache's version, part of every key" },
+    "schemaVersion": { "type": "string", "description": "the cache index's schema version" },
+    "cacheEntries": { "type": "integer", "description": "how many entries the local cache holds" },
+    "cacheBytes": { "type": "integer", "description": "their size in bytes" },
     "cacheIndexError": {
       "type": ["string", "null"],
       "description": "Why the cache index cannot be read, with the fix; null when it reads. While set, the counts it holds read 0."
@@ -106,8 +150,14 @@
         "additionalProperties": false,
         "required": ["value", "source"],
         "properties": {
-          "value": { "type": ["string", "number", "boolean", "null"] },
-          "source": { "enum": ["env", "workspace", "plugin", "default"] },
+          "value": {
+            "type": ["string", "number", "boolean", "null"],
+            "description": "the value a run takes; null for the default"
+          },
+          "source": {
+            "enum": ["env", "workspace", "plugin", "default"],
+            "description": "env: its variable; workspace: .vx/workspace; plugin: a config hook; default: none set it"
+          },
           "plugin": {
             "type": "string",
             "description": "the plugin whose config hook set it; only with source plugin"
@@ -121,33 +171,44 @@
     },
     "orphans": {
       "type": "object",
+      "description": "artifacts on disk no entry names; vx cache clean removes them",
       "additionalProperties": false,
       "required": ["artifacts", "bytes"],
-      "properties": { "artifacts": { "type": "integer" }, "bytes": { "type": "integer" } }
+      "properties": {
+        "artifacts": { "type": "integer", "description": "how many" },
+        "bytes": { "type": "integer", "description": "their size in bytes" }
+      }
     },
-    "runs24h": { "type": "integer" },
-    "hits24h": { "type": "integer" },
+    "runs24h": {
+      "type": "integer",
+      "description": "task runs recorded in the last 24 hours, hits included"
+    },
+    "hits24h": { "type": "integer", "description": "of runs24h, the cache hits" },
     "restored24h": {
       "type": "integer",
       "description": "of hits24h, the hits that restored outputs; the rest were up to date"
     },
     "flakyTasks": {
       "type": "array",
+      "description": "tasks the retained history shows failing on a key that had passed; empty when none",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["taskId", "project", "task", "keys", "passes", "failures"],
         "properties": {
-          "taskId": { "type": "string" },
-          "project": { "type": "string" },
-          "task": { "type": "string" },
-          "keys": { "type": "integer" },
-          "passes": { "type": "integer" },
-          "failures": { "type": "integer" }
+          "taskId": { "type": "string", "description": "project#task" },
+          "project": { "type": "string", "description": "the project name" },
+          "task": { "type": "string", "description": "the task name" },
+          "keys": {
+            "type": "integer",
+            "description": "distinct cache keys that failed after they had passed"
+          },
+          "passes": { "type": "integer", "description": "passes over those keys" },
+          "failures": { "type": "integer", "description": "failures over those keys" }
         }
       }
     },
-    "lockfile": { "type": "boolean" },
+    "lockfile": { "type": "boolean", "description": "whether .vx/projects.lock exists" },
     "lockError": {
       "type": ["string", "null"],
       "description": "Why a run refuses the lock that is there (run `vx lock`); null when a run reads it or there is none."
@@ -160,19 +221,32 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["code", "message"],
-          "properties": { "code": { "type": "string" }, "message": { "type": "string" } }
+          "properties": {
+            "code": { "type": "string", "description": "stable; the codes of schemas/error.json" },
+            "message": { "type": "string", "description": "plain text; may change" }
+          }
         }
       ]
     },
     "sandbox": {
       "type": "object",
+      "description": "whether this host can run exec.sandbox, and how many tasks declare one",
       "additionalProperties": false,
       "required": ["available", "reason", "declared", "untraced"],
       "properties": {
-        "available": { "type": "boolean" },
-        "reason": { "type": "string" },
-        "declared": { "type": "integer" },
-        "untraced": { "type": ["string", "null"] }
+        "available": {
+          "type": "boolean",
+          "description": "whether a task here can run with exec.sandbox"
+        },
+        "reason": { "type": "string", "description": "why no task here can; empty when available" },
+        "declared": {
+          "type": "integer",
+          "description": "how many loaded tasks declare exec.sandbox"
+        },
+        "untraced": {
+          "type": ["string", "null"],
+          "description": "why the sandbox cannot report the reads it denied; null when it can"
+        }
       }
     }
   }
