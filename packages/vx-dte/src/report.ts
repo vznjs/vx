@@ -96,6 +96,13 @@ export class RunReport<W extends RecordedWorker> {
   protected readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   protected ended = false
   protected endedAt = 0
+  /**
+   * When the job summary took the workers' figures: the footer reads them at
+   * the same instant. The summary goes out before teardown stops the workers,
+   * and figures taken after it (online 0.4s, booked 1.4) read otherwise than
+   * the summary's (324ms, 1.6).
+   */
+  private snapshotAt: number | undefined
   /** Workers that joined and left, for the footer. */
   protected readonly gone: W[] = []
   /** Of `gone`, those the run let go (`release`), not lost. */
@@ -569,10 +576,12 @@ export class RunReport<W extends RecordedWorker> {
    * before its teardown ends this run: then is its end, so one still here
    * was online until now (small#2 read online 1ms, booked 433802 of 4:
    * main, 2026-10-23). Each is `ok`, or `failed` when lost or faulty.
+   * `summary`: the summary's ask, whose instant the footer reads too.
    */
-  machines(): MachineReport[] {
+  machines(summary = false): MachineReport[] {
     const gone = new Set(this.gone)
-    const until = this.ended ? this.endedAt : performance.now()
+    const until = this.snapshotAt ?? (this.ended ? this.endedAt : performance.now())
+    if (summary) this.snapshotAt = until
     const report = (
       name: string,
       status: string,
@@ -723,7 +732,7 @@ export class RunReport<W extends RecordedWorker> {
     if (this.ended)
       for (const a of all) {
         resources(a.label, a.reported.cores, a.reported.memory, a.declared)
-        const st = a.usage.stats(a.cores, this.endedAt)
+        const st = a.usage.stats(a.cores, this.snapshotAt ?? this.endedAt)
         cpuMs += st.workCoreMs
         tasksMs += st.tasksUtilization * a.cores * st.workMs
         if (st.workerUtilization !== undefined)

@@ -1065,7 +1065,7 @@ export function dte(options: DteOptions = {}) {
               () => o.driftOf(depsOf),
               () => o.leastHeldMs(depsOf, sizes),
             ),
-          machines: () => o.machines(),
+          machines: () => o.machines(true),
           idealMs: () => o.idealMs(depsOf, sizes),
           advice: () => o.advice(depsOf, sizes),
           profile: () => o.profile(),

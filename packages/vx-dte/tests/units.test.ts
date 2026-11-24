@@ -1584,6 +1584,32 @@ it('books a worker the cores of a task from its start to its command’s end', a
   expect(booked).toBeLessThan(0.3)
 })
 
+// A local() run's job summary read online 324ms, idle 35ms, booked 1.6 for
+// a worker its footer read online 0.4s, idle 0.1s, booked 1.4: the summary
+// took the figures before teardown, the footer after.
+it('the job summary and the footer read one snapshot of each worker', async () => {
+  const h = await harness(new Map([node('t1')]))
+  const a = await h.worker(2)
+  await Bun.sleep(50)
+  void h.o.execute(h.req('t1'))
+  expect(await a.batches()).toEqual([['t1']])
+  await a.say({ type: 'ran', task: 't1' })
+  await Bun.sleep(50)
+  // As the job summary asks: the figures it is sent are the ones kept.
+  const [m] = h.o.machines(true)
+  await Bun.sleep(300)
+  await h.stop()
+  expect(h.o.machines()).toEqual([m!])
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  const s = (ms: number) => `${(ms / 1000).toFixed(1)}s`
+  expect(rows.find((r) => r.includes('online '))).toContain(
+    `online ${s(m!.onlineMs)} · busy ${s(m!.busyMs)} · idle ${s(m!.onlineMs - m!.busyMs)}`,
+  )
+  expect(rows.find((r) => r.includes('booked avg'))).toContain(
+    `booked avg ${m!.bookedAvg!.toFixed(1)}`,
+  )
+})
+
 it('says each worker’s machine busy average from the loads it sent', async () => {
   const h = await harness(new Map([node('t1')]))
   const a = await h.worker(4)
