@@ -91,22 +91,29 @@ describe('vx lock and what a key never sees', () => {
     )
   })
 
-  it('names a bundler variable inputs.env keys that the child never gets', async () => {
+  // inputs.env passes what it keys (M, 2026-11-25): nothing to say.
+  it('says nothing of a bundler variable inputs.env alone names', async () => {
     const r = await lock(
-      task(
-        'build',
-        { files: ['src/**'], env: ['VITE_API_URL', 'NODE_ENV', 'VITE_MODE', 'BUILD_ID'] },
-        {
-          define: { VITE_MODE: 'prod' },
-        },
-      ),
+      task('build', { files: ['src/**', '!.env*'], env: ['VITE_API_URL', 'NODE_ENV'] }),
+    )
+    expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+  })
+
+  it('names a bundler pattern only passThrough holds, and not one inputs.env keys', async () => {
+    const r = await lock(
+      [
+        task('build', { files: ['src/**', '!.env*'] }, { passThrough: ['VITE_*'] }),
+        task(
+          'keyed',
+          { files: ['src/**', '!.env*'], env: ['VITE_*'] },
+          { passThrough: ['VITE_*'] },
+        ),
+      ].join(', '),
     )
     expect(r.code).toBe(0)
-    expect(r.err).toContain(
-      'packages/app#build: inputs.env keys VITE_API_URL, NODE_ENV, which a bundler writes into its output, but the command never gets them — add them to exec.env.passThrough',
+    expect(r.err.trim()).toBe(
+      '! vx lock  packages/app#build: exec.env.passThrough forwards VITE_*, which a bundler writes into its output, and the key does not see it — add it to inputs.env',
     )
-    expect(r.err).not.toContain('VITE_MODE')
-    expect(r.err).not.toContain('BUILD_ID')
   })
 
   it('says nothing once the file is named, the name is keyed, or the task is not cached', async () => {

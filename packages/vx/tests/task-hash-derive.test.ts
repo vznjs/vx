@@ -33,7 +33,7 @@ import type { TaskInputComponent } from '../src/cache/index.js'
 import { createHashCache } from '../src/orchestrator/task-hash.js'
 import type { TaskConfig } from '../src/config.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
-import { relPosix } from '../src/util/index.js'
+import { forgetEnvMatches, relPosix } from '../src/util/index.js'
 import { VERSION } from '../src/version.js'
 
 // The fixture creates a real SQLite cache; under full-suite load the default
@@ -579,6 +579,55 @@ describe('computeTaskHash — the host values a key sees', () => {
     expect(await at('a', pass)).toBe(await at('b', pass))
     const keyed = { ...pass, inputs: { files: [], env: [name] } }
     expect(await at('a', keyed)).not.toBe(await at('b', keyed))
+  })
+
+  // A `*` pattern keys every variable it matches, by name and value; each
+  // key below is a run of its own, which matches the patterns afresh.
+  it('an inputs.env pattern keys each matching variable, and no other', async () => {
+    const prefix = `VX_PAT_${process.pid}_`
+    const names = [`${prefix}A`, `${prefix}B`, `VX_PATX_${process.pid}`]
+    const cfg = {
+      exec: { command: 'build', env: { passThrough: [`${prefix}*`] } },
+      inputs: { files: [], env: [`${prefix}*`] },
+    }
+    const at = async (env: Record<string, string>) => {
+      for (const n of names) delete process.env[n]
+      Object.assign(process.env, env)
+      forgetEnvMatches()
+      try {
+        return await key({ node: node({}, cfg) })
+      } finally {
+        for (const n of names) delete process.env[n]
+        forgetEnvMatches()
+      }
+    }
+    const base = await at({ [names[0]!]: '1' })
+    expect(await at({ [names[0]!]: '1', [names[2]!]: 'x' })).toBe(base)
+    expect(
+      new Set([
+        base,
+        await at({ [names[0]!]: '2' }),
+        await at({}),
+        await at({ [names[0]!]: '1', [names[1]!]: '1' }),
+        await at({ [names[0]!]: '', [names[1]!]: '1' }),
+      ]).size,
+    ).toBe(5)
+  })
+
+  // Patterns changed no key that names none: this one was taken before them.
+  it('STABILITY: a config with no pattern keeps the key it had', async () => {
+    const name = 'VX_DERIVE_PIN'
+    delete process.env[name]
+    const k = await key({
+      node: node(
+        {},
+        {
+          exec: { command: 'build', env: { passThrough: [name] } },
+          inputs: { files: [], env: [name] },
+        },
+      ),
+    })
+    expect(k).toBe('981c406b1fdb59fa')
   })
 })
 

@@ -34,6 +34,7 @@ import {
   hasControl,
   parseDependencySpec,
   DependencySpecError,
+  envPatternProblem,
 } from '../util/index.js'
 import {
   envName,
@@ -918,14 +919,10 @@ function validateExecEnv(env: unknown, where: string): void {
     // same text below: one refusal for the class.
     assertNoEnvNegation(passThrough as string[], `${where}.exec.env.passThrough`)
     assertOnce(passThrough as string[], `${where}.exec.env.passThrough`)
-    const wild = (passThrough as string[]).find((n) => BUN_GLOB_WILDCARDS.test(n))
-    if (wild !== undefined) {
-      throw new UserError(
-        `${where}.exec.env.passThrough: wildcards in env names are not supported ` +
-          `(got "${wild}") — list explicit env var names instead`,
-      )
+    for (const n of passThrough as string[]) {
+      if (assertEnvPattern(n, `${where}.exec.env.passThrough`)) continue
+      assertShellName(n, `${where}.exec.env.passThrough`)
     }
-    for (const n of passThrough as string[]) assertShellName(n, `${where}.exec.env.passThrough`)
   }
   const secret = (env as { secret?: unknown }).secret
   if (
@@ -1062,18 +1059,7 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
     }
     assertNoEnvNegation(envList as string[], `${where}.inputs.env`)
     assertOnce(envList as string[], `${where}.inputs.env`)
-    for (const name of envList as string[]) {
-      // Wildcards refused so a user never silently misses env vars they
-      // thought tracked: `VERCEL_*` is not expanded, and would otherwise
-      // fold '' for the literal name. An env name is no path, so the whole
-      // `Bun.Glob` alphabet stays refused.
-      if (BUN_GLOB_WILDCARDS.test(name)) {
-        throw new UserError(
-          `${where}.inputs.env: wildcards in env names are not supported ` +
-            `(got "${name}") — list explicit env var names instead`,
-        )
-      }
-    }
+    for (const name of envList as string[]) assertEnvPattern(name, `${where}.inputs.env`)
   }
   // Same for inputs.files.
   for (const g of (inputs as { files: unknown[] }).files) {
@@ -1742,7 +1728,7 @@ function assertNoEnvNegation(names: readonly string[], where: string): void {
   const neg = names.find((n) => n.startsWith('!'))
   if (neg !== undefined) {
     throw new UserError(
-      `${where}: "${neg}" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave ${neg.slice(1)} out`,
+      `${where}: "${neg}" is Turbo's exclusion from a wildcard — vx has none, so leave ${neg.slice(1)} out or narrow the pattern`,
     )
   }
 }
@@ -1987,6 +1973,23 @@ function specForm(spec: string): SpecForm {
  * shell identifier: `my.var` reached a task under macOS's bash and not on
  * Linux. Refused at load, where the config is named.
  */
+/**
+ * True when `name` is a `*` pattern, which it refuses unless sound. Every other
+ * glob character stays refused: `?`, `[]` and `{}` match nothing here, and a
+ * name holding one would key '' for a literal no variable has.
+ */
+function assertEnvPattern(name: string, field: string): boolean {
+  if (/[?[\]{}]/.test(name)) {
+    throw new UserError(
+      `${field}: ${JSON.stringify(name)} — \`*\` is the only wildcard in env names`,
+    )
+  }
+  if (!name.includes('*')) return false
+  const why = envPatternProblem(name)
+  if (why !== null) throw new UserError(`${field}: ${JSON.stringify(name)} ${why}`)
+  return true
+}
+
 function assertShellName(name: string, field: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     throw new UserError(

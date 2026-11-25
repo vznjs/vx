@@ -12,7 +12,15 @@ import { readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { memoParts, onlyAbsent, ownEnv, taskEnvSource, unread, xxh3hex } from '../util/index.js'
+import {
+  expandEnvNames,
+  memoParts,
+  onlyAbsent,
+  ownEnv,
+  taskEnvSource,
+  unread,
+  xxh3hex,
+} from '../util/index.js'
 import { VERSION } from '../version.js'
 import type { StableKey } from './stable-keys.js'
 import {
@@ -181,7 +189,7 @@ export function runKeysToken(args: RunKeysArgs): RunKeysAt | undefined {
         }
         files = token
       }
-      for (const name of inputs.env ?? []) envNames.add(name)
+      for (const name of expandEnvNames(inputs.env ?? [])) envNames.add(name)
     }
     ids.push(node.id)
     if (!nodeParts.push(node, args.hashCache, parts)) return undefined

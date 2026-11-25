@@ -102,7 +102,8 @@ over (in order):
 5. **`inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current
-   values; an unset name folds its bare name, with no `\0`, so unset
+   values, and a `*` pattern each name it matches in the run's
+   environment, sorted; an unset name folds its bare name, with no `\0`, so unset
    and set-to-empty are two keys (the child tells them apart:
    `passThrough` leaves an unset name out). A name holding a NUL or
    another control character is refused at load, and a value holding

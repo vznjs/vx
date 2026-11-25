@@ -7,6 +7,7 @@ import { type FoldMemo } from '../src/memo/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 import { readRunKeys, runKeysToken, writeRunKeys } from '../src/orchestrator/run-keys.js'
 import { createHashCache } from '../src/orchestrator/task-hash.js'
+import { forgetEnvMatches } from '../src/util/index.js'
 
 const dir = '/w/packages/a'
 
@@ -179,4 +180,31 @@ it('moves with the inputs.stability.strategy of the workspace and the variable',
   expect(token({ workspace: 'unchecked' })).not.toBe(token())
   expect(token({ run: 'unchecked' })).not.toBe(token())
   expect(token({ run: 'unchecked' })).not.toBe(token({ workspace: 'unchecked' }))
+})
+
+// A warm run that skips hashing must still see a variable an inputs.env
+// pattern matches come or go, or it replays the old key.
+it('moves when a variable an inputs.env pattern matches is set, changed or unset', () => {
+  const p = `VX_RUNPAT_${process.pid}_`
+  const cfg = (): TaskNode['config'] => ({
+    exec: { command: 'noop' },
+    inputs: { files: ['src/**'], env: [`${p}*`] },
+    outputs: { files: [] },
+    cache: true,
+  })
+  const at = (env: Record<string, string>) => {
+    for (const k of Object.keys(process.env)) if (k.startsWith(p)) delete process.env[k]
+    Object.assign(process.env, env)
+    forgetEnvMatches()
+    try {
+      return runKeysToken(args(nodesOf(cfg)))?.token
+    } finally {
+      for (const k of Object.keys(process.env)) if (k.startsWith(p)) delete process.env[k]
+      forgetEnvMatches()
+    }
+  }
+  const tokens = [at({}), at({ [`${p}A`]: '1' }), at({ [`${p}A`]: '2' }), at({ [`${p}B`]: '1' })]
+  expect(tokens.every((t) => t !== undefined)).toBe(true)
+  expect(new Set(tokens).size).toBe(4)
+  expect(at({ [`VX_RUNPATX_${process.pid}`]: '1' })).toBe(tokens[0])
 })

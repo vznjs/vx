@@ -67,8 +67,9 @@
           : `Nothing reads it, so it only re-keys the task. Leave it out unless that is the goal.`
       } else {
         const env: string[] = []
-        if (reads) env.push(`${k('passThrough')}: [${s(name)}]`)
-        if (reads && secret && !masked(name)) env.push(`${k('secret')}: [${s(name)}]`)
+        // inputs.env passes what it keys: passThrough only for a value that changes nothing.
+        if (reads && !result) env.push(`${k('passThrough')}: [${s(name)}]`)
+        if ((reads || result) && secret && !masked(name)) env.push(`${k('secret')}: [${s(name)}]`)
         if (env.length) lines.push(`${k('exec')}: { ${k('env')}: { ${env.join(', ')} } },`)
         if (result) lines.push(`${k('inputs')}: { ${k('env')}: [${s(name)}] },`)
         if (!lines.length) {
@@ -77,12 +78,11 @@
           return
         }
         const parts = [
-          reads ? `the command gets ${name}` : `the command never sees ${name}`,
+          reads || result ? `the command gets ${name}` : `the command never sees ${name}`,
           result ? 'a new value re-runs the task' : 'a new value replays the cached result',
         ]
         if (secret) parts.push(masked(name) ? 'its name masks it as ***' : 'exec.env.secret masks it as ***')
         note = parts.join('; ') + '.'
-        if (!reads && result) note += ' Rare: only for a value that changes the files some other way.'
       }
       out.innerHTML = lines.join('\n')
       why.textContent = note.charAt(0).toUpperCase() + note.slice(1)

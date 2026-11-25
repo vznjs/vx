@@ -616,7 +616,8 @@ export interface ExecEnv {
   /**
    * Env vars forwarded from the host to the child, their values not folded
    * into the key: CI flags, regional vars, secrets that differ by machine
-   * without changing output.
+   * without changing output (Turbo's `passThroughEnv`). A `*` matches
+   * names, once per run.
    */
   passThrough?: readonly string[]
   /**
@@ -698,9 +699,9 @@ export interface InputsConfig {
    */
   workspaceFiles?: readonly string[]
   /**
-   * Env var names whose values are folded into the key. Independent of
-   * `exec.env`: this does not forward them. To forward and track, list a
-   * name in both.
+   * Env var names the command gets and the key folds, by name and value
+   * (Turbo's `env`). A `*` matches names (`VITE_*`); each run matches it
+   * once, and every match is passed and keyed.
    */
   env?: readonly string[]
   /**

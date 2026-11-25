@@ -52,6 +52,7 @@ import {
   errorCode,
   secretMask,
   secretNamed,
+  envCovers,
   type SecretMask,
   refuseSymlink,
   exitOnStop,
@@ -962,23 +963,13 @@ async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> 
             `${unread.join(', ')} beside its config ${unread.length === 1 ? 'is' : 'are'} in no input, and Vite, Next and Bun load ${unread.length === 1 ? 'it' : 'them'} on their own — add '.env*' to inputs.files, or '!.env*' if the task reads none`,
           )
       }
-      const quiet = new Set([...(t.inputs?.env ?? []), ...(t.exec?.env?.secret ?? [])])
+      const quiet = [...(t.inputs?.env ?? []), ...(t.exec?.env?.secret ?? [])]
       const unkeyed = (t.exec?.env?.passThrough ?? []).filter(
-        (v) => INLINED_ENV.test(v) && !quiet.has(v) && !secretNamed(v),
+        (v) => INLINED_ENV.test(v) && !quiet.some((q) => envCovers(q, v)) && !secretNamed(v),
       )
       if (unkeyed.length > 0)
         lines.push(
           `exec.env.passThrough forwards ${unkeyed.join(', ')}, which a bundler writes into its output, and the key does not see ${unkeyed.length === 1 ? 'it' : 'them'} — add ${unkeyed.length === 1 ? 'it' : 'them'} to inputs.env`,
-        )
-      // The reverse: the key moves with the value, but the build never sees it.
-      const given = new Set([
-        ...(t.exec?.env?.passThrough ?? []),
-        ...Object.keys(t.exec?.env?.define ?? {}),
-      ])
-      const unseen = (t.inputs?.env ?? []).filter((v) => INLINED_ENV.test(v) && !given.has(v))
-      if (unseen.length > 0)
-        lines.push(
-          `inputs.env keys ${unseen.join(', ')}, which a bundler writes into its output, but the command never gets ${unseen.length === 1 ? 'it' : 'them'} — add ${unseen.length === 1 ? 'it' : 'them'} to exec.env.passThrough`,
         )
       return { task, lines, found: taskFound }
     }),

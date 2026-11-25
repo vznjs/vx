@@ -328,7 +328,7 @@ The row names the missing file. Fix the path, or the command.
 | --- | --- |
 | `inputs.files` <Badge text="required" /> | project files, as globs; `!` excludes; `[]` for none |
 | `inputs.workspaceFiles` | files outside the project, from the workspace root (a root `tsconfig.json`) |
-| `inputs.env` | the values of these variables (does not pass them to the command) |
+| `inputs.env` | these variables, passed to the command and keyed by value; `VITE_*` takes every match |
 | `inputs.tasks` | which upstream tasks' keys count; default all (`['*', '^*']`), `[]` for none, `'!name'` drops one |
 | `inputs.runtime` | the output of commands run in the project at hash time (`'node -v'`) |
 | `inputs.workspaceRuntime` | the same, run once at the root for the whole run |

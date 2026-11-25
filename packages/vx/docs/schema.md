@@ -969,11 +969,11 @@ exec: {
 }
 ```
 
-| Field         | Type                     | Default | What it does                                                                                                                    |
-| ------------- | ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `passThrough` | `string[]`               | `[]`    | Names copied from your shell, exact: `['API_URL']`. Not in the cache key; add them to `inputs.env` when they change the output. |
-| `define`      | `Record<string, string>` | `{}`    | Fixed values set for the task: `{ NODE_ENV: 'production' }`. In the cache key.                                                  |
-| `secret`      | `string[]`               | `[]`    | Names whose values vx prints as `***`, whatever the name: `['DEPLOY_TOKEN']`.                                                   |
+| Field         | Type                     | Default | What it does                                                                                                                                 |
+| ------------- | ------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `passThrough` | `string[]`               | `[]`    | Names copied from your shell: `['API_URL']`, or a pattern: `['VITE_*']`. Not in the cache key; use `inputs.env` when they change the output. |
+| `define`      | `Record<string, string>` | `{}`    | Fixed values set for the task: `{ NODE_ENV: 'production' }`. In the cache key.                                                               |
+| `secret`      | `string[]`               | `[]`    | Names whose values vx prints as `***`, whatever the name: `['DEPLOY_TOKEN']`.                                                                |
 
 Default: none, the task sees only the essential list below.
 
@@ -983,14 +983,14 @@ Default: none, the task sees only the essential list below.
 
 ```ts
 interface ExecEnv {
-  passThrough?: readonly string[] // names taken from host process.env; exact names, each once, a wildcard is refused
+  passThrough?: readonly string[] // names or `*` patterns taken from host process.env, each once
   define?: Record<string, string> // explicit name=value pairs
   secret?: readonly string[] // names whose values are masked (`***`) whatever the name, each once; see Masking
 }
 ```
 
 - Three layers, lowest priority first: the essential allowlist, then
-  `passThrough`, then `define`.
+  `passThrough` and `inputs.env`, then `define`.
 - **Essential allowlist**, the whole list of what reaches a task from
   your environment unasked (`src/exec/env.ts`, pinned to this list by a
   test). Without these, typical CLI tools break:
@@ -1034,8 +1034,10 @@ interface ExecEnv {
   inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files: [] }, cache: true
   ```
 
-- `inputs.env` decides what the key _sees_; `exec.env.passThrough` decides
-  what the command _gets_. The two are separate on purpose.
+- `inputs.env` names what the command gets _and_ the key sees;
+  `exec.env.passThrough` what the command gets only. These are Turbo's
+  `env` and `passThroughEnv`.
+- A name in both lists is fine: it is passed and keyed.
 - `passThrough: ['API_URL']` takes the value from your shell at spawn
   time. Not in the cache key: for secrets, regional values and CI flags
   that vary between machines.
@@ -1050,9 +1052,6 @@ interface ExecEnv {
     `GATSBY_`, `STORYBOOK_`
   - `VUE_APP_`, `BUN_PUBLIC_`, `NX_PUBLIC_`, `NUXT_ENV_`, `NUXT_PUBLIC_`,
     `REDWOOD_ENV_`, `SANITY_STUDIO_`
-- `inputs: { env: ['VITE_API_URL'] }` with neither `passThrough` nor
-  `define` giving it gets a note too: the key moves with the value, but
-  the bundle is built without it.
 - Each is a note; the lock is still written.
 - `define: { NODE_ENV: 'production' }` sets a fixed value. It is in the
   cache key, through the task config's hash: the value is in your config.
@@ -1069,7 +1068,13 @@ interface ExecEnv {
 - Why: the task runs under `sh -c`, and dash (Linux's `sh`) drops any
   other name, so `my.var` would reach a task on macOS and never on Linux.
 - `inputs.env` takes any name an environment can hold: the key reads it
-  from vx's own environment.
+  from vx's own environment, and `sh` drops one that is no shell name.
+- `passThrough: ['VITE_*']` passes every variable whose name matches.
+  `*` is the one wildcard and matches letters, digits and `_`.
+- A pattern matches names only, never values. Each run matches it once
+  against your environment; the lock keeps the pattern as written.
+- Refused: `*` alone, a pattern with a character no name has (`A-*`),
+  one that starts with a digit, and `?`, `[]` or `{}` anywhere.
 - `npm_execpath` is set to the workspace's package manager unless a layer
   gives one, so a tool that calls the manager back finds it.
 - That manager is the root `package.json`'s `packageManager`, else the
@@ -1078,7 +1083,8 @@ interface ExecEnv {
 - So one an earlier task installed is the one a later task gets.
 - It names a binary on this machine, so it is not in the key.
 - Nothing else reaches the task. A host credential (`SSH_AUTH_SOCK`,
-  `GITHUB_TOKEN`) arrives only when `passThrough` names it.
+  `GITHUB_TOKEN`) arrives only when `inputs.env` or `passThrough` names
+  it, or a pattern there matches it.
 - A sandboxed task with a restricted network also gets the sandbox's own
   proxy, CA and temp-directory values over these names (`TMPDIR`, `TMP`,
   `TEMP`).
@@ -1090,7 +1096,7 @@ interface ExecEnv {
   never know why.
 - A failed task whose last output names, or whose command expands
   (`$API_TOKEN`), a variable your shell holds and the task was not given
-  gets one line naming it and `passThrough`.
+  gets one line naming it, `inputs.env` and `passThrough`.
 - That line names only upper-case names of four characters or more, and
   never a value.
 - This is hygiene, not a boundary: an unsandboxed task runs as you, so it
@@ -1477,33 +1483,33 @@ Default: `[]`, no files outside the project.
 
 ##### `inputs.env` (optional, default `[]`)
 
-The environment variables whose values decide whether the task runs again.
+The environment variables the command gets and whose values decide whether the task runs again.
 
 ```ts
-inputs: { files: ['src/**'], env: ['NODE_ENV', 'TARGET_BROWSER'] }
+inputs: { files: ['src/**'], env: ['NODE_ENV', 'NEXT_PUBLIC_*'] }
 ```
 
-| Write           | Means                    |
-| --------------- | ------------------------ |
-| `NODE_ENV`      | the value of `NODE_ENV`  |
-| `NEXT_PUBLIC_*` | refused: list each name  |
-| `!CI`           | refused: names are exact |
+| Write           | Means                                     |
+| --------------- | ----------------------------------------- |
+| `NODE_ENV`      | `NODE_ENV`, passed and keyed              |
+| `NEXT_PUBLIC_*` | every variable named so, passed and keyed |
+| `!CI`           | refused: there is no exclusion            |
 
 Default: `[]`, no variables.
 
-A name here is not passed to the command. To pass and track it, list it in `exec.env.passThrough` too.
+To pass a variable without keying it, list it in `exec.env.passThrough` instead.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
 - `exec.env.passThrough: ['API_URL']` alone does not change the key.
-- `inputs.env: ['API_URL']` alone does not pass `API_URL` to the command.
-- A variable the command reads goes in both, or in `exec.env.define`: the command's environment is isolated, so otherwise the key changes on a value the command never sees.
-- A name only in `inputs.env`, for a variable that changes inputs some other way, is legal but rare. In doubt, list it in both.
-- vx ships no helper for the two lists. A config is TypeScript, so a function of your own can return both.
-- `NEXT_PUBLIC_*` is refused: names are exact, with no wildcard.
-- `!NAME` is refused here, in `exec.env.passThrough` and in `exec.env.secret`: with no wildcard to take it out of, it named a variable `!NAME` and excluded nothing.
+- `inputs.env: ['API_URL']` passes `API_URL` to the command and keys its value. A name in both lists is fine.
+- `NEXT_PUBLIC_*` keys each variable it matches, sorted by name: one set, changed or unset moves the key, and one it does not match never does.
+- `*` is the one wildcard; it matches letters, digits and `_`. Each run matches it once, and the lock keeps the pattern as written.
+- `*` alone is refused, and so are `?`, `[]`, `{}` and a character no variable name has.
+- `!NAME` is refused here, in `exec.env.passThrough` and in `exec.env.secret`: vx has no exclusion, so it named a variable `!NAME` and excluded nothing.
+- `exec.env.secret` takes names only, no pattern.
 - A name holding `=` or a NUL is refused.
 - `X` unset, `X=` empty, and `X` never listed are three different keys. The command tells unset from empty too: `process.env.X ?? 'dflt'`, `${X-dflt}`.
 - A value that is not UTF-8 fails the run, naming the variable, never its value: Latin-1 `é` and `è` both decode to U+FFFD and would key alike.
@@ -3711,6 +3717,10 @@ The messages you meet most:
 | `inputs must be an object`                                                                                                            | Not an object: a string (`inputs: 'src'`). An array is the row above.                                                                                                                                                                                                          |
 | `inputs.files must be an array`                                                                                                       | Wrong shape.                                                                                                                                                                                                                                                                   |
 | `<list> lists "<name>" twice`                                                                                                         | A name twice in `inputs.env`, `exec.env.passThrough`, `exec.env.secret` or `tags`; each counts once.                                                                                                                                                                           |
+| `<list>: "<pattern>" matches every variable`                                                                                          | `*` alone in `inputs.env` or `exec.env.passThrough`: list the names or a prefix (`VITE_*`).                                                                                                                                                                                    |
+| `<list>: "<pattern>" holds a character no variable name has`                                                                          | A pattern with a character other than letters, digits, `_` and `*`.                                                                                                                                                                                                            |
+| `<list>: "<pattern>" starts with a digit, as no variable name does`                                                                   | A pattern no variable name can match.                                                                                                                                                                                                                                          |
+| `<list>: "<name>" — * is the only wildcard in env names`                                                                              | `?`, `[]` or `{}` in an env name.                                                                                                                                                                                                                                              |
 | `inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                      | An entry that is not a string, is blank (whitespace alone runs as a no-op) or holds a NUL.                                                                                                                                                                                     |
 | `inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                             | An entry that is not a string, is blank (whitespace alone runs as a no-op) or holds a NUL.                                                                                                                                                                                     |
 | `inputs.tasks must be an array of non-empty strings`                                                                                  | An entry that is not a string or is empty, or a bare string for the list.                                                                                                                                                                                                      |

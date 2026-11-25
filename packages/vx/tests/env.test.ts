@@ -549,6 +549,54 @@ describe('what a task sees of the host environment, end to end', () => {
     }
   })
 
+  // M, 2026-11-25: inputs.env is seen and keyed, passThrough seen only, as
+  // Turbo's env and passThroughEnv; a `*` in either passes each match.
+  it('an inputs.env name and each pattern match reach the task, and no other name', async () => {
+    const root = await makeWorkspace({ prefix: 'vx-env-keyed-' })
+    const planted = {
+      VX_KEYED_ONE: '1',
+      VX_KEYPAT_A: 'a',
+      VX_KEYPAT_B: 'b',
+      VX_PASSPAT_C: 'c',
+      VX_KEYPATX: 'x',
+    }
+    const saved = Object.fromEntries(Object.keys(planted).map((k) => [k, process.env[k]]))
+    try {
+      const dir = await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              probe: {
+                exec: {
+                  command: "node -e 'require(\\"fs\\").writeFileSync(\\"seen.json\\", JSON.stringify(Object.keys(process.env)))'",
+                  env: { passThrough: ['VX_PASSPAT_*'] },
+                },
+                inputs: { files: [], env: ['VX_KEYED_ONE', 'VX_KEYPAT_*'] },
+              },
+            },
+          }
+        `,
+      })
+      Object.assign(process.env, planted)
+      const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+      const r = await run({ cwd: root, tasks: ['probe'], log: quiet })
+      expect(r.ok).toBe(true)
+      const seen = JSON.parse(await Bun.file(path.join(dir, 'seen.json')).text()) as string[]
+      expect(seen.filter((n) => n.startsWith('VX_K') || n.startsWith('VX_P')).sort()).toEqual([
+        'VX_KEYED_ONE',
+        'VX_KEYPAT_A',
+        'VX_KEYPAT_B',
+        'VX_PASSPAT_C',
+      ])
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('a defined `__proto__` reaches the task', async () => {
     const root = await makeWorkspace({ prefix: 'vx-env-proto-' })
     try {

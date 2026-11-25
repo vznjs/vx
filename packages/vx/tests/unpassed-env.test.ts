@@ -13,8 +13,8 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const LINE = (names: string, one: boolean): string =>
   `[vx] ${names} ${one ? 'is' : 'are'} set in your environment, but this task does not get ` +
-  `${one ? 'it' : 'them'}: a task sees only the variables exec.env.passThrough and define name — add ` +
-  `${one ? 'it' : 'them'} to passThrough, and to inputs.env if the output depends on ${one ? 'it' : 'them'}`
+  `${one ? 'it' : 'them'}: a task sees only the variables inputs.env, exec.env.passThrough and define name — add ` +
+  `${one ? 'it' : 'them'} to inputs.env if the output depends on ${one ? 'it' : 'them'}, else to passThrough`
 
 describe('unpassedEnv', () => {
   const host = {

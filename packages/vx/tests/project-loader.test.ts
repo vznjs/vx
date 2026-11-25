@@ -1734,7 +1734,8 @@ describe('a config that changes the built-ins (D-74)', () => {
   // `process.env.X = …` in a first load reached every project's
   // `passThrough` and vx's own `VX_*` reads; a repeat load, in a worker,
   // reached neither (D-76).
-  const ENV_HINT = '; a task gets an env var through `exec.env.define` or `passThrough`'
+  const ENV_HINT =
+    '; a task gets an env var through `inputs.env`, `exec.env.passThrough` or `exec.env.define`'
 
   it('refuses an env var a config sets, and takes it back (D-76)', async () => {
     expect(

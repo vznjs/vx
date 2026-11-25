@@ -6,6 +6,7 @@ import path from 'node:path'
 import type { InputStability, WorkspaceConfig } from '../config.js'
 import {
   beginRun,
+  forgetEnvMatches,
   mark,
   nearest,
   OWN_DIR_HINT,
@@ -238,6 +239,7 @@ export async function prepareRunLocked(
   planning = false,
 ): Promise<PreparedRun> {
   beginRun()
+  forgetEnvMatches()
   mark('startup')
   const ws = await startWorkspace(options, log, planning)
   const scope = scopeOf(options, ws)

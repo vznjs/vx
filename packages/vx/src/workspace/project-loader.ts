@@ -1197,7 +1197,7 @@ function builtinsChanged(changed: readonly string[], configPath?: string): UserE
   const who = configPath === undefined ? 'a project config' : configPath
   const env =
     (changed.some((c) => c.startsWith('process.env.'))
-      ? '; a task gets an env var through `exec.env.define` or `passThrough`'
+      ? '; a task gets an env var through `inputs.env`, `exec.env.passThrough` or `exec.env.define`'
       : '') +
     (changed.some((c) => c.startsWith('process.cwd'))
       ? '; a task runs in its project directory, and `cd <dir> && …` in `exec.command` moves it'

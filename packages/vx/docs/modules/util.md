@@ -1710,6 +1710,23 @@ can. `exec.sandbox` is the boundary (`docs/security.md`).
 and prints the cost; `tests/sandbox-parent-env.unsafe.test.ts` holds a
 real run.
 
+### util/essential-env: env patterns
+
+An env name holding `*` (`VITE_*`) in `inputs.env` or `exec.env.passThrough`
+is a pattern. `envPatternProblem` says why the schema refuses one (a bare
+`*`, a character no variable name has, a leading digit), or null.
+
+`expandEnvNames` replaces each pattern by the shell-name variables of
+`taskEnvSource()` it matches, sorted, each once. A list with no `*` comes
+back as it is, so a config with no pattern keys as before.
+
+Matches are learned once per run: `forgetEnvMatches` opens the next run
+(`prepare.ts`, beside `beginRun()`) and runs when `setVxOnlyEnv` changes
+vx's own env. So the key, the run token and the spawn agree on the names.
+
+`envCovers(cover, entry)` says whether every variable `entry` names,
+`cover` names too: how `vx lock` sees a bundler variable a pattern holds.
+
 ### util/env-flag
 
 ```ts

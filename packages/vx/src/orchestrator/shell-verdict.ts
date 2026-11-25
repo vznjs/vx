@@ -310,8 +310,8 @@ export function unpassedEnv(
   const one = missing.length === 1
   return (
     `[vx] ${missing.join(', ')} ${one ? 'is' : 'are'} set in your environment, but this task does not get ` +
-    `${one ? 'it' : 'them'}: a task sees only the variables exec.env.passThrough and define name — add ` +
-    `${one ? 'it' : 'them'} to passThrough, and to inputs.env if the output depends on ${one ? 'it' : 'them'}`
+    `${one ? 'it' : 'them'}: a task sees only the variables inputs.env, exec.env.passThrough and define name — add ` +
+    `${one ? 'it' : 'them'} to inputs.env if the output depends on ${one ? 'it' : 'them'}, else to passThrough`
   )
 }
 

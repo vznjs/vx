@@ -797,8 +797,8 @@ has its own. Two reasons, and both matter:
 So a task that needs a value on a worker must do one of two things:
 
 - `define` it (a config literal)
-- list it in both `inputs.env` and `exec.env.passThrough` (a host value,
-  keyed, and seen by a local run the same way)
+- list it in `inputs.env` (a host value, passed and keyed, and seen by a
+  local run the same way)
 
 Keep a task whose command reads a `passThrough` secret local, with
 `exec: { remote: false }`.
