@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { pluginSource } from './helpers/plugin.js'
 import { BIN } from './helpers/vx.js'
 
 const SECRET = 'supersecretvalue123'
@@ -24,6 +25,7 @@ async function lock(
   files: Record<string, string> = {},
   args: string[] = [],
   at?: string,
+  plugins: string[] = [],
 ) {
   const root = at ?? (await mkdtemp(path.join(os.tmpdir(), 'vx-lock-secret-')))
   if (at === undefined) roots.push(root)
@@ -31,7 +33,7 @@ async function lock(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
   )
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource(plugins))
   const dir = path.join(root, 'packages', 'a')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
@@ -173,6 +175,26 @@ describe('vx lock and a secret in an evaluated config', () => {
     )
     expect([r.code, r.written]).toEqual([1, false])
     expect(r.err).toContain('a: tasks.psql.exec.command holds $DATABASE_URL\n')
+  })
+
+  // A `project` plugin's command is the text of the file it read (a
+  // package.json script turbo() maps): CI's service database refused
+  // `vx lock --check` there, though the lock spelled no value of its own.
+  it('locks a value a file the project stage read spells', async () => {
+    const MAPPER = pluginSource(
+      'org/scripts',
+      `{ project(config, ctx) {
+          const at = require('node:path').join(ctx.dir, 'scripts.json')
+          ctx.read(at)
+          config.tasks = { db: { exec: { command: JSON.parse(require('node:fs').readFileSync(at, 'utf8')).db } } }
+        } }`,
+    )
+    const files = { 'packages/a/scripts.json': '{"db":"docker compose up -d postgres"}\n' }
+    const db = { DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/app' }
+    const r = await lock('export default {}\n', db, files, [], undefined, [MAPPER])
+    expect(bare(r)).toEqual({ code: 0, err: '', written: true })
+    const check = await lock('export default {}\n', db, files, ['--check'], r.root, [MAPPER])
+    expect([check.code, check.err]).toEqual([0, ''])
   })
 
   // The text that counts is each module the config evaluates: a preset

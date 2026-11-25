@@ -332,6 +332,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       // A file absent has no stamp: a run refuses once it appears.
       out.stamps.taken = { ...taken, configs: { ...taken.configs, ...read.configs }, reads: byDir }
     }
+    if (reads !== undefined) out.reads = reads
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     // Each project as the stages left it, and nothing of the steps there: a
     // run reads its name, its config after the `project` stage and its
@@ -517,6 +518,8 @@ interface GraphCheck {
   dependencies: DependenciesLock | null
   /** Each config as read before its evaluation, and where a run reads it back. */
   stamps?: { cacheDir: string; taken: ConfigStamps }
+  /** The files the `project` stage made each project's config from, by directory. */
+  reads?: ReadonlyMap<string, ReadonlySet<string>>
 }
 
 /** Each project's edges and each claimed file's digests, as `--affected` reads them back. */
@@ -714,7 +717,7 @@ async function writeLock(
     metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config!]),
   )
   const reviews = check.reviewFiles ? reviewsOf(metas, check.resolved) : []
-  const leaks = await lockLeaks(root, check, metas, projects, reviews)
+  const leaks = await lockLeaks(root, check, projects, reviews)
   if (leaks.length > 0) {
     notWritten('', {
       headline: 'these configs evaluated to a secret value',
@@ -1069,8 +1072,9 @@ function strayLine(root: string, file: string): string {
 /**
  * Where the lock `vx lock` would write holds a secret value here: the
  * configs, the review copies and the `project` stage's record, all
- * committed (a place two hold is named once). A value the config's source
- * or a local module it imports spells is the repo's own text, not one the
+ * committed (a place two hold is named once). A value the config's source,
+ * a local module it imports or a file the `project` stage read for it
+ * spells is the repo's own text, not one the
  * evaluation read: `docker compose up postgres` beside
  * `DATABASE_URL=postgres://postgres:postgres@…` refused every relock. Read
  * only when some value matched, so the common lock reads nothing more.
@@ -1078,7 +1082,6 @@ function strayLine(root: string, file: string): string {
 async function lockLeaks(
   root: string,
   check: GraphCheck,
-  metas: readonly ConfiguredMeta[],
   projects: Record<string, ProjectConfig>,
   reviews: readonly Review[],
 ): Promise<Array<{ at: string; name: string }>> {
@@ -1100,8 +1103,20 @@ async function lockLeaks(
     return leaks
   }
   if (scan(() => false).length === 0) return []
+  // And each file the `project` stage made a config from: a package.json
+  // script turbo() maps is committed text, as a config's own is.
+  const read = (file: string): Promise<string | null> =>
+    Bun.file(file)
+      .text()
+      .catch(() => null)
   const texts = new Map(
-    await Promise.all(metas.map(async (m) => [m.name, await sourceTexts(m.configPath)] as const)),
+    await Promise.all(
+      check.all.map(async (m) => {
+        const own = m.configPath === null ? [] : await sourceTexts(m.configPath)
+        const mapped = await Promise.all([...(check.reads?.get(m.dir) ?? [])].map(read))
+        return [m.name, [...own, ...mapped.filter((t) => t !== null)]] as const
+      }),
+    ),
   )
   return scan((project, value) => texts.get(project)?.some((t) => t.includes(value)) === true)
 }
@@ -1291,7 +1306,6 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     for (const l of await lockLeaks(
       root,
       check,
-      metas,
       Object.fromEntries(
         metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config!]),
       ),
