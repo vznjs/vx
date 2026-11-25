@@ -50,6 +50,8 @@ option. Name a value from CI in `.vx/workspace.ts`
 - It may also be a gRPC resolver target: `unix:`, `unix-abstract:`, `dns:`,
   `ipv4:` or `ipv6:`.
 - Any other endpoint is refused at startup, with a line naming the setting.
+- So is one with credentials before an `@` (`token@host`): warnings print
+  the endpoint. Put a token in `headers`.
 - So is a TLS endpoint at an IP address, since Bun's TLS refuses an IP as
   the server name.
 - Name the server by host name instead, or use `grpc://` for plaintext.
