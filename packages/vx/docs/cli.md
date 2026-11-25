@@ -728,6 +728,8 @@ What `vx lock` writes:
   definition counts: a new `description` marks it and its dependants.
 - An edit to a file the config imports does the same, with
   `.vx/projects.lock` as the `input` shown.
+- Each project that imports it counts on its own: one whose locked
+  tasks stayed the same is selected for none of them.
 - So changing `build`'s command does not re-run `test`.
 - An edit that moves no locked task (a comment) selects none of its
   tasks with `inputs`.

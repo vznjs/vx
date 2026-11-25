@@ -122,3 +122,37 @@ it('an imported file that moves one task names the lock as that task’s input',
     'app#build  affected: .vx/projects.lock changed (an input)',
   )
 })
+
+// A file two configs import: the lock says per project which tasks moved, so
+// an importer whose entry stayed the same is selected for none of its tasks.
+// It selected every task of every importer, labelled "its key changed".
+const shared = async (cmd: string, other: string): Promise<void> => {
+  await writeFile(path.join(root, 'shared/cmd.mjs'), `export const cmd = '${cmd}'\n${other}`)
+  vx('lock')
+}
+const importBoth = async (): Promise<void> => {
+  const git = gitIn(root)
+  await mkdir(path.join(root, 'shared'))
+  await writeFile(path.join(root, 'shared/cmd.mjs'), "export const cmd = 'true'\n")
+  const using = `import { cmd } from '../../shared/cmd.mjs'\n${config("' + cmd + '")}`
+  await writeFile(path.join(root, 'packages/app/vx.config.mjs'), using)
+  await writeFile(
+    path.join(root, 'packages/other/vx.config.mjs'),
+    `import { cmd as unused } from '../../shared/cmd.mjs'\nvoid unused\n${config('true')}`,
+  )
+  vx('lock')
+  git('add', '-A')
+  git('commit', '-qm', 'import')
+}
+
+it('an imported file another config also imports moves only the task it changed', async () => {
+  await importBoth()
+  await shared('echo built', '')
+  expect(kept()).toEqual({ 'app#build': { kind: 'input', file: '.vx/projects.lock' } })
+})
+
+it('an imported file edited with no locked task moved selects none', async () => {
+  await importBoth()
+  await shared('true', '// a comment\n')
+  expect(kept()).toEqual({})
+})

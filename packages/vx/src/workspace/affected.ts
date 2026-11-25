@@ -299,7 +299,8 @@ export async function affectedChanges(
   }
   const owners = await pathOwners(args, diff, claimedOwned, perTask)
   if (typeof owners === 'string') return everything(owners)
-  const { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks } = owners
+  const { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks, lockKept } =
+    owners
 
   // A project whose config imports a changed file: resolved-config hashing
   // folds it, so selection must too. Asked of every changed path, since a
@@ -323,8 +324,11 @@ export async function affectedChanges(
   }
   for (const name of imports.owners) {
     owned.add(name)
-    // A run reads the config from the lock: its diff said which tasks moved.
-    if (!configTasks.has(name)) whole.add(name)
+    // A run reads the config from the lock: its diff said which tasks moved,
+    // none when its entry stayed the same.
+    if (configTasks.has(name)) continue
+    if (perTask && lockKept.has(name)) configTasks.set(name, new Set())
+    else whole.add(name)
   }
 
   const { dirLinks } = diff
@@ -791,12 +795,17 @@ async function pathOwners(
   // entry did: a config edit then reaches those tasks, not the whole project
   // (one task's command edited re-ran every sibling).
   const configTasks = new Map<string, Set<string>>()
+  // The projects whose lock entry is the same at the base and now.
+  const lockKept = new Set<string>()
   const configEdited = (name: string): boolean =>
     perTask && (paths.get(name) ?? []).some((rel) => CONFIG_NAMES.has(rel))
   const lockChanged = diffed.paths.includes(LOCKFILE_NAME) || untracked.includes(LOCKFILE_NAME)
   if (!lockChanged) {
     // The lock is what a run reads: an edit it did not move re-keys nothing.
-    for (const p of projects) if (configEdited(p.name)) configTasks.set(p.name, new Set())
+    for (const p of projects) {
+      lockKept.add(p.name)
+      if (configEdited(p.name)) configTasks.set(p.name, new Set())
+    }
   } else {
     // A side with no lock (or one that will not parse) ran nothing from
     // it: the paths of the configs say what changed, as before the lock.
@@ -810,8 +819,9 @@ async function pathOwners(
     for (const p of projects) {
       const key = lockKey(rootDir, p.dir)
       if (same(key)) {
-        if (before !== null && after !== null && configEdited(p.name))
-          configTasks.set(p.name, new Set())
+        if (before === null || after === null) continue
+        lockKept.add(p.name)
+        if (configEdited(p.name)) configTasks.set(p.name, new Set())
         continue
       }
       const moved = perTask ? movedTasks(before![key], after![key]) : undefined
@@ -886,7 +896,7 @@ async function pathOwners(
   for (const name of lockMoved) if (!claimedOwned.has(name)) claimedOwned.set(name, LOCKFILE_NAME)
   for (const name of edgesMoved)
     if (!claimedOwned.has(name)) claimedOwned.set(name, DEPENDENCIES_LOCK_NAME)
-  return { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks }
+  return { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks, lockKept }
 }
 
 /**
