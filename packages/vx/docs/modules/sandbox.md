@@ -252,6 +252,8 @@ export function initSandbox(opts?: {
   allowAllUnixSockets?: boolean // some task asks; the lift is set per task's wrap
 }): Promise<void>
 export function resetSandbox(): Promise<void>
+// The upper-case names SRT sets over a task's own (§ The environment SRT sets)
+export const SANDBOX_SET_ENV: ReadonlySet<string>
 // `vx lock`: the first task whose network entry the runtime would refuse, named, or undefined
 export function networkPatternRefusal(
   projects: Iterable<{ name: string; config: ProjectConfig }>,
@@ -287,7 +289,7 @@ export interface SandboxedRunArgs {
   keyRoot?: string // a cached task's workspace root: a hidden read under it is named for inputs.workspaceFiles too
   keyNested?: readonly string[] // the projects nested in its own: a hidden read in one is named for inputs.workspaceFiles, never inputs.files
   upstreamOutputs?: readonly string[] // the dependencies' outputs: a write refused there gets a note to run their task, no grant
-  config: ResolvedSandboxConfig // its allowWrite is the whole write set: none is derived
+  config: ResolvedSandboxConfig // its allowWrite is the task's whole write set; SRT adds its own (§ A task's temp directory)
 }
 
 export interface SandboxedRunResult extends RunResult {
@@ -891,7 +893,8 @@ owner's pid is gone was tried and refused: a nested vx (this repo's own
 test shards) sees another pid namespace, where the outer vx's pid reads as
 dead, and the sweep removed the outer task's `TMPDIR` mid-run. The shared
 directory itself stays writable (SRT's policy grants it): a command that
-names it outright still reaches it. `vx-tasks` is walled from every
+names it outright still reaches it. So do `~/.npm/_logs` and `~/.claude/debug`, SRT's
+home write paths: a write there is not reported. `vx-tasks` is walled from every
 sandboxed task, each granted its own directory inside (L-10): under the
 shared directory a task listed a concurrent task's `TMPDIR`, read what it
 kept there, and could replace its port bridge's socket, which lives in the
@@ -917,6 +920,8 @@ variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `GRPC_PROXY`,
 `CA_TRUST_VARS`). A task's `define` or `passThrough` of one of these
 names does not reach a sandboxed task: the sandbox's network goes through
 SRT's proxy and nowhere else.
+So a failed sandboxed task whose output names one gets no line telling
+it to pass that variable through (`SANDBOX_SET_ENV`).
 
 `JAVA_TOOL_OPTIONS` is the exception vx repairs. SRT composes its proxy
 agent's flag with the value in VX'S environment, so a host value that no
@@ -1161,8 +1166,8 @@ stderr said those words (watched as the stream goes, as strace's own
 errors are, so a passing task pays one regex per stderr line) gets a
 hint naming the nearest `.git` above its cwd and its grant
 (`'../../.git'`), or, when that `.git` lies outside the workspace or is
-a worktree's file pointing outside, saying it is walled on purpose
-(`hiddenGitHint`; `sandbox-git-discovery.unsafe.test.ts`,
+a worktree's file pointing outside (granted or not: its data stays
+walled), saying it is walled on purpose (`hiddenGitHint`; `sandbox-git-discovery.unsafe.test.ts`,
 `sandbox-outside-git.unsafe.test.ts`).
 
 ### A write grant that mounts nothing

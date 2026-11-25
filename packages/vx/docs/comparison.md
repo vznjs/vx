@@ -592,11 +592,10 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
 - **No `.env` auto-loading.** Nx auto-loads `.env` files. vx
   requires explicit `inputs.env` declarations. "Explicit over
   magical" (architecture principle #1).
-- **No wildcards in `inputs.env`.** Turbo supports `VERCEL_*`
-  expansion. vx rejects wildcards at load time so a typo doesn't
-  silently contribute an empty value to the cache key (pinned by
-  tests/project-loader.test.ts > rejects wildcards in
-  inputs.env).
+- **`*` is the only env wildcard.** `inputs.env` and
+  `exec.env.passThrough` take `VERCEL_*`, as Turbo's `env` and
+  `passThroughEnv` do; `?`, `[]`, `{}` and `!` exclusions are
+  refused at load.
 
 ### Concurrency model
 

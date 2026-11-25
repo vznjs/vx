@@ -368,8 +368,8 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile --filter './'
       - run: bun vx lock --check
-      # Name the tasks to run, as 'bun vx run build test --affected': with
-      # none named, vx fails, listing the workspace's tasks.
+      # Name the tasks in both quotes, as 'build test --affected' and
+      # 'build test --all': with none named, vx fails, listing them.
       - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
 ```
 
@@ -382,10 +382,11 @@ workers' below. Then it prints what is left to do:
 
 What `vx dte init` writes:
 
-- In a terminal it asks what main runs and what a pull request runs (main's
-  by default).
-- Without a terminal it names none, and the run fails, listing the tasks,
-  until you do.
+- In a terminal it asks what main runs (`pipelines.main`'s tasks by
+  default) and what a pull request runs (main's by default). No tasks is
+  refused.
+- Without a terminal it writes `pipelines.main`'s tasks. With none
+  declared it names none, and the run fails, listing the tasks, until you do.
 - A workspace in a subdirectory of its repository gets the files at the
   repository's root, its jobs running in that directory.
 - Each size runs on its platform's GitHub-hosted runner: `ubuntu-latest`
@@ -562,7 +563,10 @@ vx:
   run only and passed as a trigger variable.
 - A GitLab ID token cannot bind the handshake as GitHub's does: its
   audience is fixed when its job starts.
-- Set `VX_DTE_SECRET` to use your own secret instead.
+- To use your own secret, set `VX_DTE_SECRET` as a masked variable in
+  Settings > CI/CD > Variables. Both the vx job and the workers read it.
+- The run never passes a secret you set as a trigger variable: anyone who
+  sees the pipeline could read it.
 
 ## What runs where
 
@@ -766,6 +770,8 @@ a plugin changes where a command runs, never what it is.
   task's `env.define` sets them or its `inputs.env` keys them.
 - A keyed one is the orchestrator's value, or unset where it is unset
   there. So the worker runs on what the key saw.
+- A pattern (`TMP*`) keys each name it covers: one unset on the
+  orchestrator is unset on the worker too.
 - `npm_execpath` is the workspace's package manager on the worker, as core
   sets it on a local task.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
@@ -930,7 +936,8 @@ executor declares `timeouts`).
   takes no new attempt of that task until it ends that one. Its end is
   never counted as the retry's.
 - A cancelled attempt that ends after its retry lays none of its files
-  here, and dependants are sent the retry's entry, not its own.
+  here, and dependants are sent the retry's entry, not its own. Its time
+  is not learned as the task's either.
 
 </details>
 

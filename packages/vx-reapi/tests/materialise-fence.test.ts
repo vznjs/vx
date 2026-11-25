@@ -159,6 +159,43 @@ describe('materialiseOutputs refuses what lands outside the workspace (L-2)', ()
     expect(existsSync(path.join(cwd, 'dist'))).toBe(false)
   })
 
+  // REAPI holds a Directory's names unique. Two files of one name were
+  // written at once through two descriptors, and the file could end up
+  // neither blob: the head of one and the tail of the other, then saved.
+  it('a Tree directory naming one entry twice is refused before a write', async () => {
+    const twice: Directory = {
+      files: [
+        { name: 'out.js', digest: blob('a long first body'), is_executable: false },
+        { name: 'out.js', digest: blob('short'), is_executable: false },
+      ],
+      directories: [],
+      symlinks: [],
+    }
+    const dist: Directory = {
+      files: [],
+      directories: [{ name: 'lib', digest: sha256(encodeDirectory(twice)) }],
+      symlinks: [],
+    }
+    const r = await run({
+      output_directories: [{ path: 'dist', tree_digest: tree(dist, [twice]) }],
+    })
+    expect(r).toBe(
+      `the server's Tree for ${path.join(cwd, 'dist')} names out.js twice in one directory — refused`,
+    )
+    expect(existsSync(path.join(cwd, 'dist'))).toBe(false)
+  })
+
+  it('one output file path named twice with other bytes is refused before a write', async () => {
+    const r = await run({
+      output_files: [
+        { path: 'out.js', digest: blob('a long first body') },
+        { path: './out.js', digest: blob('short') },
+      ],
+    })
+    expect(r).toBe(`the server's result names ${path.join(cwd, 'out.js')} twice — refused`)
+    expect(existsSync(path.join(cwd, 'out.js'))).toBe(false)
+  })
+
   it('a Tree name of `..`', async () => {
     const up: Directory = {
       files: [{ name: 'new', digest: blob('pwned'), is_executable: false }],

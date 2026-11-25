@@ -23,8 +23,10 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 
-const ROOT = path.resolve(import.meta.dir, '../../..')
-const OUT = path.join(ROOT, 'private/vx-docs/public/demo.svg')
+const SITE = path.resolve(import.meta.dir, '..')
+// vx and its lockfile plugin, as this project installed them.
+const VZN = path.join(SITE, 'node_modules/@vzn')
+const OUT = path.join(SITE, 'public/demo.svg')
 const COMMAND = 'vx run build --all'
 
 /** One styled run of text. */
@@ -210,9 +212,7 @@ document.querySelector('#app')!.innerHTML = button('Hello')
 
 /** The vite the site builds with: astro's, so the demo adds no dependency. */
 function vite(): string {
-  const astro = path.dirname(
-    Bun.resolveSync('astro/package.json', path.join(ROOT, 'private/vx-docs')),
-  )
+  const astro = path.dirname(Bun.resolveSync('astro/package.json', SITE))
   return path.dirname(Bun.resolveSync('vite/package.json', astro))
 }
 
@@ -230,15 +230,15 @@ function run(): string {
     mkdirSync(path.join(modules, '@vzn'), { recursive: true })
     mkdirSync(path.join(modules, '@demo'), { recursive: true })
     mkdirSync(path.join(modules, '.bin'), { recursive: true })
-    symlinkSync(path.join(ROOT, 'packages/vx'), path.join(modules, '@vzn/vx'))
-    symlinkSync(path.join(ROOT, 'packages/vx-lockfile'), path.join(modules, '@vzn/vx-lockfile'))
+    symlinkSync(realpathSync(path.join(VZN, 'vx')), path.join(modules, '@vzn/vx'))
+    symlinkSync(realpathSync(path.join(VZN, 'vx-lockfile')), path.join(modules, '@vzn/vx-lockfile'))
     symlinkSync(path.join(root, 'packages/ui'), path.join(modules, '@demo/ui'))
     symlinkSync(path.join(root, 'packages/web'), path.join(modules, '@demo/web'))
     symlinkSync(vite(), path.join(modules, 'vite'))
     symlinkSync('../vite/bin/vite.js', path.join(modules, '.bin/vite'))
     // And the README's `vx lock` after it: a run keys from what it records.
     const lock = Bun.spawnSync({
-      cmd: [process.execPath, path.join(ROOT, 'packages/vx/src/bin.ts'), 'lock'],
+      cmd: [process.execPath, path.join(VZN, 'vx/src/bin.ts'), 'lock'],
       cwd: root,
       env: { ...process.env, HOME: home },
     })
@@ -261,7 +261,7 @@ function run(): string {
     const history = Bun.spawnSync({
       cmd: [
         process.execPath,
-        path.join(ROOT, 'packages/vx/src/bin.ts'),
+        path.join(VZN, 'vx/src/bin.ts'),
         'run',
         'build',
         '--all',
@@ -273,7 +273,7 @@ function run(): string {
     if (history.exitCode !== 0) throw new Error(`history run failed: ${history.stderr.toString()}`)
     for (const pass of ['cold', 'warm']) {
       const r = Bun.spawnSync({
-        cmd: [process.execPath, path.join(ROOT, 'packages/vx/src/bin.ts'), 'run', 'build', '--all'],
+        cmd: [process.execPath, path.join(VZN, 'vx/src/bin.ts'), 'run', 'build', '--all'],
         cwd: root,
         env: { ...process.env, HOME: home, FORCE_COLOR: '1', NO_COLOR: undefined, CI: undefined },
       })

@@ -5,7 +5,7 @@
 // for each wave the run asks: its `vx-worker <size>` job is a matrix of
 // `max` slots (`VX_DTE_SLOT`), of which the rules run those `VX_DTE_PICK`
 // names, at the run's commit (`VX_DTE_SHA`). Each proves itself by the
-// run's secret.
+// run's secret: one made for the run is passed, one the user set is not.
 
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import type { DteAdapter, WorkerSpawn } from './plugin.js'
@@ -87,9 +87,13 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
     process.env['CI_MERGE_REQUEST_SOURCE_BRANCH_NAME'] || process.env['CI_COMMIT_REF_NAME']!,
     process.env['CI_MERGE_REQUEST_TARGET_BRANCH_NAME'],
   ]
-  const { VX_DTE_WORKER: _, ...env } = first.env
+  // A pipeline variable is readable by whoever sees the pipeline: a secret
+  // the user set reaches the workers from the project's CI/CD variables.
+  // The run's own secret dies with the run, so it rides along.
+  const { VX_DTE_WORKER: _, VX_DTE_SECRET: secret, ...env } = first.env
   const vars: Record<string, string> = {
     ...env,
+    ...(secret === undefined || process.env['VX_DTE_SECRET'] ? {} : { VX_DTE_SECRET: secret }),
     VX_DTE_SIZE: first.size,
     VX_DTE_SHA: sha,
     VX_DTE_PICK: `/^(${slots.map(([s]) => s).join('|')})$/`,

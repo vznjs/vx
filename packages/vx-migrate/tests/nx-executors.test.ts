@@ -47,7 +47,11 @@ async function execs(executors: NxExecutors): Promise<Record<string, Record<stri
     executors,
   })
   return Object.fromEntries(
-    mapped.projects[0]!.tasks.map((t) => [t.name, t.task!['exec'] as Record<string, unknown>]),
+    mapped.projects[0]!.tasks.map((t) => {
+      const exec = t.task!['exec'] as Record<string, unknown>
+      // Every nx-exec line lists Nx's `.env` candidates (nx-dotenv-machine.test.ts).
+      return [t.name, { ...exec, command: String(exec['command']).replace(/ --dotenv \S+/g, '') }]
+    }),
   )
 }
 
@@ -211,7 +215,7 @@ describe('executors: the plugin', () => {
       expect(await command()).toBe('tsc -b')
       // The cached mapping keys on the function's text.
       await workspace('() => undefined')
-      expect(await command()).toBe(
+      expect((await command())?.replace(/ --dotenv \S+/g, '')).toBe(
         `nx-exec @acme/tools:run --project lib --target build --options '{"command":"tsc"}'`,
       )
     },

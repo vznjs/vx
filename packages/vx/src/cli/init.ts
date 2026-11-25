@@ -39,11 +39,13 @@ import { sayNotice } from '../ui/index.js'
 import {
   DEPENDENCIES_LOCK_NAME,
   findWorkspaceRoot,
+  ignoredNotes,
   LOCKFILE_NAME,
   PROJECT_CONFIG_FILENAMES,
   readLockfile,
   REVIEW_FILE,
   renderWorkspace,
+  settleToolFiles,
   starterProject,
   tscCompilesConfigNotes,
   WORKSPACE_CONFIG_FILENAMES,
@@ -489,10 +491,9 @@ function lockfilePlugin(pkgRoot: string | null): 'pnpm' | 'bun' | 'yarn' | 'npm'
   if (has('yarn.lock')) return 'yarn'
   if (has('package-lock.json') || has('npm-shrinkwrap.json')) return 'npm'
   // Not installed yet: the install init runs writes the lockfile of the
-  // manager it picks, so the plugin is that manager's.
-  if (has('pnpm-workspace.yaml') || declaresWorkspaces(pkgRoot))
-    return projectManager(pkgRoot, process.execPath)
-  return null
+  // manager it picks, workspace or single package, so the plugin is that
+  // manager's.
+  return projectManager(pkgRoot, process.execPath)
 }
 
 /**
@@ -630,14 +631,19 @@ async function starter(
   const gitInit =
     root === process.cwd() ? 'git init' : `git init ${path.relative(process.cwd(), root)}`
   const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `${migrateHint(args.mjs === true)} to make package.json scripts tasks, or ${declare}` : declare}`
+  const written = files.map((f) => path.join(root, f.path))
   const notes = [
     ...unreadRunnerNotes(root),
     ...keptWithoutPluginNotes(root, kept, plugin, pkgRoot),
-    ...tscCompilesConfigNotes(
+    ...ignoredNotes(
       root,
-      files.map((f) => path.join(root, f.path)),
+      files.map((f) => f.path),
+      args.dry || args.json === true,
     ),
   ]
+  // Settled after the write, as vx-migrate settles them: a dry run names
+  // what tsc would compile.
+  if (args.json === true || args.dry) notes.push(...tscCompilesConfigNotes(root, written))
   if (args.json === true) {
     ui.data(
       'out',
@@ -653,8 +659,8 @@ async function starter(
   if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])
   if (kept.length > 0) rows.push(['kept', ...kept])
   if (overwritten.length + replaced.length > 0) rows.push(['replaced', ...overwritten, ...replaced])
-  if (notes.length > 0) rows.push(['note', ...notes])
   if (args.dry) {
+    if (notes.length > 0) rows.push(['note', ...notes])
     rows.push([
       'lock',
       LOCKFILE_NAME,
@@ -680,6 +686,8 @@ async function starter(
     )
   }
   for (const f of replaced) await unlink(path.join(root, f))
+  notes.push(...settleToolFiles(root, written), ...tscCompilesConfigNotes(root, written))
+  if (notes.length > 0) rows.push(['note', ...notes])
   // The lock that follows loads the workspace file just written.
   workspaceFileWritten()
   const lock = await lockAfterMigration(root)
@@ -726,9 +734,13 @@ function keptWithoutPluginNotes(
   if (file === undefined || plugin === null || pkgRoot === null) return []
   if (readFileSync(path.join(root, file), 'utf8').includes('@vzn/vx-lockfile')) return []
   const lockfile = LOCKFILES.find((f) => existsSync(path.join(pkgRoot, f)))
-  const where = lockfile === undefined ? `in a ${plugin} workspace` : `beside ${lockfile}`
+  const where =
+    lockfile === undefined
+      ? `in ${plugin === 'npm' ? 'an' : 'a'} ${plugin} workspace`
+      : `beside ${lockfile}`
+  // A single package has no project edges; its keys still follow its dependencies.
   return [
-    `${file} declares no @vzn/vx-lockfile plugin: ${where}, add ${plugin}() from '@vzn/vx-lockfile' so ^build has project edges, or run vx init --force`,
+    `${file} declares no @vzn/vx-lockfile plugin: ${where}, add ${plugin}() from '@vzn/vx-lockfile' so a dependency change re-runs its tasks and ^build has project edges, or run vx init --force`,
   ]
 }
 

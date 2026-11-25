@@ -237,16 +237,10 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
-    'a TRACKING-ONLY env input: the key moves on a value the command cannot read',
+    'an env input: the command gets the value the key folds',
     async () => {
-      // The direction the suite was missing. `orchestrator.test.ts` §
-      // "inputs.env affects the cache key; exec.env.passThrough alone
-      // does not" pins the common pairing, with both names ALSO passed
-      // through; Turbo parity pins the same asymmetry against turbo.json.
-      // Neither covers the shape schema.md calls "legal but rare": a name in
-      // `inputs.env` and NOT in `exec.env.passThrough`, where the child
-      // environment is isolated so "the key varies on a value the command
-      // never sees" — a miss that re-runs and reproduces identical bytes.
+      // inputs.env is Turbo's `env` (0a7d89289): keyed and passed, with no
+      // exec.env.passThrough beside it.
       const dir = await addProject(fixture.root, 'envtrack', {
         files: { 'src/x.txt': 'v1' },
         config: `
@@ -271,16 +265,14 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       try {
         process.env['VX_T_TRACKED'] = 'one'
         expect(await build()).toBe('success')
-        // Isolated: declaring it as a cache input forwards NOTHING.
-        expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('[]')
+        expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('[one]')
         expect(await build()).toBe('cache-hit')
 
         process.env['VX_T_TRACKED'] = 'two'
         // The key folded the value, so it misses…
         expect(await build()).toBe('success')
-        // …and the re-run writes exactly what it wrote before, which is the
-        // cost of declaring one axis and not the other.
-        expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('[]')
+        // …and the re-run writes the new value.
+        expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe('[two]')
       } finally {
         delete process.env['VX_T_TRACKED']
       }

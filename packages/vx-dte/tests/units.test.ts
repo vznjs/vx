@@ -3250,6 +3250,44 @@ it('sends a host name the task keys in inputs.env, with the value keyed', async 
   }
 })
 
+// An inputs.env pattern keys only the names it matches here: TMP* with no
+// TMPDIR set keyed none, and the worker ran with its own TMPDIR under that key.
+it('leaves unset a host name an inputs.env pattern covers and the orchestrator lacks', async () => {
+  const [id, n] = node('t1')
+  const keyedBy = {
+    ...n,
+    config: { exec: { command: 'x' }, inputs: { files: [], env: ['TMP*', 'XDG_*_HOME'] } },
+  } as unknown as TaskNode
+  const h = await harness(new Map([[id, keyedBy]]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    void h.o.execute({
+      ...h.req('t1'),
+      env: { XDG_CONFIG_HOME: '/orc/config', HOME: '/orc/home', X: '1' },
+      inputs: {
+        files: [],
+        env: [{ name: 'XDG_CONFIG_HOME', value: '/orc/config' }],
+        runtime: [],
+        workspaceRuntime: [],
+        upstream: [],
+        configDigest: 'c',
+      },
+    } as unknown as ExecuteRequest)
+    expect(await a.batches()).toEqual([['t1']])
+    expect(a.orders[0]!.env).toEqual({ XDG_CONFIG_HOME: '/orc/config', X: '1' })
+    expect(a.orders[0]!.unset).toEqual([
+      'TMPDIR',
+      'TMP',
+      'XDG_DATA_HOME',
+      'XDG_CACHE_HOME',
+      'XDG_STATE_HOME',
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
 // A worker swapped a defined or keyed PATH for its own: the task ran
 // without the defined tools and saved that under the key (2026-11-10).
 it('marks an order whose PATH the task defines or keys', async () => {
@@ -7108,6 +7146,30 @@ it('a cancelled attempt that ends after its retry lays nothing and leaves the re
     const sent = [...a.orders, ...b.orders].find((o) => o.task === 'd')
     expect(sent).toBeDefined()
     expect(sent!.deps.map((d) => d.key)).not.toContain('k-cancelled')
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
+// The cancelled attempt's late end also wrote its time over the retry's:
+// a hung attempt cut by its timeout taught later runs the task's pace.
+it('a cancelled attempt that ends after its retry leaves the retry its time', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    const stop = new AbortController()
+    const first = h.o.execute({ ...h.req('t'), signal: stop.signal })
+    expect(await a.batches()).toEqual([['t']])
+    stop.abort()
+    expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't' }])
+    const b = await h.worker(1)
+    const second = h.o.execute({ ...h.req('t'), attempt: 2 } as ExecuteRequest)
+    expect(await b.batches()).toEqual([['t']])
+    await b.finish('t', 'k-retry', { exitCode: 0, durationMs: 400 })
+    expect((await second).exitCode).toBe(0)
+    await a.finish('t', 'k-cancelled', { exitCode: 143, durationMs: 60_000 })
+    expect((await first).exitCode).toBe(143)
+    expect(h.o.finished(() => undefined).map((t) => t.took)).toEqual([400])
   } finally {
     await h.stop()
   }

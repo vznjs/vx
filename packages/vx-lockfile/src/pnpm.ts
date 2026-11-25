@@ -14,7 +14,7 @@
 import path from 'node:path'
 import { reachDigests } from '@vzn/vx'
 import { type LockfileImporter, newGraph, reachedImporters, withTransitive } from './graph.js'
-import { readUtf8, record, sectionsOf, stable } from './json.js'
+import { type Json, readUtf8, record, sectionsOf, stable } from './json.js'
 import { topLevel, v13Document } from './pnpm-blocks.js'
 import { fromV13 } from './pnpm-v13.js'
 import { joinPosix, resolvePosix } from './posix.js'
@@ -96,9 +96,10 @@ export function parseLockfile(text: string): Lockfile {
   const published = new Map<string, string>()
   const rawImporters = record(doc['importers'])
   if (rawImporters !== undefined) {
-    for (const [dir, entry] of Object.entries(rawImporters)) {
+    for (const [dir, raw] of Object.entries(rawImporters)) {
+      const entry = entryOf('importers', dir, raw)
       importers.set(dir, depsOf(entry))
-      sections.set(dir, sectionsOf(record(entry) ?? {}, DEP_FIELDS))
+      sections.set(dir, sectionsOf(entry, DEP_FIELDS))
       // `publishConfig.directory` with `linkDirectory`: a dependant's
       // `link:` names this directory, and it is the importer.
       const publishDir = record(entry)?.['publishDirectory']
@@ -118,7 +119,7 @@ export function parseLockfile(text: string): Lockfile {
   const directories = new Map<string, string>()
   const packages = record(doc['packages']) ?? {}
   for (const [key, entry] of Object.entries(packages)) {
-    const e = record(entry) ?? {}
+    const e = entryOf('packages', key, entry)
     resolutions.set(key, resolutionOf(e))
     const r = record(e['resolution'])
     if (r?.['type'] === 'directory' && typeof r['directory'] === 'string') {
@@ -128,7 +129,7 @@ export function parseLockfile(text: string): Lockfile {
   }
   if (major >= 9) {
     for (const [key, entry] of Object.entries(record(doc['snapshots']) ?? {})) {
-      snapshots.set(key, depsOf(entry))
+      snapshots.set(key, depsOf(entryOf('snapshots', key, entry)))
     }
   }
 
@@ -167,6 +168,29 @@ export function parseLockfile(text: string): Lockfile {
     excludesLinks,
   }
 }
+
+/**
+ * An importer, package or snapshot entry, refused unless it and each
+ * dependency field it has is a mapping, as pnpm writes them (`{}` when
+ * empty). A file cut after `dependencies:` read as an entry with none,
+ * and every package below it left the closure in silence.
+ */
+function entryOf(section: string, key: string, raw: unknown): Json {
+  const e = record(raw)
+  const field =
+    e === undefined
+      ? undefined
+      : ENTRY_FIELDS.find((f) => e[f] !== undefined && record(e[f]) === undefined)
+  if (e === undefined || field !== undefined) {
+    const what = e === undefined ? 'is not a mapping' : `has a \`${field}\` that is not a mapping`
+    throw new Error(
+      `pnpm-lock.yaml: ${section} entry ${key} ${what}: the file is cut short or hand-edited`,
+    )
+  }
+  return e
+}
+
+const ENTRY_FIELDS = [...DEP_FIELDS, 'peerDependencies'] as const
 
 /**
  * The importers' dependencies alone, as `parseLockfile` reads them. The

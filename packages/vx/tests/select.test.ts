@@ -240,6 +240,28 @@ describe('resolveFilters', () => {
     })
   })
 
+  it('a typed filter spelled as --affected became still selects outright', async () => {
+    // `--affected=HEAD --filter '...[HEAD]'`: the typed filter was taken for
+    // the --affected one by its text, so its whole projects never ran.
+    const loose = path.join(root, 'packages', 'lib', 'loose.txt')
+    await Bun.write(loose, 'x\n')
+    try {
+      const { value } = await quiet(() =>
+        resolveFilters(root, ['...[HEAD]', '...[HEAD]'], {}, { filter: '...[HEAD]' }),
+      )
+      // Every project is an --affected candidate; the run keeps the tasks.
+      expect(value).toMatchObject({ outright: ['lib'] })
+      expect((value as { names: string[] }).names).toContain('lib')
+      // CONTROL: --affected alone selects no project outright.
+      const alone = await quiet(() =>
+        resolveFilters(root, ['...[HEAD]'], {}, { filter: '...[HEAD]' }),
+      )
+      expect(alone.value).not.toHaveProperty('outright')
+    } finally {
+      await rm(loose, { force: true })
+    }
+  })
+
   it('names a ref two empty diffs share once', async () => {
     // `--affected=HEAD --filter '[HEAD]'` said "nothing affected since HEAD, HEAD".
     const { value } = await quiet(() => resolveFilters(root, ['...[HEAD]', '[HEAD]']))

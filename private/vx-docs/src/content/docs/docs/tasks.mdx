@@ -328,7 +328,7 @@ The row names the missing file. Fix the path, or the command.
 | --- | --- |
 | `inputs.files` <Badge text="required" /> | project files, as globs; `!` excludes; `[]` for none |
 | `inputs.workspaceFiles` | files outside the project, from the workspace root (a root `tsconfig.json`) |
-| `inputs.env` | the values of these variables (does not pass them to the command) |
+| `inputs.env` | these variables, passed to the command and keyed by value; `VITE_*` takes every match |
 | `inputs.tasks` | which upstream tasks' keys count; default all (`['*', '^*']`), `[]` for none, `'!name'` drops one |
 | `inputs.runtime` | the output of commands run in the project at hash time (`'node -v'`) |
 | `inputs.workspaceRuntime` | the same, run once at the root for the whole run |
@@ -351,8 +351,8 @@ key: where a task runs says nothing about what it makes.
 Every other field is in the key, so editing even `description` re-runs
 the task once. More in [Caching](../caching/).
 
-A task can read and write outside its project, named from the workspace
-root. Here a test reads the shared config and writes coverage at the root:
+A task can read a file at the workspace root, named from the root. Here a
+test reads the shared config and keeps its coverage in its own project:
 
 ```ts title="packages/web/vx.config.ts" mark={9,11}
 import { defineProject } from '@vzn/vx/config'
@@ -360,12 +360,12 @@ import { defineProject } from '@vzn/vx/config'
 export default defineProject({
   tasks: {
     test: {
-      exec: { command: 'vitest run --coverage --coverage.reportsDirectory=../../coverage/web' },
+      exec: { command: 'vitest run --coverage' },
       inputs: {
         files: ['src/**', 'vitest.config.ts'],
         workspaceFiles: ['tsconfig.base.json'],
       },
-      outputs: { files: [], workspaceFiles: ['coverage/web/**'] },
+      outputs: { files: ['coverage/**'] },
       cache: true,
     },
   },

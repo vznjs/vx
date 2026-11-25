@@ -127,6 +127,27 @@ describe('hostile tokens', () => {
     expect(read).toBe(0)
   })
 
+  // A kid-less token against an issuer of several keys was the issuer's
+  // outage: a 502 a client retries, for a token no key will ever take.
+  it('refuses a token with no kid 401 when the issuer has several keys', async () => {
+    const other = await generateKeyPair('RS256')
+    const two = oidcTokenAuth({
+      allow: parseAllow(`${GITHUB}:acme/app:ci.yml`),
+      audience: AUD,
+      fetchJson: async (url) =>
+        url.endsWith('/.well-known/openid-configuration')
+          ? { jwks_uri: `${GITHUB}/keys` }
+          : { keys: [jwk, { ...(await exportJWK(other.publicKey)), kid: 'k2', alg: 'RS256' }] },
+    })
+    await expect(
+      two(
+        new Request(`${AUD}/v1/x`, {
+          headers: { authorization: `Bearer ${await sign({ alg: 'RS256' })}` },
+        }),
+      ),
+    ).rejects.toThrow(new Refusal(401, 'the token names no kid, and the issuer has several keys'))
+  })
+
   it('never echoes the token it refuses', async () => {
     for (const token of [
       await sign({ alg: 'RS256', kid: 'k1' }, { repository: 'acme/other' }),

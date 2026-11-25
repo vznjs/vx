@@ -439,7 +439,7 @@ The `note` line says how each Nx target became a task:
 - a target an Nx plugin infers is written out as a plain task;
 - an `nx:run-commands` target becomes its shell line;
 - any other executor runs through `nx-exec` (below);
-- a target with `.env` files runs through `nx-env`.
+- a shell target with a committed `.env` file runs through `nx-env`. One whose `.env` files are all uncommitted loads none: commit them, or load them in the command.
 
 </Deeper>
 

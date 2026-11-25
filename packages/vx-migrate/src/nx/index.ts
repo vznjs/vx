@@ -404,7 +404,7 @@ const textOf = (file: string): Promise<string> =>
  * Everything the mapping reads: the graph, nx.json and its `extends` chain, lerna.json, every package manifest
  * and the package.json of each graph node no package matches (its
  * synthetic project's name), the `.env` names in every project dir,
- * NX_LOAD_DOT_ENV_FILES, whether the bins the tasks run are installed,
+ * whether the bins the tasks run are installed,
  * which root tsconfig exists, and the graph load's own notes.
  */
 async function nxReads(
@@ -442,7 +442,6 @@ async function nxReads(
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([d, names]) => [d, [...names].sort()]),
     ),
-    String(process.env['NX_LOAD_DOT_ENV_FILES']),
     JSON.stringify(installed),
     await yarnrcText(root),
     // Whether the manager runs a script's `pre` / `post` hooks (`runsScriptHooks`).

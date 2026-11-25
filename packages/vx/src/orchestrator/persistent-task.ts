@@ -32,7 +32,7 @@ import { explainServerExit, timeServer } from './persistent.js'
 import { shellVerdict } from './shell-verdict.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 import { computeTaskHash, keyOf } from './task-hash.js'
-import { keylessOf } from './task-policy.js'
+import { keylessOf, timeoutOwner } from './task-policy.js'
 import {
   forgetUndeclaredWrites,
   isAborted,
@@ -323,7 +323,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
     const paint = args.run.colors ?? { enabled: false }
     log.taskStderr(
       node,
-      ends.own(`${tagged('warn', `[vx] ${node.id}: not ready: ${message}`, paint)}\n`),
+      ends.own(
+        `${tagged('warn', `[vx] ${node.id}: not ready: ${message}${err instanceof PersistentReadyError && err.reason === 'timeout' ? timeoutOwner(taskTimeoutMs(step) !== undefined) : ''}`, paint)}\n`,
+      ),
     )
     if (err instanceof PersistentReadyError && err.reason === 'exited')
       for (const line of exitNotes(err.exitCode, spawn.child?.signalCode ?? undefined))

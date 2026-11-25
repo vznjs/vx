@@ -3,9 +3,12 @@
 // (task-env.ts), the same in Nx 22.7 and 23.2. The project's own files come
 // before the workspace root's, the most specific name first
 // (`.env.build.production.local` … `.env`), and the first file to define a
-// name wins. The mapper keeps the ones that EXIST, from one directory
-// listing per project per run, so a task with none costs nothing at run
-// time; the bins load them (`nx-dotenv.cjs`).
+// name wins. The lock is the same on every machine, so the mapper never
+// asks the disk which exist: an executor line hands `nx-exec` every
+// candidate, a shell line runs under `nx-env` with every candidate only
+// when git tracks one of them, and the bins load whichever exist
+// (`nx-dotenv.cjs`). A gitignored `.env.local` kept from the disk put
+// `--dotenv .env.local` in the lock, and a fresh clone refused every run.
 
 import { readdir } from 'node:fs/promises'
 import path from 'node:path'
@@ -82,7 +85,28 @@ function isDotenvName(name: string): boolean {
   return name.startsWith('.env') || (name.startsWith('.') && name.endsWith('.env'))
 }
 
-/** One listing of each directory, the `.env`-shaped names only. */
+/**
+ * The `.env`-shaped names git tracks directly in each directory, from the
+ * tracked-file kinds the mapper already reads: what decides a shell line.
+ */
+export function committedDotenv(
+  tracked: ((rel: string) => { readonly files: readonly string[] }) | undefined,
+  dirs: readonly string[],
+): DotenvListing {
+  const unique = [...new Set(['.', ...dirs])]
+  return new Map(
+    unique.map((d) => [
+      d,
+      new Set(
+        tracked === undefined
+          ? []
+          : tracked(d).files.filter((f) => !f.includes('/') && isDotenvName(f)),
+      ),
+    ]),
+  )
+}
+
+/** One listing of each directory, the `.env`-shaped names only: the uncommitted-file note. */
 export async function listDotenv(root: string, dirs: readonly string[]): Promise<DotenvListing> {
   const unique = [...new Set(['.', ...dirs])]
   const lists = await Promise.all(

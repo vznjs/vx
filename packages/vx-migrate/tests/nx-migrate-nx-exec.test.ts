@@ -67,8 +67,11 @@ describe('the migration writes every executor as an nx-exec line', () => {
       const tasks = Object.fromEntries(
         plan.projects.flatMap((p) => p.tasks.map((t) => [`${p.name}#${t.name}`, t])),
       )
-      const exec = (id: string) =>
-        tasks[id]!.task!['exec'] as { command: string; persistent?: unknown }
+      // Every nx-exec line lists Nx's `.env` candidates (nx-dotenv-machine.test.ts).
+      const exec = (id: string) => {
+        const e = tasks[id]!.task!['exec'] as { command: string; persistent?: unknown }
+        return { ...e, command: e.command.replace(/ --dotenv \S+/g, '') }
+      }
       expect(exec('a#test').command).toBe(
         `nx-exec @nx/jest:jest --project a --target test --options '{"jestConfig":"libs/a/jest.config.ts"}'`,
       )

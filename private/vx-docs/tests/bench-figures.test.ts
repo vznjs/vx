@@ -14,7 +14,7 @@ import { describe, expect, it } from 'bun:test'
 import { RUNNERS, TOKEN, figures, type BenchData, type RunnerResult } from '../src/bench/format.ts'
 import { FIGURES } from '../src/bench/data.ts'
 import { realFigures, type RealRow } from '../src/bench/real.ts'
-import real from '../../vx-bench/real-repos.json'
+import real from '@vzn/vx-bench/real-repos.json'
 import docs from '../vx.config.ts'
 
 const site = path.resolve(import.meta.dir, '..')

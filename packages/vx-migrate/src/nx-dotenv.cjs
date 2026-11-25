@@ -4,8 +4,9 @@
 // (tasks-runner/task-env.ts), so the parsing, `${VAR}` expansion and
 // precedence are the workspace's Nx version's, not a copy's.
 //
-// Which files: the mapper lists the ones that exist, in Nx's order
-// (`getEnvPathsForTask`), relative to the task's working directory. What
+// Which files: every candidate, in Nx's order (`getEnvPathsForTask`),
+// relative to the task's working directory; the ones missing here load
+// nothing, as in Nx, so the line is the same on every machine. What
 // Nx does with them: the first file to define a name wins, and a name the
 // environment already holds wins over every file — which under vx is the
 // isolated task env, so the target's `env` (exec.env.define) stays on top
@@ -23,6 +24,8 @@ const path = require('node:path')
  */
 function loadTaskEnv(nx, env, files, envFile) {
   if (files.length === 0 && envFile === undefined) return
+  // Nx's switch, read where the task runs, as Nx reads it.
+  if (env['NX_LOAD_DOT_ENV_FILES'] === 'false') return
   const { loadAndExpandDotEnvFile, unloadDotEnvFile } = nx('nx/src/tasks-runner/task-env')
   if (files.length > 0) {
     loadAndExpandDotEnvFile(

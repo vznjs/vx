@@ -3,7 +3,7 @@
 // a wrong link, a lost anchor, an unescaped placeholder or a dropped
 // description reached the site with every row green. These hold the
 // transforms one at a time, on small sources.
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -209,12 +209,16 @@ describe('a run', () => {
       await writeFile(path.join(docs, 'STATUS.md'), '# Status\n')
       await writeFile(path.join(out, 'gone.md'), `---\n${GENERATED_MARK}\ntitle: "Gone"\n---\n`)
       await writeFile(path.join(out, 'authored.md'), '---\ntitle: "Mine"\n---\n')
-      const pkgs = path.join(root, 'packages')
+      // Linked, as node_modules holds them: a glob walks into no link.
+      const pkgs = path.join(root, 'node_modules')
+      const real = path.join(root, 'packages')
+      await mkdir(pkgs, { recursive: true })
       for (const [dir, priv] of [
         ['vx-a', false],
         ['vx-b', true],
       ] as const) {
-        await mkdir(path.join(pkgs, dir), { recursive: true })
+        await mkdir(path.join(real, dir), { recursive: true })
+        await symlink(path.join(real, dir), path.join(pkgs, dir))
         await writeFile(path.join(pkgs, dir, 'package.json'), JSON.stringify({ private: priv }))
         await writeFile(
           path.join(pkgs, dir, 'README.md'),

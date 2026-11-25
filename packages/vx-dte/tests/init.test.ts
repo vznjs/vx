@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import type { CommandContext } from '@vzn/vx'
 import { dte, github, gitlab, local } from '../src/index.js'
+import { askTasks } from '../src/init.js'
 
 const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
@@ -486,6 +487,24 @@ it('the README shows the workflow vx dte init writes for its sizes', async () =>
   expect(readme).toContain('```yaml\n# .gitlab-ci.yml\n' + gl.files['.gitlab-ci.yml'] + '```')
 })
 
+// The hint named one line, 'vx run build test --affected'; a ci.yml
+// that ran it on a push to main refused there: main has no default base.
+it('the unnamed GitHub run asks for tasks before both flags', async () => {
+  const gh = (
+    await github().init!({
+      workspaceRoot: root,
+      dir: '',
+      relay: 'https://r',
+      sizes: [{ name: 'small', max: 4 }],
+      manager: 'bun',
+      tasks: { main: '', change: '' },
+    })
+  ).files['.github/workflows/ci.yml']!
+  expect(gh).toContain(
+    "      # Name the tasks in both quotes, as 'build test --affected' and\n      # 'build test --all': with none named, vx fails, listing them.\n      - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}\n",
+  )
+})
+
 it('writes the tasks asked for: main with --all, a change request with --affected', async () => {
   const setup = {
     workspaceRoot: root,
@@ -506,6 +525,41 @@ it('writes the tasks asked for: main with --all, a change request with --affecte
   expect(gl).toContain('    - bun vx run $VX_TASKS\n')
   expect(gl).toContain('  script: [bun vx dte worker]\n')
   expect(gl).not.toContain('Name the tasks')
+})
+
+// Enter at the main question wrote a ci.yml running `vx run --all` with no
+// task, which fails, though the workspace declared `pipelines.main`.
+it("offers pipelines.main's tasks as main's default, and refuses no tasks", () => {
+  const answers = (...a: string[]) => {
+    const asked: string[] = []
+    return { asked, ask: (q: string) => (asked.push(q), a.shift() ?? '') }
+  }
+  const enter = answers('', '')
+  expect(askTasks('build test', true, enter.ask)).toEqual({
+    main: 'build test',
+    change: 'build test',
+  })
+  expect(enter.asked[0]).toBe('Tasks to run on main [build test]:')
+  expect(askTasks('build test', true, answers('lint', '').ask)).toEqual({
+    main: 'lint',
+    change: 'lint',
+  })
+  expect(() => askTasks(undefined, true, answers('', '').ask)).toThrow(
+    'vx dte init: name the tasks main runs, such as build test: a ci.yml that runs none fails',
+  )
+  expect(askTasks('build test', false, answers().ask)).toEqual({
+    main: 'build test',
+    change: 'build test',
+  })
+})
+
+it('writes pipelines.main as the tasks outside a terminal', async () => {
+  await writeFile(path.join(root, 'bun.lock'), '')
+  const plugin = dte({ workers: sizes, adapter: github() })
+  await plugin.config!({ pipelines: { main: { tasks: ['build', 'test'] } } }, {} as never)
+  await plugin.commands!['dte']!.run(['init'], { workspaceRoot: root } as CommandContext)
+  const ci = await readFile(path.join(root, '.github/workflows/ci.yml'), 'utf8')
+  expect(ci).toContain("'build test --affected' || 'build test --all'")
 })
 
 it('vx dte --help prints the usage and exits 0', async () => {

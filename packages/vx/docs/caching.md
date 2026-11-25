@@ -102,7 +102,8 @@ over (in order):
 5. **`inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current
-   values; an unset name folds its bare name, with no `\0`, so unset
+   values, and a `*` pattern each name it matches in the run's
+   environment, sorted; an unset name folds its bare name, with no `\0`, so unset
    and set-to-empty are two keys (the child tells them apart:
    `passThrough` leaves an unset name out). A name holding a NUL or
    another control character is refused at load, and a value holding
@@ -117,7 +118,7 @@ over (in order):
    the resolved config (step 3), their _output_ is resolved live every
    run. Folded with the command count + each `command\0output` pair.
 7. **`inputs.workspaceRuntime` resolved output** — same as step
-   8 but commands run at the **workspace root**, and the pairs fold
+   6 but commands run at the **workspace root**, and the pairs fold
    into a **distinct namespace** (`ws-runtime-values:`) so an identical
    `(command, output)` never aliases the project-cwd `runtime` values.
 8. **Filtered upstream task cache hashes** — every upstream task's
@@ -132,6 +133,9 @@ over (in order):
    key folds one, and everything built on it, may hit but does not
    save (`orchestrator/excluded-keys.ts`); a task with
    `inputs.tasks: []` folds none and saves as usual.
+   A group (no `exec`, no `inputs`) has no key of its own: it stands for
+   its definition (its resolved config, a `description` too) and its
+   upstream keys, so an edit to a group moves its dependants' keys.
 9. **Plugin key material** — the `{ name: value }` pairs a plugin's
    `key(task, ctx)` stage returned for this task, stored on the node as
    sorted `plugin/name` pairs and folded after the upstream keys and BEFORE the input files,
@@ -345,7 +349,11 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A cached task with outputs that no input points at a `.env`,
     `.env.local`, `.env.<mode>` or `.env.<mode>.local` beside its config
     gets a `vx lock` note too: Vite, Next and Bun load those on their own.
-    `'!.env*'` says the task reads none.
+    `'!.env*'` says the task reads none. A file a runtime probe of the
+    task prints the path of (turbo()'s `.env` probe) is keyed, so neither
+    note names it. `vx lock` asks the probes at once and waits 5 s; one
+    that fails or is slower costs only that note, and no probe output is
+    locked.
     A **glob** matching nothing stays silent while another glob of the
     task matches a file, and so does a literal naming a path that does
     not exist, until it does. When no glob matches (a literal does not
@@ -705,57 +713,6 @@ So before execution starts, `run()` kicks off **background prefetches**:
    remote GET per key**, whether it was served by the prefetch, the
    lazy read-through, or both.
 
-## A current tree: when a warm hit restores nothing
-
-A hit whose outputs are already on disk should cost a few stats, not an
-extraction. Two checks decide, both against rows the cache recorded when
-the tree last matched the entry (`output_files`, and since 2026-09-03
-`output_dirs`):
-
-1. **The set.** The files under the declared output globs must be exactly
-   the entry's files — no strays, nothing missing — because a restore
-   wipes and rewrites the declared outputs, and a stray left in place
-   would be a stale file the hit silently kept. Until Wave 6 this was a
-   glob walk on every hit (0.36 ms each; 365 ms of CPU on a warm
-   1000-project run). Now every glob names the directory its matches
-   live under (`outputDirPrefixes`): `<dir>/**` and a bare literal `<dir>`
-   are that tree (a literal that names a file is recorded as a file,
-   `mtime_ms` -2, and holds while a regular file stands there, its bytes
-   being the per-file check's), any other glob the tree under its static
-   prefix (`dist/*.js` is `dist`), and a root-anchored one (Turbo's
-   `**/dist/**`) the whole project. The cache records every directory
-   under each with its mtime after each save and restore; on the next
-   hit, unchanged mtimes on all of them prove the set unchanged, since a
-   file added or removed anywhere the glob could see bumps its parent
-   directory, and a new directory bumps the recorded directory that
-   contains it. The rows are taken per task and written together — one
-   transaction at the first read, at prune, at stats or at close, since
-   item 622; a thousand commits at run end were the whole snapshot stage
-   before — and a reader in the same process flushes them first. A
-   save's or restore's snapshot is taken once the directories are past
-   the racy window: while the run goes, two seconds after the save or
-   restore, held to the rows the process stamped then, so no statement
-   makes a run's work depend on its length (the run-end walks of 8,002
-   tasks held a cold run's exit ~40 ms), else at run end. A tree a
-   dependant's glob adds to waits for the end, so its walk sees those
-   files. By then a later task or another process may have written into
-   them: the walk collects the files it passes and
-   records nothing unless the files the globs take there are the entry's
-   rows (item 1087), so a source file beside the outputs is no stray. A
-   glob that leaves the project, a missing row set (a remote ingest
-   records none), a moved directory, or more than 8,192 directories
-   (`OUTPUT_DIRS_CAP`, recorded as one never-current row, `mtime_ms` -3,
-   so the hit does not snapshot it again) keeps the walk — and a walk that
-   proves the tree current records the directories so the following hit
-   can skip it.
-2. **The files.** Every recorded file's `(size, mode)` and the stamped
-   `(mtime-ms, inode, ctime)` must match. This never left: the directory rule only replaces the
-   enumeration, not the fingerprint.
-
-The trade is the one every mtime-based skip accepts, already documented
-for files: a deliberately forged directory mtime (`touch -r`) hides a
-stray. Both directions are pinned in `tests/output-dirs.test.ts`.
-
 Hard invariants of the remote prefetch:
 
 - **Remote-only.** This entire path is gated on a `LayeredCache` being
@@ -874,6 +831,57 @@ when a real run needs them. Locally the probe reads whether the entry's
 row is there and stats the artifact, never the row itself: the whole
 row, its stored stdout included, made a 200-task plan over 1 MB outputs
 230 ms against 28 (min of 11, 2026-10-02).
+
+## A current tree: when a warm hit restores nothing
+
+A hit whose outputs are already on disk should cost a few stats, not an
+extraction. Two checks decide, both against rows the cache recorded when
+the tree last matched the entry (`output_files`, and since 2026-09-03
+`output_dirs`):
+
+1. **The set.** The files under the declared output globs must be exactly
+   the entry's files — no strays, nothing missing — because a restore
+   wipes and rewrites the declared outputs, and a stray left in place
+   would be a stale file the hit silently kept. Until Wave 6 this was a
+   glob walk on every hit (0.36 ms each; 365 ms of CPU on a warm
+   1000-project run). Now every glob names the directory its matches
+   live under (`outputDirPrefixes`): `<dir>/**` and a bare literal `<dir>`
+   are that tree (a literal that names a file is recorded as a file,
+   `mtime_ms` -2, and holds while a regular file stands there, its bytes
+   being the per-file check's), any other glob the tree under its static
+   prefix (`dist/*.js` is `dist`), and a root-anchored one (Turbo's
+   `**/dist/**`) the whole project. The cache records every directory
+   under each with its mtime after each save and restore; on the next
+   hit, unchanged mtimes on all of them prove the set unchanged, since a
+   file added or removed anywhere the glob could see bumps its parent
+   directory, and a new directory bumps the recorded directory that
+   contains it. The rows are taken per task and written together — one
+   transaction at the first read, at prune, at stats or at close, since
+   item 622; a thousand commits at run end were the whole snapshot stage
+   before — and a reader in the same process flushes them first. A
+   save's or restore's snapshot is taken once the directories are past
+   the racy window: while the run goes, two seconds after the save or
+   restore, held to the rows the process stamped then, so no statement
+   makes a run's work depend on its length (the run-end walks of 8,002
+   tasks held a cold run's exit ~40 ms), else at run end. A tree a
+   dependant's glob adds to waits for the end, so its walk sees those
+   files. By then a later task or another process may have written into
+   them: the walk collects the files it passes and
+   records nothing unless the files the globs take there are the entry's
+   rows (item 1087), so a source file beside the outputs is no stray. A
+   glob that leaves the project, a missing row set (a remote ingest
+   records none), a moved directory, or more than 8,192 directories
+   (`OUTPUT_DIRS_CAP`, recorded as one never-current row, `mtime_ms` -3,
+   so the hit does not snapshot it again) keeps the walk — and a walk that
+   proves the tree current records the directories so the following hit
+   can skip it.
+2. **The files.** Every recorded file's `(size, mode)` and the stamped
+   `(mtime-ms, inode, ctime)` must match. This never left: the directory rule only replaces the
+   enumeration, not the fingerprint.
+
+The trade is the one every mtime-based skip accepts, already documented
+for files: a deliberately forged directory mtime (`touch -r`) hides a
+stray. Both directions are pinned in `tests/output-dirs.test.ts`.
 
 ## Cache policy (read/write axes)
 
@@ -1818,6 +1826,7 @@ owner-only; vx closes one of yours that others can read (chmod 700), and one oth
 ~/.vx/<id>/cache/                           the shared store
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, task_durations,
+│                                           task_outcomes, blob_sizes,
 │                                           plugin_blobs, remote_hits, store_meta; artifacts
 │                                           up to `cache.store.embeddings` (v33)
 └── <hash>.tree/                            the larger artifacts, as plain files (below)
@@ -2566,7 +2575,9 @@ CREATE TABLE entry_inputs (
 
 -- v32: what belongs to the entries, not to one workspace: 'value_salt',
 -- the salt entry_inputs digests are taken under, so they compare with
--- another workspace's run.
+-- another workspace's run. Entries a workspace held before its first
+-- commit move here with their salt; a store with another salt keeps its
+-- own entry_inputs rows only.
 CREATE TABLE store_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

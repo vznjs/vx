@@ -238,7 +238,7 @@ describe('the decoders', () => {
   it('a tree stops at a field that is not length-delimited', () => {
     const root = encodeDirectory({ files: [file], directories: [], symlinks: [] })
     const buf = new Uint8Array([0x08, 0x01, 0x0a, root.length, ...root])
-    expect(decodeTreeWithBytes(buf)).toEqual({ children: [], childDigests: [] })
+    expect(decodeTreeWithBytes(buf)).toEqual({ children: [], childDigests: [], childBytes: [] })
   })
 
   it('a child’s digest is over the bytes sent, not our re-encoding of them', () => {
@@ -439,6 +439,28 @@ describe('buildInputTree', () => {
     const tree = await buildInputTree({ workspaceRoot: root, paths: ['grp.sh'] })
     const top = decodeDirectory(tree.blobs.find((b) => b.digest.hash === tree.root.hash)!.data)
     expect(top.files.map((f) => f.is_executable)).toEqual([false])
+  })
+
+  // The key folds the execute bit (`100755:<oid>`, a bare oid for 644). A
+  // chmod after the key was taken shipped the new bit, and the result was
+  // recorded under the key that named the old one.
+  it('an execute bit that changed since the key was taken is moved', async () => {
+    await writeFile(path.join(root, 'now-x.sh'), 'x')
+    await writeFile(path.join(root, 'now-plain.sh'), 'x')
+    await writeFile(path.join(root, 'same.sh'), 'x')
+    await chmod(path.join(root, 'now-x.sh'), 0o755)
+    await chmod(path.join(root, 'same.sh'), 0o755)
+    const blobOid = createHash('sha1').update('blob 1\0x').digest('hex')
+    const tree = await buildInputTree({
+      workspaceRoot: root,
+      paths: ['now-x.sh', 'now-plain.sh', 'same.sh'],
+      expected: new Map([
+        ['now-x.sh', blobOid],
+        ['now-plain.sh', `100755:${blobOid}`],
+        ['same.sh', `100755:${blobOid}`],
+      ]),
+    })
+    expect(tree.moved.sort()).toEqual(['now-plain.sh', 'now-x.sh'])
   })
 
   // An upstream's output on disk that is also a declared input (a codegen

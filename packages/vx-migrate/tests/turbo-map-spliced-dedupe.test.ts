@@ -55,12 +55,8 @@ describe('turbo-map: a global name the task repeats', () => {
       return [notTurbos(t.inputs.env), notTurbos(t.exec.env.passThrough), t.inputs.workspaceFiles]
     }
     expect([await inputsOf((_k, v) => v), await inputsOf((k) => [{ raw: `...${k}` }])]).toEqual([
-      [['A', 'B'], ['A', 'C', 'B', 'D'], ['g.json']],
-      [
-        [{ raw: '...env' }, 'B'],
-        [{ raw: '...env' }, { raw: '...pass' }, 'B', 'D'],
-        [{ raw: '...inputs' }],
-      ],
+      [['A', 'B'], ['C', 'D'], ['g.json']],
+      [[{ raw: '...env' }, 'B'], [{ raw: '...pass' }, 'D'], [{ raw: '...inputs' }]],
     ])
   })
 })

@@ -201,7 +201,7 @@ describe('vx watch over a nested project whose ancestor is made again', () => {
 // cycle runs the lock's configs, so the edit runs the old value until
 // `vx lock` writes the new one.
 describe('vx watch over a config import directory made again', () => {
-  it('an edit to a restored preset is heard, and re-runs under its new value once locked', async () => {
+  it('an edit to a restored preset is heard, refused, and re-runs under its new value once locked', async () => {
     const root = await makeWorkspace({ prefix: 'vx-import-dir-' })
     const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-import-count-'))
     const log = path.join(outside, 'runs.log')
@@ -231,8 +231,12 @@ describe('vx watch over a config import directory made again', () => {
       await until(() => rearms() >= 2, 'the re-arm after the restore')
       const before = (await runs()).length
       await writeFile(path.join(root, 'shared', 'preset.mjs'), "export const word = 'v2'\n")
-      await until(async () => (await runs()).length > before, 'the run the edit starts')
-      expect((await runs()).at(-1)).toBe('v1')
+      // A run refuses a config import edited since `vx lock` (7c6e8e295).
+      await until(
+        () => w.err().includes('shared/preset.mjs changed since the last `vx lock`'),
+        'the refusal the edit starts',
+      )
+      expect((await runs()).length).toBe(before)
       const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {
         cwd: root,
         env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },

@@ -102,6 +102,7 @@ A run that starts no task writes no block. It says its one line in the
 step's log, which is where to look:
 
 - `nothing affected since <ref>` (exit 0).
+- `Nothing affected: the change reaches no <task> task.` (exit 0).
 - A refusal before the run: a lockfile changed since `vx lock`, or an
   `--affected` base the clone lacks.
 
@@ -233,7 +234,7 @@ A merge request pipeline also names the base of a bare `--affected`:
   (`CI_MERGE_REQUEST_TARGET_BRANCH_SHA`). So changes the target took
   since are not run again.
 - In a merge train, the car ahead (`HEAD^1`), whose own pipeline runs
-  its changes.
+  its changes. A fast-forward car is no merge commit: the target head.
 
 </details>
 

@@ -16,6 +16,8 @@ const MAX_REPORT_BYTES = MAX_STRING + 200
 /** An outcome's bytes at most: its hash and key at `MAX_STRING`. */
 const MAX_OUTCOME_BYTES = 2 * MAX_STRING + 60
 const DAY_MS = 86_400_000
+/** Fold-time lanes, one a node: a time moves up to `LANES - 1` ms later. */
+const LANES = 1024
 
 export interface ServerOptions {
   readonly store: Store
@@ -45,6 +47,14 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     maxQueryRefs: MAX_QUERY_REFS,
   }
 
+  /** The last upload's fold time. */
+  let folded = 0
+  /**
+   * This node's place among fold times: each takes only times `≡ lane (mod
+   * LANES)`, so two nodes (a Worker's isolates) folding in one millisecond
+   * fold at two times, unless they drew one lane (1 in 1,024).
+   */
+  const lane = Math.floor(Math.random() * LANES)
   // The fold is one upsert, a few ms for a thousand tasks: done inline.
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
@@ -56,7 +66,11 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     const reports = parseReports(body)
     const outcomes = parseOutcomes(body)
     await schema()
-    const t = now()
+    // One time per upload: the fold leaves a row already written at its
+    // time, so a D1 retry folds once, and two uploads in one millisecond (a
+    // Worker's clock stands still between I/O) each fold, on one node or two.
+    const from = Math.max(now(), folded + 1)
+    const t = (folded = from + ((lane - (from % LANES) + LANES) % LANES))
     await store.fold(access, access.write, t, reports)
     if (outcomes.length > 0) await store.record(access, t, outcomes)
     return new Response(null, { status: 204 })

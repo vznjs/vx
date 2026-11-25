@@ -258,10 +258,11 @@ any piece of one the output masks (a URL's password, a key's line),
 including a secret-named `define` read from a variable of any name
 (`API_TOKEN: process.env.MY_CREDS`): the lock is committed (L-42), and
 `vx lock --check` fails such a lock. A value the config's own text
-spells, in the config or a local module it imports (not one under
-`node_modules`), is committed already and locks: a literal define, or
-`docker compose up postgres` while `DATABASE_URL`'s password is
-`postgres`.
+spells, in the config, a local module it imports (not one under
+`node_modules`) or a file a `project` plugin mapped it from (a
+package.json script under `turbo()`), is committed already and locks: a
+literal define, or `docker compose up postgres` while `DATABASE_URL`'s
+password is `postgres`.
 
 Masking covers the text vx shows and stores, not a task's outputs: they
 are cached and uploaded as the task wrote them, so a build that bakes a

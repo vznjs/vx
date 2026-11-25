@@ -545,7 +545,7 @@ export default [
       title: 'A half-second time limit kills a task that runs for five',
       why: 'A limit in seconds may have a fraction. A tool that truncates 0.5 to 0 may read that as no limit at all, and the overrunning task finishes and passes. The task is killed within a few seconds and the run fails without its output.',
       from: ['timeout-bounds', 'task-timeout'],
-      needs: ['timeout'],
+      needs: ['timeout', 'timeout-fraction'],
     },
     {
       projects: {
@@ -570,7 +570,7 @@ export default [
       title: 'A time limit under one second spares a task that finishes inside it',
       why: 'A limit of 0.9 s rounded down to 0 can become an instant kill, failing a task that needed a tenth of the time it had. A fraction is a limit like any other. The quick task succeeds.',
       from: ['timeout-bounds', 'task-timeout'],
-      needs: ['timeout'],
+      needs: ['timeout', 'timeout-fraction'],
     },
     {
       projects: {
@@ -586,7 +586,7 @@ export default [
       title: 'A time limit of 24 days is a long limit, not an instant kill',
       why: 'JavaScript timers hold at most 2^31−1 ms, about 24.8 days; one more millisecond overflows and fires at once. A limit right at that bound is still a valid limit. The task runs and succeeds.',
       from: ['timeout-bounds'],
-      needs: ['timeout'],
+      needs: ['timeout', 'timeout-fraction'],
     },
     {
       projects: {

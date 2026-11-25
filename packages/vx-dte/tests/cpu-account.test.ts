@@ -100,3 +100,11 @@ it('says each share as cores over the time online', () => {
     'cpu over 10.0s: machine 2.80 cores · tasks 2.00 cores · this worker 0.15 cores · its other children 0.05 cores · most besides: Runner.Worker 0.30 cores',
   )
 })
+
+// The kernel names a kworker `+` while it runs work and `-` while idle
+// (kernel/workqueue.c): a busy one sampled once each way read as two.
+it('counts a kworker across busy and idle, by its thread', () => {
+  const before = parsePs('  12     2 00:00:30 kworker/u16:13+events_unbound').table
+  const after = parsePs('  12     2 00:00:31 kworker/u16:13-events_unbound')
+  expect(topBetween(before, after, 1)).toEqual([{ name: 'kworker/u16:13', ms: 1_000 }])
+})

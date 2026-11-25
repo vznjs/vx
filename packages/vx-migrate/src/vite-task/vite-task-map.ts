@@ -21,6 +21,7 @@ import {
   wildcardTodo,
 } from '../shared-outputs.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
+import { mayOverlap } from '../turbo/turbo-reads.js'
 
 /** vite-plus's `VITE_CONFIG_FILES`, in its order: the first one present is the package's. */
 const VITE_CONFIG_FILES = [
@@ -139,8 +140,6 @@ export interface ViteTaskOptions {
   tracked?: (rel: string) => TrackedKinds
   /** The config file each written task lives beside, by project dir. */
   ownConfig?: (dir: string) => string | null
-  /** The env names the tracked files under `dirs` spell: a `*` env entry's stand-in. */
-  sourceNames?: (dirs: readonly string[]) => Promise<readonly string[]>
 }
 
 export interface ViteTaskMapping {
@@ -251,7 +250,7 @@ export async function mapViteTaskWorkspace(
     const deps = (t.task!['dependsOn'] as string[] | undefined) ?? []
     t.task!['dependsOn'] = [...new Set([...deps, ...edges])]
     const rest = parts.slice(i).join(' && ')
-    if (rest === '') delete t.task!['exec']
+    if (rest === '') noCommand(t)
     else exec.command = rest
   }
 
@@ -301,29 +300,11 @@ export async function mapViteTaskWorkspace(
   }
 
   const projects: GeneratedProject[] = []
-  const wildUsed = new Map<string, number>()
   for (const meta of metas) {
     const pkgDir = relPosix(root, meta.dir)
     const atRoot = pkgDir === '' || pkgDir === '.'
     const tasks: GeneratedTask[] = []
     const own = tasksOf(meta)
-    // A `*` env entry matches names in the run's environment; a written
-    // config lists the ones this package and its workspace dependencies spell.
-    const wild = Object.values(own).some((raw) => {
-      const def = (typeof raw === 'object' && raw !== null ? raw : {}) as TaskDef
-      const c = (typeof def.cache === 'object' && def.cache !== null ? def.cache : def) as CacheDef
-      return [...asStrings(c.env), ...asStrings(c.untrackedEnv)].some(
-        (e) => !e.startsWith('!') && e.includes('*'),
-      )
-    })
-    let spelled: readonly string[] | undefined
-    if (wild && opts.sourceNames !== undefined) {
-      const closure = new Set<PackageMeta>([meta])
-      for (const p of closure)
-        for (const field of [...DEP_FIELDS, 'optionalDependencies'])
-          for (const n of depsIn(p, field)) closure.add(byName.get(n)!)
-      spelled = await opts.sourceNames([...closure].map((p) => p.dir))
-    }
     for (const [name, raw] of Object.entries(own)) {
       const def: TaskDef =
         typeof raw === 'string' || Array.isArray(raw) ? { command: raw } : (raw ?? {})
@@ -335,8 +316,6 @@ export async function mapViteTaskWorkspace(
           dependsOn: (from) => fromDeps(meta, from),
           opts,
           dir: meta.dir,
-          spelled,
-          wildUsed,
         }),
       )
     }
@@ -381,21 +360,34 @@ export async function mapViteTaskWorkspace(
     for (const t of tasks) inlineRuns(t, meta)
     if (tasks.length > 0) projects.push({ name: meta.name, dir: meta.dir, importLines: [], tasks })
   }
-  const notes = [...wildUsed].map(
-    ([e, n]) =>
-      `env ${JSON.stringify(e)}: the configs list the names the files of each task's package and its ` +
-      `workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add any other a task reads to ` +
-      'inputs.env and exec.env.passThrough',
-  )
   refuseTaskNames(projects, 'task')
-  return { projects, notes }
+  return { projects, notes: [] }
 }
+
+/**
+ * A task whose command was only `vp run`s: nothing of its own runs, so
+ * nothing is cached. Its inputs keep it a no-op task, a key its dependants
+ * fold; with none it is a group of its edges.
+ */
+function noCommand(t: GeneratedTask): void {
+  const task = t.task!
+  // Its trace TODO asked for `cache: true`, which a task with no `exec` refuses.
+  t.todos = t.todos.filter((x) => !x.startsWith(AUTO_TODO))
+  delete task['exec']
+  delete task['cache']
+  delete task['outputs']
+  const inputs = task['inputs'] as Record<string, unknown> | undefined
+  if (inputs !== undefined && !Object.values(inputs).some((v) => Array.isArray(v) && v.length > 0))
+    delete task['inputs']
+}
+
+const AUTO_TODO = "cache: Vite Task traced this task's "
 
 /** The TODO for what Vite Task traces and vx declares. */
 function autoTodo(what: string, known?: Record<string, unknown>): string {
   const have = known === undefined ? '' : ` (declared so far: \`${JSON.stringify(known)}\`)`
   return (
-    `cache: Vite Task traced this task's ${what} and vx infers none — add ` +
+    `${AUTO_TODO}${what} and vx infers none — add ` +
     `\`inputs: { files: [...] }, outputs: { files: [...] }, cache: true\` with the real ones${have}; ` +
     'without it the task always runs'
   )
@@ -408,9 +400,6 @@ interface TaskCtx {
   dir: string
   dependsOn: (entry: { task: string; from: unknown }) => string[]
   opts: ViteTaskOptions
-  spelled: readonly string[] | undefined
-  /** Each `*` entry the spelled names stood in for, with its task count. */
-  wildUsed: Map<string, number>
 }
 
 function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
@@ -446,11 +435,15 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
         ? def.cache
         : def
 
-  const env = envNames('cache.env', cache?.env, todos, ctx)
-  const pass = [
-    ...new Set([...env, ...envNames('cache.untrackedEnv', cache?.untrackedEnv, todos, ctx)]),
-  ]
-  if (pass.length > 0) exec['env'] = { passThrough: pass }
+  // `cache.env` is core's `inputs.env`, passed and keyed; `untrackedEnv` is
+  // `passThrough`, passed only. A task that writes no inputs passes both.
+  const env = envNames('cache.env', cache?.env, todos)
+  const untracked = envNames('cache.untrackedEnv', cache?.untrackedEnv, todos)
+  const pass = (keyed: boolean): void => {
+    const names = [...new Set([...(keyed ? [] : env), ...untracked])]
+    if (names.length > 0) exec['env'] = { passThrough: names }
+  }
+  pass(false)
   if (cache === null) return { name, todos, task }
 
   const inputs = globs('input', cache.input, ctx, todos)
@@ -467,6 +460,7 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
   // Declared inputs key the task cached or not: a dependant folds them.
   const inputLists: Record<string, unknown> = { ...inputs.lists }
   if (env.length > 0) inputLists['env'] = env
+  pass(true)
   task['inputs'] = inputLists
   if (outputs.uncached) return { name, todos, task }
 
@@ -487,43 +481,40 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
 }
 
 /**
- * `env` / `untrackedEnv` as the exact names vx takes. `*` matches any run
- * of characters and `!` takes names back, as Vite Task's patterns do; a `*`
- * entry lists the names `spelled` holds that it matches (the bare prefix is
- * no name), or is a TODO when none does.
+ * `env` / `untrackedEnv` as vx env names: a name, or a `*` pattern kept as
+ * written, which core matches each run as Vite Task does. A `!` entry takes
+ * the list's own names back; one a kept pattern still matches is a TODO,
+ * since core has no exclusion.
  */
-function envNames(
-  field: string,
-  v: unknown,
-  todos: string[],
-  { spelled, wildUsed }: Pick<TaskCtx, 'spelled' | 'wildUsed'>,
-): string[] {
+function envNames(field: string, v: unknown, todos: string[]): string[] {
   const re = (p: string): RegExp => new RegExp(`^${p.split('*').map(RegExp.escape).join('.*')}$`)
   const names: string[] = []
-  const dropped: RegExp[] = []
+  const dropped: string[] = []
   for (const e of asStrings(v)) {
     if (e.startsWith('!')) {
-      dropped.push(re(e.slice(1)))
+      dropped.push(e.slice(1))
       continue
     }
-    const hits =
-      e.includes('*') && spelled !== undefined
-        ? spelled.filter((n) => n !== e.replaceAll('*', '') && re(e).test(n))
-        : []
-    if (hits.length > 0) {
-      names.push(...hits)
-      wildUsed.set(e, (wildUsed.get(e) ?? 0) + 1)
-      continue
-    }
-    if (/[*?[\]{}=\0]/.test(e) || e === '') {
+    if (
+      e.includes('*')
+        ? !/^(?!\*+$)[A-Za-z_*][A-Za-z0-9_*]*$/.test(e)
+        : /[?[\]{}=\0]/.test(e) || e === ''
+    ) {
       todos.push(
-        `${field} ${JSON.stringify(e)}: vx takes exact env names — list the ones the task reads in exec.env.passThrough${field === 'cache.env' ? ' and inputs.env' : ''}`,
+        `${field} ${JSON.stringify(e)}: a vx env name is letters, digits and _, with * the one wildcard — list the names the task reads`,
       )
       continue
     }
     names.push(e)
   }
-  return [...new Set(names)].filter((n) => !dropped.some((d) => d.test(n)))
+  for (const d of dropped) {
+    const wide = names.find((n) => n.includes('*') && mayOverlap(n, d))
+    if (wide !== undefined)
+      todos.push(
+        `${field} ${JSON.stringify(`!${d}`)}: vx has no exclusion, so ${JSON.stringify(wide)} still takes ${d} — narrow the pattern to leave it out`,
+      )
+  }
+  return [...new Set(names)].filter((n) => n.includes('*') || !dropped.some((d) => re(d).test(n)))
 }
 
 /**

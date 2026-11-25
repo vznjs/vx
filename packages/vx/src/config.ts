@@ -388,8 +388,9 @@ export interface TaskConfig {
   /**
    * What the task's key folds, whether or not it caches: its dependents
    * fold that key. A task with `exec` and no `inputs` has no key, so every
-   * task that folds it runs and saves nothing. A group with `inputs` is a
-   * keyed group: its inputs are a key its dependents fold, with no process.
+   * task that folds it runs and saves nothing. A task with `inputs` and no
+   * `exec` is a no-op task: its inputs are a key its dependents fold, with
+   * no process; it needs at least one input entry.
    */
   inputs?: InputsConfig
   /** What the task produces: saved on a miss, restored on a hit. Needs `cache: true`. */
@@ -616,7 +617,8 @@ export interface ExecEnv {
   /**
    * Env vars forwarded from the host to the child, their values not folded
    * into the key: CI flags, regional vars, secrets that differ by machine
-   * without changing output.
+   * without changing output (Turbo's `passThroughEnv`). A `*` matches
+   * names, once per run.
    */
   passThrough?: readonly string[]
   /**
@@ -698,9 +700,9 @@ export interface InputsConfig {
    */
   workspaceFiles?: readonly string[]
   /**
-   * Env var names whose values are folded into the key. Independent of
-   * `exec.env`: this does not forward them. To forward and track, list a
-   * name in both.
+   * Env var names the command gets and the key folds, by name and value
+   * (Turbo's `env`). A `*` matches names (`VITE_*`); each run matches it
+   * once, and every match is passed and keyed.
    */
   env?: readonly string[]
   /**
@@ -794,6 +796,32 @@ type KnownExec<E> = {
   }
 }
 
+/** `F` of `I` is absent or written as an empty literal list. */
+type EmptyAt<I, F extends string> = I extends { readonly [Q in F]: infer V }
+  ? [V] extends [readonly []]
+    ? true
+    : false
+  : true
+
+/**
+ * A task with no `exec` whose `inputs` list nothing: `exec` is then
+ * required. A list typed `string[]` cannot be told empty here; the load
+ * refuses it.
+ */
+type NoOpNeedsExec<Task> = Task extends { exec: unknown }
+  ? unknown
+  : Task extends { inputs: infer I }
+    ? [
+        EmptyAt<I, 'files'>,
+        EmptyAt<I, 'workspaceFiles'>,
+        EmptyAt<I, 'env'>,
+        EmptyAt<I, 'runtime'>,
+        EmptyAt<I, 'workspaceRuntime'>,
+      ] extends [true, true, true, true, true]
+      ? { exec: ExecConfig }
+      : unknown
+    : unknown
+
 /**
  * Identity function, so TypeScript narrows literals and checks `dependsOn`
  * against this project's own task names: a bare entry naming no task is a
@@ -804,15 +832,16 @@ export function defineProject<const T extends ProjectConfig>(
     KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
-        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
-          dependsOn?: DependsOn<
-            At<NonNullable<T['tasks']>[K], 'dependsOn'>,
-            Extract<keyof NonNullable<T['tasks']>, string>
-          >
-          exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
-          inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
-          outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
-        }
+        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> &
+          NoOpNeedsExec<NonNullable<T['tasks']>[K]> & {
+            dependsOn?: DependsOn<
+              At<NonNullable<T['tasks']>[K], 'dependsOn'>,
+              Extract<keyof NonNullable<T['tasks']>, string>
+            >
+            exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
+            inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
+            outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
+          }
       }
     },
 ): T {

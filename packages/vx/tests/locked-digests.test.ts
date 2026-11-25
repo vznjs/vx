@@ -205,6 +205,29 @@ it(
   TIMEOUT,
 )
 
+// The plugin that claimed a file gone (`bun()` dropped from the workspace
+// file), the run keyed no task on its dependencies and ran green under a
+// lock that still recorded them; adding one is refused (the row above).
+it(
+  'a recorded file no plugin claims any more refuses, until `vx lock`',
+  async () => {
+    await lock(root)
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
+    // Beside its stamp the edited workspace file is named (0f67f63fe).
+    await expect(part()).rejects.toThrow(
+      '.vx/workspace.mjs changed since the last `vx lock` — run `vx lock`',
+    )
+    // With no stamps (a clone) a differing digest is the key path's to name.
+    await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
+    await expect(part()).rejects.toThrow(
+      `deps.lock is in ${LOCK} but no plugin claims it: run \`vx lock\``,
+    )
+    await lock(root)
+    expect(await part()).toBeUndefined()
+  },
+  TIMEOUT,
+)
+
 it(
   '`vx lock --check` passes after an edit to a file the digests read, fails a digest that moved alone',
   async () => {

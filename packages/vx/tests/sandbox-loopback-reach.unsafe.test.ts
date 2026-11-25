@@ -259,7 +259,7 @@ describe.skipIf(!available || Bun.which('curl') === null)(
         `reaches no port of this machine through \`network: ['${host_}']\``,
         async () => {
           const r = await reach(host_, host_)
-          expect(fixture.log.join('\n')).not.toContain('host-only')
+          expect(fixture.log.join('')).not.toContain('host-only')
           expect([r.outcomes[0]?.status, r.outcomes[0]?.sandbox?.lines]).toEqual([
             'failed',
             [
@@ -275,7 +275,9 @@ describe.skipIf(!available || Bun.which('curl') === null)(
       async () => {
         const r = await reach(`localhost:${host.port}`, 'localhost')
         expectOk(r, fixture)
-        expect(fixture.log.join('\n')).toContain('host-only')
+        // Joined as written: the secret mask may hold a tail back to the
+        // run's end, so the body can come in two chunks.
+        expect(fixture.log.join('')).toContain('host-only')
       },
       TIMEOUT,
     )

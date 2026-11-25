@@ -3,8 +3,11 @@
 // names over one 4000-directory subtree took 65 s and 3.9 GB before the
 // download's inode refusal. And the split record's entries were each held
 // to the free inodes alone, so a replay wrote the sum of them.
-// `statfs` and `encodeTree` are wrapped; `mock.module` holds for the whole
-// file, so the rows have a file of their own.
+// `statfs` and `concat` are wrapped: the executor joins a split Tree from
+// the worker's bytes with `concat` (13a8376dc), never `encodeTree`, so
+// the joins that make the subtree's Tree are counted.
+// `mock.module` holds for the whole file, so the rows have a file of their
+// own.
 import * as fsPromises from 'node:fs/promises'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync, realpathSync } from 'node:fs'
@@ -25,12 +28,14 @@ await mock.module('node:fs/promises', () => ({
     room === undefined ? realFs.statfs(...a) : { files: 1e9, ffree: room, bavail: room },
 }))
 const realMerkle = { ...merkle }
-let encodes = 0
+/** Every `concat` result since the row began: the Trees joined among them. */
+let joined: Uint8Array[] = []
 await mock.module('../src/merkle.js', () => ({
   ...realMerkle,
-  encodeTree: (...a: Parameters<typeof merkle.encodeTree>) => {
-    encodes++
-    return realMerkle.encodeTree(...a)
+  concat: (...a: Parameters<typeof merkle.concat>) => {
+    const out = realMerkle.concat(...a)
+    joined.push(out)
+    return out
   },
 }))
 const { execDigestFor } = await import('../src/cache.js')
@@ -45,7 +50,7 @@ beforeAll(async () => {
 })
 afterAll(() => fake.stop())
 beforeEach(async () => {
-  encodes = 0
+  joined = []
   root = realpathSync(await realFs.mkdtemp(path.join(tmpdir(), 'vx-shared-subtree-')))
   await realFs.mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
   await realFs.writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'in\n')
@@ -121,8 +126,10 @@ async function record(key: string, names: number, width: number) {
   })
   const client = new ReapiClient({ endpoint: fake.endpoint })
   try {
+    // The subtree's own Tree, as the worker encoded it.
+    const sub = sha256(encodeTree(children[0]!, children.slice(1))).hash
     const from = fake.calls.length
-    encodes = 0
+    joined = []
     expect(
       (await reapiExecutor(client, { warn: () => undefined }).execute(request(key))).exitCode,
     ).toBe(0)
@@ -138,6 +145,7 @@ async function record(key: string, names: number, width: number) {
       .filter((c) => c.method === 'BatchUpdateBlobs')
       .flatMap((c) => (c.request['requests'] as { digest: { hash: string } }[]) ?? [])
       .filter((r) => recorded.has(r.digest.hash))
+    const encodes = joined.filter((b) => sha256(b).hash === sub).length
     return { dirs, uploaded: uploaded.length, encodes }
   } finally {
     client.close()

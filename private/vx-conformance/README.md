@@ -42,7 +42,9 @@ root-level ones, `env` names (keyed), `passThrough` names (not keyed),
 `runtime` commands, `cache: false`, `timeout`, `retries`, `persistent`,
 `dependencyInputs: false`, and `sandbox` (the task may read only its
 inputs, write only its outputs, and reach no network, beyond what it is
-granted; `hermetic` closes off the machine's files too). A workspace may also hold `outside` files: a directory beside
+granted; `hermetic` closes off the machine's files too). A task without a
+command runs nothing: with `inputs` it is a no-op task whose files still
+reach its dependants, without them a group of its `dependsOn`. A workspace may also hold `outside` files: a directory beside
 the repository (`../outside`), as a `file:` or `link:` dependency there
 is. Its steps write, delete, chmod and
 link files, run `sh`, install, commit, change the config, check the tree,
@@ -116,19 +118,20 @@ the richest place the tool offers. It decides nothing. Where a tool needs an idi
 mean the same thing, the adapter uses the one its docs teach:
 
 - **Turborepo**: a package.json script per task, a `project#task` entry
-  in turbo.json each. Runs pass `--summarize`; the report is its run summary.
+  in turbo.json each; a task without a command has no script. Runs pass `--summarize`; the report is its run summary.
   Watch is `turbo watch`.
-- **Nx**: an `nx:run-commands` target per task; each task's inputs are a
+- **Nx**: an `nx:run-commands` target per task (`nx:noop` without a command); each task's inputs are a
   named input, and each `^task` in `dependsOn` adds the dependency's own
   (`^build-inputs`, Nx's `^production` idiom). The report is the cache's
   `run.json`. Watch is `nx watch --all --initialRun -- nx run-many -t
 <task>`, with the daemon it needs on.
-- **Vite Task**: `run.tasks` in each project's vite.config.ts. It selects
+- **Vite Task**: `run.tasks` in each project's vite.config.ts (an empty
+  `command` list without a command). It selects
   by package only, runs one task per run and has no watch mode, so
   `affected`, several-task and watch cases are not applicable to it. The report
   is `vp run --last-details`.
 - **Nix**: a `default.nix` at the root, a raw `derivation` per task (no
-  nixpkgs), run by `nix-build` (`src/adapters/nix-run.ts`). Declared
+  nixpkgs; one without a command runs `true`), run by `nix-build` (`src/adapters/nix-run.ts`). Declared
   inputs are the derivation's sources, each glob a regex matched in Nix at
   every evaluation; omitted inputs are the project's git-tracked files, as
   a flake sees them. `dependsOn` are derivation inputs, whose outputs the
@@ -157,7 +160,7 @@ mean the same thing, the adapter uses the one its docs teach:
   project's `moon.yml` holds its `dependsOn` (the edges moon's
   JavaScript toolchain infers from each package.json, written out: that
   toolchain is a download) and its tasks: a `script` (a `command` for one that takes
-  forwarded args), `deps` as targets (`^:build`, `~:lint`, `lib:build`),
+  forwarded args, moon's `noop` for one without), `deps` as targets (`^:build`, `~:lint`, `lib:build`),
   `inputs` (`/` for root globs, `$NAME` for keyed variables, moon's `**/*`
   kept when omitted), `outputs`, and `options` (`cache`, `timeout`,
   `retryCount`). Each dependency keys its dependant (`cacheStrategy: hash`;
@@ -170,8 +173,12 @@ mean the same thing, the adapter uses the one its docs teach:
   no toolchain and the results' `notes` say why. Selectors are a `--query` over project fields,
   `--continue` is `moon exec --on-failure continue`, affected is
   `--affected --base --downstream deep --include-relations`. The report is
-  `.moon/cache/runReport.json`. It lacks project-graph walks in a selection, task patterns, a ready line, a
-  sandbox, watch and dry runs.
+  `.moon/cache/runReport.json`. Named projects are `project:task` targets, or
+  `:task --query 'project=[…]'` when one lacks the task; an optional output is
+  `{ glob | file, optional: true }`. It lacks project-graph walks in a selection, task patterns, a ready line, a
+  sandbox, watch, dry runs, fractional timeouts and `:` in task names. moon's
+  maintainer marked two cases N/A by design (moonrepo/moon#2818): every task
+  sees moon's whole environment, and env inputs are upper case.
 - **vx**: a vx.config.mjs per project that has a task, `bun()` for the
   edges, `vx lock` (again after each install and each package.json a case
   edits: a run follows the lock, so a broken manifest is refused there),

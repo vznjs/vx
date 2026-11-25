@@ -206,6 +206,27 @@ describe('a task typed as a verb', () => {
     }
   })
 
+  // A root project with no task of its own (the one `vx init` writes) said
+  // `e.g. vx run build`, which then refused: build is the other projects'.
+  it('`vx run` with no task and no terminal in a root project with none names the workspace tasks', async () => {
+    const config = path.join(root, 'vx.config.mjs')
+    await writeFile(config, 'export default { tasks: {} }\n')
+    try {
+      const said = Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run'],
+        cwd: root,
+        stdin: 'ignore',
+      }).stderr.toString()
+      expect(said).toBe(
+        noticed(
+          "vx run: missing task name (stdin is not a TTY, so no picker; fixture-root declares none, the workspace's tasks with --all: build, dev) (see `vx run --help`)\n",
+        ),
+      )
+    } finally {
+      await rm(config)
+    }
+  })
+
   // A workspace with no task yet said `vx run <task>, e.g. vx run build`,
   // the outside-a-workspace line: the picker's says how to declare one.
   it('`vx run` with no task and no terminal in a workspace with no task says how to declare one', async () => {

@@ -192,6 +192,21 @@ describe('reapi(): the endpoint is checked where it is set', () => {
     ])
   })
 
+  // `token@host` passed as a host name and was echoed in every warning
+  // line; `user:pass@host` was echoed whole in the refusal itself.
+  it('refuses credentials before an @ without printing them', () => {
+    const lines = [
+      outcome('grpcs://s3cr3t@cache.test:443'),
+      outcome('user:s3cr3t@cache.test'),
+      outcome('dns:///s3cr3t@cache.test:443'),
+    ]
+    for (const line of lines) {
+      expect(line).toBe(
+        "`reapi({ endpoint })` names credentials before an '@', which every line naming the server would print: put them in `headers` instead",
+      )
+    }
+  })
+
   // A URL copied with its trailing slash was refused as "not host[:port]",
   // where every other vx plugin strips it.
   it('takes a trailing slash off the endpoint, as the other plugins do', () => {

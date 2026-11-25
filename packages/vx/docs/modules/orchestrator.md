@@ -590,9 +590,9 @@ carries the same shape.
 #### A. Group task (no `exec`)
 
 Return `{ status: 'success', exitCode: 0, durationMs: 0, hash }`, `hash`
-being `computeGroupKey`'s. An unkeyed group takes `upfrontGroupKey`'s key
+being `computeGroupKey`'s. A group takes `upfrontGroupKey`'s key
 when the live upstream has its ids and keys in order, else
-`computeGroupHash(upstream)`, synchronously; a keyed group awaits
+`computeGroupHash(upstream)`, synchronously; a no-op task awaits
 `computeTaskHash`.
 No spawn, no I/O. The hash is a stable rollup so downstream tasks
 filtering `inputs.tasks` to include this group still invalidate when
@@ -1039,7 +1039,7 @@ of a sandboxed task that declares `cache`.
 - **Every exec task reached counts its project, cached or not.** Its
   key folds its own project's files through its `inputs`, and one with
   no `inputs` is keyless: a key that folds it is never stored or read. An
-  unkeyed group counts nothing of its own; a keyed one (`inputs`) counts
+  group counts nothing of its own; a keyed one (`inputs`) counts
   its project.
 - **A persistent task counts as any task with no `cache`** (A-17): keyed
   on its `inputs`, or keyless.
@@ -1800,7 +1800,7 @@ export interface UpfrontGroupKey {
   hashes only, so downstream keys still cascade through the group. The
   default `build` (projects.ts), the one group with `cache`, is keyed as
   a task is (`computeTaskHash`), so it folds every file of its project.
-- `UpfrontGroupKey` — an unkeyed group's key from the up-front pass and
+- `UpfrontGroupKey` — a group's key from the up-front pass and
   the upstream it folded (stable-keys.md); a live upstream with the same
   ids and keys in order derives the same bytes, so execute-task reuses it.
 
@@ -1990,34 +1990,40 @@ and sixteen stacked diamonds reading each group's members once.
 
 ### Purpose
 
-`--affected` selects tasks, not projects (2026-10-04). The diff
-(`affectedChanges`, affected.md) seeds tasks:
+`--affected` selects tasks, not projects (2026-10-04), by their inputs
+(M, 2026-11-25). The diff (`affectedChanges`, affected.md) names the
+projects it touched. The affected projects are those with a change of
+their own (a path other than a config, a moved lock entry, key material
+moved whole) and their package dependants (`dependentsOf`); only their
+tasks are matched against inputs (`declaresInput`). A `vx.config.*` or
+`.vx/workspace.*` path is no change itself: the locks' diff says what
+moved. A task seeds when:
 
-- a group seeds nothing (it runs nothing), but for the default `build`;
-- a task with no `inputs` seeds when a changed path lies in its project
-  (`changes.paths`) or the project is reached whole, never only because
-  another task of it declares a changed root file (`workspaceFiles`
-  owners join `changes.projects` alone);
-- a task with `inputs`, cached or not, seeds when a changed path is one of them
-  (`declaresInput`, cache.md; an untracked path, `changes.untracked`,
-  under its own outputs is none, as the key says), or its `workspaceFiles` may reach into a
-  changed nested repository (`changes.nested`, `workspaceFilesReachInto`), or when its project is reached whole: the
-  diff named it whole, a changed path is `package.json` or a `vx.config.*`,
-  or no task of the project declares a changed path.
+- it has `exec` and no `inputs`: in an affected project;
+- a changed path is one of its inputs (an untracked path under its own
+  outputs is none, as the key says), or its `workspaceFiles` may reach
+  into a changed nested repository (`workspaceFilesReachInto`);
+- its own definition moved in `.vx/projects.lock` (`configTasks`), a
+  group too;
+- it has `inputs` and its key's material moved for its project (a
+  lockfile claim, a moved lock entry or `.vx/dependencies.lock` closure,
+  `whole`).
 
-A requested bare task runs when its `dependsOn` closure holds a seeded
-task, so a change reaches another project only along a task edge such as
-`^build`. The default `build` (projects.ts) is the one keyed group: it
-seeds as a cached task with `**` as input. A `^name` edge the graph
-passes through a package it loaded no config for reaches it the same way:
-any change there reaches the task. An anchored `pkg#task` always runs. `prepareRun` drops the rest
-and returns `empty: 'none-affected'` when nothing is left. The closure
-walk keeps its own stack, so a chain as deep as the builder takes
-(50,000) is walked, where a recursion per edge threw `RangeError`.
+A path no input declares seeds nothing. A group otherwise seeds nothing.
+Outside the affected projects a task is read once, for its
+`workspaceFiles` (which a `graph` hook may have given), and no path is
+tried against it (`tests/affected-by-inputs.test.ts` spies).
 
-A task's `workspaceFiles` is asked of every node, not only of the
-changed projects' (whose owners the selection found from the staged
-configs), so an input a `graph` hook gave it counts.
+From the seeds the walk goes forward, over the edges keys fold
+(`foldedDeps`, so `inputs.tasks` and order-only edges count as a run's
+key does), to each dependant, across projects where the edges go. A
+requested bare task runs when the walk reached it. The default `build`
+(projects.ts) is a no-op task keyed on `**`. A `^name` edge the graph
+passes through a package it loaded no config for seeds the task: any
+change there reaches it. An anchored `pkg#task` always runs.
+`prepareRun` drops the rest and returns `empty: 'none-affected'` when
+nothing is left. The walk is a queue, so any depth the builder takes is
+walked.
 
 With a `graph` plugin the selection follows the FINAL graph: `prepareRun`
 runs the hooks first, over every candidate (the CLI widens the
@@ -2050,14 +2056,13 @@ export function affectedRoots(
   ids: readonly string[], // requested task ids, in order
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
-  packageGraph: PackageGraph, // the `^name` walk, for the packages it passes through
+  packageGraph: PackageGraph, // the `^name` walk, and the affected projects' package dependants
   workspaceRoot: string, // a reason's project-relative file, an untracked path's own outputs
   explain?: AffectedExplain, // `--dry` only: fills each kept id's reason
-  byKeys?: boolean, // a changed path no task declares reaches no task
-): string[] // the ids whose closure the change reaches
+): string[] // the ids the walk from the seeds reaches
 
 export interface AffectedReason {
-  kind: 'input' | 'project' | 'workspace' | 'package' | 'named' | 'selected'
+  kind: 'input' | 'always' | 'project' | 'workspace' | 'package' | 'named' | 'selected'
   file?: string // workspace-relative
   project?: string // the changed package, kind `package`
   via?: string[] // the `dependsOn` chain, nearest first, to the seeded task
@@ -3159,16 +3164,24 @@ records what they left in the lock (each `LockedProject.config` is the
 config after the stage), and every
 other load reads that record and calls no hook, so a run reads nothing
 a mapping reads (turbo.json, a manifest, git, the environment). It
-follows the record blindly, whatever plugins the workspace declares now:
-a project loads its recorded config, or `{ tasks: {} }` when the lock
+follows the record: a project loads its recorded config, or `{ tasks: {} }` when the lock
 holds none (2026-11-11: "we
 never relock during runs ... it should always follow the lock blindly").
-`vx lock --check` names the drift. Two exceptions: a file a hook named
-with `ctx.read` is stat'ed, and once it changed, appeared or went the run refuses, naming
-`vx lock`, as for an edited `vx.config`. And a run with no stamps beside
+`vx lock --check` names the drift. Three exceptions: a file a hook named
+with `ctx.read` is stat'ed, and once it changed, appeared or went every
+mapping that read it runs again, as `vx lock --check` does: the run refuses
+when one maps otherwise, naming `vx lock`, as for an edited `vx.config`. The workspace file is stamped
+too: once it moved, `workspaceHolds` runs `discover` and the `project`
+stage with its plugins as `vx lock --check` does, and refuses it when a
+name, an edge, a mapping or a recorded dependency digest differs (a plugin's options edited ran the
+locked commands, green); one that holds is stamped. And a run with no stamps beside
 its lock (a fresh clone, CI, a new `--cache-dir`) evaluates every config
 and runs the stage once, as `vx lock --check` does, to verify the lock
-and stamp what matches; it still runs what the lock records.
+and stamp what matches; it still runs what the lock records. It runs
+`discover` again too: a project a plugin no longer adds refuses, naming the
+workspace file, and a workspace file that holds is stamped, so the next run
+does not evaluate it all again. A mapping that differs there names its
+project, or the workspace file when git says it moved since the lock's commit.
 
 `loadWorkspacePlugins` runs the `config` stage on a copy of the
 workspace file's export (its plugins kept as they are): the export is one
@@ -3243,6 +3256,21 @@ export function ignoredConfigRefusal(
   meta: { readonly name: string; readonly dir: string },
   config?: string,
 ): string | undefined
+// Each config's local imports, by project dir, as files under `root`:
+// `vx lock` and a run that evaluates stamp them beside the configs.
+export function importedBy(
+  root: string,
+  configs: readonly { dir: string; configPath: string | null }[],
+  sources?: ReadonlyMap<string, Uint8Array>, // each config's bytes, already read
+): Promise<Map<string, string[]>>
+// The workspace file's local imports into `taken` (`workspace` and their
+// stamps), one written since this process's load listed but not stamped.
+export function stampWorkspaceImports(
+  root: string,
+  file: string,
+  read: Uint8Array | undefined, // the workspace file's bytes, already read
+  taken: ConfigStamps,
+): Promise<void>
 
 // The graph is read only for the closure, so only a closure load needs one.
 export type LoadProjectsArgs = LoadProjectsBase &
@@ -3363,7 +3391,7 @@ names until 0.0.397; it is the kinds record since.
 | ---------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config(ws, ctx)`      | every verb, first                                          | edit the workspace config in place before anything is derived from it (`cache.dir` too); re-validated after EACH plugin; `ctx.setBranch` names the branch's cache scope and base (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `discover(ctx)`        | `vx lock`, after core's discovery                          | return `DiscoveredProject[]` (`{ dir, name?, deps?, reach? }`): a `name`d directory that is not a project becomes one; an existing one keeps its name (another is refused). `deps` (order: `^task`; reach: `--filter`, `--affected`) and `reach` (reach only) are directories, unioned over plugins after the stage, the only project edges core has (with none returning `deps`, a `^task` is refused); a target that is no project is refused; `ctx.projects` is core's and earlier plugins', `ctx.cacheDir` the run's, `ctx.worktreeChanges()` the paths the run's own `git status` lists (null outside git), so a plugin keyed on the worktree walks it once with core. The lock records the result (names and the adding plugin in `.vx/projects.lock`, edges in `.vx/dependencies.lock`); every other verb reads that and calls no hook. Refusals name the plugin |
-| `project(cfg, ctx)`    | per loaded config                                          | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name; `ctx.lock` is true in `vx lock`'s pass, the place to report what a mapping could not say (a run checks nothing); `ctx.read(file)` names a file the config was made from, so a run refuses once it changes, naming `vx lock`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `project(cfg, ctx)`    | per loaded config                                          | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name; `ctx.lock` is true in `vx lock`'s pass, the place to report what a mapping could not say (a run checks nothing); `ctx.read(file)` names a file the config was made from, so a run refuses once it maps otherwise, naming `vx lock`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `graph(nodes, ctx)`    | after graph build                                          | edit `deps`/`requested`/`config` in place; the builder's checks run again (item 981), each task config is re-validated after EACH plugin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `key(task, ctx)`       | per task, at hash                                          | a plain `{ name: value }` record folded into the key and named in `vx why`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `fingerprint`          | claim, static                                              | `{ files, affected(change, ctx) }`: the workspace-fingerprint files this plugin keys per project; one claimant each; `affected` answers names from `ctx.projects`, else it is refused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -4139,7 +4167,7 @@ can never drift on the stability gate.
   an uncached key reads its whole project, so `dependsOnSiblingOutputs`,
   which answers false for it, is not that gate
   (`uncached-key-once.test.ts`). Given `groupKeys`, it records every
-  unkeyed group's key with the synthetic upstream it folded, stable or
+  group's key with the synthetic upstream it folded, stable or
   not: execute-task compares that upstream with the live one before
   reusing the key (`group-key-once.test.ts`).
 - `gatedOutputs(nodes, workspaceRoot)` / `askIgnoredOutputs(gated, workspaceRoot, nodes)`
@@ -4190,8 +4218,8 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   A **cached** task may rewrite its own inputs in place (a formatter with
   `outputs: []`), and `commandWriteReach` says where: it counts only for
   a reader whose key does not fold its key, on some path of folds
-  (`tasks: []`, or a filter that leaves it out, a keyed group's own
-  filter included: read as folding everything, a keyed group's
+  (`tasks: []`, or a filter that leaves it out, a no-op task's own
+  filter included: read as folding everything, a no-op task's
   `tasks: []` hid the rewriter and its reader was restored). A key that folds the
   rewriter's names what it writes, since what it may rewrite are its own
   inputs; a key that does not was taken over the bytes before it (item
@@ -4709,7 +4737,7 @@ export interface ShortCircuit {
   preProbed: Map<string, ProbedEntry> // every stable task's probe, hit or miss
   restoreTier: Set<string> // the confirmed local hits
   uncachedKeys: Map<string, string> // uncached task id → its reused key
-  groupKeys: Map<string, UpfrontGroupKey> // unkeyed group id → its up-front key + upstream
+  groupKeys: Map<string, UpfrontGroupKey> // group id → its up-front key + upstream
   remoteAsk: Map<string, string> // behind a remote, each stable local miss → its key
 }
 export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<ShortCircuit>
@@ -4728,7 +4756,7 @@ export function restoreTierExclusions(
   500 uncached tasks took 1,000 `task hash` calls (31.0 ms summed, min
   of 8) and now take 500 (10.6 ms); the wall moved within noise
   (B-91).
-- `groupKeys` — every unkeyed group's up-front key with the upstream it
+- `groupKeys` — every group's up-front key with the upstream it
   folded (stable-keys.md). execute-task uses the key as `upfrontGroupKey`
   when the live upstream has the same ids and keys in the same order, and
   derives it otherwise: 1,090 `installDeps` groups were rolled up twice per

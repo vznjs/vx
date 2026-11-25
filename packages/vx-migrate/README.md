@@ -72,23 +72,21 @@ With this file, `vx run build --all` runs every package's `build` script after i
 <details><summary>Details</summary>
 
 - Turbo's global fields (`globalDependencies`, `globalEnv`, `globalPassThroughEnv`, Turbo 1's `globalDotEnv`) are inlined into every task.
-- A `*` env name (`NEXT_PUBLIC_*`) expands over the environment `vx lock` ran in, where Turbo matches each run's (below).
+- A `*` env name (`NEXT_PUBLIC_*`) is kept as written. Core matches it against each run's environment, as Turbo does.
 - `*` is Turbo's only wildcard: `\*`, a leading `\!`, `?` and `[` are literal.
-- A literal vx cannot key (unkey's `NEXT_PUBLIC_\*`) is left out. It is reported once, and only when the run's environment sets it.
+- A literal vx cannot key (unkey's `NEXT_PUBLIC_\*`) is left out and reported once.
 - A `turbo.jsonc` (Turbo 2.5+) is read wherever a `turbo.json` would be, at the root and in a package.
 - A directory holding both is refused, as Turbo refuses it. A workspace root with neither is refused, naming the fix.
 - An absolute path in `inputs`, `outputs`, `globalDependencies` or `global.inputs` is refused, naming the file, as Turbo refuses it.
 - Turbo 2's framework inference applies too. A package on `next` has `NEXT_PUBLIC_*` and `NEXT_DEPLOYMENT_ID` hashed and passed.
 - Turbo's whole framework table applies (`expo`, `nuxt`, `remix`, `@sveltejs/kit` and the rest).
-- Each package takes the first framework it matches, as Turbo does. Names under the platform's `TURBO_CI_VENDOR_ENV_KEY` are left out.
-- The prefix expands over the environment `vx lock` ran in into that package's tasks. A task's `!` entry takes names back.
-- `bunx @vzn/vx-migrate` writes files for another environment, so it names each framework and its packages in a note instead.
+- Each package takes the first framework it matches, as Turbo does.
+- The prefix lands in that package's `inputs.env` as a pattern.
+- vx has no exclusion: a `!` entry or `TURBO_CI_VENDOR_ENV_KEY` cannot take names back from it, so those stay keyed.
 - Turbo's builtin env applies as Turbo's source has it. `VERCEL_ANALYTICS_ID` and `VERCEL_TARGET_ENV` are keyed in every task.
 - A `globalEnv` `!` entry such as `!VERCEL*` takes them back.
-- Next's skew rule keys `VERCEL_DEPLOYMENT_ID` when `VERCEL_SKEW_PROTECTION_ENABLED=1`.
-- The literal names of Turbo's builtin pass-through list (`TZ`, `HOME`, `CI`, the Vercel, Docker and IDE names) reach every task unkeyed.
-- Its wildcard families (`VERCEL_*`, `GITHUB_*`, `DOCKER_*` and the rest) are not matched against the run's environment.
-- Why: `exec.env.passThrough` is keyed by name, so a live match would key each machine apart.
+- Next's skew rule keys `VERCEL_DEPLOYMENT_ID` always, where Turbo keys it under `VERCEL_SKEW_PROTECTION_ENABLED=1`. The lock does not depend on the machine.
+- Turbo's builtin pass-through list (`TZ`, `HOME`, `CI`, `VERCEL_*`, `GITHUB_*` and the rest) reaches every task unkeyed, patterns as written.
 - A written config carries none of Turbo's own env and none of the global fields. It holds only what each task declares.
 - So the first run after migrating runs each task once more.
 
@@ -112,9 +110,10 @@ vx lock --check  # name each package the mapping now says otherwise for
 - A run reads that record and maps nothing. It reads no `turbo.json`, manifest, git or environment for the mapping.
 - So an edit to `turbo.json` or a script runs only after the next `vx lock`.
 - Until then a run on this machine refuses: `turbo.json changed since the last \`vx lock\` — run \`vx lock\``, as for an edited `vx.config`.
+- An edit that maps the same (a version bump) runs.
 - A package `turbo.json` added since counts as an edit too.
 - A package added since has no tasks until `vx lock`.
-- Adding or dropping `turbo()` changes nothing until then either.
+- Adding or dropping `turbo()`, or editing its options, is refused the same way, naming `.vx/workspace.ts`.
 
 ### What it does not do
 
@@ -140,8 +139,7 @@ vx lock --check  # name each package the mapping now says otherwise for
 - A negated output under a literal-rooted one (`dist/**` minus `!dist/**/*.map`) takes its paths back (see `outputs` below).
 - One against a wildcard-rooted output (`*/**` minus `!src/**`) keeps what it names (see `outputs` below).
 - `vx lock` keeps the mapping in `<cache dir>/vx-migrate-turbo-mapping.json`. No run reads or writes it.
-- It is keyed on every `turbo.json` / `turbo.jsonc`, every package manifest and the mapper's own code.
-- It is also keyed on the env names a wildcard can match (in a Turbo config or Turbo's framework table) or core cannot key.
+- It is keyed on every `turbo.json` / `turbo.jsonc`, every package manifest, the files git ignores and the mapper's own code.
 - So a second `vx lock` (or `--check`) with none changed reads it instead of mapping.
 - On astro (562 packages) that is ~40 ms of mapping against ~12 ms of key reads.
 
@@ -245,7 +243,7 @@ Rules:
 
 **Transit nodes.** Turbo's with-vitest example documents this pattern: `transit: { dependsOn: ["^transit"] }` with no script anywhere, and `test: { dependsOn: ["transit"] }`.
 
-- A transit node is a key-only task in each package that defines it. It is a keyed group (no command, nothing spawns) keyed on its inputs.
+- A transit node is a key-only task in each package that defines it. It is a no-op task (no command, nothing spawns) keyed on its inputs.
 - It keeps its `^transit` edge. So a dependant's `test` re-keys on its dependencies' sources, as Turbo re-hashes it.
 - A `^` task that some package has a script for, or that nothing depends on, is no transit node.
 
@@ -292,7 +290,7 @@ Rules:
 - vx subtracts each `!` from the whole list. So a `!` that may reach the other side's files is dropped, which keys more, never a stale hit.
 - Turbo 2.11's `global.inputs` joins each task's inputs, where its `!` entries apply.
 - A task's Turbo 1 `dotEnv` lands in its `files`.
-- Turbo 1's `$NAME` entries, in `globalDependencies` or a task's `dependsOn`, are env vars. They join `inputs.env` and `exec.env.passThrough`.
+- Turbo 1's `$NAME` entries, in `globalDependencies` or a task's `dependsOn`, are env vars. They join `inputs.env`.
 - Turbo hashes a package nested in the task's package with its parent (cal.com's apps inside `@calcom/app-store`).
 - Core's globs stop at a project. So each glob that reaches a nested package is also listed in `inputs.workspaceFiles`.
 - Turbo's glob grammar is translated as Nx's is: `*.[jt]s` is `*.{[jt],j,t}s`.
@@ -372,52 +370,41 @@ Rules:
 
 </details>
 
-**Gitignored inputs.** A gitignored file an input names is keyed, as Turbo hashes it.
+**Gitignored inputs.** A gitignored file an input names by path is keyed, as Turbo hashes it. The path stays as written and core reads it from disk.
 
-- Turbo walks an explicit glob on disk; `$TURBO_DEFAULT$` alone skips ignored files.
-- A literal path is keyed by a probe.
-- Each ignored file an explicit task or `globalDependencies` glob matches is named beside the glob (`src/**` over an ignored `src/gen.ts`).
-- So is a directory ignored whole, as the glob's rest under it (`src/out/**`). Core reads both from disk.
-- A path a `!` entry takes back stays out.
-- Nothing under `node_modules` or `.vx/` is named. The lockfile plugin keys an install.
-- The paths are listed when the mapping is made (one `git ls-files`).
-- A new ignored file outside every directory listed then is keyed from the next mapping: a `turbo.json`, manifest or git index change.
+- An ignored file under a glob is not an input. Turbo walks an explicit glob on disk, ignored files and all; vx's globs skip them, as core's do.
+- The lock is committed and an ignored file is on one machine only, so the lock never depends on one.
+- To key one, name it in the input (`src/env.local`) or commit it.
 
 **A glued `**`.** A `**` glued to text in an input, output or `globalDependencies` glob is read as Turbo reads it.
 
 - `src/**.ts` is `src/**/*.ts`, and `gen**` is `gen*/**`.
 - Core refuses the glued spelling.
 
-**`env` / `passThroughEnv`.** Explicit names go to `inputs.env` (env only) and `exec.env.passThrough` (both, plus both globals).
+**A bracketed path.** An input or `globalDependencies` segment such as `[locale]` that names an existing path is read literally, as Turbo reads it.
 
-- Under `turbo()`, a wildcard expands over the environment `vx lock` ran in. The lock records the names it matched there.
-- A run passes and keys those, whatever its own environment holds.
-- So run `vx lock` where the variables a build reads are set, or name them in `turbo.json`.
-- `vx lock` names each wildcard and the names it matched (`env "API_*" matched API_URL where \`vx lock\` ran`), or that it matched none. A matching variable set later needs `vx lock` again.
+- `app/[locale]/**` is `app/\[locale\]/**`. A class naming no path (`*.[jt]s`) stays a class.
+- Core refuses the class spelling of an existing path.
+
+**`env` / `passThroughEnv`.** `env` goes to `inputs.env` (seen and keyed), `passThroughEnv` to `exec.env.passThrough` (seen only), each with its global list.
+
+- A wildcard (`API_*`) is kept as written. Each run matches it against its own environment, as Turbo does.
 - A name both a global list and the task's own list carry is listed once.
 
 <details><summary>Details</summary>
 
-- The CLI writes for another environment. It lists the names the task's package and its workspace dependencies spell.
-- For a root task it lists the names the whole repo spells (clerk's `E2E_*`). Each entry is noted once.
-- An entry nothing spells is a todo.
 - `*` is the only wildcard, as in Turbo: `\*`, a leading `\!`, `?` and `[` are literal.
 - So unkey's `NEXT_PUBLIC_\*` names one variable, which vx cannot key.
 - It is dropped and reported once for the workspace, with the count of tasks naming it.
-- Under `turbo()` it is reported only when the run's environment sets it, as Turbo hashes nothing otherwise.
-- A `!` entry (openstatus' `!NEXT_PUBLIC_VERCEL_URL`) removes the names it matches from its list.
-- That needs no todo, since vx matches no name it is not given.
-- A name that is no shell variable name (`p-q`) is keyed, but left out of `exec.env.passThrough`. `sh` drops it before the task runs.
+- A `!` entry (openstatus' `!NEXT_PUBLIC_VERCEL_URL`) removes that literal from its list.
+- vx has no exclusion, so a `!` entry a kept pattern still matches is a todo: narrow the pattern to leave the name out.
+- A name that is no shell variable name (`p-q`) is keyed, but `sh` drops it before the task runs.
 
 </details>
 
 **Framework inference.** Turbo hashes and passes Next's `NEXT_PUBLIC_*`, Vite's `VITE_*` and others for a package that depends on the framework.
 
-- `turbo()` expands the prefix over `vx lock`'s environment, as an env wildcard above.
-- The CLI writes the names the tracked source and `.env.example` of the package and its workspace dependencies spell.
-- The bare prefix, as a `startsWith` test spells it, is no name.
-- Next bundles its dependencies' variables. cal.com's web spells 23 names alone, 58 with its dependencies.
-- A note asks for any name only an installed dependency reads.
+- The prefix (`NEXT_PUBLIC_*`) is written as a pattern, which each run matches, as an env wildcard above.
 
 **Two tasks of one package on one output path.** vx cleans a task's outputs before it runs and before a restore.
 
@@ -464,7 +451,7 @@ So the loader refuses two cached tasks whose outputs provably overlap. Example: 
 - Why: Turbo walks an explicit glob on disk, so it re-runs `build` after `gen` rewrites it. Taken back, `build` replayed the old output.
 - A glob led by `**` (`**/*.ts`) keeps the `!`, as the default does.
 - A committed file under such an output is still a source. A reader the `!` would hide it from runs uncached with a todo.
-- A keyed group (an `inputs:<name>` twin, a transit node) runs nothing, so core lets it read what a task writes.
+- A no-op task (an `inputs:<name>` twin, a transit node) runs nothing, so core lets it read what a task writes.
 - Such a group gets no `!` for a literal, the `!` that would hide a committed file goes, and it keeps its key.
 - Example: typescript-eslint's ast-spec commits the `*.shot` snapshots its `test` outputs. Its twin was written as `{}`, which core refuses.
 - An output that names one committed file stays an output, so a task that rewrites it caches.
@@ -662,7 +649,7 @@ With this file, `vx run build --all` maps every project's `build` target the way
 
 **Other inputs.**
 
-- `{ env }` inputs pass through. One that is no shell variable name is keyed only.
+- `{ env }` inputs go to `inputs.env`, which passes what it keys. One that is no shell variable name `sh` drops.
 - `{ runtime }` inputs run at the workspace root, as Nx runs them (`inputs.workspaceRuntime`).
 - In them, `{workspaceRoot}`, `{projectRoot}` and `{projectName}` are written in as the paths and name they stand for.
 - Nx runs the command as written, so there `cat {workspaceRoot}/v.txt` keyed on cat's error.
@@ -702,7 +689,7 @@ With this file, `vx run build --all` maps every project's `build` target the way
 <details><summary>Details</summary>
 
 - Each project some reader reaches gets an `inputs:<name>` task.
-- It is a keyed group (no command, nothing spawns, not counted in the run summary) keyed on its own `name` input.
+- It is a no-op task (no command, nothing spawns, not counted in the run summary) keyed on its own `name` input.
 - It depends on its Nx dependencies' twins. A project nothing reaches gets none.
 - A task that reads `^name` depends on its direct dependencies' twins. So the whole closure goes into its key, with each project hashed once.
 - A dependency fileset is keyed the same way: `^{projectRoot}/tsconfig.lib.json`, or `{ fileset, dependencies: true }`.
@@ -719,7 +706,8 @@ With this file, `vx run build --all` maps every project's `build` target the way
 - Where Nx caches it, it is gitignored, and Nx's file map skips gitignored files.
 - So Nx hashes nothing there: a changed `dist` file is a cache hit under Nx 23.3.
 - So it is dropped without a todo, and the task that writes it keys its dependants through `dependsOn`.
-- Only an output git ignores drops it (one `git check-ignore` per mapping).
+- Only an output a committed `.gitignore` ignores drops it (one `git check-ignore` per mapping).
+- `.git/info/exclude` and `core.excludesFile` do not count: they differ by machine, and the lock must not.
 - An output git tracks a file under, or leaves untracked and unignored, is in Nx's file map, so the input stays.
 - The exception is an input under the cached task's own output (`{projectRoot}/gen/**` beside output `{projectRoot}/gen`).
 - vx cleans the output before the task runs, so core refuses such an input, which refused the whole `vx lock`.
@@ -842,13 +830,15 @@ Nx loads a task's `.env` files into its environment, unless `NX_LOAD_DOT_ENV_FIL
 - A grouped target's files are named by its group's owner and parent.
 - Example: cypress's atomized `e2e-ci--a.cy.ts` loads `.env.e2e-ci` and `.env.e2e`.
 - The first file to define a name wins, and the environment wins over every file.
-- `nx()` finds the files that exist from one listing of each project dir per run, about 4 ms at 1,000 projects.
-- The task loads them when it runs, with Nx's own parser.
-- A shell line runs under `nx-env --dotenv <file>… --`. An executor line passes `--dotenv <file>` to `nx-exec`.
+- The lock is the same on every machine, so `nx()` never asks the disk which files exist.
+- An executor line passes every candidate name to `nx-exec` as `--dotenv <file>`, as Nx does.
+- A shell line runs under `nx-env --dotenv <file>… --`, with every candidate, only when git tracks one of them.
+- A shell line whose only `.env` files are not committed loads none. `vx lock` names those files: commit them, or load them in the command.
+- The bins load whichever candidates exist when the task runs, with Nx's own parser.
+- They read `NX_LOAD_DOT_ENV_FILES` there too. It is passed to the task and keyed.
 - Their values never enter a config, so a `.env.local` secret is not in `vx show`, `.vx/projects.lock` or a migrated `vx.config.ts`.
-- A cached task keys on their bytes through an `inputs.runtime` probe (`for f in …; do echo "$f"; cat -- "$f"; …`).
-- That probe sees a gitignored file a glob would not.
-- A file added or removed changes the command, and so the key, on the next run.
+- A cached task keys the candidates as literal inputs: the project's in `inputs.files`, the root's in `inputs.workspaceFiles`.
+- A literal is keyed present or not, and gitignored or not, so adding, editing or removing one is a miss.
 - `tests/nx-exec-live.test.ts` compares what the line sees with what `nx run` gives the same target.
 
 ### The target a task sees
@@ -1010,7 +1000,7 @@ A different key, or no snapshot, runs `node_modules/.bin/nx graph --file=<snapsh
 - A run pays neither.
 - The mapping itself is kept beside it, in `<cache dir>/vx-migrate-nx-mapping.json`, keyed on everything it reads.
 - It reads the graph, `nx.json` and its `extends` chain, every package manifest, and each project dir's `.env` names.
-- It also reads `NX_LOAD_DOT_ENV_FILES`, which bins are installed, and the mapper's own code.
+- It also reads which bins are installed, the files git tracks, and the mapper's own code.
 - So a `vx lock` with nothing changed maps nothing.
 
 </details>
@@ -1033,6 +1023,7 @@ A different key, or no snapshot, runs `node_modules/.bin/nx graph --file=<snapsh
 - Without one, for `build` and `prepare`, it takes `dist/{projectRoot}` and `{projectRoot}/dist`.
 - Nx's `{projectRoot}/build` and `{projectRoot}/public` are outputs too when git tracks nothing under them; one that holds a tracked file is a todo.
 - That is because vx cleans an output before the run.
+- Nx keeps whichever of these exist, so each maps as the tree under it (`dist/**`): it may match nothing, as long as the build writes one of them.
 - Nx adds an `nx-release-publish` target (`@nx/js:release-publish`) to every project with a `package.json`.
 - It comes along as one `nx-exec` task per package, run only when asked (`vx run nx-release-publish --filter <pkg>`).
 - It counts in `vx info`'s task total.
@@ -1198,7 +1189,7 @@ It is the one command a repo needs. `pnpm dlx @vzn/vx-migrate` in a pnpm repo wo
 **Flags and files.** Your `package.json` scripts are never edited.
 
 - `--dry` prints the files instead of writing them. It installs nothing, and says what it would install.
-- `--force` overwrites existing files.
+- `--force` overwrites existing `vx.config.*` files. A hand-written `.vx/workspace.*` stays; only `--keep --force` replaces it.
 - `--mjs` writes `vx.config.mjs` instead of `.ts`: the same objects with no type import and no `satisfies`.
 - Use `--mjs` for a package whose own `tsconfig` includes every `.ts` under it, and would compile the config into its dist (TanStack/query).
 
@@ -1254,7 +1245,7 @@ It uses the same mapper `turbo()` runs at `vx lock`, so the written configs say 
 | `dependsOn`                         | `dependsOn`, same micro-syntax (`$TURBO_ROOT$` deps are a TODO)                                                                |
 | `inputs`                            | `inputs.files` (`$TURBO_DEFAULT$` → `**/*`; `$TURBO_ROOT$/x` → `workspaceFiles`)                                               |
 | `outputs`                           | `outputs.files`, a negated one included                                                                                        |
-| `env`                               | `inputs.env` **and** `exec.env.passThrough` (child envs are isolated)                                                          |
+| `env`                               | `inputs.env`, which the task also sees (child envs are isolated)                                                               |
 | `passThroughEnv`                    | `exec.env.passThrough`                                                                                                         |
 | `cache: false` / `persistent: true` | no `cache: true`, still keyed on its `inputs`; `exec.persistent: {}`, with a TODO to set `readyWhen` when a task depends on it |
 
@@ -1358,7 +1349,7 @@ There is no live plugin, so `--keep` is refused.
 - A command that opens with `vp run` (or `vpr`) is inlined as Vite Task inlines it.
 - `vp run x`, `pkg#x`, `-r x`, `-w x` and `-F <name> x` are `dependsOn` edges.
 - `-r` is an edge to each package with `x`, the task's own reference pruned.
-- The task is a group when nothing follows them.
+- The task runs nothing when nothing follows them: a no-op task of its `cache.input`, or a group with none. Its `cache` and outputs are dropped.
 - The edges run in parallel where Vite Task ran a chain in order.
 - Any other form stays in the command with a TODO: `--parallel`, `-t`, forwarded arguments, or a `vp run` after another command.
 
@@ -1370,7 +1361,7 @@ There is no live plugin, so `--keep` is refused.
 | `dependsOn: { task, from }`                               | `^task`; when a member listed under a field `from` leaves out also has the task, the explicit `pkg#task` edges, since `^` follows every field                                                                                |
 | `cache.input` / `cache.output` globs                      | `inputs.files` / `outputs.files`; `base: 'workspace'` → `workspaceFiles`, a root task's too; a `**` glued to text (`src/**.ts`), which vx refuses, widens an input to `**/*` and runs an output's task uncached, with a todo |
 | omitted or `{ auto: true }` (traced files)                | no `cache: true`, with a TODO: vx infers no inputs or outputs                                                                                                                                                                |
-| `cache.env`                                               | `inputs.env` **and** `exec.env.passThrough`; a `*` entry lists the names the package's tracked files and its workspace dependencies' spell (a TODO when none match); `!` entries take names back                             |
+| `cache.env`                                               | `inputs.env`, which the task also sees; a `*` entry kept as written, matched by each run; a `!` entry drops its literal, and is a TODO when a kept pattern still matches it                                                  |
 | `cache.untrackedEnv`                                      | `exec.env.passThrough`, wildcards as `cache.env`                                                                                                                                                                             |
 | `cache: false`, root `run.cache` `false` / `tasks: false` | no `cache: true`                                                                                                                                                                                                             |
 | a `package.json` script                                   | a task, uncached; with root `run.cache.scripts` a TODO for its cache                                                                                                                                                         |
@@ -1480,7 +1471,7 @@ import type { ProjectConfig } from '@vzn/vx/config'
   - `storybook-static/**` for Storybook
 - For any other command, it names the directory the command gives with `--outDir` / `--out-dir` / `-d`.
 - Else it names the ones the command cleans first (`del-cli distribution`, `rimraf lib types`), unless it makes one again with `mkdir`.
-- Else it names the outDir its incremental `tsc` emits into, read from the tsconfig.
+- Else it names the outDir its `tsc` emits into, read from the tsconfig.
 - Example: docusaurus's `lib/`, where `dist/**` restored only the buildinfo.
 - A package in a cycle of builds gets, instead of `^build`, an edge to each build outside its cycle that `^build` would reach.
 - It also gets a TODO to order the cycle, since `^build` there refuses the run.

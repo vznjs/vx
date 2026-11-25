@@ -1,7 +1,8 @@
 // A run reads the lock, never turbo.json, a script or project.json: an edit
 // to one with no `vx lock` after it ran the old command, green (a script
 // edit even missed the cache, the old command saved under the new key). As
-// for an edited vx.config, the run refuses, naming the file and `vx lock`.
+// for an edited vx.config, the run maps the file again and refuses a mapping
+// that moved, naming the file and `vx lock`.
 import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -142,6 +143,12 @@ describe('nx(): a file the lock was mapped from, edited since', () => {
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
   })
+  // A run maps an edited file again and refuses only a mapping that moved
+  // (63c8d1b8f): the graph Nx would build from the edit.
+  const graphMoves = async (): Promise<void> => {
+    const file = path.join(root, 'graph.json')
+    await writeFile(file, (await Bun.file(file).text()).replace('echo lint', 'echo edited'))
+  }
 
   it(
     'refuses the run, naming project.json and `vx lock`',
@@ -153,6 +160,7 @@ describe('nx(): a file the lock was mapped from, edited since', () => {
         path.join(root, 'packages', 'lib', 'project.json'),
         JSON.stringify({ name: 'lib', targets: { lint: { command: 'echo edited' } } }),
       )
+      await graphMoves()
       await expect(plan()).rejects.toThrow(said('packages/lib/project.json'))
     },
     TIMEOUT,
@@ -167,6 +175,7 @@ describe('nx(): a file the lock was mapped from, edited since', () => {
       const plan = () => planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect((await plan()).tasks.length).toBe(1)
       await writeFile(project, JSON.stringify({ name: 'lib' }))
+      await graphMoves()
       await expect(plan()).rejects.toThrow(said('packages/lib/project.json'))
     },
     TIMEOUT,
@@ -182,6 +191,7 @@ describe('nx(): a file the lock was mapped from, edited since', () => {
         path.join(root, 'packages', 'lib', 'vite.config.ts'),
         'export default { build: {} }\n',
       )
+      await graphMoves()
       await expect(plan()).rejects.toThrow(said('packages/lib/vite.config.ts'))
     },
     TIMEOUT,

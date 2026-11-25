@@ -120,11 +120,8 @@ describe('turbo()', () => {
       expect(inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(notTurbos(inputs.env!)).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
       expect(outputs.files).toEqual(['dist/**'])
-      expect(notTurbos(app.config.exec!.env!.passThrough!)).toEqual([
-        'GLOBAL_MODE',
-        'AWS_PROFILE',
-        'NODE_ENV',
-      ])
+      // inputs.env passes too: passThrough holds only what is seen, not keyed.
+      expect(notTurbos(app.config.exec!.env!.passThrough!)).toEqual(['AWS_PROFILE'])
       expect(app.config.exec?.command).toBe('mkdir -p dist && cat src/gen/api.js > dist/app.js')
     },
     TIMEOUT,
@@ -1522,23 +1519,15 @@ describe('turbo() under vx lock', () => {
       )
       for (const f of kept) await rm(path.join(root, f))
       await pkg('lib', { build: 'mkdir -p dist && echo edited > dist/lib.js' })
-      // Unreadable to the mapper: a run that mapped would refuse it.
-      await writeFile(path.join(root, 'turbo.json'), '{ not json')
+      // The run maps the edit only to compare it (63c8d1b8f): it moved, so
+      // the run refuses and runs neither the old command nor the new.
       const stale = vx('run', 'lib#build', '--no-cache')
       expect(stale.code).toBe(1)
       expect(stale.err).toContain(
-        'packages/lib/package.json, turbo.json changed since the last `vx lock` — run `vx lock`',
+        'packages/lib/package.json changed since the last `vx lock` — run `vx lock`',
       )
       const lib = path.join(root, 'packages', 'lib', 'dist', 'lib.js')
       expect(await Bun.file(lib).exists()).toBe(false)
-      // Nothing was mapped, so nothing was kept.
-      expect(
-        await Array.fromAsync(
-          new Bun.Glob('**/vx-migrate-turbo-mapping.json').scan({ cwd: root, dot: true }),
-        ),
-      ).toEqual([])
-      expect(vx('lock').code).toBe(1)
-      await writeFile(path.join(root, 'turbo.json'), JSON.stringify(TURBO_JSON))
       expect(vx('lock', '--check').err).toContain(
         'packages/lib: the plugins map it differently from the lock here',
       )
@@ -1766,12 +1755,12 @@ describe("Turbo's builtin env under turbo()", () => {
           .outcomes[0]!.status
       expect(await go()).toBe('success')
       expect(await Bun.file(path.join(root, 'packages', 'lib', 'dist', 'e.txt')).text()).toBe(
-        // A builtin wildcard family (VERCEL_*, GITHUB_*) is not matched
-        // against the run's names: the list is keyed, and must key alike
-        // on every machine and in the written configs.
-        'Asia/Tokyo|||preview|\n',
+        // A builtin wildcard family (VERCEL_*, GITHUB_*) passes as a pattern,
+        // matched by the run: seen, never keyed.
+        'Asia/Tokyo|x.vercel.app|abc|preview|\n',
       )
       process.env['TZ'] = 'UTC'
+      process.env['VERCEL_URL'] = 'y.vercel.app'
       expect(await go()).toBe('cache-hit')
       process.env['VERCEL_TARGET_ENV'] = 'production'
       expect(await go()).toBe('success')

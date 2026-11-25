@@ -116,6 +116,22 @@ it('an output, a Tree or a stdout the CAS lacks is given back to vx', async () =
   }
 })
 
+// Size 0 was read as "no output" whatever the hash: a server that leaves
+// size_bytes unset lost a task's log without a word. Only the empty blob's
+// own digest is taken unread, as for output files.
+it('a stdout or stderr of size 0 under a hash that is not the empty blob is given back', async () => {
+  const d = fake.put(enc('the real log\n'))
+  for (const field of ['stdout_digest', 'stderr_digest']) {
+    fake.onExecute = () => ({
+      response: { result: { exit_code: 0, [field]: { hash: d.hash, size_bytes: 0 } } },
+    })
+    expect((await outcome(`k-hostile-zero-${field}`, [])).name).toBe('ExecutorFallback')
+  }
+  const empty = fake.put(enc(''))
+  fake.onExecute = () => ({ response: { result: { exit_code: 0, stdout_digest: empty } } })
+  expect((await outcome('k-hostile-zero-empty', [])).name).toBeUndefined()
+})
+
 it('CONTROL: honest outputs land, nothing given back', async () => {
   const d = fake.put(enc('honest\n'))
   fake.onExecute = () => ({

@@ -6,7 +6,7 @@
 
 import { indexDb } from '../src/cache/index.js'
 import { Database } from 'bun:sqlite'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -151,7 +151,10 @@ describe('3: one key moving file → inline → file', () => {
       await save(cache, 'h1', last)
       expect([isInline(cache, 'h1'), files()]).toEqual([false, ['h1.tar.zst']])
       expect(await restored(cache, 'h1')).toEqual({ 'out.txt': hex(last) })
-      expect(cache.artifactSize('h1')).toBe(storedArtifact(cache, 'h1')!.byteLength)
+      // The latest file's size, counted on disk as `du` does (a666e2fcb).
+      expect(cache.artifactSize('h1')).toBe(
+        statSync(path.join(cacheDir, 'h1.tar.zst')).blocks * 512,
+      )
     } finally {
       cache.close()
     }
@@ -181,7 +184,10 @@ describe('3: one key moving file → inline → file', () => {
       // a phantom, so it is neither dropped nor uncounted.
       const size = storedArtifact(cache, 'aaaaaaaaaaaaaaaa')!.byteLength
       const fileSize = old.byteLength
-      expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: expect.any(Number) })
+      expect(await cache.orphanStats()).toMatchObject({
+        orphans: 1,
+        orphanBytes: expect.any(Number),
+      })
       const r = await cache.prune({ maxBytes: Number.MAX_SAFE_INTEGER })
       expect([r.evicted, r.orphans, files()]).toEqual([0, 1, []])
       expect(r.orphanBytes).toBeGreaterThan(fileSize)
@@ -427,7 +433,10 @@ describe('8: prune over inline artifacts', () => {
       const sizes = ['00000000000000a1', '00000000000000a2'].map(
         (h) => storedArtifact(cache, h)!.byteLength,
       )
-      expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: sizes[0]! + sizes[1]! })
+      expect(await cache.orphanStats()).toMatchObject({
+        orphans: 2,
+        orphanBytes: sizes[0]! + sizes[1]!,
+      })
       const dry = await cache.prune({ olderThanMs: Date.now() - 24 * HOUR, dry: true })
       expect({ orphans: dry.orphans, orphanBytes: dry.orphanBytes }).toEqual({
         orphans: 1,

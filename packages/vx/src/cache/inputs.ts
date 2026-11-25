@@ -45,6 +45,7 @@ import {
   ESSENTIAL_ENV,
   taskEnvSource,
   ownEnv,
+  expandEnvNames,
   POST_EXIT_DRAIN_MS,
   splitNegations,
   staticPrefix,
@@ -365,7 +366,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
   return {
     files,
     listings,
-    envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
+    envValues: resolveEnvValues(expandEnvNames(args.inputs?.env ?? []), args.envSource),
     runtimeValues,
     workspaceRuntimeValues,
   }

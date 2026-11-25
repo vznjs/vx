@@ -38,7 +38,7 @@ the `history` module's (history.md), and the tables `index-db`'s
   an `inputs.files` link into another project keys nothing behind it when
   a task its `dependsOn` reaches there declares the target in its
   `inputs.files` or `outputs` (a file a glob matches, a directory a
-  `dir/**` holds whole), and is refused (`VX_E_NESTED_INPUT`) when not, by
+  `dir/**` or `dir/**/*` holds whole, as `**` and `**/*` do), and is refused (`VX_E_NESTED_INPUT`) when not, by
   what `setLinkBounds` names. Any task of the project was enough: a link
   to files only an undeclared one read replayed a stale hit.
 - `checkpointer.ts` — `WalCheckpointer`: once a run's first save commits
@@ -573,6 +573,7 @@ SQLite stores metadata, and the small artifacts above:
   `run_id` and `created_at` name the run that wrote the entry as it stands and when (v54).
   A tree entry's `size_bytes` is its files and links as laid on disk; a link to a
   directory counts as a link, never walked (two links back to `out/` were 2^40 paths).
+  A `.tar.zst` entry's is its file's blocks, as `du` counts them; an inline one's, its length.
 - **`entry_stdout`** — an entry's captured stdout, `(hash, stdout)`, apart
   so the `accessed_at` bump does not rewrite it (v29); a zstd frame of its
   bytes as the task wrote them (v52, `rawEncode`), as text the logs outweighed every inline artifact.

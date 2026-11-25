@@ -821,6 +821,25 @@ describe('LayeredCache', () => {
     expect(await forced.getSaved('h-agent')).not.toBeNull()
   })
 
+  // local() workers share the run's store: the run restored a worker's
+  // entry from it, then saved and uploaded it again (2026-11-25).
+  it('a save of an entry getSaved() found here asks the remote before an upload', async () => {
+    const layered = makeLayered()
+    expect((await layered.remoteHasMany(['h-worker', 'h-here']))?.size).toBe(0)
+    // A worker saves and uploads one; the other reaches this store alone.
+    await saveSample(makeLayered(), 'h-worker')
+    await saveSample(local, 'h-here')
+    expect(remote.puts).toBe(1)
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    const entry = { taskId: 'pkg#build', command: 'echo produced', durationMs: 5, stdout: '' }
+    for (const hash of ['h-worker', 'h-here']) {
+      expect(await layered.getSaved(hash)).not.toBeNull()
+      await layered.save({ hash, projectDir, outputFiles: [outFile], entry, absent: true })
+    }
+    await layered.drainUploads()
+    expect([remote.puts, [...remote.store.keys()].sort()]).toEqual([2, ['h-here', 'h-worker']])
+  })
+
   it('markRemoteAbsent() does not clobber an in-flight pull', async () => {
     // Seed a REAL artifact remotely, then hold the pull open mid-flight.
     await saveSample(makeLayered(), 'h-race')

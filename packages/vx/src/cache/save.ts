@@ -2,7 +2,7 @@
 // index rows, and ingesting one a remote served.
 
 import { existsSync, linkSync, renameSync, utimesSync } from 'node:fs'
-import { lstat, mkdir, readdir, rm, unlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   UserError,
@@ -791,6 +791,10 @@ export async function writeArtifactAndIndex(
   // A tree keeps its files as they are: counted on disk as a saved tree
   // counts them, not as the archive it was unpacked from (`--max-size`, stats).
   if (tree !== undefined && saved === undefined) totalBytes = await treeBytes(tree)
+  // A `.tar.zst` is counted on disk too, as its orphan is: its length
+  // undercounted a store of small archives, each a whole block.
+  else if (tree === undefined && inline === null && tmpPath !== undefined)
+    totalBytes = diskBytes(await stat(tmpPath))
   const outputFileRows = outputFileRowsOf(scanned)
   // Compressed before the write lock is taken: logs are most of what the
   // index held as text.

@@ -43,6 +43,13 @@ function fixture(name: string, links: string[]): string {
   for (const dir of [...links, 'vx-lockfile']) {
     symlinkSync(path.join(PACKAGES, dir), path.join(root, 'node_modules', '@vzn', dir))
   }
+  // As an install links them: app reaches lib by its name, never by `../`.
+  for (const member of readdirSync(path.join(root, 'packages'))) {
+    const { name } = JSON.parse(
+      readFileSync(path.join(root, 'packages', member, 'package.json'), 'utf8'),
+    ) as { name: string }
+    symlinkSync(path.join('..', 'packages', member), path.join(root, 'node_modules', name))
+  }
   writeFileSync(path.join(root, 'bun.lock'), JSON.stringify(bunWorkspaceLock(root), null, 2))
   const shipped = lockFiles(root)
   const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: root, stderr: 'pipe' })
@@ -141,7 +148,10 @@ describe('examples/basic', () => {
     expect(warm.exit).toBe(0)
     expect(warm.status['lib#build']).toBe('cache-hit')
     expect(warm.status['app#test']).toBe('cache-hit')
-    writeFileSync(path.join(root, 'packages/lib/src/greet.js'), 'const greet = (n) => `hi, ${n}`\n')
+    writeFileSync(
+      path.join(root, 'packages/lib/src/greet.js'),
+      'export const greet = (n) => `hi, ${n}`\n',
+    )
     const edited = run(root, 'ci')
     expect(edited.exit).toBe(0)
     expect([
@@ -285,7 +295,7 @@ describe('examples/ci', () => {
     // The pull request changes app alone: lib comes from main's keys.
     writeFileSync(
       path.join(root, 'packages/app/src/main.js'),
-      "console.log(greet('vx'))\nconsole.log(greet('pr'))\n",
+      "import { greet } from 'lib'\n\nconsole.log(greet('vx'))\nconsole.log(greet('pr'))\n",
     )
     commit(root)
     expect(step(pr, ['lock', '--check']).exit).toBe(0)

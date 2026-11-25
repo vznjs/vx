@@ -197,6 +197,25 @@ it('--format json prints every row of a large result, in order', () => {
   expect([rows.length, rows[0], rows.at(-1)]).toEqual([250000, { x: 1 }, { x: 250000 }])
 }, 30_000)
 
+// Failing after rows went out, the refusal's one-line document was glued
+// to the cut stream: neither line a reader could take.
+it('--format json puts a refusal after streamed rows on its own last line', () => {
+  const r = vx(
+    'last',
+    '--sql',
+    'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 100000) SELECT CASE WHEN x > 50000 THEN abs(-9223372036854775808) ELSE x END AS v FROM c',
+    '--format',
+    'json',
+  )
+  expect(r.code).toBe(1)
+  expect(r.out.startsWith('{"rows":[')).toBe(true)
+  const last = r.out.trimEnd().split('\n').at(-1)!
+  expect(JSON.parse(last)).toMatchObject({
+    ok: false,
+    error: { message: 'vx last: --sql: integer overflow' },
+  })
+}, 30_000)
+
 it('the table refuses a query past its row bound, naming the bound and the stream', () => {
   const r = vx('last', '--sql', ENDLESS)
   expect([r.code, r.out]).toEqual([1, ''])

@@ -42,7 +42,7 @@ export function parsePipelineArgs(args: readonly string[]): {
     return {
       name,
       rest,
-      error: `vx pipeline runs one pipeline, whose tasks are its \`tasks\` (got ${extra.join(' ')}); narrow it with --filter${see}`,
+      error: `vx pipeline runs one pipeline, whose tasks are its \`tasks\` (got ${extra.join(' ')}); pick projects with --filter${see}`,
     }
   if (parsed.all) return { name, rest, error: `--all: a pipeline runs every project already${see}` }
   return { name, rest }

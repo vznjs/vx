@@ -4,7 +4,6 @@
 
 import { type MigrationFormat, type MigrationPlan } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
-import { spelledNames } from './spelled-env.js'
 import { spareTrackedTodos, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { mapViteTaskWorkspace, viteTaskProjects } from './vite-task/vite-task-map.js'
 
@@ -18,7 +17,6 @@ export async function migrateViteTask(
   const mapped = await mapViteTaskWorkspace(root, withRoot.metas, {
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: () => `vx.config.${format}`,
-    sourceNames: (dirs) => spelledNames(root, dirs, tracked),
   })
   // A reader whose `!` hides a committed file under another task's output
   // runs uncached.

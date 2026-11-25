@@ -4,7 +4,7 @@
 // command line is RUN by a real shell, not compared as a string.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, writeFile } from 'node:fs/promises'
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
@@ -12,7 +12,14 @@ import protobuf from 'protobufjs'
 import type { ExecuteRequest } from '@vzn/vx'
 import { execDigestFor } from '../src/cache.js'
 import { commandEnvironment, materialiseOutputs, reapiExecutor } from '../src/executor.js'
-import { decodeTreeWithBytes, encodeDirectory, encodeTree, sha256 } from '../src/merkle.js'
+import {
+  concat,
+  decodeTreeWithBytes,
+  encodeDirectory,
+  encodeTree,
+  lenField,
+  sha256,
+} from '../src/merkle.js'
 import { ReapiClient, type Directory } from '../src/wire.js'
 import { CHUNKING_SUPPORTED } from './helpers/bun-floor.js'
 import { startFakeReapi, type FakeReapi } from './helpers/fake-reapi.js'
@@ -408,6 +415,40 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     expect(tree.children.length).toBe(6)
   })
 
+  // A parent names its child by the digest of the WORKER's bytes. A split
+  // re-encoded each child with vx's encoder, which drops what it does not
+  // decode (a Directory's own `node_properties`, field 5): the new Tree's
+  // parent named a child it no longer carried, so the record never replayed
+  // and a graft of it was missing that subtree.
+  it("a match's Tree carries its children as the worker encoded them", async () => {
+    const plain = dir(['d'])
+    const props = lenField(5, lenField(3, new Uint8Array([8, 0xed, 0x03])))
+    const deepRaw = concat([encodeDirectory(plain), props])
+    const gen: Directory = {
+      files: [],
+      directories: [{ name: 'deep', digest: sha256(deepRaw) }],
+      symlinks: [],
+    }
+    const genRaw = encodeDirectory(gen)
+    const top: Directory = {
+      files: [],
+      directories: [{ name: 'gen', digest: sha256(genRaw) }],
+      symlinks: [],
+    }
+    const tree = concat([
+      lenField(1, encodeDirectory(top)),
+      lenField(2, genRaw),
+      lenField(2, deepRaw),
+    ])
+    executeReturning('mods', fake.put(tree))
+    await refusal(run('k-raw', ['mods/*']))
+    const recorded = recordOf('k-raw')
+    expect(recorded.map((d) => d.path)).toEqual(['pkg/mods/gen'])
+    const split = decodeTreeWithBytes(fake.blobs.get(recorded[0]!.tree_digest.hash)!)
+    expect(split.root?.directories.map((d) => d.digest.hash)).toEqual([sha256(deepRaw).hash])
+    expect(split.childDigests).toEqual([sha256(deepRaw).hash])
+  })
+
   it("the matches' Trees go up in one probe and one batch, not one round trip each", async () => {
     // Per match a probe and a Write: 100 packages cost 3.4 s through a
     // proxy adding 15 ms each way, 0.26 s batched (F-31).
@@ -600,6 +641,33 @@ describe.if(CHUNKING_SUPPORTED)('materialising outputs', () => {
       0o755, 0o640,
     ])
     expect((await lstat(at('link'))).isSymbolicLink()).toBe(true)
+  })
+
+  // Size 0 was read as "an empty file" whatever the hash: a server that
+  // leaves `size_bytes` unset restored every output empty, and the save
+  // cached them. Only the empty blob's own digest is written unread.
+  it('a size of 0 under a hash that is not the empty blob is read, never written empty', async () => {
+    const body = put('the real body')
+    const zero = { hash: body.hash, size_bytes: 0 }
+    const top: Directory = {
+      files: [{ name: 'in-tree.js', digest: zero, is_executable: false }],
+      directories: [],
+      symlinks: [],
+    }
+    const cases = [
+      { output_files: [{ path: 'out.js', digest: zero, is_executable: false }] },
+      { output_directories: [{ path: 'dist', tree_digest: fake.put(encodeTree(top, [])) }] },
+    ]
+    for (const result of cases) {
+      expect(await refusal(materialise(result, ['out.js', 'dist/**']))).toContain(
+        'blob integrity failure',
+      )
+    }
+    expect(existsSync(path.join(root, 'pkg', 'out.js'))).toBe(false)
+    expect(existsSync(path.join(root, 'pkg', 'dist', 'in-tree.js'))).toBe(false)
+    const empty = put('')
+    await materialise({ output_files: [{ path: 'out.js', digest: empty }] }, ['out.js'])
+    expect(await readFile(path.join(root, 'pkg', 'out.js'), 'utf8')).toBe('')
   })
 
   it('under a literal capture, a missing Tree, a rootless one, a missing child and a missing file each refuse', async () => {

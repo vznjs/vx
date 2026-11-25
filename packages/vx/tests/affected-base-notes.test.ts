@@ -206,13 +206,29 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     })
   }
 
+  // 2026-11-25: a CI plugin's base (a pull request's base commit, gone with a
+  // force-push) said "Pass a branch or commit you have locally", as if typed.
+  it("a plugin's base that does not resolve is named as the plugin's", async () => {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `${PLUGIN_IMPORT}export default { plugins: [${edgesSource()}, ${pluginSource('org/ci', "{ config(_w, ctx) { ctx.setBranch({ base: 'gone' }) } }")}] }\n`,
+    )
+    const p = vxSync(root, ['run', 'build', '--affected', '--dry'])
+    expect(p.code).toBe(1)
+    expect(p.err).toContain('the base org/ci named: git ref "gone" did not resolve')
+    const typed = vxSync(root, ['run', 'build', '--affected=gone', '--dry'])
+    expect(typed.err).not.toContain('named:')
+  })
+
   it('CONTROL: a real base that happens to select nothing keeps the plain note', async () => {
     await writeFile(path.join(root, 'README.md'), 'docs only\n')
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'docs')
     const r = vx(root, 'run', 'build', '--affected=HEAD~1')
     expect(r.code).toBe(0)
-    expect(r.text).toContain('nothing affected since HEAD~1')
+    // A changed file in no project still makes every project a candidate
+    // (a task with exec and no inputs runs on any change): the task walk said it.
+    expect(r.text).toContain('Nothing affected: the change reaches no build task')
     expect(r.text).not.toContain('HEAD itself')
   })
 
@@ -229,7 +245,12 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     const none = dry('--affected=HEAD~1')
     expect(none.code).toBe(0)
     expect(JSON.parse(none.stdout)).toEqual({ affectedBase: 'HEAD~1', tasks: [] })
-    expect(none.stderr).toContain('nothing affected since HEAD~1')
+    expect(none.stderr).toContain('the change reaches no build task')
+    // No file changed at all: the base is named.
+    const empty = dry('--affected=HEAD')
+    expect(empty.code).toBe(0)
+    expect(JSON.parse(empty.stdout)).toEqual({ affectedBase: 'HEAD', tasks: [] })
+    expect(empty.stderr).toContain('nothing affected since HEAD')
     // An affected project that declares no such task.
     await mkdir(path.join(root, 'pkgs/docs'), { recursive: true })
     await writeFile(path.join(root, 'pkgs/docs/package.json'), JSON.stringify({ name: 'docs' }))
@@ -242,7 +263,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     const undeclared = dry('--affected=HEAD~1')
     expect(undeclared.code).toBe(0)
     expect(JSON.parse(undeclared.stdout)).toEqual({ affectedBase: 'HEAD~1', tasks: [] })
-    expect(undeclared.stderr).toContain('build')
+    expect(undeclared.stderr).toContain('the change reaches no build task')
   })
 
   // nx#33330: an explicit base still probed the default branch first, and
@@ -351,9 +372,10 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     for (const name of ['lib', 'other']) {
       await mkdir(path.join(root, `pkgs/${name}/src`), { recursive: true })
       await writeFile(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
+      // Inputs: a task with none is affected by any change.
       await writeFile(
         path.join(root, `pkgs/${name}/vx.config.mjs`),
-        `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] } } } }\n`,
       )
       await writeFile(path.join(root, `pkgs/${name}/src/l.txt`), 'l1\n')
     }
@@ -439,10 +461,14 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     // the edit, and the note still claimed a clean tree.
     for (const args of [['--affected=HEAD'], ['--filter', '[HEAD]'], ['--filter', 'app[HEAD]']]) {
       const r = vx(root, 'run', 'build', ...args)
+      // `--affected` asks the tasks; a project filter, the projects.
       expect({ args, exitCode: r.code, out: r.text.trim() }).toEqual({
         args,
         exitCode: 0,
-        out: noticed('vx run: nothing affected since HEAD', 'info').trimEnd(),
+        out:
+          args[0] === '--affected=HEAD'
+            ? 'Nothing affected: the change reaches no build task.'
+            : noticed('vx run: nothing affected since HEAD', 'info').trimEnd(),
       })
     }
   })

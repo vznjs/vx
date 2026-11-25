@@ -403,13 +403,44 @@ async function phantomRows(ix: StoreIndex): Promise<{
   return { phantoms, stale, rows, inline }
 }
 
-export async function orphanStats(
-  ix: StoreIndex,
-): Promise<{ orphans: number; orphanBytes: number }> {
+export async function orphanStats(ix: StoreIndex): Promise<{
+  orphans: number
+  orphanBytes: number
+  missing: number
+  missingBytes: number
+}> {
   const found = await guard(ix, () => scanOrphans(ix))
   let orphanBytes = 0
   for (const o of found) orphanBytes += o.size
-  return { orphans: found.length, orphanBytes }
+  return { orphans: found.length, orphanBytes, ...(await guard(ix, () => scanMissing(ix))) }
+}
+
+/**
+ * Rows whose file is gone (deleted by hand, a disk cleaner): no restore can
+ * read them, so `vx info` leaves them out of its entries. One listing, no
+ * stat per row; a row written after the listing began is not judged.
+ */
+async function scanMissing(ix: StoreIndex): Promise<{ missing: number; missingBytes: number }> {
+  const before = Date.now()
+  let names: Set<string>
+  try {
+    names = new Set(await readdir(ix.artifactDir))
+  } catch {
+    return { missing: 0, missingBytes: 0 }
+  }
+  const rows = ix.db
+    .prepare(
+      'SELECT e.hash, e.size_bytes AS size FROM entries e WHERE e.created_at <= ? AND NOT EXISTS (SELECT 1 FROM artifacts a WHERE a.hash = e.hash)',
+    )
+    .all(before) as Array<{ hash: string; size: number }>
+  let missing = 0
+  let missingBytes = 0
+  for (const r of rows) {
+    if (names.has(`${r.hash}.tar.zst`) || names.has(`${r.hash}.tree`)) continue
+    missing++
+    missingBytes += r.size
+  }
+  return { missing, missingBytes }
 }
 
 /**

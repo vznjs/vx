@@ -106,7 +106,9 @@ it('a run follows the discovery vx lock made, and calls no discover hook', async
   expect((await vx(root, ['lock', '--check'])).code).toBe(0)
 }, 60_000)
 
-it('a plugin swapped after vx lock discovers nothing until vx lock', async () => {
+// A workspace file that discovers otherwise than the lock refuses the run
+// until `vx lock` (8465d91b6).
+it('a plugin swapped after vx lock refuses the run until vx lock', async () => {
   // Every project a leaf: `^build` needs an edge source.
   const FLAT = pluginSource(
     'org/flat',
@@ -119,22 +121,23 @@ it('a plugin swapped after vx lock discovers nothing until vx lock', async () =>
   expect((await vx(root, ['lock'])).code).toBe(0)
   await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([EDGES]))
   const r = await run('--filter', 'b')
-  expect(`${r.code}\n${r.err}`).toStartWith('0\n')
-  expect(r.out).not.toContain('built-a')
-  expect(await calls()).toBe('')
+  expect(`${r.code}\n${r.err}`).toBe(
+    '1\n✗ vx run  .vx/workspace.mjs changed since the last `vx lock` — run `vx lock`\n',
+  )
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
   // The fixture's workspace file declares `vx-test-packages` first.
   expect(check.err).toContain('tools/gen: the lock names it "tools/gen", the plugins here "gen"')
 }, 60_000)
 
-it('and one dropped still runs what it discovered until vx lock', async () => {
+it('and one dropped refuses the run until vx lock', async () => {
   await Bun.write(path.join(root, 'edges.txt'), 'b-on-a gen\n')
   expect((await vx(root, ['lock'])).code).toBe(0)
   await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
   const r = await run('--filter', 'b')
-  expect(`${r.code}\n${r.err}`).toStartWith('0\n')
-  expect(r.out).toContain('built-a')
+  expect(`${r.code}\n${r.err}`).toBe(
+    '1\n✗ vx run  .vx/workspace.mjs changed since the last `vx lock` — run `vx lock`\n',
+  )
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
   expect(check.err).toContain('tools/gen: the lock names it "gen", the plugins here "tools/gen"')

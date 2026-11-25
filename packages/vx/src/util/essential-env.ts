@@ -116,6 +116,85 @@ const vxOnly = new Set<string>()
 export function setVxOnlyEnv(name: string, value: string): void {
   process.env[name] = value
   vxOnly.add(name)
+  forgetEnvMatches()
+}
+
+const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/** Why `pattern`, an env name holding `*`, is refused, or null. `*` is the one wildcard. */
+export function envPatternProblem(pattern: string): string | null {
+  if (/^\*+$/.test(pattern)) return 'matches every variable: list the names or a prefix (VITE_*)'
+  if (!/^[A-Za-z0-9_*]+$/.test(pattern))
+    return 'holds a character no variable name has: a pattern is letters, digits, _ and *'
+  if (/^[0-9]/.test(pattern)) return 'starts with a digit, as no variable name does'
+  return null
+}
+
+function patternRegex(pattern: string): RegExp {
+  return new RegExp(`^${pattern.split(/\*+/).map(RegExp.escape).join('[A-Za-z0-9_]*')}$`)
+}
+
+/**
+ * The run's variable names and each pattern's matches among them. A run
+ * matches each pattern once (`forgetEnvMatches` opens the next run), so its
+ * key and its spawn agree on the names.
+ */
+let envNamesNow: readonly string[] | undefined
+const envMatches = new Map<string, readonly string[]>()
+
+/** Start matching patterns afresh: a new run, or vx's own env changed. */
+export function forgetEnvMatches(): void {
+  envNamesNow = undefined
+  envMatches.clear()
+}
+
+/**
+ * `names` with each `*` pattern replaced by the variables of `taskEnvSource()`
+ * it matches (shell names only: `sh` drops the rest), sorted, each once.
+ */
+export function expandEnvNames(names: readonly string[]): readonly string[] {
+  if (!names.some((n) => n.includes('*'))) return names
+  const out = new Set<string>()
+  for (const name of names) {
+    if (!name.includes('*')) {
+      out.add(name)
+      continue
+    }
+    let hits = envMatches.get(name)
+    if (hits === undefined) {
+      envNamesNow ??= Object.keys(taskEnvSource()).filter((n) => SHELL_NAME.test(n))
+      const re = patternRegex(name)
+      hits = envNamesNow.filter((n) => re.test(n))
+      envMatches.set(name, hits)
+    }
+    for (const n of hits) out.add(n)
+  }
+  return [...out].sort()
+}
+
+/**
+ * Whether every variable `entry` (a name or a pattern) names, `cover` names
+ * too. A star of `entry` is matched only by a star of `cover`.
+ */
+export function envCovers(cover: string, entry: string): boolean {
+  if (!cover.includes('*')) return cover === entry
+  if (!entry.includes('*')) return patternRegex(cover).test(entry)
+  const c = cover.replace(/\*+/g, '*')
+  const e = entry.replace(/\*+/g, '*')
+  const memo = new Map<number, boolean>()
+  const at = (i: number, j: number): boolean => {
+    if (i === c.length) return j === e.length
+    const k = i * (e.length + 1) + j
+    const known = memo.get(k)
+    if (known !== undefined) return known
+    const r =
+      c[i] === '*'
+        ? at(i + 1, j) || (j < e.length && at(i, j + 1))
+        : j < e.length && c[i] === e[j] && e[j] !== '*' && at(i + 1, j + 1)
+    memo.set(k, r)
+    return r
+  }
+  return at(0, 0)
 }
 
 /** `process.env` as a task reads it: its spawn, its key and its run's key. */

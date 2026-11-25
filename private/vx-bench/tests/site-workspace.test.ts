@@ -2,6 +2,7 @@
 // during a run times the network, and in the per-PR gate's sandbox fails.
 
 import { expect, it } from 'bun:test'
+import { realpathSync } from 'node:fs'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -82,3 +83,19 @@ it('Vite Task installs nothing before a run, from a fresh home', async () => {
     await rm(home, { recursive: true, force: true })
   }
 }, 90_000)
+
+it("links each project's dependencies into its node_modules, where its build reads them", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-site-ws-'))
+  try {
+    const all = workspace()
+    const byName = new Map(all.map((p) => [p.name, p]))
+    const p = all.find((q) => q.deps.length > 1)!
+    await generate(dir, 2, [p, ...p.deps.map((d) => byName.get(d)!)])
+    for (const d of p.deps)
+      expect(realpathSync(path.join(dir, 'packages', p.dir, 'node_modules', d))).toBe(
+        realpathSync(path.join(dir, 'packages', byName.get(d)!.dir)),
+      )
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})

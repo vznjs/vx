@@ -160,8 +160,7 @@ const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) =>
     env: { passThrough: ['VX_REQUIRE_SANDBOX', 'VX_DEBUG_STRACE'] },
     sandbox: {
       allow: {
-        // The bare-specifier workspace links the schedule plugin.
-        read: ['**/*', '../vx-history/**'],
+        read: ['**/*'],
         write: ['dist/**', ...BUN_RUNTIME_WRITES],
         network: BUN_RUNTIME_NETWORK,
         systemInfo: ['vfs.disk-space'],
@@ -173,7 +172,6 @@ const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) =>
   },
   inputs: {
     files: ['src/**', 'package.json', 'scripts/check-binary.ts', 'scripts/binary-launch.ts'],
-    workspaceFiles: ['packages/vx-history/**'],
     runtime: BUN_VERSION,
   },
   outputs: { files: [] },
@@ -286,7 +284,7 @@ const compileTasks = Object.fromEntries(
       dependsOn: ['install'],
       exec: {
         // A release's version, defined into src/version.ts; empty off a release.
-        command: `bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --compile-autoload-package-json --minify --bytecode --format=esm --splitting --target=bun-${target} --define "VX_RELEASE=\\"\${VX_RELEASE_VERSION#v}\\"" src/bin.ts --outfile dist/vx-${target}`,
+        command: `bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig --compile-autoload-package-json --compile-autoload-tsconfig --minify --bytecode --format=esm --splitting --target=bun-${target} --define "VX_RELEASE=\\"\${VX_RELEASE_VERSION#v}\\"" src/bin.ts --outfile dist/vx-${target}`,
         env: { passThrough: ['VX_RELEASE_VERSION'] },
         sandbox: {
           allow: {
@@ -650,24 +648,6 @@ export default defineProject({
     deploy: {
       dependsOn: ['deploy.*'],
     },
-    // main's: npm.yml publishes a release before its post lands.
-    'deploy.github': {
-      description: 'give each GitHub release the body of its release post on the site',
-      exec: {
-        command: 'bun scripts/release-sync.ts',
-        env: {
-          passThrough: ['GITHUB_REPOSITORY', 'GH_TOKEN'],
-          secret: ['GH_TOKEN'],
-        },
-        sandbox: {
-          allow: {
-            read: ['.', '../../private/vx-docs/src/content/docs/releases'],
-            network: ['api.github.com'],
-          },
-        },
-      },
-    },
-
     // What only main runs: each launches a release binary on its own
     // platform's worker or drives this machine's sandbox, uncached.
     canary: {
@@ -700,6 +680,25 @@ export default defineProject({
     'check.bun.binary': checkBinary(),
     'canary.bun.linux-arm64': checkBinary(['linux-arm64']),
     'canary.bun.darwin-arm64': checkBinary(MAC),
+
+    // What @vzn/vx-docs reads from core through its node_modules besides
+    // the source `build` keys: the docs it imports, the config schema its
+    // explorer shows, the release helpers deploy.github runs. Never run;
+    // its key reaches the site's tasks.
+    site: {
+      description: 'the files the site reads from core besides src',
+      inputs: {
+        files: [
+          'docs/*.md',
+          'docs/modules/*.md',
+          'docs/design/*.md',
+          '!docs/STATUS.md',
+          'tests/contract/config-schema.json',
+          'scripts/github.ts',
+          'scripts/release-notes.ts',
+        ],
+      },
+    },
 
     lint: {
       dependsOn: ['lint.*'],

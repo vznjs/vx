@@ -10,8 +10,8 @@ import { readFileSync } from 'node:fs'
 import committed from '../data/bench.json'
 import { figures, fill, type BenchData } from './format.ts'
 // The real-repo rows have one copy, the bench's own file (real/nightly.ts
-// writes it); the build reads it across the project boundary it declares.
-import real from '../../../vx-bench/real-repos.json'
+// writes it); the build reads it from the bench package it installs.
+import real from '@vzn/vx-bench/real-repos.json'
 import { realFigures, type RealRow } from './real.ts'
 
 const live = process.env['VX_DOCS_BENCH']

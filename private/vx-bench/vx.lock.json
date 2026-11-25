@@ -5,6 +5,15 @@
         "^build"
       ]
     },
+    "site": {
+      "description": "the real-repo rows the site prints",
+      "inputs": {
+        "files": [
+          "real-repos.json",
+          "package.json"
+        ]
+      }
+    },
     "perf": {
       "dependsOn": [
         "perf.*"

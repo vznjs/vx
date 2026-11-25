@@ -141,17 +141,17 @@ describe('vx-migrate (vite-task)', () => {
     expect(lib['build']).toEqual({
       exec: {
         command: 'tsc && node copy.mjs',
-        env: { passThrough: ['NODE_ENV', 'CI', 'GH_TOKEN'] },
+        env: { passThrough: ['CI', 'GH_TOKEN'] },
       },
       inputs: {
         files: ['src/**', '!src/**/*.test.ts'],
         workspaceFiles: ['tsconfig.base.json'],
-        env: ['NODE_ENV'],
+        env: ['NODE_ENV', 'VITE_*'],
       },
       outputs: { files: ['dist/**', '!dist/cache/**'] },
       cache: true,
     })
-    expect(result.out).toContain('cache.env "VITE_*": vx takes exact env names')
+    expect(result.out).not.toContain('"VITE_*"')
   })
 
   it('maps package.json scripts uncached, with their pre/post hooks folded in', async () => {

@@ -184,6 +184,7 @@ export async function generate(
     const rel = path.join('packages', p.dir)
     const abs = path.join(dir, rel)
     await mkdir(path.join(abs, 'src'), { recursive: true })
+    await linkDeps(abs, p)
     const tasks = Object.keys(p.tasks) as TaskName[]
     const run = tasks.filter((t) => t !== 'installDeps')
     const cmd = (t: TaskName) => command(p, t)
@@ -312,6 +313,21 @@ export function gitInit(dir: string): void {
       'init',
     ],
     dir,
+  )
+}
+
+/**
+ * Link `p`'s dependencies into `dir/node_modules` as an install would. The
+ * workspace is never installed, so the generator, which placed every
+ * project side by side, links them itself.
+ */
+export async function linkDeps(dir: string, p: Project): Promise<void> {
+  if (p.deps.length === 0) return
+  await mkdir(path.join(dir, 'node_modules', '@bench'), { recursive: true })
+  await Promise.all(
+    p.deps.map((d) =>
+      symlink(`../../../${d.slice('@bench/'.length)}`, path.join(dir, 'node_modules', d)),
+    ),
   )
 }
 

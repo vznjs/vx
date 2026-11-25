@@ -6,6 +6,7 @@ import path from 'node:path'
 import type { InputStability, WorkspaceConfig } from '../config.js'
 import {
   beginRun,
+  forgetEnvMatches,
   mark,
   nearest,
   OWN_DIR_HINT,
@@ -48,6 +49,7 @@ import {
   findProjectConfigs,
   findWorkspaceRoot,
   configuredBaseBranch,
+  DEPENDENCIES_LOCK_NAME,
   type LoadReads,
   lockDigest,
   PROJECT_CONFIG_FILENAMES,
@@ -237,6 +239,7 @@ export async function prepareRunLocked(
   planning = false,
 ): Promise<PreparedRun> {
   beginRun()
+  forgetEnvMatches()
   mark('startup')
   const ws = await startWorkspace(options, log, planning)
   const scope = scopeOf(options, ws)
@@ -1056,6 +1059,17 @@ async function applyKeyStages(
       )
     }
   }
+  // A recorded file no plugin claims now: its claimant was dropped since
+  // `vx lock`, and the run keyed no task on what it records, green.
+  const unclaimed = await ws.readLock().then(
+    (lock) => lockedDependencies(lock)?.files.find((f) => !store.claimed.includes(f)),
+    () => undefined,
+  )
+  if (unclaimed !== undefined)
+    throw new UserError(
+      `${unclaimed} is in ${DEPENDENCIES_LOCK_NAME} but no plugin claims it: run \`vx lock\``,
+      'VX_E_LOCK',
+    )
   if (hasHook(plugins, 'key')) {
     const claims = fingerprintClaims(plugins)
     const claimCtx = withExtraHashes(

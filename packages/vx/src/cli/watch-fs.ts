@@ -453,6 +453,29 @@ export function modifiedBefore(abs: string, t: number): boolean {
   }
 }
 
+/**
+ * `dir`'s real path; one not there is placed under its nearest ancestor that
+ * is. macOS's one stream hears a missing project there when it comes back:
+ * judged by its absence, one made before its own arm got a watch of its own,
+ * and each watch opened rebuilds the stream, losing what lands meanwhile.
+ */
+export function realDir(
+  dir: string,
+  realpath: (p: string) => string = fs.realpathSync,
+): string | undefined {
+  const rest: string[] = []
+  for (let at = dir; ;) {
+    try {
+      return path.join(realpath(at), ...rest)
+    } catch {
+      const up = path.dirname(at)
+      if (up === at) return undefined
+      rest.unshift(path.basename(at))
+      at = up
+    }
+  }
+}
+
 /** A handle that watches nothing: a slot a drop emptied, an arm not made. */
 export const CLOSED: WatchHandle = { close() {} }
 

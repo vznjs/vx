@@ -3,18 +3,21 @@
 // plugin `project` stage. `vx lock` runs that stage and records only what it
 // left (`LockedProject.config`); others read the record.
 
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import {
   checkProjectNames,
+  configImports,
   DEPENDENCIES_LOCK_NAME,
   frozenProjectConfigs,
   LOCK_INVALID,
   LOCKFILE_NAME,
   lockEntryBroken,
   lockedDependencies,
+  dependenciesLock,
+  sameRecord,
   lockDigest,
   lockedProjects,
   NO_LOCK,
@@ -33,16 +36,20 @@ import type { WorkspaceConfig } from '../config.js'
 import { applyWorkspaceLimits, applyWorkspaceTimers, atPath, SETTINGS } from '../settings.js'
 import { lazyGitEnumeration, type LazyGitEnumeration, parseCachePolicy } from '../cache/index.js'
 import {
+  changedSinceCommitOf,
   checkIgnoreSync,
   isUserError,
   listed,
   relPosix,
   skipWorktreeSync,
+  uncheckedSubmoduleSync,
   UserError,
 } from '../util/index.js'
 import {
   cacheScopeError,
+  evaluatedWorkspace,
   isCacheScope,
+  loadedWorkspaceImport,
   loadWorkspaceConfig,
   discoveredProject,
   linkDiscoveredEdges,
@@ -53,11 +60,20 @@ import {
   restampConfigs,
   stampsBesideLock,
   takeConfigStamps,
+  type ConfigStamps,
   type ConfigStat,
+  type LockStamps,
 } from '../memo/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
-import { workspaceFile } from '../handoff.js'
-import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
+import { workspaceFile, workspaceRootOf } from '../handoff.js'
+import {
+  applyConfigHooks,
+  applyDiscoverHooks,
+  applyProjectHooks,
+  claimedDigests,
+  fingerprintClaims,
+  hasHook,
+} from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
 import { freezeDeep, readOnly } from './read-only.js'
 import { holdLockFiles } from './run-lock.js'
@@ -77,6 +93,8 @@ export async function loadWorkspacePlugins(
   branch: BranchFacts
   /** Setting path → the last plugin whose `config` hook changed it (`vx info`). */
   settingPlugins: ReadonlyMap<string, string>
+  /** The last plugin whose `config` hook named `branch.base`. */
+  basePlugin?: string
 }> {
   const loaded = await loadWorkspaceConfig(workspaceRoot)
   const policy = loaded?.cache?.policy
@@ -135,7 +153,13 @@ export async function loadWorkspacePlugins(
   }
   const settingPaths = SETTINGS.filter((s) => s.config !== false).map((s) => s.path)
   const settingValues = new Map(settingPaths.map((p) => [p, atPath(workspaceConfig, p)]))
+  let basePlugin: string | undefined
+  let base: string | undefined
   await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) => {
+    if (branch.base !== base) {
+      base = branch.base
+      basePlugin = plugin.name
+    }
     const at = `.vx/workspace (after plugin '${plugin.name}')`
     validateWorkspace(workspaceConfig, at)
     for (const p of settingPaths) {
@@ -154,7 +178,13 @@ export async function loadWorkspacePlugins(
   })
   applyWorkspaceTimers(workspaceConfig)
   applyWorkspaceLimits(workspaceConfig)
-  return { workspaceConfig, plugins, branch, settingPlugins }
+  return {
+    workspaceConfig,
+    plugins,
+    branch,
+    settingPlugins,
+    ...(basePlugin !== undefined ? { basePlugin } : {}),
+  }
 }
 
 const isRef = (r: unknown): boolean =>
@@ -505,6 +535,10 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // The stamps beside the lock, read once a load; each file stat'd once a load.
   let stamped: ReturnType<typeof stampsBesideLock> | undefined
   const statted = new Set<string>()
+  // The workspace file holds the plugins' options (turbo({ root }), nx({
+  // executors })): an edit there mapped otherwise, and the run kept the
+  // locked commands, green. Stat'd once a load, beside the configs.
+  let workspaceAsked = false
   // `moved`: gone, or there when the lock found it absent: edited either way.
   const pluginReads = async (
     digest: string,
@@ -575,6 +609,24 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
               )} are outside this sparse checkout, but this run needs their configs — run \`${add}\``,
         )
       }
+      // A submodule a clone skipped, not deleted either: `vx lock` would
+      // drop it, and the committed lock would flip between machines.
+      const unchecked = goneAll.flatMap((m) => {
+        const at = uncheckedSubmoduleSync(workspaceRoot, relPosix(workspaceRoot, m.dir))
+        return at === null ? [] : [{ meta: m, at }]
+      })
+      if (unchecked.length > 0) {
+        const init = `git submodule update --init ${[...new Set(unchecked.map((u) => u.at))].join(' ')}`
+        const one = unchecked.length === 1 ? unchecked[0]! : null
+        throw new UserError(
+          one !== null
+            ? `${lockedProject(workspaceRoot, one.meta.name, one.meta.dir)} is in submodule ${one.at}, which is not checked out, but this run needs its ${relPosix(one.meta.dir, one.meta.configPath)} — run \`${init}\``
+            : `${listed(
+                unchecked.map((u) => lockedProject(workspaceRoot, u.meta.name, u.meta.dir)),
+                5,
+              )} are in submodules not checked out, but this run needs their configs — run \`${init}\``,
+        )
+      }
       const locked = lockedProject(workspaceRoot, gone.name, gone.dir)
       const file = relPosix(gone.dir, gone.configPath)
       // exists() says false for a file behind a directory this user may not
@@ -608,6 +660,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         ? undefined
         : await (stamped ??= stampsBesideLock(workspaceRoot, args.cacheDir, digest))
     let edited: string[] = []
+    const elsewhere = new Set<string>()
     if (digest !== undefined && got === undefined) {
       // No stamps beside this lock (a clone, a cleared cache): every config
       // and every mapping is evaluated once, as `vx lock --check` does, and
@@ -615,17 +668,82 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       // projects' mapped-from files unstamped, so an edit to one ran green.
       const held = await lock()
       const mapped = hasHook(plugins, 'project')
+      const workspace = workspaceAsked ? null : await workspaceStat(workspaceRoot)
+      workspaceAsked = true
+      const sources = new Map<string, Uint8Array>()
+      const taken =
+        workspace === null ? null : await takeConfigStamps(workspaceRoot, [workspace.file], sources)
+      if (taken !== null)
+        await stampWorkspaceImports(
+          workspaceRoot,
+          workspace!.file,
+          sources.get(workspace!.file),
+          taken,
+        )
       edited = await asLockHolds(args, digest, held, (m) => {
         if (args.staged?.get(m.name) !== undefined) return false
         if (m.configPath !== null) return true
         return mapped && Object.hasOwn(held.projects, lockKey(workspaceRoot, m.dir))
       })
+      // With no stamps an option edit read as every project it maps
+      // otherwise: git, on this failure path only, says whether the
+      // workspace file moved since the lock's commit, and the configs too.
+      if (edited.length > 0 && workspace !== null && mapped) {
+        const rel = relPosix(workspaceRoot, workspace.file)
+        // Its imports too: a plugin option may live in one.
+        const own = [rel, ...(taken?.workspace ?? []).map((f) => f.split(path.sep).join('/'))]
+        const since = changedSinceCommitOf(workspaceRoot, LOCKFILE_NAME, [...own, ...edited])
+        const moved = own.filter((f) => since?.has(f) === true)
+        if (since !== null && moved.length > 0)
+          edited = [
+            ...moved.map((f) => f.split('/').join(path.sep)),
+            ...edited.filter((f) => {
+              const p = f.split(path.sep).join('/')
+              return since.has(p) || [...since].some((s) => s.startsWith(`${p}/`))
+            }),
+          ]
+      }
+      // A config that is the lock's commit's and evaluates otherwise is no
+      // edit: on CI the environment it reads or a file it imports moved.
+      if (edited.length > 0) {
+        const configs = edited.filter((f) => PROJECT_CONFIG_FILENAMES.includes(path.basename(f)))
+        const posix = (f: string): string => f.split(path.sep).join('/')
+        const since =
+          configs.length === 0
+            ? null
+            : changedSinceCommitOf(workspaceRoot, LOCKFILE_NAME, configs.map(posix))
+        if (since !== null) for (const f of configs) if (!since.has(posix(f))) elsewhere.add(f)
+      }
+      // The workspace file too, as a run beside stamps asks it once it
+      // moved: left unstamped, the next run evaluated every mapping again.
+      // A digest that differs is the key path's to name: with no stamp,
+      // the claimed file may be the one edited.
+      if (workspace !== null && taken !== null && edited.length === 0) {
+        const rel = path.relative(workspaceRoot, workspace.file)
+        const discovers = await workspaceDiscovers(args, held)
+        const read = taken.configs[rel]
+        if (discovers === 'discovery') edited = [rel]
+        else if (
+          discovers === 'holds' &&
+          read !== undefined &&
+          evaluatedWorkspace(workspace.file, read[2])
+        )
+          await restampConfigs(workspaceRoot, args.cacheDir, digest, taken)
+      }
       stamped = stampsBesideLock(workspaceRoot, args.cacheDir, digest)
     } else if (digest !== undefined && got !== undefined) {
       const mappedFrom = await pluginReads(digest, unstaged)
+      const workspace = workspaceAsked ? null : await workspaceStat(workspaceRoot)
+      workspaceAsked = true
+      // The workspace file's imports: a plugin option may live in one.
+      const own =
+        workspace === null ? { moved: [], present: [] } : await importStats(workspaceRoot, got)
       edited = [
         ...mappedFrom.moved,
+        ...own.moved,
         ...(await got.edited([
+          ...(workspace === null ? [] : [workspace]),
+          ...own.present,
           ...withFile.flatMap((m, i) =>
             recordedOf(m) === undefined
               ? [
@@ -648,18 +766,66 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       // the check does, before refusing; one that matches is stamped again.
       if (edited.length > 0) {
         const named = new Set(edited)
-        const asked = new Set(
+        const asked = new Set<ProjectMeta>(
           withFile.filter((m) => named.has(path.relative(workspaceRoot, m.configPath))),
         )
+        // A mapped-from file is a byte stamp too: a version bump in a
+        // package.json turbo() reads maps the same, and `--check` passes it.
+        // Every project that read it is asked, not this round's alone: one
+        // that holds would stamp it for the others.
+        const readers = new Map<string, ProjectMeta[]>()
+        if (mappedFrom.moved.length + mappedFrom.present.length > 0) {
+          const recorded = (await stamped)?.reads ?? {}
+          for (const m of args.projectMetas) {
+            if (args.staged?.get(m.name) !== undefined) continue
+            const dir = lockKey(workspaceRoot, m.dir)
+            for (const rel of Object.hasOwn(recorded, dir) ? recorded[dir]! : []) {
+              if (!named.has(rel)) continue
+              asked.add(m)
+              const of = readers.get(rel)
+              if (of === undefined) readers.set(rel, [m])
+              else of.push(m)
+            }
+          }
+        }
         if (asked.size > 0) {
-          const still = new Set(
-            await asLockHolds(args, digest, await lock(), (m) => asked.has(m as never)),
-          )
-          edited = edited.filter(
-            (rel) =>
+          const still = new Set(await asLockHolds(args, digest, await lock(), (m) => asked.has(m)))
+          const nameOf = (m: ProjectMeta): string =>
+            m.configPath === null
+              ? relPosix(workspaceRoot, m.dir)
+              : path.relative(workspaceRoot, m.configPath)
+          edited = edited.filter((rel) => {
+            const by = readers.get(rel)
+            if (by !== undefined && !by.some((m) => still.has(nameOf(m)))) return false
+            return (
               still.has(rel) ||
-              ![...asked].some((m) => path.relative(workspaceRoot, m.configPath) === rel),
+              ![...asked].some(
+                (m) => m.configPath !== null && path.relative(workspaceRoot, m.configPath) === rel,
+              )
+            )
+          })
+        }
+        // An edit that maps and discovers as the lock holds (a concurrency,
+        // a cache plugin) runs, as `vx lock --check` passes it, and is stamped.
+        const rel = workspace === null ? null : path.relative(workspaceRoot, workspace.file)
+        const mine = new Set(rel === null ? [] : [rel, ...got.workspace])
+        if (rel !== null && edited.some((f) => mine.has(f))) {
+          const sources = new Map<string, Uint8Array>()
+          const taken = await takeConfigStamps(workspaceRoot, [workspace!.file], sources)
+          await stampWorkspaceImports(
+            workspaceRoot,
+            workspace!.file,
+            sources.get(workspace!.file),
+            taken,
           )
+          if (await workspaceHolds(args, digest, await lock())) {
+            edited = edited.filter((f) => !mine.has(f))
+            // Only the bytes this run's plugins came from: an edit since
+            // the load is asked of the next run.
+            const read = taken.configs[rel]
+            if (read !== undefined && evaluatedWorkspace(workspace!.file, read[2]))
+              await restampConfigs(workspaceRoot, args.cacheDir, digest, taken)
+          }
         }
       }
     }
@@ -667,11 +833,20 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     // as a crash it causes is (cli/index.ts), on this failure path only.
     if (edited.length > 0 && lockEntryBroken(workspaceRoot))
       throw new UserError(LOCK_INVALID, 'VX_E_LOCK')
-    if (edited.length > 0)
-      throw new UserError(
-        `${listed(edited, 5)} changed since the last \`vx lock\` — run \`vx lock\``,
-        'VX_E_LOCK',
-      )
+    if (edited.length > 0) {
+      const moved = edited.filter((f) => !elsewhere.has(f))
+      const other = edited.filter((f) => elsewhere.has(f))
+      const one = other.length === 1
+      const parts = [
+        ...(moved.length > 0 ? [`${listed(moved, 5)} changed since the last \`vx lock\``] : []),
+        ...(other.length > 0
+          ? [
+              `${listed(other, 5)} ${one ? 'evaluates' : 'evaluate'} differently from the lock here: a file ${one ? 'it imports' : 'they import'}, or the environment ${one ? 'it reads' : 'they read'}, changed`,
+            ]
+          : []),
+      ]
+      throw new UserError(`${parts.join('; ')} — run \`vx lock\``, 'VX_E_LOCK')
+    }
     const loaded =
       fromLock.length === 0 ? [] : frozenProjectConfigs(await lock(), fromLock, workspaceRoot)
     let next = 0
@@ -849,6 +1024,167 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
     }))
 }
 
+/** The workspace file as `LockStamps.edited` takes it; null when none marks this root. */
+async function workspaceStat(root: string): Promise<ConfigStat | null> {
+  const file = await workspaceFile(path.resolve(root))
+  if (file === null || workspaceRootOf(file) !== path.resolve(root)) return null
+  const st = await stat(file).catch(() => null)
+  if (st === null) return null
+  return { file, size: st.size, mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, ino: st.ino }
+}
+
+/**
+ * The workspace file's stamped imports, one stat each: `moved` gone, or
+ * there when `vx lock` found it absent; `present` for `LockStamps.edited`.
+ */
+async function importStats(
+  root: string,
+  got: LockStamps,
+): Promise<{ moved: string[]; present: ConfigStat[] }> {
+  const moved: string[] = []
+  const present: ConfigStat[] = []
+  await Promise.all(
+    got.workspace.map(async (rel) => {
+      const file = path.join(root, rel)
+      const st = await stat(file).catch(() => null)
+      if (st === null || !got.present(rel)) {
+        if (st !== null || got.present(rel)) moved.push(rel)
+        return
+      }
+      present.push({ file, size: st.size, mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, ino: st.ino })
+    }),
+  )
+  return { moved: moved.sort(), present }
+}
+
+/**
+ * Whether the plugins as the workspace file declares them now discover and
+ * map every project as the lock holds, as `vx lock --check` compares them:
+ * `workspaceDiscovers`, then each config after the `project` stage. Asked
+ * only once the file moved since its stamp.
+ */
+async function workspaceHolds(
+  args: LoadProjectsArgs,
+  digest: string,
+  held: Lockfile,
+): Promise<boolean> {
+  if ((await workspaceDiscovers(args, held)) !== 'holds') return false
+  const drifted = await asLockHolds(
+    args,
+    digest,
+    held,
+    (m) =>
+      m.configPath !== null || Object.hasOwn(held.projects, lockKey(args.workspaceRoot, m.dir)),
+  )
+  return drifted.length === 0
+}
+
+/**
+ * How the plugins as the workspace file declares them now discover the
+ * projects, as `vx lock --check` compares them: `discovery` when a name, the
+ * plugin that added one or an edge differs from the lock, `digests` when a
+ * claimant's digests differ from what `.vx/dependencies.lock` records.
+ */
+async function workspaceDiscovers(
+  args: LoadProjectsArgs,
+  held: Lockfile,
+): Promise<'holds' | 'discovery' | 'digests'> {
+  const root = args.workspaceRoot
+  // The discovery `vx lock` runs: from the config files alone, so a project
+  // a plugin no longer adds is missed.
+  const files: Lockfile = {
+    ...held,
+    projects: Object.fromEntries(
+      Object.entries(held.projects).filter(([, p]) => p.file !== undefined),
+    ),
+  }
+  const fresh = await lockDiscovery(root, async () => files, args.plugins, args.cacheDir, args.warn)
+  const shape = (metas: readonly ProjectMeta[]): unknown => ({
+    source: metas.some((m) => m.deps !== undefined),
+    projects: Object.fromEntries(
+      metas.map((m) => [
+        lockKey(root, m.dir),
+        [m.name, addedByPlugin(m) ?? null, [...(m.deps ?? [])].sort(), [...(m.reach ?? [])].sort()],
+      ]),
+    ),
+  })
+  if (!Bun.deepEquals(shape(fresh), shape(args.projectMetas), true)) return 'discovery'
+  // A claimant's options move the digests `vx lock` recorded: the key path
+  // named the claimed file, which had not changed.
+  const recorded = lockedDependencies(held)
+  if (recorded !== undefined) {
+    const ctx = {
+      workspaceRoot: root,
+      cacheDir: args.cacheDir,
+      warn: args.warn,
+      projects: fresh.map((m) => ({ name: m.name, dir: m.dir })),
+    }
+    const files = new Map<string, NonNullable<Awaited<ReturnType<typeof claimedDigests>>>>()
+    for (const [file, plugin] of fingerprintClaims(args.plugins)) {
+      const answer = await claimedDigests(plugin, file, ctx)
+      if (answer !== undefined) files.set(file, answer)
+    }
+    if (!sameRecord(recorded, dependenciesLock(fresh, files))) return 'digests'
+  }
+  return 'holds'
+}
+
+/**
+ * Each config's local imports (`configImports`), by its project directory,
+ * as files under `root`: the walk names real paths, and a root reached
+ * through a symlink (macOS's temp dir) read them as `../../private/…`.
+ * Stamped beside the configs, so a run notices a helper's edit by a stat.
+ */
+export async function importedBy(
+  root: string,
+  configs: readonly { dir: string; configPath: string | null }[],
+  sources?: ReadonlyMap<string, Uint8Array>,
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>()
+  await Promise.all(
+    configs.map(async ({ dir, configPath }) => {
+      if (configPath === null) return
+      const files = await importsUnder(root, configPath, sources?.get(configPath))
+      if (files.length > 0) out.set(dir, files)
+    }),
+  )
+  return out
+}
+
+async function importsUnder(
+  root: string,
+  file: string,
+  read: Uint8Array | undefined,
+): Promise<string[]> {
+  let real: string
+  try {
+    real = realpathSync(root)
+  } catch {
+    real = root
+  }
+  const source = read === undefined ? undefined : new TextDecoder().decode(read)
+  return (await configImports(file, source)).map((f) => path.join(root, path.relative(real, f)))
+}
+
+/**
+ * The workspace file's local imports into `taken`: a plugin option kept in
+ * one, edited with no `vx lock`, ran the locked commands, green. One written
+ * since this process loaded the workspace is listed, not stamped, so the
+ * next run asks it again.
+ */
+export async function stampWorkspaceImports(
+  root: string,
+  file: string,
+  read: Uint8Array | undefined,
+  taken: ConfigStamps,
+): Promise<void> {
+  const files = await importsUnder(root, file, read)
+  const got = await takeConfigStamps(root, files)
+  for (const [rel, stamp] of Object.entries(got.configs))
+    if (loadedWorkspaceImport(file, stamp[1])) taken.configs[rel] = stamp
+  taken.workspace = files.map((f) => path.relative(root, f)).sort()
+}
+
 /**
  * Of the projects `pick` names, the ones that do not evaluate to what the
  * lock holds, as `vx lock --check` compares them: the config, then the
@@ -867,7 +1203,12 @@ async function asLockHolds(
   const metas = args.projectMetas.filter(pick)
   if (metas.length === 0) return []
   const files = metas.flatMap((m) => (m.configPath === null ? [] : [m.configPath]))
-  const taken = await takeConfigStamps(root, files)
+  // The configs' bytes as stamped are the ones scanned: read once.
+  const sources = new Map<string, Uint8Array>()
+  const taken = await takeConfigStamps(root, files, sources)
+  const imported = await importedBy(root, metas, sources)
+  const helpers = await takeConfigStamps(root, [...new Set([...imported.values()].flat())])
+  taken.configs = { ...taken.configs, ...helpers.configs }
   const named = (m: ProjectMeta): string =>
     m.configPath === null ? relPosix(root, m.dir) : path.relative(root, m.configPath)
   let fresh: Map<string, unknown>
@@ -897,7 +1238,11 @@ async function asLockHolds(
         workspaceRoot: root,
         cacheDir: args.cacheDir,
         plugins: args.plugins,
-        projectMetas: args.projectMetas,
+        // A new pass, by identity: a plugin keeps its mapping per
+        // `ctx.projects`, and the run's own array, the same through a process
+        // that locked or ran before (a test, `vx watch`), served the mapping
+        // made before the edit, so a script edit ran green.
+        projectMetas: [...args.projectMetas],
         seeds: metas.map((m) => m.name),
         closure: false,
         configs: async () => view,
@@ -907,8 +1252,19 @@ async function asLockHolds(
       for (const m of metas) fresh.set(m.dir, staged.stage?.get(m.dir))
       reads = staged.reads
     }
-  } catch {
+  } catch (err) {
+    // A config or mapping that no longer evaluates: its error, as `vx lock
+    // --check` names it. Read as "changed since the last `vx lock`" alone, the
+    // fix was hidden behind a `vx lock` that refused it again.
+    if (isUserError(err)) throw err
     return metas.map(named)
+  }
+  // A config's imports are what it was made from, as a mapping's reads are.
+  for (const [dir, got] of imported) {
+    reads ??= new Map()
+    let set = reads.get(dir)
+    if (set === undefined) reads.set(dir, (set = new Set()))
+    for (const f of got) set.add(f)
   }
   const same = metas.filter((m) => {
     const dir = lockKey(root, m.dir)
@@ -922,18 +1278,36 @@ async function asLockHolds(
       Bun.deepEquals(fresh.get(m.dir), locked.config, true)
     )
   })
-  if (same.length > 0) {
+  // A file a mapping that no longer holds read is stamped for none: the
+  // mappings that hold vouched for it, and a project with no config, which
+  // only its mapped-from files guard, ran its locked mapping, green.
+  const failedReads = new Set(
+    metas
+      .filter((m) => !same.includes(m))
+      .flatMap((m) => [...(reads?.get(m.dir) ?? [])].map((f) => relPosix(root, f))),
+  )
+  // Every mapping's reads are kept, so a later run asks them of each project.
+  const byDir: Record<string, string[]> = {}
+  for (const m of metas) {
+    const got = reads?.get(m.dir)
+    if (got !== undefined && got.size > 0)
+      byDir[lockKey(root, m.dir)] = [...got].map((f) => relPosix(root, f)).sort()
+  }
+  if (same.length > 0 || Object.keys(byDir).length > 0) {
     const kept = new Set(same.flatMap((m) => (m.configPath === null ? [] : [named(m)])))
-    const byDir: Record<string, string[]> = {}
-    for (const m of same) {
-      const got = reads?.get(m.dir)
-      if (got !== undefined && got.size > 0)
-        byDir[lockKey(root, m.dir)] = [...got].map((f) => relPosix(root, f)).sort()
-    }
-    // Stamped after the stage read them, as `vx lock` stamps them.
+    // Stamped after the stage read them, as `vx lock` stamps them; an import
+    // as read before the evaluation, beside its config.
+    const imports = new Set([...imported.values()].flat().map((f) => path.relative(root, f)))
     const mapped = await takeConfigStamps(root, [
-      ...new Set(Object.values(byDir).flatMap((rels) => rels.map((r) => path.join(root, r)))),
+      ...new Set(
+        Object.values(byDir).flatMap((rels) =>
+          rels.filter((r) => !failedReads.has(r) && !imports.has(r)).map((r) => path.join(root, r)),
+        ),
+      ),
     ])
+    for (const rel of imports)
+      if (!failedReads.has(rel) && Object.hasOwn(taken.configs, rel))
+        mapped.configs[rel] = taken.configs[rel]!
     await restampConfigs(root, args.cacheDir, digest, {
       at: taken.at,
       configs: {

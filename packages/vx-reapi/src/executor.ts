@@ -41,7 +41,9 @@ import {
   digestWith,
   encodeAction,
   encodeCommand,
-  encodeTree,
+  concat,
+  encodeDirectory,
+  lenField,
   mapBounded,
   readVarintAt,
   sha256,
@@ -117,7 +119,14 @@ async function decomposeOutputDir(
   const tree = decodeTreeWithBytes(blob)
   if (tree.root === undefined) return whole
   const byDigest = new Map<string, Directory>()
-  tree.children.forEach((c, i) => byDigest.set(tree.childDigests[i]!, c))
+  // A split Tree carries the worker's bytes, never vx's re-encoding: a
+  // parent names its child by the digest of those bytes, and vx's encoder
+  // drops what it does not decode (a Directory's `node_properties`).
+  const rawOf = new Map<string, Uint8Array>()
+  tree.children.forEach((c, i) => {
+    byDigest.set(tree.childDigests[i]!, c)
+    rawOf.set(tree.childDigests[i]!, tree.childBytes[i]!)
+  })
   // Every match's Tree is written by a replay, and their sum is at most the
   // capture's own expansion. One past the free inodes is refused by the
   // download (materialiseOutputs), so splitting it first is wasted work:
@@ -127,7 +136,7 @@ async function decomposeOutputDir(
   // depth by recursion.
   const shape = treeShape(tree.root, byDigest)
   const deepest = Buffer.byteLength(path.join(workspaceRoot, entry.path)) + shape.longest
-  if (shape.entries > room || deepest >= PATH_MAX) return whole
+  if (shape.entries > room || deepest >= PATH_MAX || shape.twice !== undefined) return whole
 
   const out: Array<{ path: string; tree_digest: Digest }> = []
   // A match's Tree by its directory's digest: a subtree named under many
@@ -141,16 +150,12 @@ async function decomposeOutputDir(
   // Every transitive child of `dir`, which is what a Tree message must carry.
   // Each once: a subtree a Tree names under many names was walked per name,
   // 2^depth from a Tree of depth+1 directories.
-  const descendants = (
-    dir: Directory,
-    acc: Directory[] = [],
-    had = new Set<string>(),
-  ): Directory[] => {
+  const descendants = (dir: Directory, acc: string[] = [], had = new Set<string>()): string[] => {
     for (const d of dir.directories) {
       const child = byDigest.get(d.digest.hash)
       if (child === undefined || had.has(d.digest.hash)) continue
       had.add(d.digest.hash)
-      acc.push(child)
+      acc.push(d.digest.hash)
       descendants(child, acc, had)
     }
     return acc
@@ -171,7 +176,10 @@ async function decomposeOutputDir(
       seen.add(prefix)
       let blob = encoded.get(hash)
       if (blob === undefined) {
-        const data = encodeTree(dir, descendants(dir))
+        const data = concat([
+          lenField(1, rawOf.get(hash) ?? encodeDirectory(dir)),
+          ...descendants(dir).map((d) => lenField(2, rawOf.get(d)!)),
+        ])
         blob = { digest: sha256(data), data }
         encoded.set(hash, blob)
       }
@@ -655,6 +663,16 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   // (as vx-dte's `runKey`), since the key's own would replay as its hit
   // (`unsaved`). Null: deferred outputs no record holds.
   const runNonce = crypto.randomUUID()
+  // The record's address folds what shapes the worker and is not in the vx
+  // key: under the key alone, an `install` moved to an arm64 image replayed
+  // the amd64 worker's binaries. Without either, the address is the key's.
+  const shape = [
+    ...Object.entries(opts.platform ?? {})
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${k}=${v}`),
+    ...(opts.salt === undefined ? [] : [`salt=${opts.salt}`]),
+  ].join('\0')
+  const recordFor = (key: string): Digest => execDigestFor(shape === '' ? key : `${key}\0${shape}`)
   const ranHere = new Map<string, Digest | null>()
   const executor: TaskExecutor = {
     name: 'vx/reapi',
@@ -700,7 +718,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         // and caches the result. Both streams asked inline: a server that moved
         // them into CAS otherwise costs the replay a Read each.
         const prior = await untilAborted(
-          client.getActionResult(execDigestFor(req.cacheKey), {
+          client.getActionResult(recordFor(req.cacheKey), {
             stdout: true,
             stderr: true,
             files: [],
@@ -723,7 +741,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             [prior.stdout_raw, prior.stdout_digest] as const,
             [prior.stderr_raw, prior.stderr_digest] as const,
           ].flatMap(([raw, digest]) =>
-            (raw?.length ?? 0) === 0 && Number(digest?.size_bytes ?? 0) > 0 ? [digest!] : [],
+            (raw?.length ?? 0) === 0 && digest != null && !isEmptyBlob(client, digest)
+              ? [digest]
+              : [],
           )
           const referenced = [
             ...(prior.output_files ?? []).map((f) => f.digest),
@@ -908,9 +928,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               }
               const known = ranHere.get(up.hash)
               const record =
-                known === null
-                  ? null
-                  : await client.getActionResult(known ?? execDigestFor(up.hash))
+                known === null ? null : await client.getActionResult(known ?? recordFor(up.hash))
               if (record === null) {
                 // An upstream with nothing to bring (no outputs, or one that
                 // ran here locally and wrote none) has no record either.
@@ -1296,9 +1314,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         req.cacheKey !== undefined && (result.exit_code ?? 0) === 0 && tree.moved.length === 0
           ? (async (cacheKey: string): Promise<void> => {
               const recordKey =
-                req.unsaved === true
-                  ? execDigestFor(`${cacheKey}\0${runNonce}`)
-                  : execDigestFor(cacheKey)
+                req.unsaved === true ? recordFor(`${cacheKey}\0${runNonce}`) : recordFor(cacheKey)
               // A whole-tree capture's path is '' — the working directory
               // itself, which `${wd}/` spelled `pkg/`: never matched by a
               // decomposition, and grafted as a directory with an empty name.
@@ -1552,6 +1568,9 @@ function unfetched(err: unknown): unknown {
  * undefined dereferenced the null and crashed the whole execute call —
  * caught by the node_modules chain test the moment the record
  * short-circuit widened past `remote: 'only'`.
+ *
+ * Only the empty blob's own digest is taken unread: size 0 alone under
+ * another hash (a server that leaves `size_bytes` unset) lost the log.
  */
 async function readStream(
   client: ReapiClient,
@@ -1560,7 +1579,7 @@ async function readStream(
   what: string,
 ): Promise<string> {
   if (raw !== undefined && raw !== null && raw.length > 0) return new TextDecoder().decode(raw)
-  if (digest !== undefined && digest !== null && digest.size_bytes > 0) {
+  if (digest !== undefined && digest !== null && !isEmptyBlob(client, digest)) {
     const bytes = await client.readBlob(digest)
     if (bytes === null) {
       throw missingFromCas(`${what} ${digest.hash.slice(0, 12)} is missing from the CAS`)
@@ -1847,6 +1866,11 @@ export async function materialiseOutputs(
     // Past PATH_MAX the walk made the directories of a path the file system
     // then refused with a raw ENAMETOOLONG.
     const dest = fence.lexical(req.cwd, d.path)
+    if (read.twice !== undefined) {
+      throw new UserError(
+        `the server's Tree for ${dest} names ${read.twice} twice in one directory — refused`,
+      )
+    }
     const longest = Buffer.byteLength(dest) + read.longest
     if (longest >= PATH_MAX) {
       throw new UserError(
@@ -1871,6 +1895,17 @@ export async function materialiseOutputs(
   const files = (result.output_files ?? []).filter((f) =>
     isDeclared(fence.lexical(req.cwd, f.path)),
   )
+  // One path under two digests was written at once, as a Tree's twice-named
+  // entry was: the file could end up the bytes of neither.
+  const byPath = new Map<string, string>()
+  for (const f of files) {
+    const abs = fence.lexical(req.cwd, f.path)
+    const had = byPath.get(abs)
+    if (had !== undefined && had !== f.digest.hash) {
+      throw new UserError(`the server's result names ${abs} twice — refused`)
+    }
+    byPath.set(abs, f.digest.hash)
+  }
   // Batch the small ones into one round trip; anything larger goes over
   // ByteStream, which is also the only path that can be compressed.
   // A window at a time, as a Tree's files are: one batch read of every
@@ -1897,7 +1932,7 @@ export async function materialiseOutputs(
         digestWith(client.digest, f.contents).hash === f.digest.hash
       const bytes = inline
         ? f.contents! // inlined by the server (`inline_output_files`): zero fetches
-        : Number(f.digest.size_bytes) === 0
+        : isEmptyBlob(client, f.digest)
           ? new Uint8Array()
           : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
       if (bytes === null) {
@@ -2206,6 +2241,8 @@ async function readTree(
 interface TreeShape {
   entries: number
   longest: number
+  /** A name some directory of the Tree holds more than once. */
+  twice?: string
 }
 
 /** Bytes a path may hold, its terminating NUL included (limits.h). */
@@ -2222,6 +2259,14 @@ const PATH_MAX = process.platform === 'darwin' ? 1024 : 4096
 function treeShape(root: Directory, byDigest: ReadonlyMap<string, Directory>): TreeShape {
   const shapes = new Map<string, TreeShape>()
   const shapeOf = (dir: Directory): TreeShape => {
+    // REAPI holds a Directory's names unique: two entries of one name were
+    // written at once, and the file could end up the bytes of neither.
+    const names = new Set<string>()
+    let twice: string | undefined
+    for (const n of [...dir.files, ...dir.directories, ...dir.symlinks]) {
+      if (names.has(n.name)) twice ??= n.name
+      names.add(n.name)
+    }
     let entries = 1 + dir.files.length + dir.symlinks.length
     let longest = 0
     for (const f of [...dir.files, ...dir.symlinks]) {
@@ -2232,8 +2277,9 @@ function treeShape(root: Directory, byDigest: ReadonlyMap<string, Directory>): T
       if (below === undefined) continue
       entries += below.entries
       longest = Math.max(longest, 1 + Buffer.byteLength(d.name) + below.longest)
+      twice ??= below.twice
     }
-    return { entries, longest }
+    return { entries, longest, ...(twice === undefined ? {} : { twice }) }
   }
   // Each directory after its children: a child under many names is shaped once.
   const stack: Array<{ dir: Directory; hash: string; open: boolean }> = [
@@ -2313,10 +2359,9 @@ async function materialiseTree(
       window.filter((w) => isSmallBlob(w.f.digest)).map((w) => w.f.digest),
     )
     await mapBounded(window, WRITE_CONCURRENCY, async ({ abs, f }) => {
-      const bytes =
-        f.digest.size_bytes === 0
-          ? new Uint8Array()
-          : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
+      const bytes = isEmptyBlob(client, f.digest)
+        ? new Uint8Array()
+        : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
       if (bytes === null) {
         missing(abs, f.digest.hash, abs)
         return
@@ -2331,6 +2376,14 @@ async function materialiseTree(
     })
   }
 }
+
+/**
+ * The empty blob, written without a read. Size 0 alone is not it: a server
+ * that leaves `size_bytes` unset restored every output empty, and the save
+ * cached them. Any other hash is read, and refused for its size there.
+ */
+const isEmptyBlob = (client: ReapiClient, d: Digest): boolean =>
+  Number(d.size_bytes) === 0 && d.hash === digestWith(client.digest, new Uint8Array()).hash
 
 /** A blob fetched in a batch read, and so held in memory with its window. */
 const isSmallBlob = (d: Digest): boolean =>

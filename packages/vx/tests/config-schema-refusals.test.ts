@@ -353,10 +353,10 @@ describe('task refusals the sweep found unheld (item 653)', () => {
         `${CFG}: tasks.t.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
       )
     }
-    // Item 1090: a wildcard passed nothing through and loaded clean.
-    for (const n of ['VITE_*', 'A?', 'A{B,C}', 'A[B]']) {
+    // Item 1090: a glob character but `*` passed nothing through and loaded clean.
+    for (const n of ['A?', 'A{B,C}', 'A[B]']) {
       expect(taskRefusal({ exec: { command: 'x', env: { passThrough: [n] } } })).toBe(
-        `${CFG}: tasks.t.exec.env.passThrough: wildcards in env names are not supported (got ${JSON.stringify(n)}) — list explicit env var names instead`,
+        `${CFG}: tasks.t.exec.env.passThrough: ${JSON.stringify(n)} — \`*\` is the only wildcard in env names`,
       )
     }
     // L-14: `env.secret` names the variables masked whatever their name.
@@ -1107,10 +1107,10 @@ describe("Turbo's env exclusion (D-53)", () => {
   // was a variable named `!SECRET`, and nothing said so.
   it('is refused in each env list', () => {
     expect(cacheRefusal({ files: ['**'], env: ['API_URL', '!SECRET'] })).toBe(
-      `${CFG}: tasks.t.inputs.env: "!SECRET" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave SECRET out`,
+      `${CFG}: tasks.t.inputs.env: "!SECRET" is Turbo's exclusion from a wildcard — vx has none, so leave SECRET out or narrow the pattern`,
     )
     expect(taskRefusal({ exec: { command: 'x', env: { passThrough: ['!AWS_KEY'] } } })).toBe(
-      `${CFG}: tasks.t.exec.env.passThrough: "!AWS_KEY" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave AWS_KEY out`,
+      `${CFG}: tasks.t.exec.env.passThrough: "!AWS_KEY" is Turbo's exclusion from a wildcard — vx has none, so leave AWS_KEY out or narrow the pattern`,
     )
     expect(taskRefusal({ exec: { command: 'x', env: { secret: ['!TOKEN'] } } })).toContain(
       'exec.env.secret: "!TOKEN" is Turbo\'s exclusion',
@@ -1662,5 +1662,33 @@ describe('a name listed twice', () => {
     expect(tags).toBe(`${CFG}: \`tags\` lists "ui" twice`)
     // CONTROL: each once.
     expect(taskRefusal({ exec: { ...exec, env: { passThrough: ['A', 'B'] } } })).toBeNull()
+  })
+})
+
+// M, 2026-11-25: `*` patterns in inputs.env and passThrough, kept as written.
+describe('an env pattern', () => {
+  const exec = { command: 'x' }
+  const both = (n: string) =>
+    taskRefusal({ exec: { ...exec, env: { passThrough: [n] } }, inputs: { files: [], env: [n] } })
+  it('loads in inputs.env and passThrough', () => {
+    expect(['NEXT_PUBLIC_*', '*_URL', 'A*B*', '_*'].map(both)).toEqual([null, null, null, null])
+  })
+  it('is refused bare, with another wildcard, or with a character no name has', () => {
+    const at = (n: string, why: string) => [
+      `${CFG}: tasks.t.exec.env.passThrough: ${JSON.stringify(n)} ${why}`,
+      `${CFG}: tasks.t.inputs.env: ${JSON.stringify(n)} ${why}`,
+    ]
+    const of = (n: string) => [
+      taskRefusal({ exec: { ...exec, env: { passThrough: [n] } } }),
+      taskRefusal({ exec, inputs: { files: [], env: [n] } }),
+    ]
+    expect(['*', '**', 'A-*', 'A.*', '1*', 'A?', 'A[B]', 'A{B,C}'].map(of)).toEqual([
+      at('*', 'matches every variable: list the names or a prefix (VITE_*)'),
+      at('**', 'matches every variable: list the names or a prefix (VITE_*)'),
+      at('A-*', 'holds a character no variable name has: a pattern is letters, digits, _ and *'),
+      at('A.*', 'holds a character no variable name has: a pattern is letters, digits, _ and *'),
+      at('1*', 'starts with a digit, as no variable name does'),
+      ...['A?', 'A[B]', 'A{B,C}'].map((n) => at(n, '— `*` is the only wildcard in env names')),
+    ])
   })
 })

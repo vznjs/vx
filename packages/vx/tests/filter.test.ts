@@ -111,6 +111,17 @@ describe('parseFilter', () => {
     expect(p.gitSince).toBe('origin/main')
     expect(p.negate).toBe(true)
   })
+
+  it('reads <sel>[] as an empty ref, as [] is, not as a name', () => {
+    // `--filter "app[$BASE]"` with BASE unset matched no project, and the
+    // hint "Did you mean app[]?" named the filter as typed.
+    for (const raw of ['app[]', '@s/*[]', '{apps}[]', 'app...[]']) {
+      const p = parseFilter(raw, ROOT)
+      expect({ raw, gitSince: p.gitSince }).toEqual({ raw, gitSince: '' })
+    }
+    // CONTROL: an unbraced path keeps its brackets as a glob class.
+    expect(parseFilter('./packages/[]', ROOT).gitSince).toBeUndefined()
+  })
 })
 
 describe('applyFilters', () => {

@@ -288,7 +288,7 @@ describe('loadProjectConfig', () => {
         (e: Error) => e.message,
       )
       expect(err).toBe(
-        `${file}: tasks.empty: a task with no \`exec\` must declare \`dependsOn\` or \`inputs\` (group tasks exist to chain dependencies or carry a key)`,
+        `${file}: tasks.empty: a task with no \`exec\` must declare \`dependsOn\` (a group) or \`inputs\` (a no-op task, a key its dependants fold)`,
       )
     })
 
@@ -375,14 +375,40 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/persistent must be an object/)
     })
 
-    it('accepts a keyed group: cache with no exec, no dependsOn, no outputs', async () => {
+    it('accepts a no-op task: inputs with no exec, no dependsOn, no outputs', async () => {
       const file = path.join(dir, 'vx.config.mjs')
       await writeFile(file, `export default { tasks: { g: { inputs: { files: ['**'] } } } }`)
       const cfg = await loadProjectConfig(file)
       expect(cfg.tasks?.g?.inputs?.files).toEqual(['**'])
     })
 
-    it('rejects `cache` on a keyed group (a group writes nothing)', async () => {
+    it('rejects a no-op task whose inputs list nothing (M, 2026-11-25)', async () => {
+      const file = path.join(dir, 'vx.config.mjs')
+      const refused = async (inputs: string): Promise<string> => {
+        await writeFile(
+          file,
+          `export default { tasks: { up: { exec: { command: 'true' } }, g: { dependsOn: ['up'], inputs: ${inputs} } } }`,
+        )
+        return loadProjectConfig(file).then(
+          () => 'loaded',
+          (e: Error) => e.message,
+        )
+      }
+      for (const inputs of [
+        `{ files: [] }`,
+        `{ files: [], env: [], workspaceFiles: [] }`,
+        `{ files: [], tasks: ['up'] }`,
+      ]) {
+        expect(await refused(inputs)).toContain(
+          'tasks.g: a task with no `exec` needs non-empty `inputs` — add `exec`, or drop `inputs` to make it a group',
+        )
+      }
+      for (const inputs of [`{ files: [], env: ['A'] }`, `{ files: [], workspaceFiles: ['x'] }`]) {
+        expect(await refused(inputs)).toBe('loaded')
+      }
+    })
+
+    it('rejects `cache` on a no-op task (it writes nothing)', async () => {
       const message = (outputs: string) =>
         `export default { tasks: { g: {
           inputs: { files: ['**'] }, outputs: ${outputs}, cache: true,
@@ -404,15 +430,12 @@ describe('loadProjectConfig', () => {
       }
     })
 
-    it('rejects wildcards in inputs.env (no silent literal misinterpretation)', async () => {
-      // Turbo expands `VERCEL_*` in env tracking; vx requires explicit
-      // names so an unset wildcard doesn't silently become an empty
-      // value in the cache key. Reject at load time with a clear
-      // pointer to the workaround (list names individually).
-      // An env name is no path, so the bracket that became a literal in a
-      // task glob (item 667) is still refused here.
+    it('rejects every env wildcard but * (no silent literal misinterpretation)', async () => {
+      // `*` is a pattern (0a7d89289); any other glob character would key ''
+      // for a literal no variable has. An env name is no path, so the
+      // bracket that became a literal in a task glob (item 667) is refused.
       const file = path.join(dir, 'vx.config.mjs')
-      for (const name of ['VERCEL_*', 'A?', 'A[0]', 'A{B}']) {
+      for (const name of ['A?', 'A[0]', 'A{B}']) {
         await writeFile(
           file,
           `export default { tasks: { build: {
@@ -420,7 +443,7 @@ describe('loadProjectConfig', () => {
             inputs: { files: ['src/**'], env: [${JSON.stringify(name)}] }, outputs: { files: [] }, cache: true,
           } } }`,
         )
-        await expect(loadProjectConfig(file)).rejects.toThrow(/wildcards.*env names.*not supported/)
+        await expect(loadProjectConfig(file)).rejects.toThrow(/is the only wildcard in env names/)
       }
     })
 
@@ -1734,7 +1757,8 @@ describe('a config that changes the built-ins (D-74)', () => {
   // `process.env.X = …` in a first load reached every project's
   // `passThrough` and vx's own `VX_*` reads; a repeat load, in a worker,
   // reached neither (D-76).
-  const ENV_HINT = '; a task gets an env var through `exec.env.define` or `passThrough`'
+  const ENV_HINT =
+    '; a task gets an env var through `inputs.env`, `exec.env.passThrough` or `exec.env.define`'
 
   it('refuses an env var a config sets, and takes it back (D-76)', async () => {
     expect(

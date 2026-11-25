@@ -106,7 +106,7 @@ export interface ShortCircuit {
    * again (`deriveStableKeys`' `uncachedKeys`).
    */
   uncachedKeys: Map<string, string>
-  /** Unkeyed group id → its up-front key (`deriveStableKeys`' `groupKeys`). */
+  /** Group id → its up-front key (`deriveStableKeys`' `groupKeys`). */
   groupKeys: Map<string, UpfrontGroupKey>
   /** Behind a remote, each stable task the local store missed → its key: the remote may hold it. */
   remoteAsk: Map<string, string>

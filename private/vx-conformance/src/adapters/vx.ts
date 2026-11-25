@@ -62,55 +62,63 @@ export const vx: Adapter = {
         Object.entries(p.tasks ?? {}).map(([t, spec]) => {
           // vx has no default inputs: root inputs or a probe alone key no project file.
           const files = spec.inputs ?? (spec.rootInputs || spec.runtime ? [] : undefined)
+          const run = command(name, t)
           return [
             t,
             {
-              exec: {
-                command: command(name, t),
-                ...(spec.env || spec.passThrough
-                  ? {
-                      // A name both declared and passed through is listed once: vx refuses a repeat.
-                      env: {
-                        passThrough: [
-                          ...new Set([...(spec.env ?? []), ...(spec.passThrough ?? [])]),
-                        ],
-                      },
-                    }
-                  : {}),
-                ...(spec.sandbox
-                  ? {
-                      sandbox: {
-                        ...(spec.sandbox.hermetic ? { hermetic: true } : {}),
-                        allow: {
-                          // A root input or output is declared, so granted: by absolute path, as grants outside the project are.
-                          read: [
-                            ...(spec.inputs ?? []),
-                            ...(spec.rootInputs ?? []).map((g) => path.join(dir, g)),
-                            ...(spec.sandbox.read ?? []),
-                          ],
-                          // The harness marks an isolated task's start and end there.
-                          write: [
-                            ...(spec.outputs ?? []),
-                            ...(spec.rootOutputs ?? []).map((g) => path.join(dir, g)),
-                            ...(spec.sandbox.write ?? []),
-                            `${path.dirname(path.join(dir, ISOLATED_RAN))}/`,
-                          ],
-                          ...(spec.sandbox.network ? { network: spec.sandbox.network } : {}),
-                        },
-                      },
-                    }
-                  : {}),
-                ...(spec.timeout !== undefined ? { timeout: `${spec.timeout * 1000}ms` } : {}),
-                ...(spec.retries !== undefined ? { retries: spec.retries } : {}),
-                ...(spec.persistent
-                  ? {
-                      persistent:
-                        spec.persistent !== true && 'ready' in spec.persistent
-                          ? { readyWhen: escapeRegExp(spec.persistent.ready) }
-                          : {},
-                    }
-                  : {}),
-              },
+              // No command: no `exec`, a no-op task with inputs, a group without.
+              ...(run === undefined
+                ? {}
+                : {
+                    exec: {
+                      command: run,
+                      ...(spec.env || spec.passThrough
+                        ? {
+                            // A name both declared and passed through is listed once: vx refuses a repeat.
+                            env: {
+                              passThrough: [
+                                ...new Set([...(spec.env ?? []), ...(spec.passThrough ?? [])]),
+                              ],
+                            },
+                          }
+                        : {}),
+                      ...(spec.sandbox
+                        ? {
+                            sandbox: {
+                              ...(spec.sandbox.hermetic ? { hermetic: true } : {}),
+                              allow: {
+                                // A root input or output is declared, so granted: by absolute path, as grants outside the project are.
+                                read: [
+                                  ...(spec.inputs ?? []),
+                                  ...(spec.rootInputs ?? []).map((g) => path.join(dir, g)),
+                                  ...(spec.sandbox.read ?? []),
+                                ],
+                                // The harness marks an isolated task's start and end there.
+                                write: [
+                                  ...(spec.outputs ?? []),
+                                  ...(spec.rootOutputs ?? []).map((g) => path.join(dir, g)),
+                                  ...(spec.sandbox.write ?? []),
+                                  `${path.dirname(path.join(dir, ISOLATED_RAN))}/`,
+                                ],
+                                ...(spec.sandbox.network ? { network: spec.sandbox.network } : {}),
+                              },
+                            },
+                          }
+                        : {}),
+                      ...(spec.timeout !== undefined
+                        ? { timeout: `${spec.timeout * 1000}ms` }
+                        : {}),
+                      ...(spec.retries !== undefined ? { retries: spec.retries } : {}),
+                      ...(spec.persistent
+                        ? {
+                            persistent:
+                              spec.persistent !== true && 'ready' in spec.persistent
+                                ? { readyWhen: escapeRegExp(spec.persistent.ready) }
+                                : {},
+                          }
+                        : {}),
+                    },
+                  }),
               ...(spec.dependsOn ? { dependsOn: spec.dependsOn } : {}),
               ...(files
                 ? {
@@ -123,7 +131,10 @@ export const vx: Adapter = {
                     },
                   }
                 : {}),
-              ...(files && (spec.outputs || spec.rootOutputs) && spec.cache !== false
+              ...(run !== undefined &&
+              files &&
+              (spec.outputs || spec.rootOutputs) &&
+              spec.cache !== false
                 ? {
                     outputs: {
                       files: spec.outputs ?? [],

@@ -449,7 +449,7 @@ Each field sits in a task in `vx.config.ts`. A task with `cache: true` also need
 - `cache` · default `false`<br/>`true` stores the result and skips the task on a stored key
 - `inputs.files` · required<br/>globs from the project folder; `!` removes; `src` means all of `src/`
 - `inputs.workspaceFiles` · default `[]`<br/>the same, from the workspace root
-- `inputs.env` · default `[]`<br/>variables whose values go in the key (not passed to the command)
+- `inputs.env` · default `[]`<br/>variables the command gets and whose values go in the key; `VITE_*` takes every match
 - `inputs.runtime` · default `[]`<br/>commands run in the project; what they print goes in the key
 - `inputs.workspaceRuntime` · default `[]`<br/>commands run once at the root; what they print goes in the key
 - `inputs.tasks` · default all it depends on<br/>whose keys go in this key; `[]` keeps the order only

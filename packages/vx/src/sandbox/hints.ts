@@ -372,8 +372,12 @@ function hiddenUnderGrantHint(
 /** An output line that may say a removal of a write grant was refused (`grantRemovalHint`). */
 export const READ_ONLY_FS = /Read-only file system|EROFS|EBUSY|resource busy/i
 
-/** git's word, on stderr, for a discovery that found no `.git`. */
-export const GIT_NO_REPO = /not a git repository/i
+/**
+ * git's word, on stderr, for a discovery that found no `.git`. A worktree's
+ * `.git` file naming walled data reads `gitfile does not point to a valid
+ * repository` on git 2.5x (CI 2026-11-25).
+ */
+export const GIT_NO_REPO = /not a git repository|gitfile does not point to a valid repository/i
 
 /**
  * The hint for git finding no repository because the sandbox hid `.git`.
@@ -399,7 +403,9 @@ function hiddenGitHint(
     st = lstatSync(path.join(dir, '.git'), { throwIfNoEntry: false })
   }
   const git = path.join(dir, '.git')
-  if (st === undefined || readableUnder(git, granted)) return undefined
+  // A worktree's `.git` file granted is still no repository: the data it
+  // names is walled.
+  if (st === undefined || (st.isDirectory() && readableUnder(git, granted))) return undefined
   const said = `vx: git found no repository: the sandbox hides ${git}, and its probe is not reported.`
   const grantable = st.isDirectory() && walled.some((w) => toRealPath(w) === dir)
   return {

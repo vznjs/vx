@@ -216,7 +216,7 @@ export interface AffectedChanges {
   whole: ReadonlySet<string>
   /** A whole project → the workspace-wide file that made it so (a workspace config, a claimed root file). */
   wholeBy?: ReadonlyMap<string, string>
-  /** `wholeBy`'s file reached every project (the workspace config), not only those a claim named. */
+  /** `wholeBy`'s file reached every project, not only those a claim named. */
   wide?: boolean
   /**
    * Changed paths that are nested repositories: each stands for every file in
@@ -239,8 +239,9 @@ export interface AffectedChanges {
   untracked?: ReadonlySet<string>
   /**
    * Per project, the tasks whose locked config moved (`.vx/projects.lock` at
-   * the base against now) when nothing else in its entry did: its config
-   * file's edit reaches these tasks alone, none when the set is empty.
+   * the base against now) when nothing else in its entry did: a definition
+   * change of these tasks alone. A config file is no reason itself (M,
+   * 2026-11-25): only the lock it generates is.
    */
   configTasks?: ReadonlyMap<string, ReadonlySet<string>>
 }
@@ -260,10 +261,11 @@ export async function affectedChanges(
     const wholeBy = new Map([...all].map((n) => [n, file]))
     return { projects: all, changed, paths: new Map(), whole: all, wholeBy, wide: true }
   }
-  // The workspace config's plugins shape every project's config, so its edit
-  // can re-key any task. Selection is not hashed, so widening changes no key.
-  const wsConfig = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
-  if (wsConfig !== undefined) return everything(wsConfig)
+  // The workspace config's plugins shape every project's config. Per task its
+  // edit is nothing itself: the locks say what it moved (M, 2026-11-25). Per
+  // project it still selects everything.
+  const workspace = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
+  if (workspace !== undefined && !perTask) return everything(workspace)
   // A line-ending rule changes the bytes a checkout writes for every file
   // under it while git's blobs stay the same, so no input path moves
   // (vercel/turborepo#15004).
@@ -294,27 +296,28 @@ export async function affectedChanges(
   if (typeof owners === 'string') return everything(owners)
   const { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks } = owners
 
-  // A project whose config imports a changed file: resolved-config hashing
-  // folds it, so selection must too. Asked of every changed path, since a
-  // config often imports from another project (`../../src/index.ts`). That
-  // re-keys every task of the project. A file the workspace config imports
-  // widens as the config does.
-  const imports = await configImportOwners({
-    workspaceRoot: args.workspaceRoot,
-    projects: diff.projects,
-    changed,
-    skip: perTask ? new Set() : owned,
-    workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(diff.rootDir, n)),
-  })
-  if (imports.workspace !== undefined) return everything(imports.workspace)
-  if (imports.outside !== undefined) {
-    const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
-    if (moved !== undefined) return everything(moved)
-  }
-  for (const name of imports.owners) {
-    owned.add(name)
-    // A run reads the config from the lock: its diff said which tasks moved.
-    if (!configTasks.has(name)) whole.add(name)
+  // Per project, a project whose config imports a changed file: resolved-config
+  // hashing folds it, so selection must too. Asked of every changed path, since
+  // a config often imports from another project (`../../src/index.ts`). A file
+  // the workspace config imports widens as the config does. Per task the locks
+  // already say what any import moved (M, 2026-11-25).
+  if (!perTask) {
+    const imports = await configImportOwners({
+      workspaceRoot: args.workspaceRoot,
+      projects: diff.projects,
+      changed,
+      skip: owned,
+      workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(diff.rootDir, n)),
+    })
+    if (imports.workspace !== undefined) return everything(imports.workspace)
+    if (imports.outside !== undefined) {
+      const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
+      if (moved !== undefined) return everything(moved)
+    }
+    for (const name of imports.owners) {
+      owned.add(name)
+      whole.add(name)
+    }
   }
 
   const { dirLinks } = diff
@@ -359,9 +362,16 @@ async function diffBase(args: AffectedArgs) {
   // not resolve". `..` is illegal in ref names, so this refuses no ref.
   const range = since.indexOf('..')
   if (range >= 0) {
+    // Git reads `main..` as `main..HEAD`, which vx takes; the base alone is
+    // the merge base, another diff.
+    const left = since.slice(0, range)
+    const hint =
+      left !== '' && range === since.length - 2
+        ? `pass "${left}..HEAD", as git reads it`
+        : `pass the base alone ("${left || 'HEAD'}")`
     throw new UserError(
-      `git ref "${since}" is a range: ranges are not supported — pass the base alone ` +
-        `("${since.slice(0, range) || 'HEAD'}"); vx diffs it against the working tree.`,
+      `git ref "${since}" is a range: ranges are not supported — ${hint}; ` +
+        `vx diffs it against the working tree.`,
       'VX_E_AFFECTED_BASE',
     )
   }
@@ -770,18 +780,14 @@ async function pathOwners(
   // is.
   const lockMoved: string[] = []
   // Per project, the tasks whose locked config moved when nothing else in its
-  // entry did: a config edit then reaches those tasks, not the whole project
-  // (one task's command edited re-ran every sibling).
+  // entry did: those tasks moved, not the whole project (one task's command
+  // edited re-ran every sibling).
   const configTasks = new Map<string, Set<string>>()
-  const configEdited = (name: string): boolean =>
-    perTask && (paths.get(name) ?? []).some((rel) => CONFIG_NAMES.has(rel))
   const lockChanged = diffed.paths.includes(LOCKFILE_NAME) || untracked.includes(LOCKFILE_NAME)
-  if (!lockChanged) {
-    // The lock is what a run reads: an edit it did not move re-keys nothing.
-    for (const p of projects) if (configEdited(p.name)) configTasks.set(p.name, new Set())
-  } else {
-    // A side with no lock (or one that will not parse) ran nothing from
-    // it: the paths of the configs say what changed, as before the lock.
+  // The lock is what a run reads: an edit it did not move re-keys nothing.
+  if (lockChanged) {
+    // A side with no lock (or one that will not parse) ran nothing from it:
+    // there is no entry to compare (a first lock moves no key a run used).
     const before = lockEntries(await gitBytesAt(args.workspaceRoot, base, LOCKFILE_NAME))
     const after = lockEntries(await bytesOrNull(path.join(args.workspaceRoot, LOCKFILE_NAME)))
     const same = (dir: string): boolean =>
@@ -791,11 +797,7 @@ async function pathOwners(
         JSON.stringify(before[dir]) === JSON.stringify(after[dir]))
     for (const p of projects) {
       const key = lockKey(rootDir, p.dir)
-      if (same(key)) {
-        if (before !== null && after !== null && configEdited(p.name))
-          configTasks.set(p.name, new Set())
-        continue
-      }
+      if (same(key)) continue
       const moved = perTask ? movedTasks(before![key], after![key]) : undefined
       owned.add(p.name)
       if (moved !== undefined) {
@@ -806,14 +808,20 @@ async function pathOwners(
       lockMoved.push(p.name)
     }
   }
-  // Edges live in the dependencies lock: a project whose edges moved (a
-  // `discover` edge added, or its upstream gone) moved its keys. With no
-  // record on either side, the configs' paths say what changed.
+  // Edges and each project's closure digests live in the dependencies lock:
+  // a project whose edges moved (a `discover` edge added, or its upstream
+  // gone) or whose recorded closure moved moved its keys, and no other.
+  // With no record on either side, nothing is marked from it.
   const edgesMoved: string[] = []
   if (diffed.paths.includes(DEPENDENCIES_LOCK_NAME) || untracked.includes(DEPENDENCIES_LOCK_NAME)) {
     const edgesBy = (lock: DependenciesLock | null): Map<string, string> | null => {
       if (lock === null) return null
-      return new Map(lock.names.map((n) => [n, JSON.stringify(lock.edges(n))]))
+      return new Map(
+        lock.names.map((n) => [
+          n,
+          JSON.stringify([lock.edges(n), lock.files.map((f, i) => [f, lock.digest(n, i)])]),
+        ]),
+      )
     }
     const before = edgesBy(await diff.baseDependencies())
     const after = edgesBy(
@@ -873,8 +881,9 @@ async function pathOwners(
 
 /**
  * The task names whose entry differs between two lock entries of one project,
- * or undefined when anything else in it did (a project-level field, a task
- * added or removed, the entry new or gone): that reaches the whole project.
+ * a task added among them, or undefined when anything else in it did (a
+ * project-level field, a task removed, the entry new or gone): that reaches
+ * the whole project.
  */
 function movedTasks(before: unknown, after: unknown): Set<string> | undefined {
   const split = (e: unknown) => {
@@ -886,13 +895,11 @@ function movedTasks(before: unknown, after: unknown): Set<string> | undefined {
   const b = split(before)
   const a = split(after)
   if (b === undefined || a === undefined || b.rest !== a.rest) return undefined
-  const names = Object.keys(a.tasks)
-  if (
-    names.length !== Object.keys(b.tasks).length ||
-    !names.every((n) => Object.hasOwn(b.tasks, n))
+  // A removed task may have been one a pattern in `inputs.tasks` folded.
+  if (!Object.keys(b.tasks).every((n) => Object.hasOwn(a.tasks, n))) return undefined
+  return new Set(
+    Object.keys(a.tasks).filter((n) => JSON.stringify(a.tasks[n]) !== JSON.stringify(b.tasks[n])),
   )
-    return undefined
-  return new Set(names.filter((n) => JSON.stringify(a.tasks[n]) !== JSON.stringify(b.tasks[n])))
 }
 
 /** Git's attributes file: its eol and filter rules shape the bytes a checkout writes. */
@@ -1904,6 +1911,19 @@ function localBranches(workspaceRoot: string): string {
     : names.join(', ')
 }
 
+/** `origin/<name>` (else another remote's) when a remote-tracking ref of that branch is here. */
+function trackingRef(workspaceRoot: string, name: string): string | undefined {
+  if (!/^[^\s~^:?*[\\@{]+$/.test(name) || name.startsWith('refs/')) return undefined
+  const proc = spawnGitSync(
+    ['for-each-ref', '--format=%(refname:short)', '--end-of-options', `refs/remotes/*/${name}`],
+    workspaceRoot,
+    'ignore',
+  )
+  if (proc.exitCode !== 0) return undefined
+  const refs = new TextDecoder().decode(proc.stdout).split('\n').filter(Boolean)
+  return refs.find((r) => r === `origin/${name}`) ?? refs[0]
+}
+
 function isShallow(workspaceRoot: string): boolean {
   const proc = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'ignore')
   return new TextDecoder().decode(proc.stdout).trim() === 'true'
@@ -2084,6 +2104,14 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
       'VX_E_GIT',
     )
   }
+  // `main` where CI's checkout made only `origin/main`: "pass a branch you
+  // have locally" left it out, and the fetch asked origin for a tag.
+  const tracking = trackingRef(workspaceRoot, ref)
+  if (tracking !== undefined)
+    throw new UserError(
+      `git ref "${ref}" did not resolve: did you mean ${tracking}?`,
+      'VX_E_AFFECTED_BASE',
+    )
   // A base origin could not give (`reachMergeBase`): no origin, no
   // network, a name only another clone has.
   const failed = fetchFailures.get(workspaceRoot)

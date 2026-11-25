@@ -137,7 +137,8 @@ const sleepOf = (ms: number, task: TaskName): string =>
  * A task's command, identical in every runner. `build` also writes
  * dist/index.js from the sources plus a checksum line of each dependency's
  * dist/index.js (so an upstream change reaches every output downstream, as
- * a bundle's would), and OUTPUT_BYTES of /dev/urandom: incompressible, so
+ * a bundle's would), read through the project's node_modules (site-workspace.ts `linkDeps`):
+ * a project never reaches another by path. And OUTPUT_BYTES of /dev/urandom: incompressible, so
  * no cache can shrink the artifact away. Every program started here is
  * time each runner's cold row pays and none controls, so each task starts
  * as few as the workload allows: `cksum` reads the files itself (no `cat`
@@ -151,7 +152,7 @@ export function command(p: Project, task: TaskName): string {
     `${sleep} && mkdir -p dist && cat src/*.js > dist/index.js && ` +
     (p.deps.length === 0
       ? ''
-      : `cksum ${p.deps.map((d) => `../${d.slice('@bench/'.length)}/dist/index.js`).join(' ')} >> dist/index.js && `) +
+      : `cksum ${p.deps.map((d) => `node_modules/${d}/dist/index.js`).join(' ')} >> dist/index.js && `) +
     `head -c ${OUTPUT_BYTES} /dev/urandom > dist/blob.bin`
   )
 }

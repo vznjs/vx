@@ -18,7 +18,7 @@ function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
 
 describe('expandNxInputs', () => {
   // A named input and the target both naming one variable listed it twice,
-  // and vx lock refuses a name twice in inputs.env and passThrough.
+  // and vx lock refuses a name listed twice in inputs.env.
   it('names an env variable once, however many inputs name it', () => {
     expect(inputs([{ env: 'A' }, 'base'], { base: [{ env: 'A' }, { env: 'B' }] }).envNames).toEqual(
       ['A', 'B'],
@@ -628,8 +628,8 @@ describe('a project dir holding glob characters stays literal', () => {
     })
     const defaults = nxDefaultOutputs('build', {}, 'packages/a{b}', todos, new Set())
     expect(mapNxOutputs(defaults, {}, 'packages/a{b}', 'a', todos)).toEqual({
-      outFiles: ['dist', 'build', 'public'],
-      wsOutFiles: ['dist/packages/a\\{b\\}', 'dist/packages/a\\{b\\}/**'],
+      outFiles: ['dist/**', 'build/**', 'public/**'],
+      wsOutFiles: ['dist/packages/a\\{b\\}/**'],
     })
     expect(todos).toEqual([])
   })

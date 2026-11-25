@@ -426,6 +426,9 @@ export function oidcClaims(opts: {
       try {
         return await set(header, token)
       } catch (err) {
+        // The token's fault, not the issuer's: a 502 a client retries.
+        if (err instanceof errors.JWKSMultipleMatchingKeys && header.kid === undefined)
+          throw new Refusal(401, 'the token names no kid, and the issuer has several keys')
         if (!(err instanceof errors.JWKSNoMatchingKey)) throw err
         // Another request read them again since: share that read, so a flood
         // of unknown kids reads the issuer once, not once a request.

@@ -161,6 +161,13 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
  * once, naming where it came from.
  */
 function assertEndpoint(endpoint: string, from: string): void {
+  // `token@host` passed as a host name and every warning line naming the
+  // server printed the token. A socket path may hold an '@'; a host may not.
+  if (!/^unix(-abstract)?:/.test(endpoint) && endpoint.includes('@')) {
+    throw new UserError(
+      `${from} names credentials before an '@', which every line naming the server would print: put them in \`headers\` instead`,
+    )
+  }
   // A grpc-js resolver target (`unix:/run/cas.sock`, `dns:///host:443`) is
   // grpc's to parse.
   if (/^(unix|unix-abstract|dns|ipv4|ipv6):/.test(endpoint)) return

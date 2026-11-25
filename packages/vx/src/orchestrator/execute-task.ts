@@ -270,7 +270,7 @@ export interface ExecuteArgs {
    */
   upfrontKey?: string
   /**
-   * An unkeyed group's up-front key (`deriveStableKeys`' `groupKeys`): used
+   * A group's up-front key (`deriveStableKeys`' `groupKeys`): used
    * verbatim when the live upstream folds the same ids and keys.
    */
   upfrontGroupKey?: UpfrontGroupKey
@@ -351,10 +351,10 @@ export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefi
   return now
 }
 /**
- * Group task: no `exec`. The scheduler has already ensured every
- * dependency completed; we just return success with a hash rolled up
- * from upstream outcomes so downstream cache keys still cascade
- * through us.
+ * A group or no-op task: no `exec`, so nothing runs. The scheduler has
+ * already ensured every dependency completed; we return success with its
+ * key so a dependant's key still cascades through it: a no-op task's is
+ * keyed as a task's (its `inputs`), a group's is `unkeyedGroupOutcome`'s.
  */
 async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (args.node.config.inputs === undefined) {
@@ -371,8 +371,8 @@ async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
 }
 
 /**
- * An unkeyed group's outcome (no `inputs`, no key of its own): its key is
- * its upstream's alone (`computeGroupKey`), so the up-front one stands when
+ * A group's outcome (no `inputs`): its key is its own definition and its
+ * upstream's keys (`computeGroupHash`), so the up-front one stands when
  * that upstream is unchanged. Synchronous: the scheduler settles such a
  * group in place (`ScheduleOptions.settleNow`), and `upstream` is the key's
  * (`keyUpstream`).
@@ -387,7 +387,7 @@ export function unkeyedGroupOutcome(
   const hash =
     upfront !== undefined && sameUpstream(upstream, upfront.upstream)
       ? upfront.key
-      : computeGroupHash(upstream)
+      : computeGroupHash(node, upstream)
   return groupOutcome(node, upstream, hash, wallclockNs)
 }
 

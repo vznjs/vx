@@ -359,7 +359,7 @@ export default [
     title: 'A declared variable named `__proto__` reaches the task and keys it',
     why: '`__proto__` is a legal variable name. A tool that builds the task’s environment as a plain JavaScript object sets the object’s prototype instead of a variable, so the task never sees it while the key still counts it. The task then runs without a value the key says it had.',
     from: ['env'],
-    needs: ['env-inputs'],
+    needs: ['env-inputs', 'env-any-name'],
     workspace: one(
       build({
         command: "mkdir -p dist && env | sed -n 's/^__proto__=//p' > dist/out.txt",

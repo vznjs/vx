@@ -52,9 +52,9 @@ describe('vx show //', () => {
     const root = await workspace(true)
     const rule = (mark: string): string => gradientRule({ enabled: false }, mark)
     const check = '  top#check\n  command   true\n'
-    // The project lists its default build too (a group keyed on its files).
+    // The project lists its default build too (a no-op task keyed on its files).
     const build =
-      '  top#build  default\n  command       (group)\n  dependsOn     ^build\n  inputs.files  **\n'
+      '  top#build  default\n  command       (no-op task)\n  dependsOn     ^build\n  inputs.files  **\n'
     expect([show(root, '//'), show(root, '//#check')]).toEqual([
       { code: 0, out: `${rule('top')}\n  dir       .\n\n${check}\n${build}`, err: '' },
       {

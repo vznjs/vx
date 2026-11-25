@@ -230,7 +230,8 @@ When `tasks.length === 0`:
 picker; tasks here: …)`: `taskNamesHere(cwd, asked)` (`cli/task-verb.ts`) names
   the tasks of the projects `--filter` / `--affected` select (`asked`), or
   every project's under `--all`, else the cwd project's, else every
-  project's, twelve then `and N more`; with no workspace, `vx run <task>,
+  project's, twelve then `and N more` (a cwd project with none of its own
+  names every project's, with `--all`); with no workspace, `vx run <task>,
 e.g. vx run build`.
 - TTY → `pickTask(cwd)` loads every project's tasks (only the projects
   `--filter` / `--affected` select, through `scopeFilters` and
@@ -435,6 +436,7 @@ export function armWatcher(
   onLimit?: (code: string) => void, // Linux recursive: the watch limit refused a directory made after the arm
 ): ArmedWatcher
 export function modifiedBefore(abs: string, t: number): boolean
+export function realDir(dir: string, realpath?: (p: string) => string): string | undefined // one not there: under its nearest ancestor that is
 export const CLOSED: WatchHandle // watches nothing: a dropped slot, an arm not made
 export class WatcherPool {
   constructor(skip: (dir: string, rel: string) => boolean) // what the poller leaves unsampled
@@ -613,7 +615,10 @@ git checkout packages`) was no event to its own arm, nor to the
      nothing after it. A re-arm that swapped `apps/`'s arms lost `apps/`
      made again, and every edit after it (macOS CI, 2026-11-04). Under
      `VX_DEBUG_WATCH` each arm line says its watch count, and on macOS
-     it holds still across a removal and a restore.
+     it holds still across a removal and a restore. A directory not
+     there is placed by its nearest ancestor that is (`realDir`): judged
+     by its absence, a project made back before its own arm (a stalled
+     loop) got a watch of its own.
    - Filter out `node_modules` (save an input named through it, or a
      file git tracks under it) / `.git` / `.vx/cache` path segments,
      `.vx/tmp` (restore staging), the `~` suffix (editor swap files), the RESOLVED
@@ -629,7 +634,10 @@ git checkout packages`) was no event to its own arm, nor to the
      the fix a `lint` reading `**/*` took `build`'s `dist/` write for
      its input and re-ran `vx watch build` on every save), and a task's own outputs (and
      their directory) are no input of it, as its key reads them, so a
-     `turbo()` task reading `**/*` does not re-run on its own `dist/` —
+     `turbo()` task reading `**/*` does not re-run on its own `dist/`,
+     and a project's `files` stop at a project nested in it, as its key
+     does (the root's default `build`, `**`, took a package's `dist/`
+     write for an edit) —
      the directory holding an output tree, `outputContainer`, which the
      clean before a miss prunes and the task re-creates; a literal entry
      is its whole tree, as in the schema (`makeWatchIgnore`, pinned in

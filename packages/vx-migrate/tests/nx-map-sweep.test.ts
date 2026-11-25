@@ -234,22 +234,18 @@ describe('nx-map: what the sweep found unheld', () => {
     )
   })
 
-  it('envFile: an absolute path is kept, and none is loaded under NX_LOAD_DOT_ENV_FILES=false', async () => {
+  it('envFile: an absolute path is kept, under NX_LOAD_DOT_ENV_FILES=false too (nx-env reads it)', async () => {
     const a = await meta('a')
     const target = {
       executor: 'nx:run-commands',
       options: { command: 'echo hi', envFile: '/etc/app.env' },
     }
-    const on = await tasksOf([a], { a: node('packages/a', { go: target }) })
-    expect((on.get('a#go')!.task!['exec'] as { command: string }).command).toContain(
-      '--envFile /etc/app.env --',
-    )
     const saved = process.env['NX_LOAD_DOT_ENV_FILES']
     process.env['NX_LOAD_DOT_ENV_FILES'] = 'false'
     try {
-      const off = await tasksOf([a], { a: node('packages/a', { go: target }) })
-      expect((off.get('a#go')!.task!['exec'] as { command: string }).command).not.toContain(
-        '--envFile',
+      const t = await tasksOf([a], { a: node('packages/a', { go: target }) })
+      expect((t.get('a#go')!.task!['exec'] as { command: string }).command).toContain(
+        '--envFile /etc/app.env --',
       )
     } finally {
       if (saved === undefined) delete process.env['NX_LOAD_DOT_ENV_FILES']
@@ -410,7 +406,7 @@ describe('a cached target that declares no outputs', () => {
       prepare: { command: 'r', cache: true, outputs: [] },
     })
     expect(got['b#build']).toEqual({
-      outputs: { files: ['dist'], workspaceFiles: ['dist/packages/b'] },
+      outputs: { files: ['dist/**'], workspaceFiles: ['dist/packages/b/**'] },
       todos: [
         'no outputs declared: Nx also caches packages/b/build and packages/b/public for this target — vx cleans an output before the run, so add them to the outputs by hand only if they hold nothing committed',
       ],
@@ -435,11 +431,14 @@ describe('a cached target that declares no outputs', () => {
       return { outputs: t.task!['outputs'] as unknown, todos: t.todos }
     }
     expect(await mapped(['packages/b/src/a.ts', 'packages/b/package.json'])).toEqual({
-      outputs: { files: ['dist', 'build', 'public'], workspaceFiles: ['dist/packages/b'] },
+      outputs: {
+        files: ['dist/**', 'build/**', 'public/**'],
+        workspaceFiles: ['dist/packages/b/**'],
+      },
       todos: [],
     })
     expect(await mapped(['packages/b/src/a.ts', 'packages/b/public/logo.svg'])).toEqual({
-      outputs: { files: ['dist', 'build'], workspaceFiles: ['dist/packages/b'] },
+      outputs: { files: ['dist/**', 'build/**'], workspaceFiles: ['dist/packages/b/**'] },
       todos: [
         'no outputs declared: Nx also caches packages/b/public for this target — vx cleans an output before the run, so add it to the outputs by hand only if it holds nothing committed',
       ],

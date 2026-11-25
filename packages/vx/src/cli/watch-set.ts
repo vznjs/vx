@@ -99,14 +99,23 @@ export async function sweepConfigs(
   // One task's inputs, less what it writes itself: the key leaves a task's
   // own outputs out of its inputs, so a turbo() task reading `**/*` does not
   // read the `dist/` it builds, and its write is no edit to watch.
+  // A project's globs never reach into a project nested in it, as its key
+  // does not: the root's `**` (its default `build`) took a package's own
+  // `dist/` write for an edit, a second cycle after each.
+  const nested = (dir: string): string[] =>
+    projects
+      .filter((p) => p.dir.startsWith(dir + path.sep))
+      .map((p) => `!${path.relative(dir, p.dir).split(path.sep).join('/')}/**`)
   const addInputs = (
     dir: string,
     files: readonly string[] | undefined,
     own: readonly string[] | undefined,
+    workspaceWide = false,
   ): void => {
     if (files === undefined || files.length === 0) return
     const minus = (own ?? []).filter((o) => !o.startsWith('!')).map((o) => `!${o}`)
-    inputs.set(dir, [...(inputs.get(dir) ?? []), [...files, ...minus]])
+    const fenced = workspaceWide ? [] : nested(dir)
+    inputs.set(dir, [...(inputs.get(dir) ?? []), [...files, ...minus, ...fenced]])
   }
   const addTo = (
     into: Map<string, string[]>,
@@ -150,7 +159,7 @@ export async function sweepConfigs(
       }
       for (const g of task.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
       addInputs(dir, task.inputs?.files, task.outputs?.files)
-      addInputs(workspaceRoot, task.inputs?.workspaceFiles, task.outputs?.workspaceFiles)
+      addInputs(workspaceRoot, task.inputs?.workspaceFiles, task.outputs?.workspaceFiles, true)
     }
   }
   const result = (staged: Map<string, ProjectEntry> | null): ConfigSweep => ({

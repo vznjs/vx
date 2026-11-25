@@ -287,7 +287,7 @@ async function collectWorkspaceInfo(
     hitCountLast24h: 0,
     restoredCountLast24h: 0,
   }
-  let orphans = { orphans: 0, orphanBytes: 0 }
+  let orphans = { orphans: 0, orphanBytes: 0, missing: 0, missingBytes: 0 }
   let flaky: FlakyTask[] = []
   let indexError: string | null = null
   let indexStore: string | undefined
@@ -348,9 +348,10 @@ async function collectWorkspaceInfo(
       }
     } catch (err) {
       if (!isUserError(err)) throw err
-      // A lock refusal the load meets (a config edited since `vx lock`, or
-      // gone): every run refuses with it, so it is the lock's error.
-      if (refused === null && err.code === 'VX_E_LOCK') refused = err.message
+      // A refusal the load meets (a config edited since `vx lock`, gone, or
+      // one that no longer evaluates): every run refuses with it, so it is
+      // the lock's error.
+      if (refused === null) refused = err.message
       taskCount = 0
       defaultBuilds = 0
       sandboxed = 0
@@ -417,8 +418,9 @@ async function collectWorkspaceInfo(
     // mismatch drops every table).
     cacheVersion: CACHE_VERSION,
     schemaVersion: SCHEMA_VERSION,
-    cacheEntries: stats.entryCount,
-    cacheBytes: stats.totalBytes,
+    // Less a row whose file is gone: no restore reads it.
+    cacheEntries: stats.entryCount - orphans.missing,
+    cacheBytes: stats.totalBytes - orphans.missingBytes,
     cacheIndexError: indexError,
     settings: settingsFact(workspaceConfig, settingPlugins),
     // A row-less artifact is indexed again only when its task asks for its

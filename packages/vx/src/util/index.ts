@@ -126,6 +126,10 @@ export { IGNORED_SIGNALS_ENV, startedIgnoring } from './hangup.js'
 export { relayedCopy, stopActedOn } from './signal-relay.js'
 export {
   ESSENTIAL_ENV,
+  envCovers,
+  envPatternProblem,
+  expandEnvNames,
+  forgetEnvMatches,
   ownEnv,
   setVxOnlyEnv,
   taskEnvSource,
@@ -141,7 +145,9 @@ export {
   ignoredInputLine,
   ignoreProbes,
   listedSync,
+  changedSinceCommitOf,
   skipWorktreeSync,
+  uncheckedSubmoduleSync,
   wholeIgnored,
 } from './git-ignored.js'
 export { CHECK_ATTR, parseCheckAttrOutput } from './git-attributes.js'

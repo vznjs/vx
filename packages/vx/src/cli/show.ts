@@ -176,6 +176,8 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   // A task's projects under `--affected` are the ones whose task the run
   // keeps: the change reaches another project only along a task edge.
   let byDiff: { changes: AffectedChanges; outright?: readonly string[] | undefined } | undefined
+  // The selection's own notice ("nothing affected since …"), said already.
+  let saidEmpty = false
   if (parsed.filters.length > 0 || parsed.affected !== undefined) {
     if (scope !== 'all') {
       throw new UserError(
@@ -196,14 +198,38 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       affected = f
       raw.unshift(f.filter)
     }
+    // The list, with no task, follows the run's per-task verdict too (M,
+    // 2026-11-25): a project is listed when one of its tasks is affected, so
+    // a workspace config edit no plugin keys on lists none.
     const r = await resolveFilters(process.cwd(), raw, {}, affected, 'show', metas)
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
-    if ('empty' in r) sayNotice('info', 'vx show', r.empty)
+    if ('empty' in r) {
+      sayNotice('info', 'vx show', r.empty)
+      saidEmpty = true
+    }
     selected = new Set('empty' in r ? [] : r.names)
     if ('names' in r && r.affected !== undefined)
       byDiff = { changes: r.affected, outright: r.outright }
   }
   const inSelection = (name: string): boolean => selected === undefined || selected.has(name)
+  const affectedArgs = (
+    diff: NonNullable<typeof byDiff>,
+    projects: Map<string, ProjectEntry>,
+  ): Omit<Parameters<typeof affectedTaskProjects>[0], 'tasks' | 'candidates'> => {
+    const ws = workspaceOfDiscovery(metas)!
+    return {
+      changes: diff.changes,
+      outright: diff.outright,
+      projects,
+      packageGraph: buildPackageGraph(metas),
+      projectMetas: metas,
+      plugins: ws.plugins,
+      workspaceRoot: root,
+      cacheDir: ws.cacheDir,
+      rules: runRules(ws.workspaceConfig),
+      warn: warnToStderr,
+    }
+  }
 
   const projects = await loadCliProjects(root, metas, scope, { closure: true })
 
@@ -214,7 +240,23 @@ export async function showCmd(args: readonly string[]): Promise<number> {
         'vx show',
         `no projects: ${EMPTY_LOCK.charAt(0).toLowerCase()}${EMPTY_LOCK.slice(1)}`,
       )
-    const shown = metas.filter((m) => inSelection(m.name))
+    let shown = metas.filter((m) => inSelection(m.name))
+    if (byDiff !== undefined) {
+      const tasks = new Set<string>()
+      for (const m of shown)
+        for (const [t, task] of Object.entries(projects.get(m.name)?.config.tasks ?? {}))
+          if (!isDefaultBuild(task)) tasks.add(t)
+      const kept = new Set(
+        await affectedTaskProjects({
+          ...affectedArgs(byDiff, projects),
+          tasks: [...tasks],
+          candidates: shown.map((m) => m.name),
+        }),
+      )
+      shown = shown.filter((m) => kept.has(m.name))
+      if (shown.length === 0 && parsed.format === 'pretty' && !saidEmpty)
+        sayNotice('info', 'vx show', 'nothing affected: the change reaches no task')
+    }
     emit(renderList(root, shown, projects, parsed.format))
     return 0
   }
@@ -244,27 +286,17 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     }
     let shown = declaring.filter((p) => inSelection(p.name))
     if (byDiff !== undefined) {
-      const ws = workspaceOfDiscovery(metas)!
       const kept = new Set(
         await affectedTaskProjects({
-          task: projectName!,
+          ...affectedArgs(byDiff, projects),
+          tasks: [projectName!],
           candidates: shown.map((p) => p.name),
-          changes: byDiff.changes,
-          outright: byDiff.outright,
-          projects,
-          packageGraph: buildPackageGraph(metas),
-          projectMetas: metas,
-          plugins: ws.plugins,
-          workspaceRoot: root,
-          cacheDir: ws.cacheDir,
-          rules: runRules(ws.workspaceConfig),
-          warn: warnToStderr,
         }),
       )
       shown = shown.filter((p) => kept.has(p.name))
     }
     // An empty list printed nothing and exited 0, where the run says why.
-    if (shown.length === 0 && parsed.format === 'pretty') {
+    if (shown.length === 0 && parsed.format === 'pretty' && !saidEmpty) {
       const n = declaring.length
       sayNotice(
         'info',
@@ -552,7 +584,7 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
   }
   add('description', task.description)
   const exec = task.exec
-  rows.push(['command', exec?.command ?? '(group)'])
+  rows.push(['command', exec?.command ?? (task.inputs === undefined ? '(group)' : '(no-op task)')])
   add('dependsOn', list(task.dependsOn))
   add('timeout', exec?.timeout)
   add('retries', exec?.retries)

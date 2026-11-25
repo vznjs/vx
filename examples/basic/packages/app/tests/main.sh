@@ -1,1 +1,1 @@
-grep -q "greet('vx')" dist/app.js
+bun dist/app.js | grep -q ', vx$'

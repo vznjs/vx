@@ -364,7 +364,10 @@ export class LayeredCache implements CacheLayer {
 
   async getSaved(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
     const here = await this.local.getIngested(hash)
-    if (here) return here
+    if (here) {
+      for (const lane of this.lanes) if (lane.write) lane.savedByRun(hash)
+      return here
+    }
     // Every remote, read or not, and past a probe's absence: the probe ran
     // before the agent saved it.
     for (const lane of this.lanes)

@@ -4655,7 +4655,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` or `inputs` (group tasks exist to chain dependencies or carry a key)": [
+        "$CONFIG: tasks.t: a task with no `exec` must declare `dependsOn` (a group) or `inputs` (a no-op task, a key its dependants fold)": [
           "{}"
         ],
         "$CONFIG: tasks.t has unknown field \"x\" (allowed: cache, dependsOn, description, exec, inputs, outputs)": [
@@ -4985,7 +4985,7 @@
         ]
       },
       "tasks.*.exec.env.passThrough": {
-        "ok": ["<absent>", "[]", "[\"x\"]", "[\"CI\"]"],
+        "ok": ["<absent>", "[]", "[\"x\"]", "[\"A*\"]", "[\"CI\"]"],
         "$CONFIG: tasks.t.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)": [
           "null",
           "true",
@@ -5012,26 +5012,23 @@
         "$CONFIG: tasks.t.exec.env.passThrough: \"/x\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
           "[\"/x\"]"
         ],
-        "$CONFIG: tasks.t.exec.env.passThrough: \"!/x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave /x out": [
+        "$CONFIG: tasks.t.exec.env.passThrough: \"!/x\" is Turbo's exclusion from a wildcard — vx has none, so leave /x out or narrow the pattern": [
           "[\"!/x\"]"
         ],
         "$CONFIG: tasks.t.exec.env.passThrough: \"../x\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
           "[\"../x\"]"
         ],
-        "$CONFIG: tasks.t.exec.env.passThrough: \"!x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave x out": [
+        "$CONFIG: tasks.t.exec.env.passThrough: \"!x\" is Turbo's exclusion from a wildcard — vx has none, so leave x out or narrow the pattern": [
           "[\"!x\"]"
         ],
-        "$CONFIG: tasks.t.exec.env.passThrough: \"!!x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave !x out": [
+        "$CONFIG: tasks.t.exec.env.passThrough: \"!!x\" is Turbo's exclusion from a wildcard — vx has none, so leave !x out or narrow the pattern": [
           "[\"!!x\",\"y\"]"
         ],
         "$CONFIG: tasks.t.exec.env.passThrough: \".\" is not a shell variable name ([A-Za-z_][A-Za-z0-9_]*); sh would drop it before the task runs": [
           "[\".\"]"
         ],
-        "$CONFIG: tasks.t.exec.env.passThrough: wildcards in env names are not supported (got \"**\") — list explicit env var names instead": [
+        "$CONFIG: tasks.t.exec.env.passThrough: \"**\" matches every variable: list the names or a prefix (VITE_*)": [
           "[\"**\"]"
-        ],
-        "$CONFIG: tasks.t.exec.env.passThrough: wildcards in env names are not supported (got \"A*\") — list explicit env var names instead": [
-          "[\"A*\"]"
         ]
       },
       "tasks.*.exec.env.define": {
@@ -5125,13 +5122,13 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
-        "$CONFIG: tasks.t.exec.env.secret: \"!/x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave /x out": [
+        "$CONFIG: tasks.t.exec.env.secret: \"!/x\" is Turbo's exclusion from a wildcard — vx has none, so leave /x out or narrow the pattern": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: tasks.t.exec.env.secret: \"!x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave x out": [
+        "$CONFIG: tasks.t.exec.env.secret: \"!x\" is Turbo's exclusion from a wildcard — vx has none, so leave x out or narrow the pattern": [
           "[\"!x\"]"
         ],
-        "$CONFIG: tasks.t.exec.env.secret: \"!!x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave !x out": [
+        "$CONFIG: tasks.t.exec.env.secret: \"!!x\" is Turbo's exclusion from a wildcard — vx has none, so leave !x out or narrow the pattern": [
           "[\"!!x\",\"y\"]"
         ]
       },
@@ -6271,7 +6268,16 @@
         ]
       },
       "tasks.*.inputs.env": {
-        "ok": ["<absent>", "[]", "[\"x\"]", "[\"/x\"]", "[\"../x\"]", "[\".\"]", "[\"A\"]"],
+        "ok": [
+          "<absent>",
+          "[]",
+          "[\"x\"]",
+          "[\"/x\"]",
+          "[\"../x\"]",
+          "[\".\"]",
+          "[\"A*\"]",
+          "[\"A\"]"
+        ],
         "$CONFIG: tasks.c.inputs.env must be an array of env var names (non-empty, no '=' or NUL)": [
           "null",
           "true",
@@ -6295,20 +6301,17 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
-        "$CONFIG: tasks.c.inputs.env: \"!/x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave /x out": [
+        "$CONFIG: tasks.c.inputs.env: \"!/x\" is Turbo's exclusion from a wildcard — vx has none, so leave /x out or narrow the pattern": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: tasks.c.inputs.env: \"!x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave x out": [
+        "$CONFIG: tasks.c.inputs.env: \"!x\" is Turbo's exclusion from a wildcard — vx has none, so leave x out or narrow the pattern": [
           "[\"!x\"]"
         ],
-        "$CONFIG: tasks.c.inputs.env: \"!!x\" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave !x out": [
+        "$CONFIG: tasks.c.inputs.env: \"!!x\" is Turbo's exclusion from a wildcard — vx has none, so leave !x out or narrow the pattern": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: tasks.c.inputs.env: wildcards in env names are not supported (got \"**\") — list explicit env var names instead": [
+        "$CONFIG: tasks.c.inputs.env: \"**\" matches every variable: list the names or a prefix (VITE_*)": [
           "[\"**\"]"
-        ],
-        "$CONFIG: tasks.c.inputs.env: wildcards in env names are not supported (got \"A*\") — list explicit env var names instead": [
-          "[\"A*\"]"
         ]
       },
       "tasks.*.inputs.tasks": {

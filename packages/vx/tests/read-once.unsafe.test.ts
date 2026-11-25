@@ -164,9 +164,21 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
         // module in its directory, beside its package.json.
         expect(run('packages/a/package.json')).toEqual(name === 'cold' ? ['openat'] : [])
         expect(run('packages/a')).toEqual(name === 'cold' ? ['openat', 'openat'] : [])
+        // With no stamps the run stamps the workspace file too (8465d91b6):
+        // its stat, then its bytes, which Bun's import cannot lend: a stamp
+        // holds bytes read after its stat, or a later edit reads as none.
         if (name === 'cold')
-          expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
-        if (name === 'warm') expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat'])
+          expect(run('.vx/workspace.mjs')).toEqual([
+            'newfstatat',
+            'openat',
+            'openat',
+            'openat',
+            'statx',
+            'statx',
+          ])
+        // Warm: its stamp asked by one stat (0f67f63fe).
+        if (name === 'warm')
+          expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'statx'])
         expect(run('pnpm-workspace.yaml')).toEqual([])
         expect(run('package.json')).toEqual(['openat'])
         expect(run('.vx/projects.lock')).toEqual(['newfstatat', 'openat'])

@@ -50,7 +50,6 @@ import {
   discoveryOf,
   fingerprintClaims,
   hashExtra,
-  hasHook,
   renamedSinceLock,
   unlockedDir,
   withExtraHashes,
@@ -360,10 +359,14 @@ function refusalOf(err: unknown): Refusal {
     : { error: err.message }
 }
 
-/** The filter `--affected` became; `env` is the `VX_AFFECTED_BASE` value that gave its base. */
+/**
+ * The filter `--affected` became; `env` is the `VX_AFFECTED_BASE` value that
+ * gave its base, `plugin` the plugin whose `setBranch` did.
+ */
 export interface AffectedFilter {
   readonly filter: string
   readonly env?: string
+  readonly plugin?: string
 }
 
 /**
@@ -382,10 +385,12 @@ export async function affectedFilterFor(
   const root = await findWorkspaceRoot(cwd)
   const env = affected === '' ? (settingEnv('affectedBase') as string | undefined) : undefined
   let base = affected || (env ?? '')
+  let plugin: string | undefined
   if (base === '') {
     const ws =
       (discovered === undefined ? undefined : workspaceOfDiscovery(discovered)) ??
       (await loadCliWorkspace(root))
+    if (ws.branch.base !== undefined) plugin = ws.basePlugin
     try {
       base =
         ws.branch.base ??
@@ -395,7 +400,9 @@ export async function affectedFilterFor(
       return refusalOf(err)
     }
   }
-  return env === undefined ? { filter: `...[${base}]` } : { filter: `...[${base}]`, env }
+  const filter = `...[${base}]`
+  if (env !== undefined) return { filter, env }
+  return plugin === undefined ? { filter } : { filter, plugin }
 }
 
 /**
@@ -468,7 +475,7 @@ export async function resolveFilters(
   cwd: string,
   raw: string[],
   load: CliLoadOptions = {},
-  /** The filter `--affected` became: its diff is kept per path for the run. */
+  /** The filter `--affected` became, first in `raw`: its diff is kept per path for the run. */
   affected?: AffectedFilter,
   /** The verb a warning names: `vx show` and `vx watch` select as a run does. */
   verb: 'run' | 'show' | 'watch' = 'run',
@@ -483,6 +490,9 @@ export async function resolveFilters(
     await loadWorkspaceProjects(cwd, load)
     return refusalOf(err)
   }
+  // By place, not text: a typed `--filter '...[main]'` beside `--affected=main`
+  // was taken for it, and its whole projects never ran.
+  const byAffected = affected === undefined ? undefined : parsed[0]
   // A git-diffing filter reads untracked files from the run's whole-tree walk,
   // which the run reuses. The walk needs only the root, so it starts before the
   // workspace config and discovery.
@@ -546,7 +556,7 @@ export async function resolveFilters(
     }
     // A typed `[<since>]` needs only the projects, not the per-task paths,
     // but its changed paths too: they say whether the tree is clean.
-    const diff = (): Promise<AffectedChanges> => affectedChanges(args, f.raw === affected?.filter)
+    const diff = (): Promise<AffectedChanges> => affectedChanges(args, f === byAffected)
     const started = previous === undefined ? diff() : previous.then(diff)
     started.catch(() => {})
     diffs.set(f, started)
@@ -595,31 +605,26 @@ export async function resolveFilters(
       const answer = await diff
       let names = answer.projects
       if (answer.changed.length > 0 || answer.nested !== undefined) changedAny.add(f)
-      if (f.raw === affected?.filter) {
+      if (f === byAffected) {
         changes = answer
-        // A `graph` plugin may tie any task to a changed path, and only the run
-        // builds that graph: every project is a candidate, and the run keeps
-        // what its final graph reaches.
-        if (
-          changes.changed.length > 0 &&
-          hasHook(
-            (workspaceOfDiscovery(projects) ?? (await loadCliWorkspace(root))).plugins,
-            'graph',
-          )
-        ) {
+        // Once anything changed, a task with `exec` and no `inputs` is
+        // affected wherever it is (M, 2026-11-25), and a `graph` plugin may
+        // tie any task to a changed path: every project is a candidate, and
+        // the run keeps what its final graph reaches. No change at all is
+        // "nothing affected", with the base named.
+        if (answer.changed.length > 0 || answer.nested !== undefined)
           names = new Set(projects.map((p) => p.name))
-        }
       }
       affectedByFilter.set(f, names)
     } catch (err) {
       const refusal = refusalOf(err)
-      // A base the variable gave was reported as if typed.
-      if (
-        affected?.env !== undefined &&
-        f.raw === affected.filter &&
-        refusal.code === 'VX_E_AFFECTED_BASE'
-      )
-        return { ...refusal, error: `VX_AFFECTED_BASE=${affected.env}: ${refusal.error}` }
+      // A base the variable or a plugin gave was reported as if typed.
+      if (f === byAffected && refusal.code === 'VX_E_AFFECTED_BASE') {
+        if (affected?.env !== undefined)
+          return { ...refusal, error: `VX_AFFECTED_BASE=${affected.env}: ${refusal.error}` }
+        if (affected?.plugin !== undefined)
+          return { ...refusal, error: `the base ${affected.plugin} named: ${refusal.error}` }
+      }
       return refusal
     }
   }
@@ -690,7 +695,7 @@ export async function resolveFilters(
     )
   // Each include is a union: `--filter other` runs its tasks whether or not the
   // `--affected` diff reaches them; an exclude still removes.
-  const others = parsed.filter((f) => f.negate || f.raw !== affected?.filter)
+  const others = parsed.filter((f) => f !== byAffected)
   const outright =
     changes !== undefined && others.some((f) => !f.negate)
       ? [
@@ -733,8 +738,25 @@ export function migrateHint(mjs: boolean, running = VERSION): string {
   return `bunx @vzn/vx-migrate${running === '0.0.0' ? '' : `@${running}`}${mjs ? ' --mjs' : ''}`
 }
 
-/** What a workspace with no task yet says, picker or not: `vx init` writes no task, so the scripts route is vx-migrate's. */
-export const NO_TASKS_DECLARED = `no tasks declared in any project. Declare one under \`tasks\` in a vx.config, then run \`vx lock\`; or run \`${migrateHint(false)}\` to make them from package.json scripts`
+/**
+ * What a workspace with no task yet says, picker or not: `vx init` writes no
+ * task. vx-migrate is named only where it has something to map; vx runs any
+ * shell command, so a workspace without package.json is told of a vx.config only.
+ */
+export function noTasksDeclared(root: string): string {
+  const declare =
+    'no tasks declared in any project. Declare one under `tasks` in a vx.config, then run `vx lock`'
+  const from = fs.existsSync(path.join(root, 'turbo.json'))
+    ? 'turbo.json'
+    : fs.existsSync(path.join(root, 'nx.json'))
+      ? 'the Nx workspace'
+      : fs.existsSync(path.join(root, 'package.json'))
+        ? 'package.json scripts'
+        : undefined
+  return from === undefined
+    ? declare
+    : `${declare}; or run \`${migrateHint(false)}\` to make them from ${from}`
+}
 
 /**
  * The task the user picks from a numbered menu; null when nothing was
@@ -750,7 +772,8 @@ export async function pickTask(
   const projects = await loadWorkspaceProjects(cwd, load)
   // The staged load: a task a `project` plugin gave a config-less package
   // is on the menu, as it is in a run.
-  const staged = await loadCliProjects(await findWorkspaceRoot(cwd), projects, 'all', load)
+  const root = await findWorkspaceRoot(cwd)
+  const staged = await loadCliProjects(root, projects, 'all', load)
   const entries: PickedTask[] = []
   for (const meta of projects) {
     if (only !== undefined && !only.has(meta.name)) continue
@@ -777,7 +800,7 @@ export async function pickTask(
     return null
   }
   if (entries.length === 0) {
-    sayNotice('error', 'vx run', NO_TASKS_DECLARED)
+    sayNotice('error', 'vx run', noTasksDeclared(root))
     return null
   }
   // The menu is a conversation with the terminal, not the run's output: on

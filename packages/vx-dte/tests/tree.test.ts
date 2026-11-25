@@ -224,6 +224,53 @@ it('snapshots a linked worktree’s subdirectory workspace under its hook’s GI
   }
 })
 
+// The same hook's GIT_DIR, read by the run's list of its tree: git listed
+// the whole repository from the workspace's directory, paths from its top,
+// and every task keying a file of a subdirectory workspace was refused as
+// untracked. A child of its own, since a spawn with no env takes the
+// environment the process started with, not `process.env`.
+it('lists a linked worktree’s subdirectory workspace tree under its hook’s GIT_DIR', async () => {
+  const { repo, git } = await repository()
+  const wt = `${repo}-wt`
+  try {
+    await mkdir(path.join(repo, 'ws/p'), { recursive: true })
+    await writeFile(path.join(repo, 'ws/p/a.txt'), 'a\n')
+    await writeFile(path.join(repo, 'top.txt'), 'b\n')
+    git('add', '-A')
+    git('commit', '-qm', 'a')
+    await writeFile(path.join(repo, 'ws/p/a.txt'), 'c\n')
+    git('commit', '-qam', 'c')
+    git('worktree', 'add', '-q', '--detach', wt)
+    const ws = path.join(wt, 'ws')
+    const tree = git('-C', wt, 'rev-parse', 'HEAD^{tree}')
+    const blob = git('-C', wt, 'rev-parse', 'HEAD:ws/p/a.txt')
+    const child = Bun.spawnSync(
+      [
+        process.execPath,
+        '-e',
+        `const { listTree } = await import(${JSON.stringify(path.join(import.meta.dir, '../src/orchestrator.ts'))})
+const { changedSinceParent } = await import(${JSON.stringify(path.join(import.meta.dir, '../src/plugin.ts'))})
+const t = await listTree(process.cwd(), ${JSON.stringify(tree)})
+console.log(JSON.stringify({ files: [...(t?.files ?? [])], changed: await changedSinceParent(process.cwd()) }))`,
+      ],
+      {
+        cwd: ws,
+        env: { ...process.env, GIT_DIR: path.join(repo, '.git/worktrees', path.basename(wt)) },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    expect(child.stderr.toString()).toBe('')
+    expect(JSON.parse(child.stdout.toString())).toEqual({
+      files: [['p/a.txt', blob]],
+      changed: ['p/a.txt'],
+    })
+  } finally {
+    await rm(wt, { recursive: true, force: true })
+    await rm(repo, { recursive: true, force: true })
+  }
+})
+
 /** A fresh repository, and git run in it with an identity: its stdout, trimmed. */
 async function repository(): Promise<{ repo: string; git: (...a: string[]) => string }> {
   const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-tree-'))

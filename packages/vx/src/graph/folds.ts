@@ -3,6 +3,7 @@
 // input-overlap rule read this one selection, so they cannot drift.
 
 import {
+  keysSorted,
   UserError,
   DependencySpecError,
   compileTaskPattern,
@@ -292,13 +293,14 @@ export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): Fo
 }
 
 /**
- * What stands in for a dependency's hash in the dedup, equal exactly when the
+ * What stands in for a dependency's hash in the dedup, equal only when the
  * hashes are: an exec task's key folds its id, so the id is enough; a group's
- * hash rolls up its members' (from `keyUpstream`, not `node.deps`) with no id
- * of its own, so two groups over the same members hash alike.
+ * hash rolls up its definition and its members' (from `keyUpstream`, not
+ * `node.deps`) with no id of its own, so two groups alike over the same
+ * members hash alike.
  */
 function foldUnit(node: TaskNode): string {
   if (!isGroupTask(node) || node.config.inputs !== undefined) return `task|${node.id}`
   const members = [...keyedDeps(node), ...(node.excludedUpstream ?? []).map((u) => u.node.id)]
-  return `group|${members.sort().join('|')}`
+  return `group|${JSON.stringify(keysSorted(node.config))}|${members.sort().join('|')}`
 }

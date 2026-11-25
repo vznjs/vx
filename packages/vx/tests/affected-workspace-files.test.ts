@@ -202,7 +202,8 @@ describe('--affected sees a workspaceFiles change', () => {
     async () => {
       // `shared/**` re-keys app#build alone, but the owner went into the
       // changed-project set, and every uncached task there was seeded:
-      // app#lint, which reads nothing of `shared/`, ran.
+      // app#lint, which reads nothing of `shared/`, ran. Its inputs say so: a
+      // task with none would be affected by any change.
       await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
         [
@@ -212,7 +213,7 @@ describe('--affected sees a workspaceFiles change', () => {
           '      exec: { command: "true" },',
           '      inputs: { files: ["src/**"], workspaceFiles: ["shared/**"] }, outputs: { files: [] }, cache: true,',
           '    },',
-          '    lint: { exec: { command: "true" } },',
+          '    lint: { exec: { command: "true" }, inputs: { files: ["src/**"] } },',
           '  },',
           '}',
           '',

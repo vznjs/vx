@@ -75,7 +75,10 @@ export function parseSyml(text: string): Doc | undefined {
     if (v === undefined) return undefined
     map[key] = v
   }
-  return explicit === undefined ? root : undefined
+  // A `key:` with nothing under it at the end is a file cut short: as YAML
+  // it reads null, which the caller refuses, where `{}` here read as an
+  // entry with no dependencies.
+  return explicit === undefined && open === undefined ? root : undefined
 }
 
 /** A whole scalar as Yarn's writer emits it, JSON-quoted or plain; undefined otherwise. */

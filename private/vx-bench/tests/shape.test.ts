@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { command, idealOf, LEVELS, source, workspace, type Project } from '../shape.js'
+import { linkDeps } from '../site-workspace.js'
 
 const projects = workspace()
 const byName = new Map(projects.map((p) => [p.name, p]))
@@ -75,7 +76,8 @@ describe('the benchmark workspace', () => {
   it("folds every dependency's output into a build, so an edit reaches every output downstream", () => {
     const p = byName.get('@bench/app-1')!
     const cmd = command(p, 'build')
-    for (const d of p.deps) expect(cmd).toContain(`../${d.slice('@bench/'.length)}/dist/index.js`)
+    for (const d of p.deps) expect(cmd).toContain(` node_modules/${d}/dist/index.js`)
+    expect(cmd).not.toContain('../')
     expect(cmd).toContain('head -c 204800 /dev/urandom > dist/blob.bin')
     expect(command(byName.get('@bench/l1-1')!, 'build')).not.toContain('cksum')
   })
@@ -101,6 +103,7 @@ describe('the benchmark workspace', () => {
       }
       const dir = path.join(root, p.dir)
       await mkdir(path.join(dir, 'src'), { recursive: true })
+      await linkDeps(dir, p)
       await writeFile(path.join(dir, 'src', 'f00.js'), source(p.name, 0))
       const cmd = command({ ...p, tasks: { build: 0 } }, 'build')
       const run = Bun.spawnSync(['sh', '-c', cmd], { cwd: dir, stderr: 'pipe' })
@@ -108,8 +111,7 @@ describe('the benchmark workspace', () => {
       expect(run.exitCode).toBe(0)
       const index = await readFile(path.join(dir, 'dist', 'index.js'), 'utf8')
       expect(index.startsWith(source(p.name, 0))).toBe(true)
-      for (const d of p.deps)
-        expect(index).toContain(`../${d.slice('@bench/'.length)}/dist/index.js`)
+      for (const d of p.deps) expect(index).toContain(`node_modules/${d}/dist/index.js`)
       expect((await stat(path.join(dir, 'dist', 'blob.bin'))).size).toBe(204800)
     } finally {
       await rm(root, { recursive: true, force: true })

@@ -215,6 +215,15 @@ const KNOWN = new Set([
   '60355a319431b3a087193b39a0c4e9f97a9c550b',
   // The running patterns' re-record, pushed before its subject was cut: 75 chars.
   '1825528332bc787dab1ca8516117c344e4987903',
+  // alpha/2026-11-26's, 72 to 75 chars; the branch takes no force push.
+  '679a59865d4ea1420105299143bddd8c3910a551',
+  '01f5c08bd1f86084ca57b27bfbef52cf12291326',
+  '941c6777bdf7b5b6af1276e3651a875878b36269',
+  'e652b1b2efa4386dfa6dd4cd5c719ab9e020b1a2',
+  '10cc2d85b2bf171ed64a0f9baa82bba7f67c13ed',
+  '6045bc073749e8b9fdc393b474a296400c08f005',
+  '742072fc41404c5c94059fb8505b4d7be0083f4d',
+  'c93a85cf4894bb6f23390b6ef6185551c137495f',
 ])
 
 it('every commit the PR adds has a Conventional Commits subject', () => {

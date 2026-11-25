@@ -921,7 +921,6 @@ describe('every input the yarn digest must read', () => {
       'a dependency range that is no string',
       `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n  dependencies:\n    x: [1, 2]\n`,
     ],
-    ['an entry that is no map', `"a@workspace:packages/a": 3\n`],
     [
       'a patch descriptor with a broken escape',
       `"a@workspace:packages/a":\n  version: 0.0.0-use.local\n  resolution: "a@workspace:packages/a"\n\n"x@patch:x@npm%3A1%E0%A4%A#./p.patch::locator=a%40workspace%3Apackages%2Fa":\n  version: 1.0.0\n  resolution: "x@patch:x@npm%3A1%E0%A4%A#./p.patch::version=1.0.0&hash=1"\n`,

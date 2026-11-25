@@ -38,6 +38,7 @@ import {
 import { sandboxFix } from '../sandbox/index.js'
 import { shellVerdict, unpassedEnv } from './shell-verdict.js'
 import { forgetUndeclaredWrites, taskBinDirs } from './task-process.js'
+import { timeoutOwner } from './task-policy.js'
 import { failServer } from './persistent.js'
 import type { OutcomeTiming, TaskOutcome } from '../graph/index.js'
 import { failedOutputLog } from './output-log.js'
@@ -485,10 +486,16 @@ async function classifyExit(
   }
   // A placeholder the task never wrote is not its output: take it back
   // before the outputs are collected. On a failure it is also the one clue
-  // to a grant that meant a directory: say so beside the failure.
+  // to a grant that meant a directory: say so beside the failure, and
+  // beside any violation too (Bun's refused `bunfig.toml` read held it back)
+  // when the name reads as a directory's: beside a refused or hidden read,
+  // `out.txt` never written is the read's failure, not a grant meant as
+  // `out.txt/`.
   const untouched = await sweepPlaceholders(m.sandbox.placeholders)
-  if (res.exitCode !== 0 && violations.length === 0) {
+  if (res.exitCode !== 0) {
+    const said = violations.length > 0
     for (const p of untouched) {
+      if (said && path.extname(p) !== '') continue
       violations.push({
         timestamp: new Date(),
         hint: true,
@@ -523,14 +530,7 @@ async function classifyExit(
           ? 'its executor was aborted'
           : 'as its executor reported'
     const after = policy.timeout === undefined ? '' : ` after ${policy.timeout}ms`
-    // Whose limit it was and how to raise it: "after 120000ms" alone sent
-    // the user looking for where it came from.
-    const whose =
-      policy.timeout === undefined
-        ? ''
-        : policy.timeoutFromTask
-          ? "; the task's exec.timeout; raise it to give it longer"
-          : "; the run's timeout (--timeout, VX_RUN_TIMEOUT or run.timeout); raise it, or set the task's exec.timeout"
+    const whose = policy.timeout === undefined ? '' : timeoutOwner(policy.timeoutFromTask)
     log.taskStderr(node, `${stream.nl()}${vxLine(m, `[vx] timed out${after} — ${how}${whose}`)}\n`)
     // Non-zero even if the child TRAPPED SIGTERM and exited 0 (`trap 'exit
     // 0' TERM`): classified a success, its PARTIAL outputs were cached and
@@ -571,7 +571,15 @@ async function classifyExit(
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(verdict))}\n`)
     // A pipeline's `env` is vx's alone: no passThrough gives it to a task.
     const unpassed =
-      code === 0 ? undefined : unpassedEnv(stream.tail, m.env, taskEnvSource(), policy.exec.command)
+      code === 0
+        ? undefined
+        : unpassedEnv(
+            stream.tail,
+            m.env,
+            taskEnvSource(),
+            policy.exec.command,
+            sandbox !== undefined,
+          )
     if (unpassed !== undefined)
       log.taskStderr(node, `${stream.nl()}${vxLine(m, secrets.text(unpassed))}\n`)
   }

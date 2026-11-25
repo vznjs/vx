@@ -6,8 +6,12 @@
 
 /** One task of one project. */
 export interface TaskSpec {
-  /** A `sh` command, run in the project's directory. */
-  command: string
+  /**
+   * A `sh` command, run in the project's directory. Omitted: the task runs
+   * nothing; with `inputs` its files still reach its dependants (a no-op
+   * task), without them it only groups its `dependsOn` (a group).
+   */
+  command?: string
   /** `^build`: build in every dependency first. `lint`: this project's lint. `lib#build`: one task. */
   dependsOn?: string[]
   /** Project-relative globs that key the task. Omitted: the tool's default. */
@@ -300,6 +304,8 @@ export type Feature =
   | 'task-pattern'
   /** A per-task time limit. */
   | 'timeout'
+  /** A time limit with a fraction of a second (`timeout: 0.9`). */
+  | 'timeout-fraction'
   /** Re-running a failed task before failing it. */
   | 'retries'
   /** A long-running task the tool stops when the run ends. */
@@ -322,6 +328,12 @@ export type Feature =
   | 'dry-run'
   /** Variables that reach a task without keying it. */
   | 'pass-through-env'
+  /** Variables a task does not declare kept out of its environment. */
+  | 'env-hidden'
+  /** A declared variable whose name is not upper case (`__proto__`). */
+  | 'env-any-name'
+  /** A task whose name holds a `:` (`test:unit`). */
+  | 'colon-task-name'
   /** A dependency ordered first whose inputs do not key the task. */
   | 'dependency-inputs-off'
   /** A task kept from reading, writing and reaching what it does not declare. */

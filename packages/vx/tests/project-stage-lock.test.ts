@@ -78,28 +78,30 @@ it('a run follows the mapping vx lock made, and calls no project hook', async ()
   expect(fresh.out).toContain('said-two')
 }, 60_000)
 
-it('a run follows the lock blindly when the plugins change: one added maps nothing until vx lock', async () => {
+// A run never relocks; a workspace file that maps otherwise than the lock is
+// refused until `vx lock` (8465d91b6), as a config edit is.
+it('a plugin added after vx lock refuses the run until vx lock', async () => {
   // Locked before the plugin was declared.
   await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
   expect((await vx(root, ['lock'])).code).toBe(0)
   await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([MAPPER]))
   const run = await vx(root, ['run', 'show', '--all', '--no-cache', '--output-logs', 'full'])
-  expect(`${run.code}\n${run.err}`).toStartWith('0\n')
-  expect(run.out).toContain('app#show')
-  expect(run.out).not.toContain('said-')
-  expect(await visits()).toBe('')
+  expect(`${run.code}\n${run.err}`).toBe(
+    '1\n✗ vx run  .vx/workspace.mjs changed since the last `vx lock` — run `vx lock`\n',
+  )
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
   expect(check.err).toContain('packages/mapped: the plugins map it differently from the lock here')
   expect(check.err).toContain('(none) → {"tasks":{"show"')
 }, 60_000)
 
-it('and one dropped still runs what it mapped until vx lock', async () => {
+it('and one dropped refuses the run until vx lock', async () => {
   expect((await vx(root, ['lock'])).code).toBe(0)
   await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
   const run = await vx(root, ['run', 'show', '--all', '--no-cache', '--output-logs', 'full'])
-  expect(`${run.code}\n${run.err}`).toStartWith('0\n')
-  expect(run.out).toContain('said-one')
+  expect(`${run.code}\n${run.err}`).toBe(
+    '1\n✗ vx run  .vx/workspace.mjs changed since the last `vx lock` — run `vx lock`\n',
+  )
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
   expect(check.err).toContain('packages/mapped: the plugins map it differently from the lock here')

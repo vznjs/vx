@@ -13,6 +13,7 @@ import { decodeOutputLog } from '../src/orchestrator/output-log.js'
 import { lock, run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/report/logger.js'
 import { MASKED, maskedStreams, secretMask } from '../src/util/index.js'
+import { urlPasswordsIn } from '../src/util/secret-mask.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
@@ -54,6 +55,28 @@ describe('secretMask', () => {
     expect(m.maskCut('a abcdef123456xyz789', 'b')).toEqual([`a ${MASKED}`, 'b'])
   })
 
+  // A span ending where a held tail began was held whole, to merge with a
+  // value the next chunk might complete: back-to-back values in chunks that
+  // each end inside one (a placeholder `xxxxxx` key and a run of `x`) held
+  // the whole stream, emitted nothing, and re-scanned it per chunk (47 s at 9 MB).
+  it('emits back-to-back values as they come, masked as the whole text is', () => {
+    const m = secretMask([{ API_TOKEN: SECRET }])!
+    const s = m.stream()
+    const chunk = `${SECRET.slice(5)}${SECRET}${SECRET.slice(0, 5)}`
+    let all = SECRET.slice(0, 5)
+    let out = s.push(all)
+    for (let i = 0; i < 3; i++) {
+      const piece = s.push(chunk)
+      all += chunk
+      // The first value goes out at once; the rest join its mask.
+      expect(piece).toBe(i === 0 ? MASKED : '')
+      out += piece
+    }
+    out += s.push(`${SECRET.slice(5)} done`) + s.end()
+    expect(out).toBe(m.mask(`${all}${SECRET.slice(5)} done`))
+    expect(out).toBe(`${MASKED} done`)
+  })
+
   it("a URL's password is masked whatever the variable is named", () => {
     const m = secretMask([
       {
@@ -87,6 +110,56 @@ describe('secretMask', () => {
         },
       ]),
     ).toBeNull()
+  })
+
+  // The URL-password regex tried each letter of a scheme-like run as a
+  // start and rescanned the rest from each: a 20 KB env value holding
+  // `://` and `@` took 120 ms of every run's start, 60 KB over a second.
+  it("finds a URL's passwords in linear time, as the regex did", () => {
+    const REGEX = /[a-z][a-z0-9+.-]*:\/\/[^\s:/?#]*:([^\s/?#]+)@/gi
+    const ref = (v: string): string[] => [...v.matchAll(REGEX)].map((m) => m[1]!)
+    const chars = [
+      'a',
+      'Z',
+      '1',
+      '+',
+      ':',
+      '/',
+      '@',
+      ' ',
+      '?',
+      '#',
+      '-',
+      '://',
+      'u:',
+      'pw@',
+      'x://u:',
+    ]
+    let seed = 7
+    const next = (n: number): number => {
+      seed = (seed * 48271) % 2147483647
+      return seed % n
+    }
+    for (let i = 0; i < 20_000; i++) {
+      let v = ''
+      for (let k = next(24); k > 0; k--) v += chars[next(chars.length)]
+      expect(urlPasswordsIn(v)).toEqual(ref(v))
+    }
+    for (const v of [
+      'postgres://app:p@ss@db/x https://u:v@h a://b:c@d://e:f@g',
+      'redis://me@corp:pw@cache:6379/0?x=a@b',
+      'x1://u:p@h 1a://u:q@h ://u:r@h',
+    ])
+      expect(urlPasswordsIn(v)).toEqual(ref(v))
+    const worst = [
+      `@${'a'.repeat(60_000)}://x`,
+      `${'a'.repeat(30_000)}://u:${'b'.repeat(30_000)} @`,
+    ]
+    for (const v of worst) {
+      const t = performance.now()
+      expect(urlPasswordsIn(v)).toEqual([])
+      expect(performance.now() - t).toBeLessThan(100)
+    }
   })
 
   it('a held tail is emitted once no chunk follows it', async () => {

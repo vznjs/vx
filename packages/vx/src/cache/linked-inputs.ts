@@ -148,15 +148,19 @@ function reachOf(run: RunBounds, id: string): ReadonlyMap<string, readonly Decla
 /**
  * Whether `rel` (project-relative, `/`-separated) lies under `declared`: a
  * file one of its globs matches, or a directory a `dir/**` (or `**`) glob
- * holds whole; either with no negation reaching into it.
+ * holds whole, with or without a last `/*` segment; either with no
+ * negation reaching into it.
  */
 function covers(declared: Declared, rel: string, isDir: boolean): boolean {
   const neg = declared.files.filter((f) => f.startsWith('!')).map((f) => f.slice(1))
   const pos = declared.files.filter((f) => !f.startsWith('!'))
   if (isDir) {
-    const holds = pos.some(
-      (f) => f === '**' || (f.endsWith('/**') && within(f.slice(0, -3), rel, '/')),
-    )
+    // `**/*` holds a directory whole as `**` does: every file under it.
+    const holds = pos.some((f) => {
+      if (f === '**' || f === '**/*') return true
+      const tail = f.endsWith('/**') ? 3 : f.endsWith('/**/*') ? 5 : 0
+      return tail > 0 && within(f.slice(0, -tail), rel, '/')
+    })
     return holds && !neg.some((n) => within(rel, n, '/') || new Bun.Glob(n).match(rel))
   }
   return pos.some((f) => new Bun.Glob(f).match(rel)) && !neg.some((n) => new Bun.Glob(n).match(rel))

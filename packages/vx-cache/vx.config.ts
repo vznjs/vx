@@ -15,6 +15,13 @@ export default defineProject({
       inputs: { files: ['src/**'] },
     },
 
+    // What @vzn/vx-docs reads from this package through its node_modules
+    // (the plugin pages): never run, its key reaches the site's tasks.
+    site: {
+      description: 'the files the site reads from this package',
+      inputs: { files: ['README.md', 'package.json'] },
+    },
+
     lint: {
       dependsOn: ['lint.*'],
     },
@@ -28,8 +35,15 @@ export default defineProject({
       dependsOn: ['install'],
       inputs: {
         files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
-        // The tests import core's test helpers; ^build keys only core's src/**.
-        workspaceFiles: ['packages/vx/tests/helpers/**'],
+        // The tests import core's test helpers and vx-cache-server's test issuer
+        // and blob store (with the conformance file the issuer imports);
+        // ^build keys only each package's src/**.
+        workspaceFiles: [
+          'packages/vx/tests/helpers/**',
+          'packages/vx-cache-server/tests/issuer.ts',
+          'packages/vx-cache-server/tests/mem-blobs.ts',
+          'packages/vx-cache-server/tests/conformance.ts',
+        ],
       },
       outputs: { files: [] },
       cache: true,
@@ -78,8 +92,15 @@ export default defineProject({
       dependsOn: ['install'],
       inputs: {
         files: ['src/**', 'tests/**', 'schemas/**', 'package.json'],
-        // The tests import core's test helpers; ^build keys only core's src/**.
-        workspaceFiles: ['packages/vx/tests/helpers/**'],
+        // The tests import core's test helpers and vx-cache-server's test issuer
+        // and blob store (with the conformance file the issuer imports);
+        // ^build keys only each package's src/**.
+        workspaceFiles: [
+          'packages/vx/tests/helpers/**',
+          'packages/vx-cache-server/tests/issuer.ts',
+          'packages/vx-cache-server/tests/mem-blobs.ts',
+          'packages/vx-cache-server/tests/conformance.ts',
+        ],
       },
       outputs: { files: [] },
       cache: true,

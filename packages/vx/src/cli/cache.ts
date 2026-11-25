@@ -499,7 +499,11 @@ async function clearHeld(
             .map((e) => path.join(t, e))
             .filter((e) => existsSync(e))
         : [t]
-  const bytes = doomed.reduce((n, t) => n + entries(t).reduce((m, e) => m + treeBytes(e), 0), 0)
+  const measure = (): number =>
+    doomed.reduce((n, t) => n + entries(t).reduce((m, e) => m + treeBytes(e), 0), 0)
+  // A clear measures once it holds every target: what a run in another
+  // checkout saved while it waited goes too, and is counted.
+  let bytes = dry ? measure() : 0
   if (!dry) {
     // A run in another checkout of the repository holds no lock of this
     // one's: each store is deleted once no process has it open, and held
@@ -514,6 +518,7 @@ async function clearHeld(
         holds.push(await holdStore(t, waiting))
         if (t === shared) holds.push(await holdCacheDir(t, 'exclusive', waiting))
       }
+      bytes = measure()
       for (const t of doomed) {
         for (const e of entries(t)) {
           // A store leaves its name at once, under the hold, and is deleted

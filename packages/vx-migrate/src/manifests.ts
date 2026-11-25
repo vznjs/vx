@@ -33,6 +33,10 @@ export function withManifests(metas: readonly ProjectMeta[]): Promise<PackageMet
   if (out === undefined) {
     out = Promise.all(metas.map(withManifest))
     read.set(metas, out)
+    // The pass after `discover` takes its reads once: a later pass in the
+    // same process (a run after an in-process `vx lock`) read a manifest as
+    // it was then, so an edited script mapped to the old command.
+    listed = new Map()
   }
   return out
 }

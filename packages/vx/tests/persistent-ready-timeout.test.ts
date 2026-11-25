@@ -157,6 +157,35 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
   )
 
   it(
+    "a readiness wait the run's timeout cut names the run's timeout",
+    async () => {
+      // `--timeout 30s` meant for the tests killed the dev server's boot, and
+      // the line said only "within 30s", which no config of the user's holds.
+      await addProject(
+        fixture.root,
+        'srv',
+        `export default {
+          tasks: {
+            dev: { exec: { command: 'exec sleep 30', persistent: { readyWhen: 'Listening' } } },
+          },
+        }
+        `,
+      )
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['dev'],
+        timeout: 300,
+        log: silentLogger(fixture),
+      })
+      expect(r.outcomes[0]!.notReady).toBe('timeout')
+      expect(fixture.err.join('\n')).toContain(
+        "within 300ms; killed; the run's timeout (--timeout, VX_RUN_TIMEOUT or run.timeout); raise it, or set the task's exec.timeout",
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a never-ready server that traps SIGTERM and exits 0 reports the SIGTERM, not 0',
     async () => {
       // The one-shot timeout's rule (a trap that exits 0 is still 143): the

@@ -65,7 +65,7 @@ export class Cache implements CacheLayer {
   async stopCheckpoints(): Promise<void>
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
-  async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
+  async orphanStats(): Promise<
   close(): void
 }
 == class CorruptArtifactError (src/cache/layer.ts)
@@ -254,15 +254,16 @@ export function defineProject<const T extends ProjectConfig>(
     KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
-        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
-          dependsOn?: DependsOn<
-            At<NonNullable<T['tasks']>[K], 'dependsOn'>,
-            Extract<keyof NonNullable<T['tasks']>, string>
-          >
-          exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
-          inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
-          outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
-        }
+        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> &
+          NoOpNeedsExec<NonNullable<T['tasks']>[K]> & {
+            dependsOn?: DependsOn<
+              At<NonNullable<T['tasks']>[K], 'dependsOn'>,
+              Extract<keyof NonNullable<T['tasks']>, string>
+            >
+            exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
+            inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
+            outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
+          }
       }
     },
 ): T
@@ -457,7 +458,7 @@ export interface AffectedChanges {
 }
 == type AffectedReason (src/orchestrator/affected-tasks.ts)
 export interface AffectedReason {
-  kind: 'input' | 'project' | 'workspace' | 'package' | 'named' | 'selected'
+  kind: 'input' | 'always' | 'project' | 'workspace' | 'package' | 'named' | 'selected'
   file?: string
   project?: string
   via?: string[]
@@ -801,6 +802,12 @@ export interface Distribution {
 }
 == type Duration (src/config.ts)
 export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
+== type EmptyAt (src/config.ts)
+type EmptyAt<I, F extends string> = I extends { readonly [Q in F]: infer V }
+  ? [V] extends [readonly []]
+    ? true
+    : false
+  : true
 == type EventBus (src/report/events.ts)
 export interface EventBus {
   emit(event: RunEvent): void
@@ -1268,6 +1275,20 @@ export interface MigrationPlan {
 }
 == type None (src/graph/outcome.ts)
 type None<T> = { [K in keyof T]?: never }
+== type NoOpNeedsExec (src/config.ts)
+type NoOpNeedsExec<Task> = Task extends { exec: unknown }
+  ? unknown
+  : Task extends { inputs: infer I }
+    ? [
+        EmptyAt<I, 'files'>,
+        EmptyAt<I, 'workspaceFiles'>,
+        EmptyAt<I, 'env'>,
+        EmptyAt<I, 'runtime'>,
+        EmptyAt<I, 'workspaceRuntime'>,
+      ] extends [true, true, true, true, true]
+      ? { exec: ExecConfig }
+      : unknown
+    : unknown
 == type NoticeParts (src/ui/components.ts)
 export interface NoticeParts {
   tone: Tone

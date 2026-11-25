@@ -32,14 +32,14 @@ import {
   makeWatchIgnore,
   shapesWatchedSet,
 } from './watch-filter.js'
-import { CLOSED, type WatchHandle, WatcherPool } from './watch-fs.js'
+import { CLOSED, realDir, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import type { KeptResults } from './watch-kept.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
 import { limitSetting, maskedLine, printable, restartTimings, untimed } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
-import { isCacheHit } from '../graph/index.js'
+import { isCacheHit, type TaskNode } from '../graph/index.js'
 import { type Logger, resolveOutputView } from '../report/index.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -52,11 +52,16 @@ function sayCannot(what: string, err: unknown): void {
  * footer: it said nothing, and the previous cycle's failure stayed the last
  * outcome on screen.
  */
-export function sayAllCached(opts: CoreRunOptions, outcomes: readonly { status: string }[]): void {
-  if (outcomes.length === 0 || !outcomes.every((o) => isCacheHit(o.status))) return
+export function sayAllCached(
+  opts: CoreRunOptions,
+  outcomes: readonly { status: string; node: Pick<TaskNode, 'config'> }[],
+): void {
+  // A group or no-op task settles `success` without asking the cache.
+  const tasks = outcomes.filter((o) => o.node.config.exec !== undefined)
+  if (tasks.length === 0 || !tasks.every((o) => isCacheHit(o.status))) return
   const mode = resolveOutputView(opts).mode
   if (mode !== 'broad' && mode !== 'errors-only' && mode !== 'none') return
-  const n = outcomes.length
+  const n = tasks.length
   ui.print('out', ui.line(' ', n === 1 ? '1 task' : `${n} tasks`, ' cached, nothing ran'))
 }
 
@@ -744,12 +749,8 @@ class WatchLoop {
   private toStream(all: readonly ProjectMeta[]): Streamed[] {
     const out: Streamed[] = []
     for (const proj of all) {
-      let real: string
-      try {
-        real = fs.realpathSync(proj.dir)
-      } catch {
-        continue
-      }
+      const real = realDir(proj.dir)
+      if (real === undefined) continue
       const rel = path.relative(this.realRoot, real)
       if (rel.startsWith('..') || path.isAbsolute(rel)) continue
       out.push({ proj, real })
@@ -771,11 +772,7 @@ class WatchLoop {
     if (!this.oneStream) return false
     const rel = path.relative(this.workspaceRoot, dir)
     if (rel.startsWith('..') || path.isAbsolute(rel)) return false
-    try {
-      return fs.realpathSync(dir) === path.join(this.realRoot, rel)
-    } catch {
-      return false
-    }
+    return realDir(dir) === path.join(this.realRoot, rel)
   }
 
   private heardInStream(filename: string): void {

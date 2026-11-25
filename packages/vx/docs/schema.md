@@ -290,12 +290,12 @@ check: {
 - `dependsOn: []` is the deliberate empty group: a task by that name
   exists and does nothing.
 - No `build` declared by the config or its plugins: the project gets one.
-  It is a group with `dependsOn: ['^build']` and `inputs.files: ['**']`,
-  no outputs.
+  It is a no-op task with `dependsOn: ['^build']` and `inputs.files:
+['**']`, no outputs.
 - That `build` runs nothing, but a dependant behind `^build` folds its
   key. A package used as source moves its dependants' keys and reaches
   them under `--affected`.
-- A config can declare a keyed group too (Group tasks, below).
+- A config can declare a no-op task too (No-op tasks, below).
 - `vx run build` alone does not select the given `build`. Where no
   selected project declares `build`, it is refused as any undeclared name
   is.
@@ -461,6 +461,7 @@ Default: no limit, unless the run sets one (`--timeout`, `run.timeout`).
 - A persistent task: `timeout` bounds the readiness wait instead. If
   `readyWhen` has not matched in time, the child is SIGTERMed and the task
   fails (see `persistent` below).
+- Its `not ready` line names whose limit it was too.
 - A persistent task with no `readyWhen` is ready on spawn, before the timer
   can fire, so its timeout does nothing.
 - A plugin executor: the timeout aborts the request's `signal`. Core
@@ -968,11 +969,11 @@ exec: {
 }
 ```
 
-| Field         | Type                     | Default | What it does                                                                                                                    |
-| ------------- | ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `passThrough` | `string[]`               | `[]`    | Names copied from your shell, exact: `['API_URL']`. Not in the cache key; add them to `inputs.env` when they change the output. |
-| `define`      | `Record<string, string>` | `{}`    | Fixed values set for the task: `{ NODE_ENV: 'production' }`. In the cache key.                                                  |
-| `secret`      | `string[]`               | `[]`    | Names whose values vx prints as `***`, whatever the name: `['DEPLOY_TOKEN']`.                                                   |
+| Field         | Type                     | Default | What it does                                                                                                                                 |
+| ------------- | ------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `passThrough` | `string[]`               | `[]`    | Names copied from your shell: `['API_URL']`, or a pattern: `['VITE_*']`. Not in the cache key; use `inputs.env` when they change the output. |
+| `define`      | `Record<string, string>` | `{}`    | Fixed values set for the task: `{ NODE_ENV: 'production' }`. In the cache key.                                                               |
+| `secret`      | `string[]`               | `[]`    | Names whose values vx prints as `***`, whatever the name: `['DEPLOY_TOKEN']`.                                                                |
 
 Default: none, the task sees only the essential list below.
 
@@ -982,14 +983,14 @@ Default: none, the task sees only the essential list below.
 
 ```ts
 interface ExecEnv {
-  passThrough?: readonly string[] // names taken from host process.env; exact names, each once, a wildcard is refused
+  passThrough?: readonly string[] // names or `*` patterns taken from host process.env, each once
   define?: Record<string, string> // explicit name=value pairs
   secret?: readonly string[] // names whose values are masked (`***`) whatever the name, each once; see Masking
 }
 ```
 
 - Three layers, lowest priority first: the essential allowlist, then
-  `passThrough`, then `define`.
+  `passThrough` and `inputs.env`, then `define`.
 - **Essential allowlist**, the whole list of what reaches a task from
   your environment unasked (`src/exec/env.ts`, pinned to this list by a
   test). Without these, typical CLI tools break:
@@ -1033,8 +1034,10 @@ interface ExecEnv {
   inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files: [] }, cache: true
   ```
 
-- `inputs.env` decides what the key _sees_; `exec.env.passThrough` decides
-  what the command _gets_. The two are separate on purpose.
+- `inputs.env` names what the command gets _and_ the key sees;
+  `exec.env.passThrough` what the command gets only. These are Turbo's
+  `env` and `passThroughEnv`.
+- A name in both lists is fine: it is passed and keyed.
 - `passThrough: ['API_URL']` takes the value from your shell at spawn
   time. Not in the cache key: for secrets, regional values and CI flags
   that vary between machines.
@@ -1049,9 +1052,6 @@ interface ExecEnv {
     `GATSBY_`, `STORYBOOK_`
   - `VUE_APP_`, `BUN_PUBLIC_`, `NX_PUBLIC_`, `NUXT_ENV_`, `NUXT_PUBLIC_`,
     `REDWOOD_ENV_`, `SANITY_STUDIO_`
-- `inputs: { env: ['VITE_API_URL'] }` with neither `passThrough` nor
-  `define` giving it gets a note too: the key moves with the value, but
-  the bundle is built without it.
 - Each is a note; the lock is still written.
 - `define: { NODE_ENV: 'production' }` sets a fixed value. It is in the
   cache key, through the task config's hash: the value is in your config.
@@ -1068,7 +1068,13 @@ interface ExecEnv {
 - Why: the task runs under `sh -c`, and dash (Linux's `sh`) drops any
   other name, so `my.var` would reach a task on macOS and never on Linux.
 - `inputs.env` takes any name an environment can hold: the key reads it
-  from vx's own environment.
+  from vx's own environment, and `sh` drops one that is no shell name.
+- `passThrough: ['VITE_*']` passes every variable whose name matches.
+  `*` is the one wildcard and matches letters, digits and `_`.
+- A pattern matches names only, never values. Each run matches it once
+  against your environment; the lock keeps the pattern as written.
+- Refused: `*` alone, a pattern with a character no name has (`A-*`),
+  one that starts with a digit, and `?`, `[]` or `{}` anywhere.
 - `npm_execpath` is set to the workspace's package manager unless a layer
   gives one, so a tool that calls the manager back finds it.
 - That manager is the root `package.json`'s `packageManager`, else the
@@ -1077,7 +1083,8 @@ interface ExecEnv {
 - So one an earlier task installed is the one a later task gets.
 - It names a binary on this machine, so it is not in the key.
 - Nothing else reaches the task. A host credential (`SSH_AUTH_SOCK`,
-  `GITHUB_TOKEN`) arrives only when `passThrough` names it.
+  `GITHUB_TOKEN`) arrives only when `inputs.env` or `passThrough` names
+  it, or a pattern there matches it.
 - A sandboxed task with a restricted network also gets the sandbox's own
   proxy, CA and temp-directory values over these names (`TMPDIR`, `TMP`,
   `TEMP`).
@@ -1089,7 +1096,7 @@ interface ExecEnv {
   never know why.
 - A failed task whose last output names, or whose command expands
   (`$API_TOKEN`), a variable your shell holds and the task was not given
-  gets one line naming it and `passThrough`.
+  gets one line naming it, `inputs.env` and `passThrough`.
 - That line names only upper-case names of four characters or more, and
   never a value.
 - This is hygiene, not a boundary: an unsandboxed task runs as you, so it
@@ -1133,10 +1140,20 @@ interface ExecEnv {
   `vx watch`'s `cycle failed` line.
 - A multi-line value (a PEM key) is also masked line by line, each line
   of six characters or more.
+- A value with blanks around it (a pasted trailing newline) is also
+  masked without them, as `echo $TOKEN` prints it.
 - A value holding a `'` is also masked as a shell-quoted line spells it
   (`'\''`).
 - It is also masked URL-encoded (`ab%2Fcd` for `ab/cd`, a token in a
-  query string) and as a JSON string spells it (`pa\"ss`, `\n`).
+  query string), with the escapes' hex in any case (`%2f` too).
+- It is also masked as a JSON string spells it (`pa\"ss`, `\n`), and
+  with non-ASCII escaped as Python's `json.dumps` writes it (`p\u00e4ss`).
+- URL-encoded as JavaScript, curl, Python's `quote()` and `quote_plus()`
+  and `URLSearchParams` each spell it (`ab/cd%2B` from `quote()`, `+` for
+  a space).
+- Base64 and base64url too, at any offset (a Basic auth header's
+  `user:token`). The one or two edge characters that also hold a
+  neighbour's bits stay, as in GitHub Actions.
 - `${A}xyz789`, where `B` is `A`'s tail plus `xyz789`, prints as one
   `***`: values that overlap or touch are masked as one.
 - A value split across two output chunks is still caught: the output
@@ -1270,7 +1287,10 @@ Default: none. A task without `inputs` has no key, and `cache` needs one.
 - Declare `inputs` on an uncached task a cached one depends on.
 - `inputs: { files: [] }` is a declaration: it keys the task on its config and its dependencies' keys, so a task behind it can hit.
 - An absent `inputs` and an empty one differ.
-- A group (no `exec`) with `inputs` is a keyed group: see Group tasks, below.
+- A task with `inputs` and no `exec` is a no-op task: see No-op tasks, below.
+- A no-op task needs at least one entry in `files`, `workspaceFiles`, `env`,
+  `runtime` or `workspaceRuntime`. With none, the load refuses it: add
+  `exec`, or drop `inputs` to make it a group.
 - A project without a `build` task gets `{ dependsOn: ['^build'], inputs: { files: ['**'] } }`.
 
 </div>
@@ -1466,33 +1486,33 @@ Default: `[]`, no files outside the project.
 
 ##### `inputs.env` (optional, default `[]`)
 
-The environment variables whose values decide whether the task runs again.
+The environment variables the command gets and whose values decide whether the task runs again.
 
 ```ts
-inputs: { files: ['src/**'], env: ['NODE_ENV', 'TARGET_BROWSER'] }
+inputs: { files: ['src/**'], env: ['NODE_ENV', 'NEXT_PUBLIC_*'] }
 ```
 
-| Write           | Means                    |
-| --------------- | ------------------------ |
-| `NODE_ENV`      | the value of `NODE_ENV`  |
-| `NEXT_PUBLIC_*` | refused: list each name  |
-| `!CI`           | refused: names are exact |
+| Write           | Means                                     |
+| --------------- | ----------------------------------------- |
+| `NODE_ENV`      | `NODE_ENV`, passed and keyed              |
+| `NEXT_PUBLIC_*` | every variable named so, passed and keyed |
+| `!CI`           | refused: there is no exclusion            |
 
 Default: `[]`, no variables.
 
-A name here is not passed to the command. To pass and track it, list it in `exec.env.passThrough` too.
+To pass a variable without keying it, list it in `exec.env.passThrough` instead.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
 - `exec.env.passThrough: ['API_URL']` alone does not change the key.
-- `inputs.env: ['API_URL']` alone does not pass `API_URL` to the command.
-- A variable the command reads goes in both, or in `exec.env.define`: the command's environment is isolated, so otherwise the key changes on a value the command never sees.
-- A name only in `inputs.env`, for a variable that changes inputs some other way, is legal but rare. In doubt, list it in both.
-- vx ships no helper for the two lists. A config is TypeScript, so a function of your own can return both.
-- `NEXT_PUBLIC_*` is refused: names are exact, with no wildcard.
-- `!NAME` is refused here, in `exec.env.passThrough` and in `exec.env.secret`: with no wildcard to take it out of, it named a variable `!NAME` and excluded nothing.
+- `inputs.env: ['API_URL']` passes `API_URL` to the command and keys its value. A name in both lists is fine.
+- `NEXT_PUBLIC_*` keys each variable it matches, sorted by name: one set, changed or unset moves the key, and one it does not match never does.
+- `*` is the one wildcard; it matches letters, digits and `_`. Each run matches it once, and the lock keeps the pattern as written.
+- `*` alone is refused, and so are `?`, `[]`, `{}` and a character no variable name has.
+- `!NAME` is refused here, in `exec.env.passThrough` and in `exec.env.secret`: vx has no exclusion, so it named a variable `!NAME` and excluded nothing.
+- `exec.env.secret` takes names only, no pattern.
 - A name holding `=` or a NUL is refused.
 - `X` unset, `X=` empty, and `X` never listed are three different keys. The command tells unset from empty too: `process.env.X ?? 'dflt'`, `${X-dflt}`.
 - A value that is not UTF-8 fails the run, naming the variable, never its value: Latin-1 `é` and `è` both decode to U+FFFD and would key alike.
@@ -2108,8 +2128,10 @@ interface SandboxIgnore {
 
 **Baseline: `sandbox: {}`**
 
-- `sandbox: {}` reads nothing in the workspace, writes only its own
-  `TMPDIR`, and reaches no host.
+- `sandbox: {}` reads nothing in the workspace and reaches no host.
+- It writes its own `TMPDIR` and the runtime's own write paths: the
+  shared temp directory above it (`/tmp/claude`), `~/.npm/_logs` and
+  `~/.claude/debug`. A write there is not reported.
 - `allow: { read: ['.'] }` is the first line of almost every block: the
   baseline hides even the task's own project.
 - `cat ./README.md` under `sandbox: {}`: the task still starts in its
@@ -2666,8 +2688,17 @@ pack: {
 
 ## Group tasks (no `exec`)
 
-A task with no `exec` and a `dependsOn` is a group: running it runs its
-dependencies, and nothing else.
+A task is one of three kinds:
+
+| Has                     | Kind       | Runs             | `--affected` when                                           |
+| ----------------------- | ---------- | ---------------- | ----------------------------------------------------------- |
+| `exec`                  | task       | its command      | an input changed; with no `inputs`, its project is affected |
+| `inputs`, no `exec`     | no-op task | nothing          | an input changed                                            |
+| neither (a `dependsOn`) | group      | its dependencies | only through its dependencies                               |
+
+Each kind is also affected when its own definition changes, or a task it
+depends on is affected. A task with no `exec` and a `dependsOn` is a
+group: running it runs its dependencies, and nothing else.
 
 ```ts
 // `vx run ci`  →  runs format-check + lint + test in the cwd project
@@ -2682,7 +2713,7 @@ ci: {
 | `dependsOn: ['lint', 'test']`        | runs `lint` and `test`                     |
 | `dependsOn: ['^build']`              | runs `build` in every workspace dependency |
 | `dependsOn: []`                      | runs nothing; exists to be named           |
-| `inputs: { files: ['fixtures/**'] }` | a keyed group: a key for dependants        |
+| `inputs: { files: ['fixtures/**'] }` | a no-op task: a key for dependants         |
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -2704,18 +2735,21 @@ ci: {
   }
   ```
 
-- A project with no `build` gets a keyed one (see
+- A project with no `build` gets a no-op task (see
   [`TaskConfig`](#taskconfig)). A bare `vx run build` does not select it.
 
-**Keyed groups.**
+**No-op tasks.**
 
-- `fixtures: { inputs: { files: ['fixtures/**'] } }`: a group with
-  `inputs` is a key. Nothing runs for it.
-- A task that depends on a keyed group folds its key, so an edit to those
+- `fixtures: { inputs: { files: ['fixtures/**'] } }`: a task with
+  `inputs` and no `exec` is a key. Nothing runs for it.
+- Its `inputs` must list something: `inputs: { files: [] }` with no `exec`
+  is refused, in the types and at load.
+- It never shows as a run row.
+- A task that depends on a no-op task folds its key, so an edit to those
   inputs re-runs the dependant, and `--affected` reaches it.
-- A keyed group needs no `dependsOn`. It spawns nothing, writes no cache
+- A no-op task needs no `dependsOn`. It spawns nothing, writes no cache
   entry, and the run summary does not count it.
-- `@vzn/vx-migrate` writes keyed groups for the shared input sets of a
+- `@vzn/vx-migrate` writes no-op tasks for the shared input sets of a
   repo it converts.
 
   ```ts
@@ -2789,7 +2823,7 @@ Default: every setting has a built-in value, and no plugin runs.
 - `'10GB'`: a size carries its unit too.
 - `VX_DEBUG_TIMING=1`: `debug.*`, `config.workerTimeout` and `run.outputLogs` are read before this file loads, so they have a variable (and a flag) only.
 - `outputs: { clean: false }`: only `outputs.clean` and `inputs.stability.strategy` reach a cache key. They key a task as if it declared the value it runs under.
-- `vx info` lists every setting not at its default, and where it came from.
+- `vx info` lists every setting a variable, this file or a plugin set, and where it came from.
 
 </div>
 </details>
@@ -3691,13 +3725,18 @@ The messages you meet most:
 | `cache is not allowed on an interactive task`                                                                                         | `interactive` and `cache` together: what it does depends on what is typed.                                                                                                                                                                                                     |
 | `sandbox is not allowed on an interactive task`                                                                                       | `interactive` and `sandbox` together.                                                                                                                                                                                                                                          |
 | `persistent.readyWhen is not allowed on an interactive task`                                                                          | vx reads none of an interactive task's output.                                                                                                                                                                                                                                 |
-| `a task with no exec must declare dependsOn or inputs`                                                                                | Group task with no edges and no key.                                                                                                                                                                                                                                           |
+| `a task with no exec must declare dependsOn (a group) or inputs (a no-op task, a key its dependants fold)`                            | Neither edges nor a key.                                                                                                                                                                                                                                                       |
+| `a task with no exec needs non-empty inputs — add exec, or drop inputs to make it a group`                                            | A no-op task whose `inputs` list nothing: it keys nothing.                                                                                                                                                                                                                     |
 | `cache needs exec — a task with no command produces nothing to cache`                                                                 | `cache` on a group: a task with no command writes nothing to cache.                                                                                                                                                                                                            |
 | `dependsOn must be an array of strings`                                                                                               | Wrong shape.                                                                                                                                                                                                                                                                   |
 | `cache needs inputs — the key is the task's inputs`                                                                                   | A cached task with no `inputs`.                                                                                                                                                                                                                                                |
 | `inputs must be an object`                                                                                                            | Not an object: a string (`inputs: 'src'`). An array is the row above.                                                                                                                                                                                                          |
 | `inputs.files must be an array`                                                                                                       | Wrong shape.                                                                                                                                                                                                                                                                   |
 | `<list> lists "<name>" twice`                                                                                                         | A name twice in `inputs.env`, `exec.env.passThrough`, `exec.env.secret` or `tags`; each counts once.                                                                                                                                                                           |
+| `<list>: "<pattern>" matches every variable`                                                                                          | `*` alone in `inputs.env` or `exec.env.passThrough`: list the names or a prefix (`VITE_*`).                                                                                                                                                                                    |
+| `<list>: "<pattern>" holds a character no variable name has`                                                                          | A pattern with a character other than letters, digits, `_` and `*`.                                                                                                                                                                                                            |
+| `<list>: "<pattern>" starts with a digit, as no variable name does`                                                                   | A pattern no variable name can match.                                                                                                                                                                                                                                          |
+| `<list>: "<name>" — * is the only wildcard in env names`                                                                              | `?`, `[]` or `{}` in an env name.                                                                                                                                                                                                                                              |
 | `inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                      | An entry that is not a string, is blank (whitespace alone runs as a no-op) or holds a NUL.                                                                                                                                                                                     |
 | `inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                             | An entry that is not a string, is blank (whitespace alone runs as a no-op) or holds a NUL.                                                                                                                                                                                     |
 | `inputs.tasks must be an array of non-empty strings`                                                                                  | An entry that is not a string or is empty, or a bare string for the list.                                                                                                                                                                                                      |
@@ -3736,7 +3775,7 @@ The messages you meet most:
 - `env: { set: … }`, if dropped silently, would run the task without its variables.
 - `passthrough` on `exec.env` prints `tasks.build.exec.env has unknown field "passthrough"`, then `allowed: define, passThrough, secret`.
 - It ends `fix  use passThrough`: the nearest accepted spelling, when one is within two edits.
-- `output: ['dist/**']` on a task ends `— vx spells it \`outputs.files\``: a key another tool uses names where vx keeps it.
+- `output: ['dist/**']` on a task ends ``fix  use `outputs.files` ``: a key another tool uses names where vx keeps it.
 - On a task: `files`, `output`, `dependencies`, `env`, `passThroughEnv`, `persistent`, `continuous`, `interactive` and `outputLogs`.
 - Also on a task: `with`, `executor`, `options`, `cwd`, `parallelism`, `configurations`, and `command`, `cmd` or `script`.
 - On `exec`: `cmd`, `script`, `cwd`, `args`, `commands`, `parallel` and `shell`.
@@ -3749,23 +3788,25 @@ The messages you meet most:
 
 Project-discovery errors:
 
-| Symptom                                                                                                              | Cause                                                                                                                                   |
-| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `two projects are named "<name>": <dir> and <dir> — give one another \`name\` in its vx.config`                      | Two directories got one name: a config's `name`, a plugin's, or the path.                                                               |
-| `<dir>: a project is named by its path unless named, and this one holds "#" …`                                       | A path no task name can address: set `name` in its config.                                                                              |
-| `<dir>: the directory's name is not valid UTF-8, which no project path may hold — rename it`                         | A project directory's name has bytes UTF-8 cannot read, shown as `\xNN`.                                                                |
-| `<dir>: "//" names the workspace root — set another \`name\``                                                        | A config away from the root says `name: '//'`.                                                                                          |
-| `.vx/projects.lock locks <dir>, but its <file> is gone — run \`vx lock\``                                            | A locked project's config was deleted or renamed.                                                                                       |
-| `.vx/projects.lock locks <dir>, but its <file> is not readable by this user (<code>) — give this user read access…`  | This user may not open the project's directory.                                                                                         |
-| `.vx/projects.lock has unsupported version <n> (this vx expects 10) — re-run \`vx lock\``                            | A lock an older vx wrote.                                                                                                               |
-| `.vx/dependencies.lock has unsupported version <n> (this vx expects 7) — re-run \`vx lock\``                         | A dependencies lock an older vx wrote.                                                                                                  |
-| `.vx/projects.lock was written by a newer vx (version <n>; this vx reads 10) — upgrade vx`                           | A lock a newer vx wrote: locking again would write the older version.                                                                   |
-| `<dir> is outside this sparse checkout, so vx lock cannot read its <file> — run \`git sparse-checkout add <dir>\``   | `vx lock` or `--check` where a sparse checkout left a config out.                                                                       |
-| `.vx/projects.lock: no task #<id> — re-run \`vx lock\``                                                              | A hand-edited lock names a task line it does not hold.                                                                                  |
-| `.vx/projects.lock holds a line \`vx lock\` never writes — re-run \`vx lock\``                                       | A line with no tab, or a name twice.                                                                                                    |
-| `<lock> holds a git merge conflict: run \`vx lock\`, which writes it anew from the configs`                          | A merge left conflict markers in `.vx/projects.lock` or `.vx/dependencies.lock`. Resolve the configs and manifests, then run `vx lock`. |
-| `plugin '<name>' adds project <p>, but git ignores <file>, so \`vx lock\` cannot read it — unignore it or delete it` | A `discover` plugin's directory holds a config git ignores: `vx lock`, `--check` and a run naming its task.                             |
-| `git ls-files failed (exit <n>) in <dir>: <why>. Run it there to see why.`                                           | `vx lock` could not list the configs, for example a broken git index.                                                                   |
+| Symptom                                                                                                                              | Cause                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `two projects are named "<name>": <dir> and <dir> — give one another \`name\` in its vx.config`                                      | Two directories got one name: a config's `name`, a plugin's, or the path.                                                               |
+| `<dir>: a project is named by its path unless named, and this one holds "#" …`                                                       | A path no task name can address: set `name` in its config.                                                                              |
+| `<dir>: the directory's name is not valid UTF-8, which no project path may hold — rename it`                                         | A project directory's name has bytes UTF-8 cannot read, shown as `\xNN`.                                                                |
+| `<dir>: "//" names the workspace root — set another \`name\``                                                                        | A config away from the root says `name: '//'`.                                                                                          |
+| `.vx/projects.lock locks <dir>, but its <file> is gone — run \`vx lock\``                                                            | A locked project's config was deleted or renamed.                                                                                       |
+| `<dir> is in submodule <sub>, which is not checked out, but this run needs its <file> — run \`git submodule update --init <sub>\``   | A clone skipped the submodule; `vx lock` would drop the project.                                                                        |
+| `.vx/projects.lock locks <dir>, but its <file> is not readable by this user (<code>) — give this user read access…`                  | This user may not open the project's directory.                                                                                         |
+| `.vx/projects.lock has unsupported version <n> (this vx expects 10) — re-run \`vx lock\``                                            | A lock an older vx wrote.                                                                                                               |
+| `.vx/dependencies.lock has unsupported version <n> (this vx expects 7) — re-run \`vx lock\``                                         | A dependencies lock an older vx wrote.                                                                                                  |
+| `.vx/projects.lock was written by a newer vx (version <n>; this vx reads 10) — upgrade vx`                                           | A lock a newer vx wrote: locking again would write the older version.                                                                   |
+| `<dir> is outside this sparse checkout, so vx lock cannot read its <file> — run \`git sparse-checkout add <dir>\``                   | `vx lock` or `--check` where a sparse checkout left a config out.                                                                       |
+| `<sub> is a submodule not checked out, so vx lock cannot read what the lock holds there — run \`git submodule update --init <sub>\`` | `vx lock` or `--check` where the lock holds a project or nested workspace in a skipped submodule.                                       |
+| `.vx/projects.lock: no task #<id> — re-run \`vx lock\``                                                                              | A hand-edited lock names a task line it does not hold.                                                                                  |
+| `.vx/projects.lock holds a line \`vx lock\` never writes — re-run \`vx lock\``                                                       | A line with no tab, or a name twice.                                                                                                    |
+| `<lock> holds a git merge conflict: run \`vx lock\`, which writes it anew from the configs`                                          | A merge left conflict markers in `.vx/projects.lock` or `.vx/dependencies.lock`. Resolve the configs and manifests, then run `vx lock`. |
+| `plugin '<name>' adds project <p>, but git ignores <file>, so \`vx lock\` cannot read it — unignore it or delete it`                 | A `discover` plugin's directory holds a config git ignores: `vx lock`, `--check` and a run naming its task.                             |
+| `git ls-files failed (exit <n>) in <dir>: <why>. Run it there to see why.`                                                           | `vx lock` could not list the configs, for example a broken git index.                                                                   |
 
 Core reads no `package.json` or `pnpm-workspace.yaml`; the errors reading them are `@vzn/vx-migrate`'s (its README, "Errors reading the members").
 

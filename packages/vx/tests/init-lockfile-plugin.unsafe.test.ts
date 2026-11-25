@@ -76,20 +76,23 @@ describe('vx init in a JS workspace', () => {
 
   // A pnpm workspace not installed yet has no lockfile: init installed with
   // npm (a package-lock.json in a pnpm workspace) and declared no plugin.
+  // A single package got none either, though init's own install writes its
+  // lockfile: a dependency bump then moved no key.
   it.each([
-    ['a pnpm workspace', 'pnpm', true],
-    ['a `workspaces` workspace', 'npm', false],
-  ])('declares the plugin of %s with no lockfile yet: %s', async (_, plugin, pnpmFile) => {
+    ['a pnpm workspace', 'pnpm', 'pnpm'],
+    ['a `workspaces` workspace', 'npm', 'workspaces'],
+    ['a single package', 'npm', 'single'],
+  ])('declares the plugin of %s with no lockfile yet: %s', async (_, plugin, shape) => {
     const root = await tmp('vx-init-unlocked-')
     await writeFile(
       path.join(root, 'package.json'),
       JSON.stringify({
         name: 'r',
         private: true,
-        ...(pnpmFile ? {} : { workspaces: ['packages/*'] }),
+        ...(shape === 'workspaces' ? { workspaces: ['packages/*'] } : {}),
       }),
     )
-    if (pnpmFile)
+    if (shape === 'pnpm')
       await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
     await symlink(
@@ -128,7 +131,7 @@ describe('vx init in a JS workspace', () => {
       path.join(root, 'node_modules', '@vzn', 'vx-lockfile'),
     )
     const note =
-      ".vx/workspace.ts declares no @vzn/vx-lockfile plugin: beside bun.lock, add bun() from '@vzn/vx-lockfile' so ^build has project edges, or run vx init --force"
+      ".vx/workspace.ts declares no @vzn/vx-lockfile plugin: beside bun.lock, add bun() from '@vzn/vx-lockfile' so a dependency change re-runs its tasks and ^build has project edges, or run vx init --force"
     const r = await vx(root, ['init', '--dry', '--format', 'json'])
     expect([r.code, r.err]).toEqual([0, ''])
     expect((JSON.parse(r.out) as { notes: string[] }).notes).toEqual([note])
@@ -139,5 +142,12 @@ describe('vx init in a JS workspace', () => {
     )
     const ok = await vx(root, ['init', '--dry', '--format', 'json'])
     expect((JSON.parse(ok.out) as { notes: string[] }).notes).toEqual([])
+    // Not installed yet, with npm: "in a npm workspace".
+    await rm(path.join(root, 'bun.lock'))
+    await writeFile(path.join(root, '.vx', 'workspace.ts'), 'export default { plugins: [] }\n')
+    const npm = await vx(root, ['init', '--dry', '--format', 'json'])
+    expect((JSON.parse(npm.out) as { notes: string[] }).notes).toEqual([
+      ".vx/workspace.ts declares no @vzn/vx-lockfile plugin: in an npm workspace, add npm() from '@vzn/vx-lockfile' so a dependency change re-runs its tasks and ^build has project edges, or run vx init --force",
+    ])
   })
 })

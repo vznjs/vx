@@ -65,8 +65,11 @@ against; name one, `--affected=origin/main`, rather than trust the guess)
 and each task you asked for carries `affected` (a dependency it pulls in
 does not):
 `{ kind, file?, project?, via? }`, where `kind` is `input` (a changed file
-is one of its inputs), `project`, `workspace`, `package`, `named` or `selected`, and
-`via` is the `dependsOn` chain that carried the change.
+is one of its inputs, or its definition), `always` (a command with no
+inputs), `project`, `workspace`, `package`, `named` or `selected`, and
+`via` is the `dependsOn` chain that carried the change. A change no input
+declares reaches no task; declare `inputs` on a task so it runs only when
+they change.
 
 ## While a run is in progress
 
@@ -85,8 +88,9 @@ vx last --log @acme/app#build    # one task's output: a failure's, or its cached
 `warnings` holds what the run warned of (absent when nothing).
 A failed row's `output` is the task's output as plain text (secrets masked),
 `locations` the files it names as `{ file, line?, col? }`, and `dir` its
-project's directory: a relative path in the output starts there. In the run's
-own output, a failed command's `$` line names that directory too. Read those
+project's directory: a relative path in the output starts there. Unless
+the run asked for a single task, a failed command's `$` line in its output
+names that directory too. Read those
 files, fix, and re-run the same command: cached tasks that passed replay from the cache.
 
 ## When a task re-ran unexpectedly
@@ -155,6 +159,6 @@ matched no files`); a wildcard (`dist/**`) may match nothing beside one
 
 `bunx skills add vznjs/vx` installs this skill. To match the vx a workspace
 has installed, copy it from there instead:
-`cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/`.
+`mkdir -p .claude/skills/vx && cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/`.
 `vx upgrade` inside a workspace moves the project's `@vzn/vx` and the
 global vx that ran it to the same version, then runs `vx lock`.

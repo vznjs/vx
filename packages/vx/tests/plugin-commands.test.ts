@@ -87,6 +87,38 @@ describe('plugin commands', () => {
     expect(err.join('')).not.toContain('unknown command')
   })
 
+  // From source (the npm launcher's fallback, a musl host) `bun <entry>`
+  // alone dropped the shebang's flags: the vx a verb spawned (`vx dte
+  // worker`) loaded the cwd's `.env` into its env and ran its bunfig preload.
+  it("ctx.vx from source starts Bun with the shebang's flags", async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/self',
+          `{ commands: { self: { description: 'self', run(argv, ctx) { globalThis.__vxCmd = ctx.vx; return 0 } } } }`,
+        ),
+      ]),
+    )
+    expect(await cli(['self'])).toBe(0)
+    const vx = (globalThis as { __vxCmd?: string[] }).__vxCmd!
+    await writeFile(path.join(root, '.env'), 'VX_SELF_PROBE=from-dotenv\n')
+    await writeFile(path.join(root, 'pre.ts'), "console.log('PRELOAD')\n")
+    await writeFile(path.join(root, 'bunfig.toml'), 'preload = ["./pre.ts"]\n')
+    await writeFile(
+      path.join(root, 'entry.ts'),
+      "console.log(`probe=${process.env['VX_SELF_PROBE'] ?? 'unset'}`)\n",
+    )
+    const env = { ...process.env }
+    delete env['VX_SELF_PROBE']
+    const r = Bun.spawnSync({
+      cmd: [...vx.slice(0, -1), path.join(root, 'entry.ts')],
+      cwd: root,
+      env,
+    })
+    expect(r.stdout.toString()).toBe('probe=unset\n')
+  })
+
   it("a verb's ctx.cache reads the plugin's entries from the workspace's remote and never writes it", async () => {
     const box = globalThis as unknown as { __vxWire: Map<string, Uint8Array>; __vxCmd?: unknown }
     box.__vxWire = new Map([

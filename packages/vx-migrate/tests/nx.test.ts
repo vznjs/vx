@@ -16,9 +16,16 @@ import { fakeNx, fakeNxCli, nxCalls } from './helpers/fake-nx.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
 import { nx } from '../src/index.js'
+import { dotenvCandidates } from '../src/nx/nx-dotenv.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const TIMEOUT = 30_000
+
+/** Every `.env` candidate Nx names for lib's target, as `--dotenv` flags. */
+const libDotenv = (target: string, parent?: string): string =>
+  dotenvCandidates('packages/lib', target, undefined, parent)
+    .map((f) => `--dotenv ${path.posix.relative('packages/lib', f)}`)
+    .join(' ')
 
 /** The graph the fake `nx graph --file` exports. */
 const GRAPH = {
@@ -279,10 +286,10 @@ describe('nx()', () => {
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.deps).toEqual(['lib#build'])
       // The default configuration is folded in and named.
-      expect(app.config.exec?.command).toBe(
+      expect(app.config.exec?.command?.replace(/ --dotenv \S+/g, '')).toBe(
         `nx-exec @acme/compile:run --project app --target build --configuration production --options '{"writeFile":"dist/app.js","mode":"prod"}'`,
       )
-      expect(app.config.inputs?.files).toEqual(['src/**/*'])
+      expect(app.config.inputs?.files?.filter((f) => !f.includes('env'))).toEqual(['src/**/*'])
       expect(app.config.outputs?.files).toEqual(['dist'])
       const lint = plan.tasks.find((t) => t.node.id === 'lib#lint')!.node
       expect(lint.config.exec?.command).toBe('echo lint-ran > lint.log')
@@ -916,12 +923,13 @@ describe('nx()', () => {
         const plan = await planRun({ cwd: root, tasks: ['showenv'], log: silent() })
         const config = plan.tasks.find((t) => t.node.id === 'lib#showenv')!.node.config
         expect(config.exec?.command).toBe(
-          'nx-env --dotenv .env.showenv --dotenv .env --dotenv ../../.env.local --dotenv ../../.env -- ' +
+          `nx-env ${libDotenv('showenv')} -- ` +
             `'mkdir -p out && printf "%s|%s|%s" "$A" "$B" "$C" > out/env.txt'`,
         )
-        expect(config.inputs?.runtime).toEqual([
-          'for f in .env.showenv .env ../../.env.local ../../.env; do echo "$f"; cat -- "$f" 2>/dev/null; echo; done',
-        ])
+        // Literals: keyed present or not, gitignored or not.
+        expect(config.inputs?.workspaceFiles).toContain('.env.local')
+        expect(config.inputs?.files).toContain('.env.showenv.local')
+        expect(config.inputs?.runtime).toBeUndefined()
         const opts = { cwd: root, tasks: ['showenv'], log: silent(), handleSignals: false }
         expect(status(await run(opts), 'lib#showenv')).toBe('success')
         expect(await Bun.file(lib('out/env.txt')).text()).toBe('project|target|local')
@@ -996,6 +1004,7 @@ describe('nx()', () => {
       await writeFile(lib('.env.e2e-ci'), 'A=ci\n')
       await writeFile(lib('.env.e2e'), 'A=e2e\n')
       await writeFile(lib('.env.e2e-ci--a'), 'A=own\n')
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
       const g = structuredClone(GRAPH) as unknown as {
         graph: {
           nodes: Record<string, { data: { targets: Record<string, unknown>; metadata?: unknown } }>
@@ -1015,7 +1024,7 @@ describe('nx()', () => {
       await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
       const plan = await planRun({ cwd: root, tasks: ['e2e-ci--a'], log: silent() })
       expect(plan.tasks.find((t) => t.node.id === 'lib#e2e-ci--a')!.node.config.exec?.command).toBe(
-        "nx-env --dotenv .env.e2e-ci --dotenv .env.e2e -- 'cd ../.. && echo a'",
+        `nx-env ${libDotenv('e2e-ci', 'e2e')} -- 'cd ../.. && echo a'`,
       )
     })
 
@@ -1043,12 +1052,12 @@ describe('nx()', () => {
     )
 
     it(
-      'reach an executor through nx-exec',
+      'reach an executor through nx-exec, committed or not',
       async () => {
         await writeFile(lib('.env'), 'FROM_DOTENV=yes\n')
         const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
         expect(plan.tasks.find((t) => t.node.id === 'lib#build')!.node.config.exec?.command).toBe(
-          `nx-exec @acme/compile:run --project lib --target build --options '{"writeFile":"dist/lib.js","content":"lib v1","cwd":"{projectRoot}"}' --dotenv .env`,
+          `nx-exec @acme/compile:run --project lib --target build --options '{"writeFile":"dist/lib.js","content":"lib v1","cwd":"{projectRoot}"}' ${libDotenv('build')}`,
         )
         // lib's alone: record.json is the last executor's.
         const r = await run({
@@ -1067,19 +1076,20 @@ describe('nx()', () => {
     )
 
     it(
-      'none under NX_LOAD_DOT_ENV_FILES=false, as Nx loads none',
+      'none under NX_LOAD_DOT_ENV_FILES=false where the task runs, as Nx loads none',
       async () => {
         await writeFile(lib('.env'), 'A=project\n')
+        Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
         await libTargets(showenv)
+        const opts = { cwd: root, tasks: ['showenv'], log: silent(), handleSignals: false }
         const before = process.env['NX_LOAD_DOT_ENV_FILES']
-        process.env['NX_LOAD_DOT_ENV_FILES'] = 'false'
         try {
-          const plan = await planRun({ cwd: root, tasks: ['showenv'], log: silent() })
-          const config = plan.tasks.find((t) => t.node.id === 'lib#showenv')!.node.config
-          expect(config.exec?.command).toBe(
-            'mkdir -p out && printf "%s|%s|%s" "$A" "$B" "$C" > out/env.txt',
-          )
-          expect(config.inputs?.runtime).toBeUndefined()
+          expect(status(await run(opts), 'lib#showenv')).toBe('success')
+          expect(await Bun.file(lib('out/env.txt')).text()).toBe('project||')
+          process.env['NX_LOAD_DOT_ENV_FILES'] = 'false'
+          // The switch is keyed: a miss, and the files stay unloaded.
+          expect(status(await run(opts), 'lib#showenv')).toBe('success')
+          expect(await Bun.file(lib('out/env.txt')).text()).toBe('||')
         } finally {
           if (before === undefined) delete process.env['NX_LOAD_DOT_ENV_FILES']
           else process.env['NX_LOAD_DOT_ENV_FILES'] = before
@@ -1108,7 +1118,7 @@ describe('nx()', () => {
       const plan = await planRun({ cwd: root, tasks: ['serve'], log })
       const serve = plan.tasks.find((t) => t.node.id === 'lib#serve')!.node
       expect(serve.config.exec?.persistent).toEqual({})
-      expect(serve.config.exec?.command).toBe(
+      expect(serve.config.exec?.command?.replace(/ --dotenv \S+/g, '')).toBe(
         `nx-exec @nx/vite:dev-server --project lib --target serve --options '{"port":4200}'`,
       )
       expect((await lockWarnings()).filter((l) => l.includes('continuous target'))).toEqual([])
@@ -1379,9 +1389,12 @@ describe('nx(): the mapping cache', () => {
       'echo lint-ran > lint.log',
     ],
     [
-      'a `.env` file in a project dir',
-      () => writeFile(path.join(root, 'packages', 'lib', '.env'), 'A=1\n'),
-      "nx-env --dotenv .env -- 'echo lint-ran > lint.log'",
+      'a `.env` file committed in a project dir',
+      async () => {
+        await writeFile(path.join(root, 'packages', 'lib', '.env'), 'A=1\n')
+        Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      },
+      `nx-env ${libDotenv('lint')} -- 'echo lint-ran > lint.log'`,
     ],
   ])(
     'an edit to %s maps afresh',
@@ -1408,9 +1421,9 @@ describe('nx(): the mapping cache', () => {
       g.graph.nodes.lib.data.targets.build.inputs = ['src']
       await writeFile(path.join(root, 'graph.json'), JSON.stringify(g))
       const inputs = async () =>
-        (await planRun({ cwd: root, tasks: ['lib#build'], log: silent() })).tasks.find(
-          (t) => t.node.id === 'lib#build',
-        )!.node.config.inputs!.files
+        (await planRun({ cwd: root, tasks: ['lib#build'], log: silent() })).tasks
+          .find((t) => t.node.id === 'lib#build')!
+          .node.config.inputs!.files!.filter((f) => !f.includes('env'))
       expect(await inputs()).toEqual(['src/**/*'])
       await writeFile(
         path.join(root, 'base.json'),
@@ -1422,13 +1435,12 @@ describe('nx(): the mapping cache', () => {
   )
 
   it(
-    'NX_LOAD_DOT_ENV_FILES maps afresh',
+    'NX_LOAD_DOT_ENV_FILES is the bins’ to read: the kept mapping still serves',
     async () => {
-      await writeFile(path.join(root, 'packages', 'lib', '.env'), 'A=1\n')
       await lint()
       await tamper()
       process.env['NX_LOAD_DOT_ENV_FILES'] = 'false'
-      expect(await lint()).toBe('echo lint-ran > lint.log')
+      expect(await lint()).toBe('echo from-cache')
     },
     TIMEOUT,
   )
@@ -1631,7 +1643,7 @@ describe('nx() under vx lock', () => {
   // A run asked Nx for its graph each time, and the live graph's edges
   // decided it: an edge added without `vx lock` changed what ran.
   it(
-    'a run refuses an edited package.json and exports nothing until vx lock',
+    'a run follows the locked edges of an edited package.json until vx lock',
     async () => {
       expect(vx('lock').code).toBe(0)
       const g = structuredClone(GRAPH)
@@ -1642,12 +1654,12 @@ describe('nx() under vx lock', () => {
         path.join(root, 'packages', 'app', 'package.json'),
         JSON.stringify({ name: 'app', version: '1.0.0' }),
       )
+      // The run follows the lock's edge. It exports once to compare the
+      // edited file's mapping (63c8d1b8f), which held: the edge is
+      // `.vx/dependencies.lock`'s, which `--check` holds to the graph.
       const stale = vx('run', 'build', '--filter', 'app', '--dry')
-      expect(stale.code).toBe(1)
-      expect(stale.err).toContain(
-        'packages/app/package.json changed since the last `vx lock` — run `vx lock`',
-      )
-      expect(await nxCalls(root)).toBe(1)
+      expect([stale.code, stale.out]).toEqual([0, expect.stringContaining('lib#build')])
+      expect(await nxCalls(root)).toBe(2)
       const check = vx('lock', '--check')
       expect(check.code).toBe(1)
       expect(check.err).toContain(
@@ -1655,7 +1667,7 @@ describe('nx() under vx lock', () => {
       )
       // `--check` exported; the lock reuses that snapshot.
       expect(vx('lock').code).toBe(0)
-      expect(await nxCalls(root)).toBe(2)
+      expect(await nxCalls(root)).toBe(3)
       expect(vx('run', 'build', '--filter', 'app', '--dry').out).not.toContain('lib#build')
     },
     TIMEOUT,

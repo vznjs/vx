@@ -306,6 +306,12 @@ Two paths, chosen by whether this process has loaded that path before:
 ```ts
 export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 export async function loadWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig | null>
+// Whether `hash` is of the bytes this process last evaluated as that workspace
+// file: a stamp taken after a later edit holds plugins no run checked.
+export function evaluatedWorkspace(file: string, hash: string): boolean
+// Whether a file the workspace file imports, written at `mtimeMs`, is as
+// this process's load read it.
+export function loadedWorkspaceImport(file: string, mtimeMs: number): boolean
 export function stdoutToStderr(): () => void // JS routes to stdout → stderr until the release; ui.data still writes out (a core verb's --format json)
 
 // The batch form: one staged evaluation round for many configs. Every
@@ -708,7 +714,7 @@ the shipped standalone binary fail with `ModuleNotFound`.
   - A task with no `exec` MUST declare `dependsOn` or `inputs` (group
     task) — a no-op task is rejected.
   - `cache` requires `exec`, the task's `inputs.files` and
-    `outputs.files`; a group (a keyed group is `inputs` with no
+    `outputs.files`; a group (a no-op task is `inputs` with no
     `exec`) takes no `cache`.
   - `dependsOn` must be a `string[]`.
   - `description` must be a string.
@@ -1040,7 +1046,7 @@ and graph traversal.
 - transitiveDependents terminates on a 2-node cycle and includes the other node
 - reach from a plugin is in both closures and orders nothing
 - with no plugin supplying edges, `^build` fails naming the fix
-- a run whose lock was written with an edge source keeps its edges once the plugin is gone
+- a run whose edge source was dropped since the lock refuses, and `--check` names it
 - with an edge source, a leaf resolves `^build` to nothing and a dependent waits on its dep
 - a workspace that writes no `^` runs with no edge source
 
@@ -1245,7 +1251,7 @@ export interface AffectedChanges {
   paths: ReadonlyMap<string, readonly string[]> // project → its changed paths, project-relative
   whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, config import, nested repo
   wholeBy?: ReadonlyMap<string, string> // a whole project → the workspace-wide file that made it so
-  wide?: boolean // wholeBy's file reached every project (the workspace config), not only those a claim named
+  wide?: boolean // wholeBy's file reached every project, not only those a claim named
   nested?: readonly string[] // changed nested repositories, workspace-relative: each stands for its files
   dirLinks?: ReadonlySet<string> // changed paths that are (or were) a link to a directory, workspace-relative
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its dirLinks, project-relative
@@ -2329,6 +2335,12 @@ export function isStarterConfig(file: string): boolean
 // (a tsconfig.json with no `include` or `files`: a NestJS app's output moves).
 // `vx init` and a migration print them.
 export function tscCompilesConfigNotes(root: string, written: readonly string[]): string[]
+// After `vx init` writes its starter: the config joins the tsconfig's
+// `exclude`, the locks join `.prettierignore`, biome's lines are named, as a
+// migration does. The notes.
+export function settleToolFiles(root: string, written: readonly string[]): string[]
+// The note for the written files `.gitignore` drops (`vx init` and a migration).
+export function ignoredNotes(root: string, relPaths: readonly string[], dry: boolean): string[]
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TODO: string
 // Drops `note` from each persistent task no `dependsOn` in the mapping

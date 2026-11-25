@@ -242,23 +242,25 @@ them. Two ways to reproduce that were open:
   `vx show`, in `.vx/lock.json`, and in every `vx.config.ts` the migrator
   writes — and the migrator could not write them, so the plugin and the
   migrator would stop producing the same task.
-- **Load them when the task runs** (chosen). The mapper lists which exist
-  (one `readdir` per project dir per run, ~4 ms at 1,000 projects,
-  measured with 1,000 dirs of five files each) and the command names
-  them: `nx-env --dotenv <f>… [--envFile <f>] -- '<line>'` for a shell
-  line, `--dotenv <f>` on an `nx-exec` line. Both bins load through Nx's
-  own `loadAndExpandDotEnvFile`, so parsing, `${VAR}` expansion and
-  precedence are the workspace's Nx version's. A cached task keys on the
-  files' bytes with a `cache.inputs.runtime` probe that prints each name
-  and its bytes: a glob cannot see a gitignored `.env.local`, and the
-  name keeps a line moved between files (a different precedence) a
-  different key. A file added or removed changes the command.
+- **Load them when the task runs** (chosen). The command names Nx's
+  whole candidate list, never the files this disk holds: the lock is
+  every machine's, and a gitignored `.env.local` listed from the disk
+  made a fresh clone refuse every run (2026-11-25). An `nx-exec` line
+  takes every candidate as `--dotenv <f>`, as Nx does. A shell line runs
+  as `nx-env --dotenv <f>… [--envFile <f>] -- '<line>'` only when git
+  tracks a candidate; one whose `.env` files are all uncommitted loads
+  none, and `vx lock` names them. Both bins load whichever exist through
+  Nx's own `loadAndExpandDotEnvFile`, so parsing, `${VAR}` expansion and
+  precedence are the workspace's Nx version's. A cached task keys the
+  candidates as literal inputs, which core hashes from disk present or
+  not, gitignored or not.
 
 Nx unloads the root files it loaded into its own process at start-up
 before loading a task's; nothing loaded them under vx, so the bins do not
 unload, and the target's `env` (exec.env.define, present before the
-files load) stays on top, as in Nx. `NX_LOAD_DOT_ENV_FILES=false` in vx's
-environment at map time drops the files and `envFile`, as Nx does.
+files load) stays on top, as in Nx. `NX_LOAD_DOT_ENV_FILES=false` where
+the task runs drops the files and `envFile`, as Nx does; it is passed and
+keyed.
 `nx-env` takes `--envFile`, not `--env-file`: Node 22 reads `--env-file`
 from anywhere on its command line and exits 9 when the file is missing.
 

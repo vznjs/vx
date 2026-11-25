@@ -245,6 +245,8 @@ These are refused the same way:
 
   pnpm refuses it too ("Broken lockfile"). Read as a leaf, that package's own dependencies would be in no key.
 
+- A `pnpm-lock.yaml` or berry `yarn.lock` cut short: an entry, or its `dependencies`, that is not a mapping. Read as an entry with no dependencies, it left everything below it out of the key.
+
 ### The installed tree
 
 vx refuses to run when `node_modules` is not the install your lockfile names. It tells you which install fixes it:
@@ -411,6 +413,10 @@ A task that rewrites its own `package.json` with the same bytes (tsdown) keeps i
 ## Project edges
 
 `discover` gives vx each project's edges as the lockfile records them. If `app` depends on the workspace package `ui`, `app#build` runs after `ui#build` under `^build`.
+
+A member a committed `.gitignore` ignores, with a manifest git does not track, is no project.
+
+The manager installs it, but no clone has it, so the lock leaves it out. Track its manifest, or unignore it, to make it one.
 
 The edges are read from the same memo as the digests. There are these kinds:
 

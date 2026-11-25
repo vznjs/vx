@@ -14,7 +14,7 @@ import {
   type ServerSpec,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
-import { parseDuration, taskEnvSource } from '../util/index.js'
+import { expandEnvNames, parseDuration, taskEnvSource } from '../util/index.js'
 
 /**
  * Drop the run's facts about files a task may have written without declaring
@@ -70,7 +70,12 @@ export function taskEnv(
 ): NodeJS.ProcessEnv {
   const bins = taskBinDirs(node, workspaceRoot)
   const env = buildIsolatedEnv({
-    passThrough: step.env?.passThrough ?? [],
+    // `inputs.env` is seen and keyed, `passThrough` seen only (Turbo's `env`
+    // and `passThroughEnv`).
+    passThrough: expandEnvNames([
+      ...(step.env?.passThrough ?? []),
+      ...(node.config.inputs?.env ?? []),
+    ]),
     define: step.env?.define ?? {},
     source: taskEnvSource(),
     binPaths: bins,

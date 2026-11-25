@@ -72,6 +72,8 @@ Read the line under each task: it says why the task is in the plan.
 
 Only `packages/web` changed. `@demo/ui#build` is listed because web's build and test need it, and it comes from the cache.
 
+`admin` and `api` are not listed: their tasks declare `inputs`, and none changed. A task with no `inputs` would run on every pull request.
+
 <Quiz q="Why is @demo/ui#build in the plan, when packages/ui did not change?">
   `@demo/web#build` depends on it (`^build`), so the run needs its output. It did not change, so
   the plan reads it from the cache: **cached local**.

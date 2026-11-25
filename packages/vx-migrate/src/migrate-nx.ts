@@ -61,7 +61,7 @@ export async function migrateNx(
         : 'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
           'are frozen as static config; `nx:run-commands` targets are their shell lines, and ' +
           'every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate ' +
-          'installed until those targets are rewritten as commands); targets with `.env` files ' +
+          'installed until those targets are rewritten as commands); shell targets with a committed `.env` file ' +
           'run through `nx-env`',
       ...adopted,
     ],

@@ -2,14 +2,21 @@
 // main: a release post rewritten after its release shipped changes the
 // GitHub release too, so GitHub and the site tell the same story. Each
 // GitHub release with a post on main whose body differs gets the post's
-// (postNotes); a release with no post keeps its body.
+// (postNotes); a release with no post keeps its body. The posts are this
+// project's own; core's release helpers come through node_modules.
 //
 //   GH_TOKEN=… GITHUB_REPOSITORY=owner/repo bun scripts/release-sync.ts
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { github } from './github.ts'
-import { postNotes, postPath } from './release-notes.ts'
+import { github } from '../node_modules/@vzn/vx/scripts/github.ts'
+import { postNotes } from '../node_modules/@vzn/vx/scripts/release-notes.ts'
+
+const RELEASES = path.resolve(import.meta.dir, '../src/content/docs/releases')
+
+/** This site's release post for `version` (`0.0.637`). */
+export const postFile = (version: string): string =>
+  path.join(RELEASES, `vx-${version.replaceAll('.', '-')}.md`)
 
 /** A release as the releases API lists it. */
 export interface Release {
@@ -34,9 +41,8 @@ export function stale(
 
 async function main(): Promise<void> {
   const gh = github()
-  const root = path.resolve(import.meta.dir, '../../..')
   const post = (version: string): string | undefined => {
-    const file = path.join(root, postPath(version))
+    const file = postFile(version)
     return existsSync(file) ? readFileSync(file, 'utf8') : undefined
   }
   const changes = stale((await gh('releases?per_page=100')) as Release[], post)

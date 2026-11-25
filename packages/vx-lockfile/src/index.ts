@@ -17,7 +17,17 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import {
@@ -640,9 +650,11 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         }
       }
       const rootIsProject = ctx.projects.some((p) => importerOf(ctx.workspaceRoot, p.dir) === '.')
+      // After the staleness check, which holds the lockfile to the disk.
+      const local = await machineLocal(ctx.workspaceRoot, importers.keys(), manifests)
       return await discovered(
         ctx.workspaceRoot,
-        importers,
+        local.size === 0 ? importers : new Map([...importers].filter(([i]) => !local.has(i))),
         manager.peersInManifest === true,
         rootIsProject,
         manifest,
@@ -676,6 +688,76 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       }
     },
   })
+}
+
+/**
+ * The members whose manifest git does not track and a committed
+ * `.gitignore` ignores: installed here, on no clone, so never a project the
+ * lock holds. Committed rules only (no `.git/info/exclude`, no
+ * `core.excludesFile`), as what this decides lands in the lock. Such a
+ * member cannot be committed without unignoring it or `git add -f`, and
+ * either makes it a member again. Only `vx lock` discovers, so no run pays
+ * the spawns; empty outside git.
+ */
+async function machineLocal(
+  root: string,
+  importers: Iterable<string>,
+  manifests: readonly string[],
+): Promise<Set<string>> {
+  const dirs = [...importers].filter((i) => i !== '.')
+  if (dirs.length === 0) return new Set()
+  const git = async (args: string[], cwd: string, stdin?: string): Promise<string[] | null> => {
+    try {
+      const p = Bun.spawn(['git', ...args], {
+        cwd,
+        // ls-files reads pathspecs; check-ignore refuses the magic.
+        env: args[0] === 'ls-files' ? { ...process.env, GIT_LITERAL_PATHSPECS: '1' } : process.env,
+        stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
+        stdout: 'pipe',
+        stderr: 'ignore',
+      })
+      const out = await new Response(p.stdout).text()
+      // check-ignore exits 1 when it ignores none.
+      const code = await p.exited
+      if (code !== 0 && !(code === 1 && args.includes('check-ignore'))) return null
+      return out.split('\0').filter((f) => f !== '')
+    } catch {
+      return null
+    }
+  }
+  const files = dirs.flatMap((d) => manifests.map((m) => `${d}/${m}`))
+  const tracked = await git(['ls-files', '-z', '--', ...files], root)
+  if (tracked === null) return new Set()
+  const kept = new Set(tracked.map((f) => path.posix.dirname(f)))
+  const untracked = files.filter(
+    (f) => !kept.has(path.posix.dirname(f)) && existsSync(path.join(root, f)),
+  )
+  if (untracked.length === 0) return new Set()
+  const top = await git(['rev-parse', '--show-toplevel'], root)
+  if (top === null || top.length === 0) return new Set()
+  const gitDir = mkdtempSync(path.join(tmpdir(), 'vx-lockfile-ignore-'))
+  try {
+    writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n')
+    mkdirSync(path.join(gitDir, 'objects'))
+    mkdirSync(path.join(gitDir, 'refs'))
+    const ignored = await git(
+      [
+        `--git-dir=${gitDir}`,
+        `--work-tree=${top[0]!.trim()}`,
+        '-c',
+        'core.excludesFile=',
+        'check-ignore',
+        '--no-index',
+        '--stdin',
+        '-z',
+      ],
+      root,
+      untracked.map((f) => `${f}\0`).join(''),
+    )
+    return new Set((ignored ?? []).map((f) => path.posix.dirname(f)))
+  } finally {
+    rmSync(gitDir, { recursive: true, force: true })
+  }
 }
 
 /** Up to five names, then a count of the rest. */

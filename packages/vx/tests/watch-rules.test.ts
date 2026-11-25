@@ -20,7 +20,13 @@ import {
   makeRootEventFilter,
   makeWatchIgnore,
 } from '../src/cli/watch-filter.js'
-import { armWatcher, modifiedBefore, pollWatcher, WATCH_PROBE } from '../src/cli/watch-fs.js'
+import {
+  armWatcher,
+  modifiedBefore,
+  pollWatcher,
+  realDir,
+  WATCH_PROBE,
+} from '../src/cli/watch-fs.js'
 import { fsClockNow } from '../src/memo/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
@@ -412,6 +418,48 @@ describe('sweepConfigs: only the tasks the run reaches are judged', () => {
       expect(await inputs()).toEqual(await inputs(['all']))
       // Outputs stay every task's: a write to one is never an edit.
       expect((await sweepConfigs(metas, root, {}, ['gen'])).outputs.get(ui)).toEqual(['dist/**'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("sweepConfigs: a project's inputs stop at a nested project", () => {
+  // `vx watch dev` with a root config: the root's default `build` keys on
+  // `**`, which never reads a nested project, yet its watcher took
+  // `packages/ui/dist/index.js`, ui's own output, for an edit: a second
+  // cycle after every ui edit.
+  it("the root's `**` does not make a nested project's output an edit", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-nested-'))
+    try {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+      )
+      await writeFile(
+        path.join(root, 'vx.config.mjs'),
+        `export default { tasks: { check: { exec: { command: 'true' }, inputs: { files: ['**/*.ts'], workspaceFiles: ['packages/ui/schema.json'] } } } }\n`,
+      )
+      const ui = path.join(root, 'packages', 'ui')
+      await mkdir(ui, { recursive: true })
+      await writeFile(path.join(ui, 'package.json'), '{"name":"ui"}')
+      await writeFile(
+        path.join(ui, 'vx.config.mjs'),
+        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } }\n`,
+      )
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+      await lock(root)
+      const swept = await sweepConfigs(await discoverCliProjects(root), root, {}, [
+        'build',
+        'check',
+      ])
+      const ignore = makeWatchIgnore(path.join(root, '.vx', 'cache'), swept.outputs, swept.inputs)
+      expect(ignore(ui, 'dist/index.js')).toBe(true)
+      expect(ignore(root, 'packages/ui/dist/index.js')).toBe(true)
+      // CONTROL: the root's own files and ui's inputs are still edits.
+      expect(ignore(root, 'README.md')).toBe(false)
+      expect(ignore(ui, 'src/index.ts')).toBe(false)
+      expect(ignore(ui, 'schema.json')).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1134,4 +1182,18 @@ describe('fsClockNow — the arm instant on the mtime clock', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+})
+
+// macOS's one stream serves every project under the root, and each watch
+// opened or closed rebuilds it. A project dir missing when the loop placed
+// it, and made before its own arm (a 14 s stall on a Mac worker, apps/
+// copied back meanwhile), got a watch of its own: placed by its nearest
+// ancestor that is there, it stays the stream's whenever it comes back.
+it('a directory not there yet is placed by its nearest ancestor that is', () => {
+  const fake = (p: string): string => {
+    if (p === '/ws/apps/web/site' || p === '/ws/apps/web') throw new Error('ENOENT')
+    return p.replace(/^\/ws/, '/real/ws')
+  }
+  expect(realDir('/ws/apps/web/site', fake)).toBe('/real/ws/apps/web/site')
+  expect(realDir('/ws/apps', fake)).toBe('/real/ws/apps')
 })

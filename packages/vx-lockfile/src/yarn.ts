@@ -61,6 +61,8 @@ export function parseLockfile(text: string): Lockfile {
   )
 }
 
+const BERRY_DEP_FIELDS = ['dependencies', 'peerDependencies'] as const
+
 function parseBerry(text: string): Lockfile {
   let doc: unknown = parseSyml(text)
   try {
@@ -77,7 +79,18 @@ function parseBerry(text: string): Lockfile {
   const patches = new Map<string, string[]>()
   for (const [keys, raw] of Object.entries(d)) {
     if (keys === '__metadata') continue
-    const e = record(raw) ?? {}
+    // Yarn writes every entry, and each dependency list, as a mapping. A file
+    // cut after an entry's `dependencies:` read as an entry with none, and
+    // every package below it left the closure in silence.
+    const e = record(raw)
+    const field =
+      e === undefined
+        ? undefined
+        : BERRY_DEP_FIELDS.find((f) => e[f] !== undefined && record(e[f]) === undefined)
+    if (e === undefined || field !== undefined) {
+      const what = e === undefined ? 'is not a mapping' : `has a \`${field}\` that is not a mapping`
+      throw new Error(`yarn.lock: entry "${keys}" ${what}: the file is cut short or hand-edited`)
+    }
     const resolution = typeof e['resolution'] === 'string' ? e['resolution'] : keys
     // Every field of the entry, so a field this parser has not heard of moves
     // what reaches the entry: reading the resolution and checksum alone dropped

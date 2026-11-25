@@ -67,7 +67,8 @@ export const viteTask: Adapter = {
         Object.entries(p.tasks ?? {}).map(([t, spec]) => [
           t,
           {
-            command: command(name, t),
+            // No command: an empty list of commands, which runs none.
+            command: command(name, t) ?? [],
             dependsOn: (spec.dependsOn ?? []).map((d) =>
               d.startsWith('^') ? { task: d.slice(1), from: 'dependencies' } : d,
             ),

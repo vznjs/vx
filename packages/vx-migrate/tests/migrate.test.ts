@@ -268,10 +268,10 @@ describe('vx migrate (turbo)', () => {
       // git's list the maps may be committed source.
       expect(build.inputs?.files).toEqual(['**/*', '!**/*.md', '!src/gen/**', '!coverage/**'])
       expect(build.inputs?.workspaceFiles).toEqual(['tsconfig.base.json'])
-      // env → BOTH inputs.env and passThrough; wildcard dropped. No
-      // globalEnv, globalPassThroughEnv or Turbo builtin.
-      expect(build.inputs!.env).toEqual(['NODE_ENV'])
-      expect(build.exec!.env!.passThrough).toEqual(['NODE_ENV'])
+      // env → inputs.env, which the task also sees; a wildcard kept as
+      // written. No globalEnv, globalPassThroughEnv or Turbo builtin.
+      expect(build.inputs!.env).toEqual(['NODE_ENV', 'VERCEL_*'])
+      expect(build.exec?.env?.passThrough).toBeUndefined()
       // output negation dropped (TODO).
       expect(build.outputs?.files).toEqual(['dist/**', '!dist/**/*.map'])
 
@@ -386,8 +386,8 @@ describe('vx migrate (turbo)', () => {
 
   it('reports clean/TODO counts and lists each TODO under its project#task', () => {
     // turbo.json writes a global block, so every task with a command names
-    // it. build has 2 more ($TURBO_ROOT$ dep, env wildcard), inherited by
-    // lib#build. app#dev is persistent and nothing depends on it, so its
+    // it. build has 1 more ($TURBO_ROOT$ dep; an env wildcard is a pattern
+    // now, ae6d4dd46), inherited by lib#build. app#dev is persistent and nothing depends on it, so its
     // readiness note is no TODO (item 602). Each package's `deploy` (no
     // script anywhere) is an empty group, clean.
     expect(result.out).toContain('  tasks     2 clean · 7 todo\n')
@@ -403,11 +403,10 @@ describe('vx migrate (turbo)', () => {
     ])
     expect(todos.get('packages/app#build')!.map((r) => r.split(' ')[0])).toEqual([
       'dependsOn',
-      'env',
       "turbo.json's",
     ])
     expect(todos.get('packages/app#build')![0]).toContain('$TURBO_ROOT$')
-    expect(todos.get('packages/lib#build')).toHaveLength(2) // and the global one, among "2 more"
+    expect(todos.get('packages/lib#build')).toHaveLength(1)
     expect(result.out).toContain(
       `turbo.json's global block (globalDependencies ["tsconfig.base.json"], globalEnv ` +
         '["GLOBAL_MODE"], globalPassThroughEnv ["AWS_PROFILE"]) is carried onto no task',
@@ -840,9 +839,9 @@ describe('vx migrate (nx)', () => {
       // {workspaceRoot}/<path> → inputs.workspaceFiles, not a TODO.
       expect(build.inputs?.files).toEqual(['**/*', '!**/*.spec.ts'])
       expect(build.inputs?.workspaceFiles).toEqual(['babel.config.json'])
-      // {env: X} → cache input AND passThrough (isolated child env).
+      // {env: X} → inputs.env, which the task also sees.
       expect(notTurbos(build.inputs!.env!)).toEqual(['NODE_ENV'])
-      expect(notTurbos(build.exec!.env!.passThrough!)).toEqual(['NODE_ENV'])
+      expect(build.exec?.env?.passThrough ?? []).not.toContain('NODE_ENV')
       // {runtime: "<cmd>"} → inputs.workspaceRuntime: Nx runs it at
       // the workspace root (item 913). It used to reach the fall-through
       // and be reported "not representable in vx" (2026-09-20).
@@ -891,7 +890,7 @@ describe('vx migrate (nx)', () => {
 
       // Any executor runs as itself through nx-exec; dependsOn/cache parts kept.
       const serve = tasks.serve!
-      expect(serve.exec?.command).toBe(
+      expect(serve.exec?.command?.replace(/ --dotenv \S+/g, '')).toBe(
         `nx-exec @nx/webpack:dev-server --project pkg-a --target serve --options '{"port":4200}'`,
       )
 
@@ -1408,7 +1407,19 @@ describe('vx migrate (nx) — executors', () => {
       })
       expect(r.out).not.toContain('falls outside the project dir')
       // Cached by the legacy list, inputs from nx.json's `default` named input.
-      expect([tasks['odd']!.inputs, tasks['odd']!.outputs, tasks['odd']!.cache]).toEqual([
+      // An nx-exec line also keys Nx's `.env` candidates and its switch
+      // (nx-dotenv-machine.test.ts); the rest of its inputs, here.
+      const dotenv = (f: string) => /(^|\/)\.(env(\.[^/]*)?|[^/]*\.env)$/.test(f)
+      const odd = tasks['odd']!.inputs!
+      expect(odd.env).toEqual(['NX_LOAD_DOT_ENV_FILES'])
+      expect([
+        {
+          files: odd.files!.filter((f) => !dotenv(f)),
+          workspaceFiles: odd.workspaceFiles!.filter((f) => !dotenv(f)),
+        },
+        tasks['odd']!.outputs,
+        tasks['odd']!.cache,
+      ]).toEqual([
         { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
         { files: [] },
         true,
@@ -1421,16 +1432,15 @@ describe('vx migrate (nx) — executors', () => {
       ])
       expect(tasks['dev']!.exec?.persistent).toBeUndefined()
       // Every executor is its nx-exec line, a configuration named on it.
-      expect(tasks['test']!.exec?.command).toBe(
-        'nx-exec @nx/vitest:test --project app --target test',
-      )
-      expect(tasks['odd']!.exec?.command).toBe(
+      const line = (t: string) => tasks[t]!.exec?.command?.replace(/ --dotenv \S+/g, '')
+      expect(line('test')).toBe('nx-exec @nx/vitest:test --project app --target test')
+      expect(line('odd')).toBe(
         `nx-exec @acme/thing:do --project app --target odd --options '{"x":1,"s":"it'\\''s","list":[{"a":"b"}]}'`,
       )
-      expect(tasks['build']!.exec?.command).toBe(
+      expect(line('build')).toBe(
         `nx-exec @nx/js:tsc --project app --target build --configuration production --options '{"main":"src/index.ts","mode":"prod"}'`,
       )
-      expect(tasks['build:ci']!.exec?.command).toBe(
+      expect(line('build:ci')).toBe(
         `nx-exec @nx/js:tsc --project app --target build --configuration ci --options '{"main":"src/index.ts","mode":"ci","extra":true}'`,
       )
       expect(tasks['build:ci']!.dependsOn).toEqual(['^build'])
@@ -1528,7 +1538,7 @@ describe('the writer: what the sweep found unheld', () => {
     '  --no-install     Install nothing and skip vx lock.',
     '  --dry            Print the files instead of writing them.',
     '  --format json    With --dry: the plan as one JSON document.',
-    '  --force          Overwrite an existing .vx/workspace.* and vx.config.*.',
+    '  --force          Overwrite vx.config.*; with --keep, .vx/workspace.* too.',
     '  --mjs            Write .mjs files (no type import) instead of .ts.',
   ].join('\n')
 
@@ -1562,6 +1572,31 @@ describe('the writer: what the sweep found unheld', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  // The help said `--force` overwrote `.vx/workspace.*`; a native migration
+  // keeps a hand-written one, `--force` or not. Only `--keep --force` replaces it.
+  it(
+    '--force replaces a hand-written .vx/workspace.ts only with --keep, as --help says',
+    async () => {
+      const root = await makeTurboWorkspace()
+      const file = path.join(root, '.vx', 'workspace.ts')
+      const mine = 'export default { plugins: [] }\n'
+      try {
+        await mkdir(path.dirname(file), { recursive: true })
+        await writeFile(file, mine)
+        expect((await vx(root, ['--native', '--force'])).code).toBe(0)
+        expect(await Bun.file(file).text()).toBe(mine)
+        expect((await vx(root, ['--keep', '--force'])).code).toBe(0)
+        expect(await Bun.file(file).text()).toContain('turbo()')
+        expect((await vx(root, ['--help'])).out).toContain(
+          '  --force          Overwrite vx.config.*; with --keep, .vx/workspace.* too.',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 
   const detect = async (files: Record<string, string>, args: string[]) => {
     const root = await makeRoot('vx-migrate-det-sweep-')

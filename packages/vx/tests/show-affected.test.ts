@@ -32,7 +32,8 @@ function planned(root: string, task: string): string[] {
     .sort()
 }
 
-// y depends on x (an `edges()` plugin); each declares `test`; x changes.
+// y depends on x (an `edges()` plugin); each declares `test` reading
+// `*.txt` (a task with no inputs is affected by any change); x changes.
 async function fixture(yTest: string): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-affected-'))
   roots.push(root)
@@ -45,7 +46,7 @@ async function fixture(yTest: string): Promise<string> {
   await write('pkgs/x/package.json', JSON.stringify({ name: 'x' }))
   await write(
     'pkgs/x/vx.config.mjs',
-    `export default { tasks: { test: { exec: { command: 'echo t' } } } }\n`,
+    `export default { tasks: { test: { exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } } } }\n`,
   )
   await write('pkgs/y/package.json', JSON.stringify({ name: 'y' }))
   await write('pkgs/y/vx.config.mjs', `export default { tasks: { test: ${yTest} } }\n`)
@@ -60,8 +61,10 @@ let noEdge: string
 let edge: string
 
 beforeAll(async () => {
-  noEdge = await fixture(`{ exec: { command: 'echo t' } }`)
-  edge = await fixture(`{ dependsOn: ['^test'], exec: { command: 'echo t' } }`)
+  noEdge = await fixture(`{ exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } }`)
+  edge = await fixture(
+    `{ dependsOn: ['^test'], exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } }`,
+  )
 })
 
 afterAll(async () => {
@@ -83,11 +86,22 @@ describe('vx show <task> --affected', () => {
     ])
   })
 
-  it('with no task, lists the run candidates: the changed projects and their dependents', () => {
+  // A project is listed when one of its tasks is affected (M, 2026-11-25),
+  // never for being a package dependent of a changed one.
+  it('with no task, lists the projects one of whose tasks the run keeps', () => {
     expect([shown(noEdge, '--affected=HEAD'), shown(edge, '--affected=HEAD')]).toEqual([
-      ['x', 'y'],
+      ['x'],
       ['x', 'y'],
     ])
+  })
+
+  // A workspace config edit no plugin keys on reaches no task: the list
+  // named every project while `vx run <task> --affected` ran nothing.
+  it('with no task, lists nothing for a workspace config edit no plugin keys on', async () => {
+    const root = await fixture(`{ exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } }`)
+    await rm(path.join(root, 'pkgs/x/f.txt'))
+    await writeFile(path.join(root, '.vx/workspace.mjs'), '// edited\n', { flag: 'a' })
+    expect([shown(root, '--affected=HEAD'), planned(root, 'test')]).toEqual([[], []])
   })
 
   // Another runner's affected set depended on the directory it ran from.
@@ -132,12 +146,12 @@ describe('vx show <task> --affected', () => {
     await write('pkgs/x/package.json', JSON.stringify({ name: 'x' }))
     await write(
       'pkgs/x/vx.config.mjs',
-      `export default { tasks: { test: { exec: { command: 'echo t' } } } }\n`,
+      `export default { tasks: { test: { exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } } } }\n`,
     )
     await write('pkgs/z/package.json', JSON.stringify({ name: 'z' }))
     await write(
       'pkgs/z/vx.config.mjs',
-      `export default { tasks: { lint: { exec: { command: 'echo l' } } } }\n`,
+      `export default { tasks: { lint: { exec: { command: 'echo l' }, inputs: { files: ['*.txt'] } } } }\n`,
     )
     git(root, 'init', '-q')
     git(root, 'add', '-A')

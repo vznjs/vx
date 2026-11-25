@@ -11,7 +11,7 @@ import { describe, expect, it } from 'bun:test'
 import { SPLIT_REFERENCES, splitReference } from '../scripts/import-docs.ts'
 
 const DIST = path.resolve(import.meta.dir, '../dist')
-const SOURCES = path.resolve(import.meta.dir, '../../../packages/vx/docs')
+const SOURCES = path.resolve(import.meta.dir, '../node_modules/@vzn/vx/docs')
 
 function ids(file: string): Set<string> {
   const html = readFileSync(file, 'utf8')

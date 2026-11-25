@@ -20,16 +20,9 @@ import { rootTaskProject, turboConfigFile } from './turbo/turbo-reads.js'
 import { rulesSource, turboBoundaryRules } from './dependency-rules.js'
 import type { NxWorkspaceField as WorkspaceField } from './migrate-nx.js'
 import { ROOT_ENGINES_PROBE } from './turbo/root-engines.js'
-import {
-  gitIgnored,
-  gitIgnoredUnder,
-  spareTrackedTodos,
-  trackedFiles,
-  trackedKinds,
-} from './tracked-outputs.js'
+import { spareTrackedTodos, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { DOTENV_GLOBS_HEAD, DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
 import { adoptedToolNotes } from './workspace-notes.js'
-import { spelledNames } from './spelled-env.js'
 import { onceReader, ownBuildInfo, tscBuildInfo, undeclaredTscTodo } from './tsc-buildinfo.js'
 
 /** What a task's `npm_package_*` read: the manifest, so a bump reaches them. */
@@ -57,9 +50,6 @@ export async function migrateTurbo(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.
     ownConfig: () => `vx.config.${format}`,
-    sourceNames: (dirs) => spelledNames(root, dirs, tracked),
-    ignored: (rels) => gitIgnored(root, rels),
-    ignoredUnder: (globs) => gitIgnoredUnder(root, globs),
     buildInfo: (rel, command) => tscBuildInfo(tsc.read, path.join(root, rel), command),
     ownBuildInfo: (rel) => ownBuildInfo(tsc.read, path.join(root, rel)),
     tscReach: (rel, command) => {
@@ -401,9 +391,8 @@ const HOIST_MIN = 3
  * Turbo states a task's `env` once, in the root turbo.json; written inline,
  * vercel/ai's 63 `build` names repeated twice in each of ~100 configs. A
  * task's own `inputs.env` names that two or more configs share are named
- * once at the top of each config, spread where they stood
- * and where they lead `exec.env.passThrough` (its `passThroughEnv` names
- * follow): the evaluated arrays, and so every key, are unchanged. A
+ * once at the top of each config, spread where they stood: the evaluated
+ * arrays, and so every key, are unchanged. A
  * package whose list differs (its own turbo.json) keeps it inline unless
  * that list is shared too.
  */

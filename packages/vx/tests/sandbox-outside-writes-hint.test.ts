@@ -5,7 +5,7 @@ import { realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { outsideWritesHint } from '../src/sandbox/hints.js'
+import { GIT_NO_REPO, outsideWritesHint } from '../src/sandbox/hints.js'
 
 describe('the refused outside writes hint', () => {
   // Not under the host temp root (a write there is told to use $TMPDIR),
@@ -79,4 +79,16 @@ describe('the refused outside writes hint', () => {
       "If the task needs one, grant its directory, e.g. `allow: { write: ['~/.cache/tool/'] }`.",
     )
   })
+})
+
+// git 2.5x words a worktree's `.git` file whose data the sandbox walls
+// otherwise, and the walled hint never came (CI 2026-11-25).
+it("git's words for a repository it found none of, old and new", () => {
+  expect(
+    [
+      'fatal: not a git repository: /w/.git/worktrees/wt',
+      'fatal: gitfile does not point to a valid repository: /wt/.git',
+      'fatal: bad revision HEAD',
+    ].map((l) => GIT_NO_REPO.test(l)),
+  ).toEqual([true, true, false])
 })

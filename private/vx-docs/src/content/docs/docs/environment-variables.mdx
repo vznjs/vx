@@ -75,7 +75,7 @@ vx lock
 [2m   Start at [22m 22:15:16
 [2m   Duration [22m 284ms[2m (transform 66%, import 17%, tests 11%, worker 5%)[22m
 
-[1m[38;2;234;179;8m[vx][0m[2m API_URL is set in your environment, but this task does not get it: a task sees only the variables exec.env.passThrough and define name — add it to passThrough, and to inputs.env if the output depends on it[0m
+[1m[38;2;234;179;8m[vx][0m[2m API_URL is set in your environment, but this task does not get it: a task sees only the variables inputs.env, exec.env.passThrough and define name — add it to inputs.env if the output depends on it, else to passThrough[0m
 [2m└─[0m [1m[38;2;244;114;182m@demo/web[0m[2m#[0m[1m[38;2;96;165;250mtest[0m [2m──[0m [2m(689ms)[0m [1m[38;2;239;68;68mfailed (exit 1)[0m
 ```
 
@@ -133,8 +133,9 @@ cache: true,
 </Frame>
 <Frame title="4. Key on it: a new value runs the test">
 
-```ts title="packages/web/vx.config.ts" ins={2}
+```ts title="packages/web/vx.config.ts" del={1} ins={2,3}
 exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
+exec: { command: 'vitest run' },
 inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'], env: ['API_URL'] },
 outputs: { files: [] },
 cache: true,
@@ -226,9 +227,9 @@ export default defineProject({
   New key, the task runs. See [Caching](../caching/).
 </Concept>
 
-`passThrough` gives the value to the command. It does **not** put it in the key. Add the name to `inputs.env` and a new value means a new key:
+`passThrough` gives the value to the command. It does **not** put it in the key. `inputs.env` gives the value **and** keys it, so a new value means a new key:
 
-<Compare leftTitle="passThrough only" rightTitle="passThrough + inputs.env">
+<Compare leftTitle="passThrough" rightTitle="inputs.env">
 <div slot="left">
 
 ```ts
@@ -242,7 +243,7 @@ New `API_URL` → **up-to-date**, old result.
 <div slot="right">
 
 ```ts
-exec: { command: 'vitest run', env: { passThrough: ['API_URL'] } },
+exec: { command: 'vitest run' },
 inputs: { files: ['src/**', 'vite.config.*', 'vitest.config.*'], env: ['API_URL'] },
 ```
 
@@ -320,7 +321,7 @@ exec: {
 | List                   | The command sees it | The key sees it | Use it for                                                    |
 | ---------------------- | ------------------- | --------------- | ------------------------------------------------------------- |
 | `exec.env.passThrough` | yes                 | no              | a value that does not change the result (`GH_TOKEN`)          |
-| `inputs.env`           | no                  | yes             | with `passThrough`: a value that changes the result (`API_URL`) |
+| `inputs.env`           | yes                 | yes             | a value that changes the result (`API_URL`)                     |
 | `exec.env.define`      | yes                 | yes             | a fixed value written in the config (`NODE_ENV: 'production'`) |
 | `exec.env.secret`      | —                   | —               | a secret whose name vx does not mask by itself                |
 
@@ -334,11 +335,11 @@ Try it: type a variable and answer three questions. The config it needs appears 
 
 ### A Vite public variable
 
-Vite writes `VITE_*` values into the bundle. Pass it **and** key on it, or a new URL ships the old bundle:
+Vite writes `VITE_*` values into the bundle. Key on them in `inputs.env`, or a new URL ships the old bundle. A `*` takes every one:
 
-```ts mark={1,2}
-exec: { command: 'vite build', env: { passThrough: ['VITE_API_URL'] } },
-inputs: { files: ['src/**', 'index.html', 'vite.config.*'], env: ['VITE_API_URL'] },
+```ts mark={2}
+exec: { command: 'vite build' },
+inputs: { files: ['src/**', 'index.html', 'vite.config.*'], env: ['VITE_*'] },
 outputs: { files: ['dist/**'] },
 cache: true,
 ```
@@ -357,25 +358,6 @@ publish: {
 ```
 
 `NPM_TOKEN` holds `TOKEN`, so its value prints as `***`.
-
-### One helper for both lists
-
-A config is TypeScript. A small function returns both lists:
-
-```ts title="packages/web/vx.config.ts"
-import { defineProject } from '@vzn/vx/config'
-
-const keyed = (...names: string[]) => ({
-  exec: { command: 'vite build', env: { passThrough: names } },
-  inputs: { files: ['src/**', 'index.html', 'vite.config.*'], env: names },
-})
-
-export default defineProject({
-  tasks: {
-    build: { ...keyed('VITE_API_URL', 'VITE_SENTRY_DSN'), outputs: { files: ['dist/**'] }, cache: true },
-  },
-})
-```
 
 ### A setting for one run
 
@@ -448,8 +430,9 @@ Nothing else from your shell reaches a task. When a failed task's output names a
 
 Names copied from vx's environment when the task starts. Default `[]`. Not in the key.
 
-- Exact names only: `NEXT_PUBLIC_*` and `!NAME` are refused.
 - A shell variable name: letters, digits and `_`, not starting with a digit.
+- `NEXT_PUBLIC_*` passes every variable named so. `*` is the one wildcard; `*` alone and `!NAME` are refused.
+- Each run matches a pattern once. The lock keeps the pattern as written.
 - An unset name stays unset in the task.
 
 ### `exec.env.define`
@@ -460,7 +443,7 @@ Name and value pairs, both strings. Default `{}`. In the key, as part of the con
 env: { define: { NODE_ENV: 'production', TZ: 'UTC' } },
 ```
 
-`define` beats `passThrough`, which beats the variables every task gets. A task run on another machine gets the same values.
+`define` beats `passThrough` and `inputs.env`, which beat the variables every task gets. A task run on another machine gets the same values.
 
 ### `exec.env.secret`
 
@@ -468,7 +451,10 @@ Names whose values vx prints as `***`. Default `[]`. Exact names, no wildcard. N
 
 ### `inputs.env`
 
-Names whose values go in the key. Default `[]`. It does not pass the value to the command.
+Names the command gets and whose values go in the key. Default `[]`.
+
+- `NEXT_PUBLIC_*` passes and keys every variable named so, as in `passThrough`.
+- A name in both lists is fine.
 
 - Unset, empty and `'x'` are three different keys.
 - A value that is not valid UTF-8 fails the run, naming the variable, never its value.
@@ -596,9 +582,11 @@ vx sets these for itself and removes them at start; do not set them: `VX_HANDED_
 
 <Deeper level="details" title="When it goes wrong">
 
-- **A variable is empty inside the command.** Past a small essential
-  allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
-  you list. Add the name to `exec.env.passThrough`.
+- **A variable is empty inside the command.** Past a small essential allowlist
+  (`PATH`, `HOME`, `CI` and a few more), vx passes only what you list.
+
+  Add the name to `inputs.env`, or to `exec.env.passThrough` when it
+  does not change the result.
 
 </Deeper>
 

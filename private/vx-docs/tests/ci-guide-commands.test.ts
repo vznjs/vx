@@ -27,3 +27,11 @@ it('every vx run / vx watch line on the CI pages selects from the root', () => {
     /\s--(all|filter|affected)\b/.test(l.split(' -- ')[0]!) || /\S#\S/.test(l)
   expect(lines.filter((l) => !selects(l))).toEqual([])
 })
+
+// The page opened with "One command does both: vx pipeline pr", but an
+// affected pipeline refuses on main: a bare --affected has no base there.
+it('the CI page opens with a pipeline for a push to main too', () => {
+  const page = readFileSync(path.join(DOCS, 'ci.mdx'), 'utf8')
+  const first = /```sh\n([\s\S]*?)```/.exec(page)![1]!
+  expect(first).toBe('vx pipeline pr     # a pull request\nvx pipeline main   # a push to main\n')
+})

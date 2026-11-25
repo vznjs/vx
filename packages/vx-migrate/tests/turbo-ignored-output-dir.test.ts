@@ -3,7 +3,8 @@
 // The glob's gitignored `dist/` was named outright in every task's inputs:
 // in the plugin's own build that keyed its own output, which core refuses
 // (lock not written), and in the others it re-added the `!` that took the
-// sibling's output back.
+// sibling's output back. No ignored path a glob matches is named now; the
+// take-back stays.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -38,7 +39,6 @@ it('a gitignored output directory under a global glob is named in no task', asyn
   const m = await mapTurboWorkspace(dir, metas, {
     splice: ownSplice,
     persistentTodo: 'PERSIST',
-    ignoredUnder: async () => ['packages/plugin/dist/', 'packages/plugin/tsconfig.tsbuildinfo'],
     // payload's `tsc` keeps its buildinfo beside the tsconfig: an output too.
     buildInfo: (rel) => (rel === 'packages/plugin' ? ['tsconfig.tsbuildinfo'] : []),
   })

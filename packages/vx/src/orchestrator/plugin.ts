@@ -321,8 +321,8 @@ export interface CommandContext extends BaseContext {
    */
   readonly concurrency: number
   /**
-   * The argv that runs this vx again: the binary when compiled, runtime and
-   * entry from source. Spawn `[...vx, 'run', …]` rather than guess at PATH.
+   * The argv that runs this vx again: the binary when compiled, from source
+   * Bun with the `bin.ts` shebang's flags and the entry. Spawn `[...vx, 'run', …]` rather than guess at PATH.
    */
   readonly vx: readonly string[]
   /**
@@ -424,7 +424,8 @@ export interface ProjectHookContext extends BaseContext {
    * Names a file this project's config was made from (absolute or
    * workspace-relative): `turbo.json`, a `package.json`'s scripts. A run
    * reads the lock, never the file, so once it differs from what `vx lock`
-   * read here, a run refuses, naming `vx lock`, as for an edited vx.config.
+   * read here and maps otherwise, a run refuses, naming `vx lock`, as for an
+   * edited vx.config.
    * A file named while absent is an edit once it appears.
    */
   read(file: string): void

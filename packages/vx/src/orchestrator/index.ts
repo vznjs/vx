@@ -34,6 +34,8 @@ export {
   lockDiscovery,
   addedByPlugin,
   ignoredConfigRefusal,
+  importedBy,
+  stampWorkspaceImports,
   loadProjects,
   loadResolvedProjects,
   loadWorkspacePlugins,

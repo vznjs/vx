@@ -25,7 +25,7 @@ import {
   affectedFilterFor,
   findAllSelection,
   findCwdSelection,
-  NO_TASKS_DECLARED,
+  noTasksDeclared,
   pickTask,
   resolveFilters,
 } from './select.js'
@@ -687,29 +687,37 @@ export async function runCmd(
       const list = `${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
       // A workspace with no task yet is told how to declare one, as the
       // picker tells it; the example line is for outside a workspace.
+      // Only the cwd project's names were read: another project may have one.
+      const elsewhere =
+        here !== null && shown.length === 0 && asked === undefined && here.project !== null
+          ? ((await taskNamesHere(cwd, 'all'))?.names ?? [])
+          : []
       if (
         here !== null &&
         shown.length === 0 &&
         typeof asked !== 'object' &&
-        // Only the cwd project's names were read: another project may have one.
-        (asked === undefined && here.inProject
-          ? ((await taskNamesHere(cwd, 'all'))?.names.length ?? 0)
-          : 0) === 0
+        elsewhere.length === 0
       ) {
-        return refused(NO_TASKS_DECLARED, 'VX_E_USAGE')
+        return refused(noTasksDeclared(await findWorkspaceRoot(cwd)), 'VX_E_USAGE')
       }
+      // A root project with none of its own (the one `vx init` writes): the
+      // example `vx run build` then refused, as only other projects declare it.
+      const others = elsewhere.slice(0, TASKS_SHOWN)
+      const othersList = `${others.join(', ')}${elsewhere.length > others.length ? ` and ${elsewhere.length - others.length} more` : ''}`
       // Outside a project a bare name is refused without --all: the list
       // said "tasks here", and `vx run build` then said "not inside a project".
       const tasksHere =
         'empty' in scoped
           ? scoped.empty
           : shown.length === 0
-            ? 'vx run <task>, e.g. vx run build'
+            ? elsewhere.length > 0
+              ? `${here!.project} declares none, the workspace's tasks with --all: ${othersList}`
+              : 'vx run <task>, e.g. vx run build'
             : asked === 'all'
               ? `every project's tasks: ${list}`
               : asked !== undefined
                 ? `the selected projects' tasks: ${list}`
-                : here?.inProject === false
+                : here?.project === null
                   ? `not inside a project, the workspace's tasks with --all: ${list}`
                   : `tasks here: ${list}`
       return refuse(

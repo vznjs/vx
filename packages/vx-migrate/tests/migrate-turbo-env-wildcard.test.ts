@@ -1,8 +1,6 @@
-// clerk's root integration tasks list `env: ["E2E_*"]`; a written config
-// cannot ask the run's environment, so the entry was dropped with a TODO
-// in each of 24 configs and the tests ran without their variables. The
-// names the task's package (the whole repo, for a root task) spells
-// stand in, as for a framework prefix.
+// clerk's root integration tasks list `env: ["E2E_*"]`. Core takes a `*`
+// env name as written and matches it each run, as Turbo does, so a written
+// config keeps the pattern: nothing stands in for the run's environment.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -10,7 +8,7 @@ import { expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 
-it('a task `*` env name lists what its package spells; one nothing spells stays a todo', async () => {
+it('a task `*` env name is kept as written, in inputs.env or passThrough', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'vx-migrate-envwild-'))
   try {
     await writeFile(
@@ -22,16 +20,10 @@ it('a task `*` env name lists what its package spells; one nothing spells stays 
       JSON.stringify({
         tasks: {
           '//#e2e': { env: ['E2E_APP_*'] },
-          build: { env: ['A_*'], outputs: [] },
+          build: { env: ['A_*', '!A_SECRET', 'B-*'], outputs: [] },
           lint: { passThroughEnv: ['B_*'], outputs: [] },
         },
       }),
-    )
-    await mkdir(path.join(root, 'integration'), { recursive: true })
-    await writeFile(
-      path.join(root, 'integration', 'setup.ts'),
-      'const keys = Object.keys(process.env).filter((k) => k.startsWith("E2E_APP_"))\n' +
-        'export const app = process.env.E2E_APP_ID\n',
     )
     const dir = path.join(root, 'packages', 'a')
     await mkdir(dir, { recursive: true })
@@ -45,31 +37,36 @@ it('a task `*` env name lists what its package spells; one nothing spells stays 
     const p = await migrateTurbo(root, metas)
     const task = (pkg: string, name: string) =>
       p.projects.find((x) => x.name === pkg)!.tasks.find((t) => t.name === name)!
-    const env = (pkg: string, name: string) =>
-      (task(pkg, name).task as { inputs: { env?: unknown } }).inputs.env
+    const of = (pkg: string, name: string) =>
+      task(pkg, name).task as {
+        inputs: { env?: unknown }
+        exec: { env?: { passThrough?: unknown } }
+      }
     expect({
-      e2e: env('ws', 'e2e'),
-      build: env('a', 'build'),
+      e2e: of('ws', 'e2e').inputs.env,
+      build: of('a', 'build').inputs.env,
+      buildPass: of('a', 'build').exec.env?.passThrough,
+      buildTodos: task('a', 'build').todos,
+      lintPass: of('a', 'lint').exec.env?.passThrough,
       lintTodos: task('a', 'lint').todos,
-      notes: p.notes.filter((n) => n.startsWith('env ')),
     }).toEqual({
-      e2e: ['E2E_APP_ID'],
-      build: ['A_KEY'],
-      lintTodos: ['passThroughEnv "B_*": wildcards are not supported — list explicit names'],
-      notes: [
-        'env "A_*": the configs list the names the files of each task\'s package and its workspace dependencies spell (1 task) — add any other a task reads to inputs.env and exec.env.passThrough',
-        'env "E2E_APP_*": the configs list the names the files of each task\'s package and its workspace dependencies spell (1 task) — add any other a task reads to inputs.env and exec.env.passThrough',
+      e2e: ['E2E_APP_*'],
+      build: ['A_*'],
+      buildPass: undefined,
+      buildTodos: [
+        'env "B-*": a vx env pattern is letters, digits, _ and * — list the names instead',
+        'env "!A_SECRET": vx has no exclusion, so "A_*" still takes A_SECRET — narrow the pattern to leave it out',
       ],
+      lintPass: ['B_*'],
+      lintTodos: [],
     })
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 })
 
-// assistant-ui's turbo.json lists "ASSISTANT_*" twice under one task's env:
-// each package nothing matched got the same todo twice, and init's summary
-// named every such task twice.
-it('a `*` env name listed twice is one todo', async () => {
+// assistant-ui's turbo.json lists "ASSISTANT_*" twice under one task's env.
+it('a `*` env name listed twice is one entry', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'vx-migrate-envwild2-'))
   try {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
@@ -95,12 +92,7 @@ it('a `*` env name listed twice is one todo', async () => {
     expect({
       todos: build.todos,
       env: (build.task as { inputs: { env?: unknown } }).inputs.env,
-    }).toEqual({
-      todos: [
-        'env "C_*": wildcards are not supported in vx env names — list explicit names in inputs.env + exec.env.passThrough',
-      ],
-      env: ['D'],
-    })
+    }).toEqual({ todos: [], env: ['C_*', 'D'] })
   } finally {
     await rm(root, { recursive: true, force: true })
   }

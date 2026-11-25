@@ -88,6 +88,16 @@ it("triggers one pipeline per size for a wave: its slots, the run's commit and e
   expect(calls[2]!.form).toMatchObject({ ref: 'main', 'variables[VX_DTE_IDS]': '3=small#11' })
 })
 
+// A VX_DTE_SECRET the user set went out as a pipeline variable, readable by
+// anyone who can see the triggered pipeline's variables: workers take it
+// from the project's own CI/CD variables instead.
+it("passes the run's own secret but never one the user set", async () => {
+  process.env['VX_DTE_SECRET'] = 's'
+  await gitlab().spawn(worker)
+  expect(calls[0]!.form['variables[VX_DTE_SECRET]']).toBeUndefined()
+  expect(calls[0]!.form['variables[VX_DTE_RUN]']).toBe('r')
+})
+
 it('never puts two workers of a wave in one slot', async () => {
   const adapter = gitlab()
   // small#1 and small#5 share slot 1 of 4: two pipelines, each one job.

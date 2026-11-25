@@ -605,7 +605,9 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       // goes, so the server knows a long run's tasks before it ends.
       const sent = (reported = new Live(remote, ctx.warn))
       ctx.on('onTaskComplete', (node, outcome) => {
-        if (node.config.exec?.command === undefined) return
+        // A persistent task's time is to ready, which local history keeps no row of.
+        if (node.config.exec?.command === undefined || node.config.exec.persistent !== undefined)
+          return
         const def = taskDefinitions([node]).get(node.id)
         if (def === undefined) return
         sent.task(def, timing(outcome), outcomeOf(outcome, def))

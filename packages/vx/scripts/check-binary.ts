@@ -120,6 +120,7 @@ run(
     '--no-compile-autoload-dotenv',
     '--no-compile-autoload-bunfig',
     '--compile-autoload-package-json',
+    '--compile-autoload-tsconfig',
     '--minify',
     '--bytecode',
     '--format=esm',
@@ -231,11 +232,12 @@ console.log(`${path.relative(root, out)} resolves a package's main and exports`)
 
 // A workspace written the way the docs show it: bare `@vzn/vx`,
 // `@vzn/vx/config` and a plugin package resolved through node_modules
-// (symlinks into this repo, as a workspace install makes them). Core has
+// (core a symlink into this repo, as a workspace install makes it). Core has
 // no root `index.ts` or `config/index.ts`: the binary answers both
-// specifiers from its own copy. The plugin's own `@vzn/vx` import
-// is a second copy of core beside the binary's, and its `schedule` hook
-// runs across the two. The second run must restore the first run's
+// specifiers from its own copy. The plugin is written here, never linked
+// from another package (a project reads only its own files): its own
+// `@vzn/vx` import is a second copy of core beside the binary's, and its
+// `schedule` hook runs across the two and leaves a mark. The second run must restore the first run's
 // output bytes (the command writes a fresh stamp) through the binary's
 // own container reader.
 const bare = workspace('bare', {
@@ -247,17 +249,29 @@ const bare = workspace('bare', {
 export default defineProject({ name: 'a', tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true } } })
 `,
   '.vx/workspace.mjs': `import { defineWorkspace } from '@vzn/vx'
-import { vxHistory } from '@vzn/vx-history'
-export default defineWorkspace({ plugins: [vxHistory({ assume: { 'a#build': 1000 } })] })
+import { probe } from 'schedule-probe'
+export default defineWorkspace({ plugins: [probe()] })
 `,
-  '.gitignore': 'node_modules\n.vx/cache/\n',
+  'node_modules/schedule-probe/package.json': JSON.stringify({
+    name: 'schedule-probe',
+    type: 'module',
+    exports: { '.': './index.js' },
+  }),
+  'node_modules/schedule-probe/index.js': `import { writeFileSync } from 'node:fs'
+import path from 'node:path'
+import { definePlugin } from '@vzn/vx'
+export const probe = () =>
+  definePlugin(import.meta, {
+    schedule(nodes, ctx) {
+      writeFileSync(path.join(ctx.workspaceRoot, 'scheduled.txt'), [...nodes.keys()].join(','))
+      return new Map([...nodes.keys()].map((id) => [id, 1000]))
+    },
+  })
+`,
+  '.gitignore': 'node_modules\n.vx/cache/\nscheduled.txt\n',
 })
 mkdirSync(path.join(bare, 'node_modules', '@vzn'), { recursive: true })
 symlinkSync(root, path.join(bare, 'node_modules', '@vzn', 'vx'))
-symlinkSync(
-  path.resolve(root, '..', 'vx-history'),
-  path.join(bare, 'node_modules', '@vzn', 'vx-history'),
-)
 git(bare, 'init', '-q')
 spawn([out, 'lock'], bare)
 git(bare, 'add', '-A')
@@ -269,15 +283,18 @@ const built = existsSync(outFile) ? readFileSync(outFile, 'utf8').trim() : undef
 rmSync(outFile, { force: true })
 const second = build()
 const restored = existsSync(outFile) ? readFileSync(outFile, 'utf8').trim() : undefined
+const markFile = path.join(bare, 'scheduled.txt')
+const scheduled = existsSync(markFile) ? readFileSync(markFile, 'utf8') : undefined
 rmSync(bare, { recursive: true, force: true })
 if (
   first.exitCode !== 0 ||
   second.exitCode !== 0 ||
   built?.startsWith('built-') !== true ||
-  restored !== built
+  restored !== built ||
+  scheduled !== 'a#build'
 ) {
   fail(
-    `binary on a bare-specifier workspace: exits ${first.exitCode}, ${second.exitCode}; out.txt ${JSON.stringify(restored)}, expected the first run's ${JSON.stringify(built)}\n${text(first.stderr)}${text(second.stderr)}`,
+    `binary on a bare-specifier workspace: exits ${first.exitCode}, ${second.exitCode}; out.txt ${JSON.stringify(restored)}, expected the first run's ${JSON.stringify(built)}; the plugin's schedule saw ${JSON.stringify(scheduled)}, expected "a#build"\n${text(first.stderr)}${text(second.stderr)}`,
   )
 }
 console.log(`${path.relative(root, out)} runs a bare-specifier workspace with a plugin package`)

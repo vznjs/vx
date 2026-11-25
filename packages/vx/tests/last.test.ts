@@ -583,6 +583,23 @@ describe('parseLastArgs', () => {
     ])
   })
 
+  it('a run id beside --stats is refused as beside --list, not read as a task', () => {
+    // It read as the task and said "no recorded run of 0199b2c4-5e6f".
+    const error = (args: string[]) => parseLastArgs(args).error
+    expect([
+      error(['0199b2c4-5e6f', '--stats']),
+      error(['--stats', '0199b2c4']),
+      error(['--stats', '0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d']),
+    ]).toEqual([
+      'a run id and --stats do not combine: replay 0199b2c4-5e6f, or --stats [<task>] (see `vx last --help`)',
+      'a run id and --stats do not combine: replay 0199b2c4, or --stats [<task>] (see `vx last --help`)',
+      'a run id and --stats do not combine: replay 0199b2c4-5e6f-7a1b-8c2d-3e4f5a6b7c8d, or --stats [<task>] (see `vx last --help`)',
+    ])
+    // CONTROL: a task, named or by id, is still --stats' task.
+    expect(parseLastArgs(['--stats', 'test']).task).toBe('test')
+    expect(parseLastArgs(['app#build', '--stats']).task).toBe('app#build')
+  })
+
   it('an empty word is no run id, task or log, as vx why reads one', () => {
     // '' is the start of every run id: it replayed the only run, or said
     // it is the start of all of them.

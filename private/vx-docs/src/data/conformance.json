@@ -1018,19 +1018,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2144,
-        "can": 2144,
-        "of": 2214
+        "pass": 2153,
+        "can": 2153,
+        "of": 2223
       },
       "correctness": {
-        "pass": 1730,
-        "can": 1730,
-        "of": 1791
+        "pass": 1735,
+        "can": 1735,
+        "of": 1796
       },
       "efficiency": {
-        "pass": 325,
-        "can": 325,
-        "of": 333
+        "pass": 329,
+        "can": 329,
+        "of": 337
       },
       "data": {
         "pass": 89,
@@ -1053,14 +1053,14 @@
         "of": 169
       },
       "affected": {
-        "pass": 186,
-        "can": 186,
-        "of": 186
+        "pass": 194,
+        "can": 194,
+        "of": 194
       },
       "cache": {
-        "pass": 105,
-        "can": 105,
-        "of": 128
+        "pass": 106,
+        "can": 106,
+        "of": 129
       },
       "inputs": {
         "pass": 481,
@@ -1095,19 +1095,19 @@
     },
     "turbo": {
       "all": {
-        "pass": 1397,
-        "can": 1814,
-        "of": 2214
+        "pass": 1404,
+        "can": 1823,
+        "of": 2223
       },
       "correctness": {
-        "pass": 1123,
-        "can": 1467,
-        "of": 1791
+        "pass": 1127,
+        "can": 1472,
+        "of": 1796
       },
       "efficiency": {
-        "pass": 244,
-        "can": 317,
-        "of": 333
+        "pass": 247,
+        "can": 321,
+        "of": 337
       },
       "data": {
         "pass": 30,
@@ -1130,14 +1130,14 @@
         "of": 169
       },
       "affected": {
-        "pass": 144,
-        "can": 185,
-        "of": 186
+        "pass": 150,
+        "can": 193,
+        "of": 194
       },
       "cache": {
-        "pass": 87,
-        "can": 104,
-        "of": 128
+        "pass": 88,
+        "can": 105,
+        "of": 129
       },
       "inputs": {
         "pass": 342,
@@ -1172,19 +1172,19 @@
     },
     "nx": {
       "all": {
-        "pass": 1395,
-        "can": 1849,
-        "of": 2214
+        "pass": 1400,
+        "can": 1858,
+        "of": 2223
       },
       "correctness": {
-        "pass": 1082,
-        "can": 1492,
-        "of": 1791
+        "pass": 1084,
+        "can": 1497,
+        "of": 1796
       },
       "efficiency": {
-        "pass": 283,
-        "can": 327,
-        "of": 333
+        "pass": 286,
+        "can": 331,
+        "of": 337
       },
       "data": {
         "pass": 30,
@@ -1207,14 +1207,14 @@
         "of": 169
       },
       "affected": {
-        "pass": 124,
-        "can": 186,
-        "of": 186
+        "pass": 129,
+        "can": 194,
+        "of": 194
       },
       "cache": {
         "pass": 81,
-        "can": 96,
-        "of": 128
+        "can": 97,
+        "of": 129
       },
       "inputs": {
         "pass": 346,
@@ -1250,18 +1250,18 @@
     "vite-task": {
       "all": {
         "pass": 1028,
-        "can": 1397,
-        "of": 2214
+        "can": 1398,
+        "of": 2223
       },
       "correctness": {
         "pass": 863,
-        "can": 1176,
-        "of": 1791
+        "can": 1177,
+        "of": 1796
       },
       "efficiency": {
         "pass": 156,
         "can": 212,
-        "of": 333
+        "of": 337
       },
       "data": {
         "pass": 9,
@@ -1286,12 +1286,12 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 186
+        "of": 194
       },
       "cache": {
         "pass": 72,
-        "can": 83,
-        "of": 128
+        "can": 84,
+        "of": 129
       },
       "inputs": {
         "pass": 314,
@@ -1326,19 +1326,19 @@
     },
     "nix": {
       "all": {
-        "pass": 1100,
-        "can": 1393,
-        "of": 2214
+        "pass": 1101,
+        "can": 1394,
+        "of": 2223
       },
       "correctness": {
-        "pass": 943,
-        "can": 1197,
-        "of": 1791
+        "pass": 944,
+        "can": 1198,
+        "of": 1796
       },
       "efficiency": {
         "pass": 147,
         "can": 186,
-        "of": 333
+        "of": 337
       },
       "data": {
         "pass": 10,
@@ -1363,12 +1363,12 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 186
+        "of": 194
       },
       "cache": {
-        "pass": 85,
-        "can": 101,
-        "of": 128
+        "pass": 86,
+        "can": 102,
+        "of": 129
       },
       "inputs": {
         "pass": 346,
@@ -1403,19 +1403,19 @@
     },
     "moon": {
       "all": {
-        "pass": 1283,
-        "can": 1745,
-        "of": 2214
+        "pass": 1289,
+        "can": 1746,
+        "of": 2223
       },
       "correctness": {
-        "pass": 1012,
-        "can": 1426,
-        "of": 1791
+        "pass": 1015,
+        "can": 1423,
+        "of": 1796
       },
       "efficiency": {
-        "pass": 236,
-        "can": 284,
-        "of": 333
+        "pass": 239,
+        "can": 288,
+        "of": 337
       },
       "data": {
         "pass": 35,
@@ -1424,12 +1424,12 @@
       },
       "graph": {
         "pass": 187,
-        "can": 243,
+        "can": 240,
         "of": 321
       },
       "config": {
-        "pass": 59,
-        "can": 85,
+        "pass": 58,
+        "can": 82,
         "of": 88
       },
       "failure": {
@@ -1438,14 +1438,14 @@
         "of": 169
       },
       "affected": {
-        "pass": 144,
-        "can": 186,
-        "of": 186
+        "pass": 150,
+        "can": 194,
+        "of": 194
       },
       "cache": {
-        "pass": 84,
-        "can": 102,
-        "of": 128
+        "pass": 85,
+        "can": 103,
+        "of": 129
       },
       "inputs": {
         "pass": 350,
@@ -1459,7 +1459,7 @@
       },
       "env": {
         "pass": 138,
-        "can": 146,
+        "can": 145,
         "of": 149
       },
       "report": {
@@ -1469,7 +1469,7 @@
       },
       "sandbox": {
         "pass": 0,
-        "can": 1,
+        "can": 0,
         "of": 141
       },
       "watch": {
@@ -1807,9 +1807,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 2, expected success"
+          "status": "n/a",
+          "detail": "A moon target is `project:task`, so a task named with a `:` cannot be run."
         }
       }
     },
@@ -28098,9 +28097,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 2, expected success"
+          "status": "n/a",
+          "detail": "A moon target is `project:task`, so a task named with a `:` cannot be run."
         }
       }
     },
@@ -28131,9 +28129,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 2, expected success"
+          "status": "n/a",
+          "detail": "A moon target is `project:task`, so a task named with a `:` cannot be run."
         }
       }
     },
@@ -32875,6 +32872,320 @@
       }
     },
     {
+      "id": "affected/undeclared-file-marks-no-task",
+      "ref": "kgi7uc",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "An edit to a file no task declares selects no task, in its project or its dependents",
+      "why": "Every task here declares the files it reads, and none reads the README. Editing it cannot change any result, so an affected run has nothing to do. Selecting the project’s tasks, and its dependents’ through them, because the file sits in the project reruns work whose answer is already known.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/definition-edit-misses-task-and-dependents",
+      "ref": "vebf2w",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A new command for a task reruns it and every task that depends on it, and only those",
+      "why": "A task’s definition is part of what it produces: a new command can write other bytes. The task and every task built on its result must miss the cache, while a project with no edge to it still replays. Replaying the old result under the new command is a stale hit that ships the wrong build.",
+      "from": [
+        "affected-by-inputs",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#test"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#test, app#build, app#test"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/task-without-inputs-always-selected",
+      "ref": "wq2ih5",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A task that declares no inputs is selected by every change",
+      "why": "A task that names no inputs has not said what it reads, so no change can be ruled out: it may read any file, here or elsewhere. An affected run must select it wherever it is declared. Leaving it out because nothing declared the edited file skips a check the edit can make fail.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#check, docs#check"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#check, docs#check"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#check, docs#check"
+        }
+      }
+    },
+    {
+      "id": "affected/empty-inputs-task-reached-through-dependency",
+      "ref": "9fouvi",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A task that reads no files is selected when a task it depends on is",
+      "why": "Empty inputs say the task reads none of its own project’s files, not that nothing can change it. A deploy step that waits on a build depends on that build’s result. When the build is affected, the step is too; leaving it out ships the old build while the new one passes.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#ship"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/unaffected-task-not-restored",
+      "ref": "pvkroi",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A task the change does not reach is not restored from the cache, though its project changed",
+      "why": "An affected run selects the tasks a change reaches, not every task of a changed project. The project’s `guide` reads only its own folder, so an edit to its sources leaves it out. Replaying it from the cache anyway downloads and writes outputs nobody asked for, and on a remote cache each one costs a round trip.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/no-op-task-input-reaches-dependants",
+      "ref": "g5kjyg",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A task with inputs and no command passes its files’ changes to the tasks that depend on it",
+      "why": "A package whose build has nothing to do, its sources used as they are, still has a build its dependants wait on. Its inputs say which files are its result. An edit there changes what the dependants build from, so they are affected; leaving them out because the task runs nothing ships a build of the old sources.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/no-op-task-unread-file-reaches-nobody",
+      "ref": "7mykjj",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A task with inputs and no command passes on no change to a file it does not declare",
+      "why": "A task that runs nothing is still keyed by the inputs it declares, and no further. An edit to a file outside them changes nothing its dependants build from. Selecting them because the file sits in the same project reruns builds whose answer is already known.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/group-own-files-reach-nobody",
+      "ref": "hke46x",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A task with no command and no inputs is not affected by its own project’s files, only by the tasks it groups",
+      "why": "A task with neither a command nor inputs only groups others. It reads no file, so an edit in its project reaches it only through a task it groups. Here the grouped task reads the README alone, so a source edit leaves the group and its dependants with nothing new to build from; selecting them reruns work the edit cannot change.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran lib#check, app#build, expected it replayed or left out"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran lib#check, app#build, expected it replayed or left out"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "ran lib#check, app#build, expected it replayed or left out"
+        }
+      }
+    },
+    {
+      "id": "affected/group-reached-through-its-dependency",
+      "ref": "5misf3",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A task with no command and no inputs is affected when a task it groups is",
+      "why": "A group stands for the tasks it depends on. When one of them reads the edited file, the group is affected, and so is every task that waits on the group. Stopping at the group because it reads no files itself leaves the dependants building from the old result.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
       "id": "failure/continue-runs-past-a-failure",
       "ref": "2thhzg",
       "category": "failure",
@@ -33923,9 +34234,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "packages/a/dist/out.txt is \"leaked\", expected \"unset\""
+          "status": "n/a",
+          "detail": "By design, moon passes its whole environment to every task: an env input keys the task but hides nothing from it."
         }
       }
     },
@@ -37135,9 +37445,8 @@
           "status": "pass"
         },
         "moon": {
-          "status": "fail",
-          "step": 2,
-          "detail": "did not run a#build"
+          "status": "n/a",
+          "detail": "By design, moon’s env inputs are upper case: `$__proto__` names a file, not a variable."
         }
       }
     },
@@ -51463,7 +51772,8 @@
           "detail": "Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
         },
         "moon": {
-          "status": "pass"
+          "status": "n/a",
+          "detail": "moon’s `timeout` is a whole number of seconds: a fraction fails to load the config."
         }
       }
     },
@@ -51499,9 +51809,8 @@
           "detail": "Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "n/a",
+          "detail": "moon’s `timeout` is a whole number of seconds: a fraction fails to load the config."
         }
       }
     },
@@ -51536,9 +51845,8 @@
           "detail": "Nix has no time limit of a build’s own (`timeout` is a setting for every build)."
         },
         "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
+          "status": "n/a",
+          "detail": "moon’s `timeout` is a whole number of seconds: a fraction fails to load the config."
         }
       }
     },

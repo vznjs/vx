@@ -51,6 +51,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'discover-parity',
     'discover',
     'entry-shapes',
+    'ignored-member',
     'installed-tree',
     'io-refusals',
     'link-outside-root',
@@ -113,6 +114,13 @@ export default defineProject({
       description: 'nothing to build — consumed as source',
       dependsOn: ['^build'],
       inputs: { files: ['src/**'] },
+    },
+
+    // What @vzn/vx-docs reads from this package through its node_modules
+    // (the plugin pages): never run, its key reaches the site's tasks.
+    site: {
+      description: 'the files the site reads from this package',
+      inputs: { files: ['README.md', 'package.json'] },
     },
 
     lint: {

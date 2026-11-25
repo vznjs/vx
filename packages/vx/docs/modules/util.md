@@ -1617,7 +1617,8 @@ or `_DIR` and is not git's `GIT_CONFIG_KEY_<n>`, or the task names it in
 `exec.env.secret` (L-14), and its value has six characters or more. No such variable: `secretMask` is null and nothing is
 paid per byte. Any variable's value also masks a URL's password, split
 as WHATWG splits it: the userinfo ends at the last `@` before the path,
-query or fragment, so `app:p@ss@db` masks `p@ss`.
+query or fragment, so `app:p@ss@db` masks `p@ss`. An escaped password
+is masked decoded too (`p%40ss` and `p@ss`), as a driver prints it.
 
 A mask whose sources include `process.env` also masks every value
 `holdSecret` holds: what a plugin's keychain (`ctx.secret`) answered,
@@ -1708,6 +1709,23 @@ can. `exec.sandbox` is the boundary (`docs/security.md`).
 `tests/hide-env.unsafe.test.ts` holds both directions on both systems
 and prints the cost; `tests/sandbox-parent-env.unsafe.test.ts` holds a
 real run.
+
+### util/essential-env: env patterns
+
+An env name holding `*` (`VITE_*`) in `inputs.env` or `exec.env.passThrough`
+is a pattern. `envPatternProblem` says why the schema refuses one (a bare
+`*`, a character no variable name has, a leading digit), or null.
+
+`expandEnvNames` replaces each pattern by the shell-name variables of
+`taskEnvSource()` it matches, sorted, each once. A list with no `*` comes
+back as it is, so a config with no pattern keys as before.
+
+Matches are learned once per run: `forgetEnvMatches` opens the next run
+(`prepare.ts`, beside `beginRun()`) and runs when `setVxOnlyEnv` changes
+vx's own env. So the key, the run token and the spawn agree on the names.
+
+`envCovers(cover, entry)` says whether every variable `entry` names,
+`cover` names too: how `vx lock` sees a bundler variable a pattern holds.
 
 ### util/env-flag
 
@@ -1958,13 +1976,14 @@ export const IGNORED_SIGNALS_ENV = 'VX_IGNORED_SIGNALS' // a hand-off names the 
   default), and the local vx reads them from there, removes the variable
   and installs a listener that does nothing: that is the ignore.
 - Read once per process, before the first handler: `signals.ts` and
-  `vx watch` ask it before they install theirs, and a removed handler
+  `vx watch` ask it before they install theirs, as does `vx lock`'s
+  `exitOnStop` (a `nohup vx lock` died of the hang-up), and a removed handler
   does not bring the ignore back.
 
 ### Tests
 
 `tests/signal-ignored.test.ts` (both answers for both signals, each from a fresh
-process, and a `vx run` started with SIGINT ignored running on through one); `tests/task-tree-kill.test.ts` and
+process, and a `vx run` and a `vx lock` started with SIGINT ignored running on through one); `tests/task-tree-kill.test.ts` and
 `tests/watch-signals.test.ts` (a nohup'd `vx run` and `vx watch` run on
 through a hang-up; each fails with the handler installed regardless).
 
@@ -2122,6 +2141,11 @@ export function checkIgnoreSync(
 ): Set<string> | null
 export function listedSync(cwd: string, dirs: readonly string[]): string[] | null
 export function skipWorktreeSync(cwd: string, rel: string): string | null
+export function changedSinceCommitOf(
+  cwd: string,
+  anchor: string,
+  rels: readonly string[],
+): Set<string> | null
 export function ignoreCaseLies(dir: string, probe: string): boolean
 export function gitCaseArgs(cwd: string): readonly string[]
 export function wholeIgnored(
@@ -2164,6 +2188,14 @@ export function ignoredInputLine(task: string, rel: string, glob: string): strin
   repository path when the index flags it skip-worktree (a sparse
   checkout left it out), else null. Asked only when a locked config is
   missing (`orchestrator/projects.ts`), so a run pays no spawn.
+- `uncheckedSubmoduleSync`: one `git ls-files --stage` of a directory's
+  ancestors: the outermost submodule among them with no `.git` and nothing
+  in it (a clone skipped it), else null. Asked only when a locked config
+  is missing (a run, `vx lock`), so a full checkout pays no spawn.
+- `changedSinceCommitOf`: of `rels`, the ones `git diff --name-only` lists
+  against the last commit that changed `anchor`; null when git cannot say.
+  Asked only when a run with no stamps refuses a mapping, to name an
+  edited `.vx/workspace.*` instead of the projects it maps.
 - `ignoreCaseLies`: whether `core.ignorecase=true`, which git in `dir`
   reported, is false on disk (a `.git` copied from macOS to Linux): one
   stat of `probe` with its name's case swapped, once per `dir`. Asked

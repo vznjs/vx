@@ -3,8 +3,8 @@ import type { Feature, Selector, TaskReport, WorkspaceSpec } from './spec.ts'
 /** Runs a command in the case's sandbox; resolves to its output. */
 export type Read = (argv: string[]) => Promise<string>
 
-/** A task's command as the tool must run it: the case's command, with the harness's marks around it. */
-export type Command = (project: string, task: string) => string
+/** A task's command as the tool must run it: the case's command, with the harness's marks around it; `undefined` when the task has none. */
+export type Command = (project: string, task: string) => string | undefined
 
 /**
  * One tool under test. An adapter only translates: the neutral workspace
@@ -81,6 +81,8 @@ export interface RunOptions {
   root?: string
   /** Plan only. */
   dry?: boolean
+  /** The workspace as configured: a tool whose CLI must be told where a task is declared reads it. */
+  workspace?: WorkspaceSpec
   /** Rebuild cached tasks and fail when their bytes differ. */
   verify?: boolean
 }

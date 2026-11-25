@@ -61,3 +61,46 @@ it("every cached test and type-aware lint task of a package importing core's tes
   }
   expect(unkeyed).toEqual([])
 })
+
+// vx-cache's tests import vx-cache-server's test issuer and blob store,
+// which its edge to vx-cache-server's `build` (`src/**`) never keys: an
+// edit to them replayed vx-cache's pass (2026-11-25). A test file of
+// another package that a package's tests import is in each cached test
+// and type-aware lint task's `inputs.workspaceFiles`, as a path or a glob.
+it("every cached test and type-aware lint task keys another package's test files its tests import", () => {
+  const OTHER = /from '\.\.\/\.\.\/(vx-[a-z-]+)\/tests\/([^']+)'/g
+  const unkeyed: string[] = []
+  for (const name of readdirSync(path.join(REPO, 'packages'))) {
+    const dir = path.join(REPO, 'packages', name)
+    const imported = new Set<string>()
+    try {
+      for (const f of readdirSync(path.join(dir, 'tests'))) {
+        if (!/\.[cm]?[jt]s$/.test(f)) continue
+        for (const m of readFileSync(path.join(dir, 'tests', f), 'utf8').matchAll(OTHER))
+          if (m[1] !== 'vx') imported.add(`packages/${m[1]}/tests/${m[2]!.replace(/\.js$/, '.ts')}`)
+      }
+    } catch {
+      continue
+    }
+    if (imported.size === 0) continue
+    const lock = JSON.parse(readFileSync(path.join(dir, 'vx.lock.json'), 'utf8')) as {
+      tasks: Record<
+        string,
+        {
+          cache?: boolean
+          exec?: { command?: string }
+          inputs?: { files?: string[]; workspaceFiles?: string[] }
+        }
+      >
+    }
+    for (const [task, t] of Object.entries(lock.tasks)) {
+      if (t.cache !== true || !(t.inputs?.files ?? []).includes('tests/**')) continue
+      if (!/\bbun test\b|--type-aware/.test(t.exec?.command ?? '')) continue
+      const globs = t.inputs?.workspaceFiles ?? []
+      for (const file of imported)
+        if (!globs.some((g) => new Bun.Glob(g).match(file)))
+          unkeyed.push(`packages/${name}#${task}: ${file}`)
+    }
+  }
+  expect(unkeyed).toEqual([])
+})

@@ -24,8 +24,10 @@ import {
   hasHook,
   holdLockFiles,
   ignoredConfigRefusal,
+  importedBy,
   loadProjects,
   networkPatternRefusal,
+  stampWorkspaceImports,
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
@@ -47,18 +49,21 @@ import {
   outputMatcher,
   relPosix,
   type RefusalParts,
+  uncheckedSubmoduleSync,
   UserError,
   errorCode,
   secretMask,
   secretNamed,
+  envCovers,
   type SecretMask,
   refuseSymlink,
   exitOnStop,
   writeAllOrNone,
   writeNoFollow,
 } from '../util/index.js'
-import { makeIgnoredCacheDir } from '../cache/index.js'
+import { answerRuntime, makeIgnoredCacheDir } from '../cache/index.js'
 import { type ConfigStamps, takeConfigStamps, writeConfigStamps } from '../memo/index.js'
+import { workspaceFile, workspaceRootOf } from '../handoff.js'
 import * as ui from '../ui/index.js'
 import { refusalNotice, sayNotice } from '../ui/index.js'
 import {
@@ -83,6 +88,7 @@ import {
   sameRecord,
   parseDependenciesLock,
   dependenciesLockWrite,
+  evaluatedWorkspace,
   type DependenciesLock,
   type LockedProject,
   type Lockfile,
@@ -250,15 +256,68 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         'VX_E_LOCK',
       )
     }
+    // A submodule a clone skipped: what the lock holds there would leave it,
+    // and the committed lock flipped between machines. Asked only of what
+    // the lock holds and the worktree lacks, so a full checkout pays nothing.
+    const held = await readLockfile(root).catch(() => null)
+    if (held !== null) {
+      const here = new Set([
+        ...found.map((f) => lockKey(root, f.dir)),
+        ...nestedWorkspaces.map((d) => lockKey(root, d)),
+      ])
+      const missing = [
+        ...Object.entries(held.projects).flatMap(([dir, p]) => (p.file === undefined ? [] : [dir])),
+        ...(held.nestedWorkspaces ?? []),
+      ].filter((dir) => dir !== '.' && !here.has(dir))
+      const unchecked = [
+        ...new Set(
+          missing.flatMap((dir) => {
+            const at = uncheckedSubmoduleSync(root, dir)
+            return at === null ? [] : [at]
+          }),
+        ),
+      ].sort()
+      if (unchecked.length > 0)
+        throw new UserError(
+          `${listed(unchecked, 5)} ${unchecked.length === 1 ? 'is a submodule' : 'are submodules'} not checked out, so vx lock cannot read what the lock holds there — run \`git submodule update --init ${unchecked.join(' ')}\``,
+          'VX_E_LOCK',
+        )
+    }
     out.strayReviews = strayReviews
     out.shadowed = shadowed
-    out.stamps = {
-      cacheDir,
-      taken: await takeConfigStamps(
-        root,
-        found.map((f) => f.configPath),
-      ),
+    // The workspace file too: the plugins' options there map the projects.
+    const workspace = await workspaceFile(root)
+    // Each config's local imports, stamped beside it: a helper edited with no
+    // `vx lock` ran the locked config, green.
+    const sources = new Map<string, Uint8Array>()
+    const taken = await takeConfigStamps(
+      root,
+      [
+        ...found.map((f) => f.configPath),
+        ...(workspace !== null && workspaceRootOf(workspace) === root ? [workspace] : []),
+      ],
+      sources,
+    )
+    const imported = await importedBy(root, found, sources)
+    const helpers = await takeConfigStamps(root, [...new Set([...imported.values()].flat())])
+    taken.configs = { ...taken.configs, ...helpers.configs }
+    const byDir: Record<string, string[]> = {}
+    const readBy = (dir: string, files: Iterable<string>): void => {
+      const key = lockKey(root, dir)
+      const rels = [...files].map((f) => relPosix(root, f))
+      if (rels.length > 0) byDir[key] = [...new Set([...(byDir[key] ?? []), ...rels])].sort()
     }
+    for (const [dir, files] of imported) readBy(dir, files)
+    taken.reads = byDir
+    // A plugin option may live in a file the workspace file imports.
+    if (workspace !== null && workspaceRootOf(workspace) === root)
+      await stampWorkspaceImports(root, workspace, sources.get(workspace), taken)
+    // Only the bytes the plugins came from: an edit since the load is
+    // asked of the next run.
+    const rel = workspace === null ? null : path.relative(root, workspace)
+    const read = rel === null ? undefined : taken.configs[rel]
+    if (read !== undefined && !evaluatedWorkspace(workspace!, read[2])) delete taken.configs[rel!]
+    out.stamps = { cacheDir, taken }
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(
       found.map((f) => f.configPath),
@@ -315,9 +374,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     // The files a `project` plugin made a config from, stamped as configs are
     // (after the stage read them: one edited in between reads as unchanged).
     if (reads !== undefined && reads.size > 0 && out.stamps !== undefined) {
-      const byDir: Record<string, string[]> = {}
-      for (const [dir, files] of reads)
-        byDir[lockKey(root, dir)] = [...files].map((f) => relPosix(root, f)).sort()
+      for (const [dir, files] of reads) readBy(dir, files)
       const read = await takeConfigStamps(root, [
         ...new Set([...reads.values()].flatMap((f) => [...f])),
       ])
@@ -325,6 +382,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       // A file absent has no stamp: a run refuses once it appears.
       out.stamps.taken = { ...taken, configs: { ...taken.configs, ...read.configs }, reads: byDir }
     }
+    if (reads !== undefined) out.reads = reads
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     // Each project as the stages left it, and nothing of the steps there: a
     // run reads its name, its config after the `project` stage and its
@@ -510,6 +568,8 @@ interface GraphCheck {
   dependencies: DependenciesLock | null
   /** Each config as read before its evaluation, and where a run reads it back. */
   stamps?: { cacheDir: string; taken: ConfigStamps }
+  /** The files the `project` stage made each project's config from, by directory. */
+  reads?: ReadonlyMap<string, ReadonlySet<string>>
 }
 
 /** Each project's edges and each claimed file's digests, as `--affected` reads them back. */
@@ -707,7 +767,7 @@ async function writeLock(
     metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config!]),
   )
   const reviews = check.reviewFiles ? reviewsOf(metas, check.resolved) : []
-  const leaks = await lockLeaks(root, check, metas, projects, reviews)
+  const leaks = await lockLeaks(root, check, projects, reviews)
   if (leaks.length > 0) {
     notWritten('', {
       headline: 'these configs evaluated to a secret value',
@@ -782,9 +842,12 @@ async function writeLock(
         'vx lock',
         `${name}: its config holds this checkout's path (${root}), so another checkout locks it otherwise and keys it apart — use a path relative to the project, or $VX_RUN_WORKSPACE in the command`,
       )
-  for (const line of unkeyedReads(root, check)) sayNotice('warn', 'vx lock', line)
+  for (const line of await unkeyedReads(root, check)) sayNotice('warn', 'vx lock', line)
   return 0
 }
+
+/** How long `vx lock` waits on every task's runtime probes, asked at once. */
+const PROBE_ANSWER_MS = 5_000
 
 /**
  * Variables a bundler writes into what it builds: Vite's, Next's, CRA's,
@@ -822,9 +885,11 @@ function dotenvFiles(dir: string): string[] {
  * only on a miss, which a stale hit never brings, and Vite loads an ignored
  * `.env.production.local`), and, for a cached task, a `passThrough` name a
  * bundler inlines that `inputs.env` does not key, or one `inputs.env` keys
- * that the command never gets. One git spawn at most.
+ * that the command never gets. One git spawn at most, and a task's runtime
+ * probes only for a file it would name: a probe that prints the file's path
+ * keys it (turbo()'s `.env` probe), so that file is not named.
  */
-function unkeyedReads(root: string, check: GraphCheck): string[] {
+async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> {
   // One line per finding, naming every task it holds for: a migrated Turbo
   // repo's shared `globalPassThroughEnv` (NODE_ENV) printed it once per task,
   // 78 lines on create-t3-turbo.
@@ -836,9 +901,49 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
   }
   const found: { task: string; ws: string; rel: string; glob: string }[] = []
   let dotenvOf: Map<string, string[]> | undefined
-  for (const m of check.all) {
-    for (const [name, t] of Object.entries(check.resolved.get(m.name)?.tasks ?? {})) {
+  const answers = new Map<string, Promise<string>>()
+  // One deadline for every probe: a hung one costs its note, never the lock.
+  // vx's exit kills the probes still running.
+  let probeDeadline: Promise<string> | undefined
+  const probedOf = new Map<string, Promise<Set<string>>>()
+  type Found = (typeof found)[number]
+  // Each task's notes in its own lists, merged in task order below: the
+  // tasks run at once, so every probe starts before the one deadline counts
+  // (one after another, a third 2 s probe got 1 s).
+  const steps = check.all.flatMap((m) =>
+    Object.entries(check.resolved.get(m.name)?.tasks ?? {}).map(async ([name, t]) => {
       const task = `${m.name}#${name}`
+      const lines: string[] = []
+      const taskFound: Found[] = []
+      // The workspace-relative paths a line of the task's probe output names.
+      const probed = (): Promise<Set<string>> => {
+        let got = probedOf.get(task)
+        if (got !== undefined) return got
+        const ask = async (cmd: string, workspace: boolean) => {
+          const at = `${workspace ? root : m.dir}\0${cmd}`
+          let out = answers.get(at)
+          if (out === undefined)
+            answers.set(
+              at,
+              (out = Promise.race([
+                answerRuntime(cmd, m.dir, root, workspace).catch(() => ''),
+                (probeDeadline ??= new Promise<string>((resolve) => {
+                  setTimeout(resolve, PROBE_ANSWER_MS, '').unref()
+                })),
+              ])),
+            )
+          const base = workspace ? root : m.dir
+          return (await out).split('\n').map((l) => relPosix(root, path.join(base, l)))
+        }
+        got = Promise.all([
+          ...(t.inputs?.runtime ?? []).map((c) => ask(c, false)),
+          ...(t.inputs?.workspaceRuntime ?? []).map((c) => ask(c, true)),
+        ]).then((all) => new Set(all.flat()))
+        probedOf.set(task, got)
+        return got
+      }
+      const hasProbes =
+        (t.inputs?.runtime?.length ?? 0) + (t.inputs?.workspaceRuntime?.length ?? 0) > 0
       const own = outputMatcher(t.outputs?.files ?? [])
       const ownWs = outputMatcher(t.outputs?.workspaceFiles ?? [])
       // A literal entry keys the ignored file it names, as a run's walk does.
@@ -854,9 +959,11 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
         const ws = relPosix(root, abs)
         // A `**` reader with no cache has no key to go stale.
         if (glob.includes('**') && t.cache !== true) continue
-        if (!own(relPosix(m.dir, abs)) && !ownWs(ws)) found.push({ task, ws, rel, glob })
+        if (own(relPosix(m.dir, abs)) || ownWs(ws)) continue
+        if (hasProbes && (await probed()).has(ws)) continue
+        taskFound.push({ task, ws, rel, glob })
       }
-      if (t.cache !== true) continue
+      if (t.cache !== true) return { task, lines, found: taskFound }
       // A build that leaves a `.env` beside its config out of its inputs
       // replays the old bundle after an edit to it: Vite inlines its values.
       const outputs = (t.outputs?.files?.length ?? 0) + (t.outputs?.workspaceFiles?.length ?? 0)
@@ -867,34 +974,30 @@ function unkeyedReads(root: string, check: GraphCheck): string[] {
         dotenvOf ??= new Map()
         let env = dotenvOf.get(m.dir)
         if (env === undefined) dotenvOf.set(m.dir, (env = dotenvFiles(m.dir)))
-        const unread = env.filter((f) => !keyed(f) && !excluded(f))
+        let unread = env.filter((f) => !keyed(f) && !excluded(f))
+        if (unread.length > 0 && hasProbes) {
+          const seen = await probed()
+          unread = unread.filter((f) => !seen.has(relPosix(root, path.join(m.dir, f))))
+        }
         if (unread.length > 0)
-          said(
-            task,
+          lines.push(
             `${unread.join(', ')} beside its config ${unread.length === 1 ? 'is' : 'are'} in no input, and Vite, Next and Bun load ${unread.length === 1 ? 'it' : 'them'} on their own — add '.env*' to inputs.files, or '!.env*' if the task reads none`,
           )
       }
-      const quiet = new Set([...(t.inputs?.env ?? []), ...(t.exec?.env?.secret ?? [])])
+      const quiet = [...(t.inputs?.env ?? []), ...(t.exec?.env?.secret ?? [])]
       const unkeyed = (t.exec?.env?.passThrough ?? []).filter(
-        (v) => INLINED_ENV.test(v) && !quiet.has(v) && !secretNamed(v),
+        (v) => INLINED_ENV.test(v) && !quiet.some((q) => envCovers(q, v)) && !secretNamed(v),
       )
       if (unkeyed.length > 0)
-        said(
-          task,
+        lines.push(
           `exec.env.passThrough forwards ${unkeyed.join(', ')}, which a bundler writes into its output, and the key does not see ${unkeyed.length === 1 ? 'it' : 'them'} — add ${unkeyed.length === 1 ? 'it' : 'them'} to inputs.env`,
         )
-      // The reverse: the key moves with the value, but the build never sees it.
-      const given = new Set([
-        ...(t.exec?.env?.passThrough ?? []),
-        ...Object.keys(t.exec?.env?.define ?? {}),
-      ])
-      const unseen = (t.inputs?.env ?? []).filter((v) => INLINED_ENV.test(v) && !given.has(v))
-      if (unseen.length > 0)
-        said(
-          task,
-          `inputs.env keys ${unseen.join(', ')}, which a bundler writes into its output, but the command never gets ${unseen.length === 1 ? 'it' : 'them'} — add ${unseen.length === 1 ? 'it' : 'them'} to exec.env.passThrough`,
-        )
-    }
+      return { task, lines, found: taskFound }
+    }),
+  )
+  for (const step of await Promise.all(steps)) {
+    found.push(...step.found)
+    for (const line of step.lines) said(step.task, line)
   }
   const ignored =
     found.length === 0 ? null : checkIgnoreSync(root, [...new Set(found.map((f) => f.ws))])
@@ -1009,8 +1112,9 @@ function strayLine(root: string, file: string): string {
 /**
  * Where the lock `vx lock` would write holds a secret value here: the
  * configs, the review copies and the `project` stage's record, all
- * committed (a place two hold is named once). A value the config's source
- * or a local module it imports spells is the repo's own text, not one the
+ * committed (a place two hold is named once). A value the config's source,
+ * a local module it imports or a file the `project` stage read for it
+ * spells is the repo's own text, not one the
  * evaluation read: `docker compose up postgres` beside
  * `DATABASE_URL=postgres://postgres:postgres@…` refused every relock. Read
  * only when some value matched, so the common lock reads nothing more.
@@ -1018,7 +1122,6 @@ function strayLine(root: string, file: string): string {
 async function lockLeaks(
   root: string,
   check: GraphCheck,
-  metas: readonly ConfiguredMeta[],
   projects: Record<string, ProjectConfig>,
   reviews: readonly Review[],
 ): Promise<Array<{ at: string; name: string }>> {
@@ -1040,8 +1143,20 @@ async function lockLeaks(
     return leaks
   }
   if (scan(() => false).length === 0) return []
+  // And each file the `project` stage made a config from: a package.json
+  // script turbo() maps is committed text, as a config's own is.
+  const read = (file: string): Promise<string | null> =>
+    Bun.file(file)
+      .text()
+      .catch(() => null)
   const texts = new Map(
-    await Promise.all(metas.map(async (m) => [m.name, await sourceTexts(m.configPath)] as const)),
+    await Promise.all(
+      check.all.map(async (m) => {
+        const own = m.configPath === null ? [] : await sourceTexts(m.configPath)
+        const mapped = await Promise.all([...(check.reads?.get(m.dir) ?? [])].map(read))
+        return [m.name, [...own, ...mapped.filter((t) => t !== null)]] as const
+      }),
+    ),
   )
   return scan((project, value) => texts.get(project)?.some((t) => t.includes(value)) === true)
 }
@@ -1231,7 +1346,6 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     for (const l of await lockLeaks(
       root,
       check,
-      metas,
       Object.fromEntries(
         metas.map((m) => [m.name, check.fresh.projects[lockKey(root, m.dir)]!.config!]),
       ),

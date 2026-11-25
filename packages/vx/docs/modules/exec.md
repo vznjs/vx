@@ -368,6 +368,10 @@ export function withoutWorkspaceBins(PATH: string, workspaceRoot: string): strin
 export function ownEnv(source: NodeJS.ProcessEnv, name: string): string | undefined // util/essential-env.ts; an inherited name (`constructor`) is unset
 export function setVxOnlyEnv(name: string, value: string): void // util/essential-env.ts; a pipeline's `env`: vx's and its plugins', no task's
 export function taskEnvSource(): NodeJS.ProcessEnv // util/essential-env.ts; process.env without those, for a task's spawn and key
+export function envPatternProblem(pattern: string): string | null // util/essential-env.ts; why a `*` env pattern is refused
+export function expandEnvNames(names: readonly string[]): readonly string[] // util/essential-env.ts; each pattern's matches, once per run
+export function forgetEnvMatches(): void // util/essential-env.ts; a new run matches afresh
+export function envCovers(cover: string, entry: string): boolean // util/essential-env.ts; every name entry matches, cover matches too
 export const VX_RUN_WORKSPACE_ENV = 'VX_RUN_WORKSPACE' // set on every task's env by execute-task: the workspace root
 export const VX_RUN_TASK_ENV = 'VX_RUN_TASK' // and the task id — a `vx run` inside its own workspace reads them and refuses
 export const PM_EXEC_ENV = 'npm_execpath' // set by execute-task unless a layer gives it

@@ -128,7 +128,9 @@ export function parseFilter(
   let gitSince: string | undefined
   // An unbraced path keeps its brackets: `./packages/[abc]` is a glob
   // class, and Turbo takes a directory with a ref only as `{dir}[ref]`.
-  const scoped = /^(.+)\[([^\]]+)\]$/.exec(s)
+  // An empty ref (`app[$UNSET]`) is one, refused as `[]` is: read as a name,
+  // it matched nothing and the hint named the filter as typed.
+  const scoped = /^(.+)\[([^\]]*)\]$/.exec(s)
   let sinceViaDeps = false
   if (scoped !== null && !scoped[1]!.startsWith('./') && scoped[1] !== '.') {
     s = scoped[1]!

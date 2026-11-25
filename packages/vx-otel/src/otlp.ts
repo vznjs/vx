@@ -785,9 +785,10 @@ function taskMetrics(points: readonly TaskMetricPoint[]): unknown[] {
       continue
     }
     const t = p.task
+    // A failed restore never engaged the cache: no source, as on its span.
     const attributes = [
       ...taskAttrs(t.taskId, t.project, t.task),
-      strAttr(VX_ATTR.cacheSource, t.cacheSource),
+      ...(t.cacheSource === 'none' ? [] : [strAttr(VX_ATTR.cacheSource, t.cacheSource)]),
     ]
     const at = (value: number) =>
       span === undefined

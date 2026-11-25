@@ -12,9 +12,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../../packages/vx/src/**",
-              "../vx-bench/real-repos.json"
+              "**/*"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -23,7 +21,8 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "^site"
       ],
       "inputs": {
         "files": [
@@ -44,9 +43,6 @@
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
-        ],
-        "workspaceFiles": [
-          "private/vx-bench/real-repos.json"
         ]
       },
       "outputs": {
@@ -111,18 +107,15 @@
     "build.bun.import": {
       "description": "generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol",
       "dependsOn": [
-        "install"
+        "install",
+        "^site"
       ],
       "exec": {
         "command": "bun scripts/import-docs.ts",
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../../packages/vx/docs/**",
-              "../../packages/vx-*/README.md",
-              "../../packages/vx-*/package.json",
-              "../../packages/vx-dte-server/PROTOCOL.md"
+              "**/*"
             ],
             "write": [
               "src/content/docs/**"
@@ -137,12 +130,6 @@
         "files": [
           "scripts/import-docs.ts",
           "package.json"
-        ],
-        "workspaceFiles": [
-          "packages/vx/docs/**",
-          "packages/vx-*/README.md",
-          "packages/vx-*/package.json",
-          "packages/vx-dte-server/PROTOCOL.md"
         ]
       },
       "outputs": {
@@ -195,8 +182,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../vx-bench/site/**"
+              "**/*"
             ],
             "write": [
               "measured/bench.json"
@@ -230,6 +216,7 @@
       "description": "bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)",
       "dependsOn": [
         "install",
+        "^site",
         "build"
       ],
       "exec": {
@@ -243,26 +230,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../../packages/vx/src/**",
-              "../../packages/vx-cache/src/**",
-              "../../packages/vx-ci/src/**",
-              "../../packages/vx-dte/src/**",
-              "../../packages/vx-history/src/**",
-              "../../packages/vx-lockfile/src/**",
-              "../../packages/vx-migrate/src/**",
-              "../../packages/vx-otel/src/**",
-              "../../packages/vx/tests/config.test.ts",
-              "../../packages/vx/tests/sandbox-runtime.unsafe.test.ts",
-              "../../packages/vx/tests/task-hash-derive.test.ts",
-              "../../packages/vx/tests/plugin-pipeline.test.ts",
-              "../../packages/vx/tests/layered-cache.test.ts",
-              "../../packages/vx-reapi/tests/exec-e2e.test.ts",
-              "../../packages/vx-migrate/tests/turbo.test.ts",
-              "../../packages/vx/docs/cli.md",
-              "../../packages/vx/docs/schema.md",
-              "../../packages/vx/tests/contract/config-schema.json",
-              "../vx-bench/real-repos.json"
+              "**/*"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -317,19 +285,6 @@
           "!src/content/docs/schema/**",
           "!public/_img/**",
           "!dist/**"
-        ],
-        "workspaceFiles": [
-          "packages/vx/tests/config.test.ts",
-          "packages/vx/tests/sandbox-runtime.unsafe.test.ts",
-          "packages/vx/tests/task-hash-derive.test.ts",
-          "packages/vx/tests/plugin-pipeline.test.ts",
-          "packages/vx/tests/layered-cache.test.ts",
-          "packages/vx-reapi/tests/exec-e2e.test.ts",
-          "packages/vx-migrate/tests/turbo.test.ts",
-          "packages/vx/docs/cli.md",
-          "packages/vx/docs/schema.md",
-          "packages/vx/tests/contract/config-schema.json",
-          "private/vx-bench/real-repos.json"
         ]
       },
       "outputs": {
@@ -386,6 +341,7 @@
       "description": "astro build → dist/",
       "dependsOn": [
         "install",
+        "^site",
         "build.bun.import",
         "build.bun.images"
       ],
@@ -399,10 +355,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../vx-bench/real-repos.json",
-              "../../packages/vx/docs/schema.md",
-              "../../packages/vx/tests/contract/config-schema.json"
+              "**/*"
             ],
             "write": [
               "dist/**",
@@ -447,11 +400,6 @@
           "!public/_img/**",
           "!dist/**",
           "package.json"
-        ],
-        "workspaceFiles": [
-          "private/vx-bench/real-repos.json",
-          "packages/vx/docs/schema.md",
-          "packages/vx/tests/contract/config-schema.json"
         ]
       },
       "outputs": {
@@ -488,10 +436,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../vx-bench/real-repos.json",
-              "../../packages/vx/docs/schema.md",
-              "../../packages/vx/tests/contract/config-schema.json"
+              "**/*"
             ],
             "write": [
               "measured/live.json",
@@ -523,6 +468,31 @@
       "dependsOn": [
         "deploy.*"
       ]
+    },
+    "deploy.github": {
+      "description": "give each GitHub release the body of its release post on the site",
+      "exec": {
+        "command": "bun scripts/release-sync.ts",
+        "env": {
+          "passThrough": [
+            "GITHUB_REPOSITORY",
+            "GH_TOKEN"
+          ],
+          "secret": [
+            "GH_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "network": [
+              "api.github.com"
+            ]
+          }
+        }
+      }
     },
     "deploy.pages": {
       "description": "deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)",
@@ -594,10 +564,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../vx-bench/real-repos.json",
-              "../../packages/vx/docs/schema.md",
-              "../../packages/vx/tests/contract/config-schema.json"
+              "**/*"
             ],
             "write": [
               ".astro/**"

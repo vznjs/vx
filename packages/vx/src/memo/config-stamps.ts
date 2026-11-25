@@ -31,10 +31,24 @@ export interface ConfigStamps {
   configs: Record<string, [number, number, string, number?, number?]>
   /**
    * The files a `project` plugin made each project's config from
-   * (`ProjectHookContext.read`), by project directory, workspace-relative;
-   * each one's stamp is in `configs`, or none when it was absent.
+   * (`ProjectHookContext.read`) and the files its config imports, by project
+   * directory, workspace-relative; each one's stamp is in `configs`, or none
+   * when it was absent.
    */
   reads?: Record<string, string[]>
+  /**
+   * `reads` holds each config's local imports too (`configImports`). Stamps
+   * an older vx took hold none, so they read as no stamps: a helper a
+   * config imports, edited with no `vx lock`, ran the locked config, green.
+   */
+  imports?: true
+  /**
+   * The workspace file's local imports, workspace-relative; each one's stamp
+   * is in `configs`. Stamps without it read as none: a plugin option kept in
+   * a file `.vx/workspace.*` imports, edited with no `vx lock`, ran the
+   * locked commands, green.
+   */
+  workspace?: string[]
 }
 
 interface Stamps extends ConfigStamps {
@@ -55,20 +69,23 @@ const KEPT = 8
 /**
  * Each config's stamp, taken before its evaluation: an edit during it reads
  * as one after. The stat before the bytes, so bytes newer than the stat
- * only ever make a run read them again.
+ * only ever make a run read them again. `bytes` gets each file's bytes as
+ * read, for a caller that scans them next.
  */
 export async function takeConfigStamps(
   root: string,
   files: readonly string[],
+  bytes?: Map<string, Uint8Array>,
 ): Promise<ConfigStamps> {
   const at = Date.now()
   const configs: ConfigStamps['configs'] = {}
   await Promise.all(
     files.map(async (file) => {
       const s = await stat(file).catch(() => null)
-      const bytes = s === null ? null : await readFile(file).catch(() => null)
-      if (s === null || bytes === null) return
-      configs[path.relative(root, file)] = [s.size, s.mtimeMs, xxh3hex(bytes), s.ctimeMs, s.ino]
+      const got = s === null ? null : await readFile(file).catch(() => null)
+      if (s === null || got === null) return
+      bytes?.set(file, got)
+      configs[path.relative(root, file)] = [s.size, s.mtimeMs, xxh3hex(got), s.ctimeMs, s.ino]
     }),
   )
   return { at, configs }
@@ -82,7 +99,7 @@ export async function writeConfigStamps(
 ): Promise<void> {
   try {
     const lock = xxh3hex(await readFile(path.join(root, '.vx', 'projects.lock')))
-    await keep(cacheDir, { root, lock, ...stamps }, true)
+    await keep(cacheDir, { root, lock, workspace: [], ...stamps, imports: true }, true)
   } catch {
     // No memo: the next run evaluates the configs.
   }
@@ -108,12 +125,16 @@ export async function restampConfigs(
     )
     await keep(
       cacheDir,
+      // Marked as holding imports: a lock whose stamps held none was
+      // evaluated whole (`stampsBesideLock`) before this restamp.
       was === undefined
-        ? { root, lock, ...taken }
+        ? { root, lock, ...taken, imports: true }
         : {
             ...was,
             configs: { ...was.configs, ...taken.configs },
             reads: { ...was.reads, ...taken.reads },
+            imports: true,
+            ...(taken.workspace === undefined ? {} : { workspace: taken.workspace }),
           },
       false,
     )
@@ -178,8 +199,13 @@ export interface ConfigStat {
 
 /** The stamps `vx lock` took beside one lock, read once (one stat) per load. */
 export interface LockStamps {
-  /** The files a `project` plugin made each project's config from, by project directory. */
+  /**
+   * The files a `project` plugin made each project's config from, and the
+   * files its config imports, by project directory.
+   */
   reads: Record<string, string[]>
+  /** The workspace file's local imports, workspace-relative. */
+  workspace: readonly string[]
   /** Whether `rel` was there (stamped) when `vx lock` ran. */
   present: (rel: string) => boolean
   /**
@@ -197,7 +223,8 @@ export interface LockStamps {
 /**
  * The stamps taken beside the lock whose digest is `lock` in this
  * workspace; undefined when none were (a pull, a clone, a branch another
- * `vx lock` left): the run then evaluates every config it reads.
+ * `vx lock` left), or they hold no imports: the run then evaluates every
+ * config it reads.
  */
 export async function stampsBesideLock(
   root: string,
@@ -207,11 +234,13 @@ export async function stampsBesideLock(
   const stamps = (await readStamps(cacheDir))?.entries.find(
     (e) => e?.root === root && e.lock === lock,
   )
-  if (stamps === undefined) return undefined
-  const { reads, configs, at } = stamps
+  if (stamps === undefined || stamps.imports !== true || !Array.isArray(stamps.workspace))
+    return undefined
+  const { reads, configs, at, workspace } = stamps
   if (typeof configs !== 'object' || configs === null) return undefined
   return {
     reads: typeof reads === 'object' && reads !== null ? reads : {},
+    workspace,
     present: (rel) => Object.hasOwn(configs, rel),
     edited: async (files) => {
       const edited = await Promise.all(

@@ -14,6 +14,7 @@ const vx = (cwd: string, ...args: string[]) => vxSync(cwd, args)
 let root: string
 
 // `app` declares `test`, `docs` declares `lint` only; `docs` is what changed.
+// Each reads `in.txt`: a task with no inputs is affected by any change.
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-sparse-'))
   await writeFile(
@@ -22,8 +23,8 @@ beforeEach(async () => {
   )
   await writeLocalWorkspace(root)
   for (const [name, tasks] of [
-    ['app', "test: { exec: { command: 'echo app-test' } }"],
-    ['docs', "lint: { exec: { command: 'echo docs-lint' } }"],
+    ['app', "test: { exec: { command: 'echo app-test' }, inputs: { files: ['in.txt'] } }"],
+    ['docs', "lint: { exec: { command: 'echo docs-lint' }, inputs: { files: ['in.txt'] } }"],
   ] as const) {
     await mkdir(path.join(root, 'pkgs', name), { recursive: true })
     await writeFile(path.join(root, 'pkgs', name, 'package.json'), JSON.stringify({ name }))
@@ -53,8 +54,8 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
     const dry = vx(root, 'run', 'test', '--affected=HEAD~1', '--dry')
     const filter = vx(root, 'run', 'test', '--filter', '[HEAD~1]')
     expect({
-      run: [run.code, run.text.includes('No affected project declares task(s): test')],
-      dry: [dry.code, dry.text.includes('No affected project declares task(s): test')],
+      run: [run.code, run.text.includes('Nothing affected: the change reaches no test task')],
+      dry: [dry.code, dry.text.includes('Nothing affected: the change reaches no test task')],
       filter: filter.code,
     }).toEqual({ run: [0, true], dry: [0, true], filter: 0 })
   })
@@ -123,7 +124,7 @@ describe('--affected: a task only an unaffected dependency declares is not a typ
     const both = vx(root, 'run', 'lint', 'test', '--affected=HEAD~1')
     const typo = vx(root, 'run', 'tset', '--affected=HEAD~1')
     expect({
-      run: [run.code, run.text.includes('No affected project declares task(s): test')],
+      run: [run.code, run.text.includes('Nothing affected: the change reaches no test task')],
       both: [both.code, both.text.includes('docs#lint'), both.text.includes('app#test')],
       typo: [typo.code, typo.text.includes('no projects declare task(s): tset')],
     }).toEqual({ run: [0, true], both: [0, true, false], typo: [1, true] })
@@ -143,8 +144,8 @@ describe('--affected: a changed project with no vx config', () => {
     const dry = vx(root, 'run', 'test', '--affected=HEAD~1', '--dry')
     const typo = vx(root, 'run', 'tset', '--affected=HEAD~1')
     expect({
-      run: [run.code, run.text.includes('No affected project declares task(s): test')],
-      dry: [dry.code, dry.text.includes('No affected project declares task(s): test')],
+      run: [run.code, run.text.includes('Nothing affected: the change reaches no test task')],
+      dry: [dry.code, dry.text.includes('Nothing affected: the change reaches no test task')],
       typo: [typo.code, typo.text.includes('no projects declare task(s): tset')],
     }).toEqual({ run: [0, true], dry: [0, true], typo: [1, true] })
   })

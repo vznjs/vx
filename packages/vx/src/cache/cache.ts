@@ -489,8 +489,16 @@ export class Cache implements CacheLayer {
     return pruning.prune(this.ix, options)
   }
 
-  /** Row-less artifacts past the in-flight grace, for `vx info`: a prune reaps them by its policy. */
-  async orphanStats(): Promise<{ orphans: number; orphanBytes: number }> {
+  /**
+   * Row-less artifacts past the in-flight grace, for `vx info`: a prune reaps
+   * them by its policy. And rows whose file is gone, which no restore reads.
+   */
+  async orphanStats(): Promise<{
+    orphans: number
+    orphanBytes: number
+    missing: number
+    missingBytes: number
+  }> {
     return pruning.orphanStats(this.ix)
   }
 

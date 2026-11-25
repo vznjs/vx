@@ -15,6 +15,13 @@ export default defineProject({
       inputs: { files: ['src/**'] },
     },
 
+    // What @vzn/vx-docs reads from this package through its node_modules
+    // (the plugin pages): never run, its key reaches the site's tasks.
+    site: {
+      description: 'the files the site reads from this package',
+      inputs: { files: ['README.md', 'package.json'] },
+    },
+
     lint: {
       dependsOn: ['lint.*'],
     },
@@ -77,7 +84,8 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: {
-        files: ['src/**', 'tests/**', 'schemas/**', 'package.json'],
+        // history-view.test.ts holds the README's sample to the code.
+        files: ['src/**', 'tests/**', 'schemas/**', 'package.json', 'README.md'],
         // The tests import core's test helpers; ^build keys only core's src/**.
         workspaceFiles: ['packages/vx/tests/helpers/**'],
       },

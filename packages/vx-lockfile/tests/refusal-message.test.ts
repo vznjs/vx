@@ -220,3 +220,84 @@ describe('a pnpm-lock.yaml naming a package it has no entry for', () => {
     })
   }
 })
+
+describe('a pnpm-lock.yaml cut short', () => {
+  // Cut after an entry's `dependencies:` header (or inside it), the last
+  // snapshot read as one with no dependencies: the closure through it lost
+  // every package below it, and the lock was written (probed, pnpm 10).
+  const cut = (tail: string) => `lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      is-odd:
+        specifier: 3.0.1
+        version: 3.0.1
+
+packages:
+
+  is-number@6.0.0:
+    resolution: {integrity: sha512-n}
+
+  is-odd@3.0.1:
+    resolution: {integrity: sha512-o}
+
+snapshots:
+
+  is-number@6.0.0: {}
+
+  is-odd@3.0.1:${tail}`
+
+  it('is refused, not read as an entry with no dependencies', () => {
+    expect([
+      refusal(pnpm(), 'pnpm-lock.yaml', cut('\n    dependencies:\n')),
+      refusal(pnpm(), 'pnpm-lock.yaml', cut('\n    depe')),
+      refusal(pnpm(), 'pnpm-lock.yaml', cut('\n    dependencies:\n      is-number: 6.0.0\n')),
+    ]).toEqual([
+      expect.stringMatching(/^pnpm-lock\.yaml: snapshots entry is-odd@3\.0\.1 .* regenerate it/),
+      expect.stringMatching(/^pnpm-lock\.yaml: snapshots entry is-odd@3\.0\.1 .* regenerate it/),
+      '(no refusal)',
+    ])
+  })
+})
+
+describe('a berry yarn.lock cut short', () => {
+  // Cut after the last entry's `dependencies:` header, it read as an entry
+  // with no dependencies: the closure through it lost them in silence.
+  const cut = (tail: string) => `__metadata:
+  version: 8
+  cacheKey: 10c0
+
+"a@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "a@workspace:."
+  dependencies:
+    foo: "npm:^1"
+  languageName: unknown
+  linkType: soft
+
+"bar@npm:^2":
+  version: 2.0.0
+  resolution: "bar@npm:2.0.0"
+  checksum: 10c0/bar
+  languageName: node
+  linkType: hard
+
+"foo@npm:^1":
+  version: 1.0.0
+  resolution: "foo@npm:1.0.0"${tail}`
+
+  it('is refused, not read as an entry with no dependencies', () => {
+    expect([
+      refusal(yarn(), 'yarn.lock', cut('\n  dependencies:\n')),
+      refusal(yarn(), 'yarn.lock', cut('\n  dependencies:\n    bar: "npm:^2"\n')),
+      // Read past (vercel/turborepo#12828), it was a workspace with no dependencies.
+      refusal(yarn(), 'yarn.lock', '__metadata:\n  version: 8\n\n"a@workspace:packages/a": 3\n'),
+    ]).toEqual([
+      expect.stringMatching(/^yarn\.lock: entry "foo@npm:\^1" .* regenerate it/),
+      '(no refusal)',
+      expect.stringMatching(/^yarn\.lock: entry "a@workspace:packages\/a" is not a mapping/),
+    ])
+  })
+})

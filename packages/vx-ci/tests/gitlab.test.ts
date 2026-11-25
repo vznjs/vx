@@ -3,8 +3,12 @@
 // train keep the default keys, a branch or its merge request gets
 // `<project path>:<branch>`, and a merge request its diff base. Each
 // names the refs a remote reads (2026-10-25).
-import { expect, it } from 'bun:test'
+import { afterAll, expect, it } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import type { BranchFacts } from '@vzn/vx'
+import { git, gitInit } from '../../vx/tests/helpers/workspace.js'
 import { gitlab } from '../src/index.js'
 
 const GITLAB_KEYS = [
@@ -27,6 +31,7 @@ async function branchOf(
   env: Record<string, string>,
   options: Parameters<typeof gitlab>[0] = {},
   baseBranch?: string,
+  workspaceRoot = '/ws',
 ): Promise<BranchFacts | 'declined'> {
   const saved = GITLAB_KEYS.map((k) => [k, process.env[k]] as const)
   for (const k of GITLAB_KEYS) delete process.env[k]
@@ -36,7 +41,7 @@ async function branchOf(
     const plugin = gitlab(options)
     if (plugin === undefined) return 'declined'
     await plugin.config!(baseBranch === undefined ? {} : { baseBranch }, {
-      workspaceRoot: '/ws',
+      workspaceRoot,
       warn: () => {},
       setBranch: (f) => Object.assign(facts, f),
     })
@@ -131,23 +136,65 @@ it('an external pull request reads the branch it merges into', async () => {
   })
 })
 
-// A car of a train is merged onto the car ahead of it (its first parent),
-// whose own pipeline runs that car's changes: compared with the diff
-// base, every car ran every car ahead's changes again.
+const dirs: string[] = []
+afterAll(() => {
+  for (const d of dirs) rmSync(d, { recursive: true, force: true })
+})
+
+/** A repo whose HEAD is a merge commit (`merge`), else two commits of one request on the target. */
+function trainRepo(merge: boolean): string {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-gl-train-'))
+  dirs.push(dir)
+  gitInit(dir, '-b', 'main')
+  const commit = (file: string, msg: string) => {
+    writeFileSync(path.join(dir, file), msg)
+    git(dir, 'add', file)
+    git(dir, 'commit', '-q', '-m', msg)
+  }
+  commit('base.txt', 'car ahead')
+  git(dir, 'checkout', '-q', '-b', 'feat-x')
+  commit('a.txt', 'first')
+  commit('b.txt', 'second')
+  if (merge) {
+    git(dir, 'checkout', '-q', 'main')
+    git(dir, 'merge', '-q', '--no-ff', '-m', 'car', 'feat-x')
+  }
+  return dir
+}
+
+const trainJob = {
+  CI_MERGE_REQUEST_EVENT_TYPE: 'merge_train',
+  CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: 'feat-x',
+  CI_MERGE_REQUEST_DIFF_BASE_SHA: 'b4se',
+  CI_MERGE_REQUEST_TARGET_BRANCH_SHA: 't4rget',
+  CI_MERGE_REQUEST_TARGET_BRANCH_NAME: 'release',
+}
+
+// A car of a train merged with a merge commit sits on the car ahead (its
+// first parent), whose own pipeline runs that car's changes: compared with
+// the diff base, every car ran every car ahead's changes again.
 it('a merge train is trusted: no scope, compared with the car ahead, reading only its target', async () => {
-  const train = job('refs/merge-requests/7/train', {
-    CI_MERGE_REQUEST_EVENT_TYPE: 'merge_train',
-    CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: 'feat-x',
-    CI_MERGE_REQUEST_DIFF_BASE_SHA: 'b4se',
-    CI_MERGE_REQUEST_TARGET_BRANCH_NAME: 'release',
-  })
-  expect(await branchOf(train)).toEqual({
+  const train = job('refs/merge-requests/7/train', trainJob)
+  const root = trainRepo(true)
+  expect(await branchOf(train, {}, undefined, root)).toEqual({
     trusted: true,
     base: 'HEAD^1',
     refs: ['refs/heads/release'],
   })
   // 2026-10-25: a train reads its target only, never the default branch.
-  expect(await branchOf(train, {}, 'trunk')).toMatchObject({ refs: ['refs/heads/release'] })
+  expect(await branchOf(train, {}, 'trunk', root)).toMatchObject({ refs: ['refs/heads/release'] })
+})
+
+// 2026-11-25: under fast-forward the car is the request's commits rebased
+// onto the car ahead, so `HEAD^1` held only the last commit's changes and
+// a task the first commit reached never ran before the merge.
+it('a fast-forward train car, not a merge commit, is compared with the target head', async () => {
+  const train = job('refs/merge-requests/7/train', trainJob)
+  expect(await branchOf(train, {}, undefined, trainRepo(false))).toMatchObject({ base: 't4rget' })
+  const { CI_MERGE_REQUEST_TARGET_BRANCH_SHA: _, ...noTarget } = trainJob
+  expect(
+    await branchOf(job('refs/merge-requests/7/train', noTarget), {}, undefined, trainRepo(false)),
+  ).toMatchObject({ base: 'b4se' })
 })
 
 it("the workspace's baseBranch is the default branch a run reads last", async () => {

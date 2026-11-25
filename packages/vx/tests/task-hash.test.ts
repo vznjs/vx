@@ -18,30 +18,32 @@ function outcome(id: string, hash: string | undefined): TaskOutcome {
 }
 
 describe('computeGroupHash', () => {
+  const g = outcome('p#g', undefined).node
+  const cfg = hashTaskConfig(g.config)
   it('an empty group yields a stable, deterministic sentinel', () => {
-    // ids = ''.sort().join('|') = '', so the digest is xxh3hex('group|').
-    expect(computeGroupHash([])).toBe(xxh3hex('group|'))
-    expect(computeGroupHash([])).toBe(computeGroupHash([]))
+    // ids = ''.sort().join('|') = '', so the digest is its definition's alone.
+    expect(computeGroupHash(g, [])).toBe(xxh3hex(`group|${cfg}|`))
+    expect(computeGroupHash(g, [])).toBe(computeGroupHash(g, []))
   })
 
   it('is order-independent (members are sorted before hashing)', () => {
     const a = outcome('p#a', 'h-a')
     const b = outcome('p#b', 'h-b')
-    expect(computeGroupHash([a, b])).toBe(computeGroupHash([b, a]))
+    expect(computeGroupHash(g, [a, b])).toBe(computeGroupHash(g, [b, a]))
   })
 
   it('changes when an upstream hash changes', () => {
-    const before = computeGroupHash([outcome('p#a', 'h1'), outcome('p#b', 'h-b')])
-    const after = computeGroupHash([outcome('p#a', 'h2'), outcome('p#b', 'h-b')])
+    const before = computeGroupHash(g, [outcome('p#a', 'h1'), outcome('p#b', 'h-b')])
+    const after = computeGroupHash(g, [outcome('p#a', 'h2'), outcome('p#b', 'h-b')])
     expect(after).not.toBe(before)
   })
 
   it('folds a missing upstream hash as the empty string (present member still counts)', () => {
     // A member with no hash contributes `id:` — distinct from having no
     // such member at all.
-    const withMissing = computeGroupHash([outcome('p#a', undefined)])
-    expect(withMissing).toBe(xxh3hex('group|p#a:'))
-    expect(withMissing).not.toBe(computeGroupHash([]))
+    const withMissing = computeGroupHash(g, [outcome('p#a', undefined)])
+    expect(withMissing).toBe(xxh3hex(`group|${cfg}|p#a:`))
+    expect(withMissing).not.toBe(computeGroupHash(g, []))
   })
 })
 

@@ -268,7 +268,7 @@ export class Cache implements CacheLayer {
   async stopCheckpoints(): Promise<void>
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
-  async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
+  async orphanStats(): Promise<
   close(): void
 }
 ```
@@ -578,15 +578,16 @@ export function defineProject<const T extends ProjectConfig>(
     KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
-        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
-          dependsOn?: DependsOn<
-            At<NonNullable<T['tasks']>[K], 'dependsOn'>,
-            Extract<keyof NonNullable<T['tasks']>, string>
-          >
-          exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
-          inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
-          outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
-        }
+        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> &
+          NoOpNeedsExec<NonNullable<T['tasks']>[K]> & {
+            dependsOn?: DependsOn<
+              At<NonNullable<T['tasks']>[K], 'dependsOn'>,
+              Extract<keyof NonNullable<T['tasks']>, string>
+            >
+            exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
+            inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
+            outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
+          }
       }
     },
 ): T

@@ -34,6 +34,7 @@ import {
   hasControl,
   parseDependencySpec,
   DependencySpecError,
+  envPatternProblem,
 } from '../util/index.js'
 import {
   envName,
@@ -747,16 +748,16 @@ function validateTask(
   }
   if (exec !== undefined) validateExec(exec, where, cache)
   else {
-    // Group task: no exec, just dependencies. Only an ABSENT `dependsOn` is
+    // A group: no exec, just dependencies. Only an ABSENT `dependsOn` is
     // refused (neither is a typo). An EMPTY one is deliberate: `build: {
     // dependsOn: [] }` is how a package consumed as source says it has
-    // nothing to build, so a dependant's `^build` waits on nothing. A keyed
-    // group (`inputs`, no `exec`) is a declaration on its own: a key
+    // nothing to build, so a dependant's `^build` waits on nothing. A no-op
+    // task (`inputs`, no `exec`) is a declaration on its own: a key
     // dependants fold, with no process.
     if (dependsOn === undefined && (task as { inputs?: unknown }).inputs === undefined) {
       throw new UserError(
-        `${where}: a task with no \`exec\` must declare \`dependsOn\` or \`inputs\` ` +
-          `(group tasks exist to chain dependencies or carry a key)`,
+        `${where}: a task with no \`exec\` must declare \`dependsOn\` (a group) ` +
+          `or \`inputs\` (a no-op task, a key its dependants fold)`,
       )
     }
   }
@@ -776,7 +777,17 @@ function validateTask(
     }
   }
   const inputs = (task as { inputs?: unknown }).inputs
-  if (inputs !== undefined) validateInputs(inputs, task, where)
+  if (inputs !== undefined) {
+    validateInputs(inputs, task, where)
+    // A no-op task is its inputs: with none it is a group that reads as a
+    // key (M, 2026-11-25).
+    if (exec === undefined && NO_OP_MATERIAL.every((f) => !hasEntries(inputs as object, f))) {
+      throw new UserError(
+        `${where}: a task with no \`exec\` needs non-empty \`inputs\` — ` +
+          `add \`exec\`, or drop \`inputs\` to make it a group`,
+      )
+    }
+  }
   const outputs = (task as { outputs?: unknown }).outputs
   if (cache === true) {
     // The key is the task's inputs, and a group runs nothing to cache.
@@ -918,14 +929,10 @@ function validateExecEnv(env: unknown, where: string): void {
     // same text below: one refusal for the class.
     assertNoEnvNegation(passThrough as string[], `${where}.exec.env.passThrough`)
     assertOnce(passThrough as string[], `${where}.exec.env.passThrough`)
-    const wild = (passThrough as string[]).find((n) => BUN_GLOB_WILDCARDS.test(n))
-    if (wild !== undefined) {
-      throw new UserError(
-        `${where}.exec.env.passThrough: wildcards in env names are not supported ` +
-          `(got "${wild}") — list explicit env var names instead`,
-      )
+    for (const n of passThrough as string[]) {
+      if (assertEnvPattern(n, `${where}.exec.env.passThrough`)) continue
+      assertShellName(n, `${where}.exec.env.passThrough`)
     }
-    for (const n of passThrough as string[]) assertShellName(n, `${where}.exec.env.passThrough`)
   }
   const secret = (env as { secret?: unknown }).secret
   if (
@@ -1062,18 +1069,7 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
     }
     assertNoEnvNegation(envList as string[], `${where}.inputs.env`)
     assertOnce(envList as string[], `${where}.inputs.env`)
-    for (const name of envList as string[]) {
-      // Wildcards refused so a user never silently misses env vars they
-      // thought tracked: `VERCEL_*` is not expanded, and would otherwise
-      // fold '' for the literal name. An env name is no path, so the whole
-      // `Bun.Glob` alphabet stays refused.
-      if (BUN_GLOB_WILDCARDS.test(name)) {
-        throw new UserError(
-          `${where}.inputs.env: wildcards in env names are not supported ` +
-            `(got "${name}") — list explicit env var names instead`,
-        )
-      }
-    }
+    for (const name of envList as string[]) assertEnvPattern(name, `${where}.inputs.env`)
   }
   // Same for inputs.files.
   for (const g of (inputs as { files: unknown[] }).files) {
@@ -1292,6 +1288,12 @@ const INPUT_FIELDS = new Set([
   'stability',
 ])
 const OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean'])
+/** The inputs a no-op task keys on: one needs at least one entry. */
+const NO_OP_MATERIAL = ['files', 'workspaceFiles', 'env', 'runtime', 'workspaceRuntime'] as const
+const hasEntries = (inputs: object, field: string): boolean => {
+  const v = (inputs as Record<string, unknown>)[field]
+  return Array.isArray(v) && v.length > 0
+}
 
 /**
  * Another runner's spelling of a field vx has under another name, by the
@@ -1742,7 +1744,7 @@ function assertNoEnvNegation(names: readonly string[], where: string): void {
   const neg = names.find((n) => n.startsWith('!'))
   if (neg !== undefined) {
     throw new UserError(
-      `${where}: "${neg}" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave ${neg.slice(1)} out`,
+      `${where}: "${neg}" is Turbo's exclusion from a wildcard — vx has none, so leave ${neg.slice(1)} out or narrow the pattern`,
     )
   }
 }
@@ -1978,6 +1980,23 @@ function specForm(spec: string): SpecForm {
   const hash = spec.indexOf('#')
   if (hash === -1) return { form: 'self', task: spec }
   return { form: 'cross', project: spec.slice(0, hash), task: spec.slice(hash + 1) }
+}
+
+/**
+ * True when `name` is a `*` pattern, which it refuses unless sound. Every other
+ * glob character stays refused: `?`, `[]` and `{}` match nothing here, and a
+ * name holding one would key '' for a literal no variable has.
+ */
+function assertEnvPattern(name: string, field: string): boolean {
+  if (/[?[\]{}]/.test(name)) {
+    throw new UserError(
+      `${field}: ${JSON.stringify(name)} — \`*\` is the only wildcard in env names`,
+    )
+  }
+  if (!name.includes('*')) return false
+  const why = envPatternProblem(name)
+  if (why !== null) throw new UserError(`${field}: ${JSON.stringify(name)} ${why}`)
+  return true
 }
 
 /**

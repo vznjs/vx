@@ -61,7 +61,7 @@ function dry(...args: string[]): string {
 }
 
 describe('vx run --affected --dry says why each requested task was kept', () => {
-  it('json: the changed input, the project read whole, the edge chain', () => {
+  it('json: the changed input, a task with no inputs, the edge chain', () => {
     const plan = JSON.parse(dry('build', 'lint', '--dry', '--format', 'json')) as {
       affectedBase?: string
       tasks: Array<{ id: string; affected?: unknown }>
@@ -70,7 +70,10 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     expect(plan.affectedBase).toBe('HEAD')
     expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
       'lib#build': { kind: 'input', file: 'packages/lib/src/a.js' },
-      'lib#lint': { kind: 'project', file: 'packages/lib/src/a.js' },
+      // No inputs: affected in a changed project (lib) and in a package
+      // dependant of one (app), never elsewhere (other) (M, 2026-11-25).
+      'lib#lint': { kind: 'always' },
+      'app#lint': { kind: 'always' },
       'app#build': { kind: 'input', file: 'packages/lib/src/a.js', via: ['lib#build'] },
     })
   })
@@ -80,7 +83,8 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
       tasks: Array<{ id: string; affected?: unknown }>
     }
     expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
-      'lib#lint': { kind: 'project', file: 'packages/lib/src/a.js' },
+      'lib#lint': { kind: 'always' },
+      'app#lint': { kind: 'always' },
       'other#build': { kind: 'named' },
     })
   })
@@ -110,48 +114,30 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
       .map((l) => l.slice(l.lastIndexOf(' ', l.indexOf('  affected:') - 1) + 1))
     expect(lines.sort()).toEqual([
       'app#build  affected: packages/lib/src/a.js changed (an input), via lib#build',
+      'app#lint  affected: it declares no inputs, and its project changed or depends on one that did',
       'lib#build  affected: packages/lib/src/a.js changed (an input)',
-      'lib#lint  affected: packages/lib/src/a.js changed (in its project)',
+      'lib#lint  affected: it declares no inputs, and its project changed or depends on one that did',
     ])
   })
 
-  it('json: a path no cached task declares names itself on the whole project', async () => {
-    // Agent trial 2, row 5: `kind: project` with no `file` sent the agent
-    // looking for an input that had not changed; an unignored output had.
+  it('a changed path no input declares reaches no task with inputs', async () => {
+    // Its project was read whole, so an unignored output re-ran every task
+    // there (M, 2026-11-25: affected is decided by inputs).
     const stray = path.join(root, 'packages/other/out.txt')
-    await writeFile(stray, 'built\n')
-    try {
-      const plan = JSON.parse(dry('build', '--dry', '--format', 'json')) as {
-        tasks: Array<{ id: string; affected?: unknown }>
-      }
-      expect(plan.tasks.find((t) => t.id === 'other#build')?.affected).toEqual({
-        kind: 'project',
-        file: 'packages/other/out.txt',
-      })
-    } finally {
-      await rm(stray)
-    }
-  })
-
-  it('an untracked file under its own outputs is no input: the project is read whole', async () => {
-    // The key folds a file under a task's own outputs only when git tracks
-    // it; an untracked build output git does not ignore was still labelled
-    // `changed (an input)` and kept only the task whose outputs held it.
     const built = path.join(root, 'packages/gen/dist/o.js')
+    await writeFile(stray, 'built\n')
     await writeFile(built, 'built\n')
     try {
       const plan = JSON.parse(dry('build', 'test', '--dry', '--format', 'json')) as {
         tasks: Array<{ id: string; affected?: unknown }>
       }
-      const reason = { kind: 'project', file: 'packages/gen/dist/o.js' }
-      expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toMatchObject({
-        'gen#build': reason,
-        'gen#test': reason,
-      })
-      expect(dry('build', '--dry')).toContain(
-        'gen#build  affected: packages/gen/dist/o.js changed (in its project)',
-      )
+      const kept = Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))
+      expect(kept['other#build']).toBeUndefined()
+      // An untracked file under its own outputs is no input either.
+      expect(kept['gen#build']).toBeUndefined()
+      expect(kept['gen#test']).toBeUndefined()
     } finally {
+      await rm(stray)
       await rm(built)
     }
   })
@@ -185,26 +171,19 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     }
   })
 
-  it('json and text: a workspace-wide file names itself on every task it reached', async () => {
-    // Agent trial 3, row 3: a changed workspace config made every task
-    // `kind: project` with no `file`.
+  it('a workspace config edit that moves no key reaches no task with inputs', async () => {
+    // Agent trial 3, row 3 marked every task; a comment moves no locked
+    // config, and no plugin here keys tasks (M, 2026-11-25).
     const ws = path.join(root, '.vx/workspace.mjs')
     const before = await readFile(ws, 'utf8')
     await writeFile(ws, `${before}// edited\n`)
     try {
-      const plan = JSON.parse(dry('build', '--dry', '--format', 'json')) as {
-        tasks: Array<{ id: string; affected?: unknown }>
+      const plan = JSON.parse(dry('build', 'lint', '--dry', '--format', 'json')) as {
+        tasks: Array<{ id: string; affected?: { kind: string } }>
       }
-      const reason = { kind: 'workspace', file: '.vx/workspace.mjs' }
-      expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
-        'lib#build': reason,
-        'app#build': reason,
-        'other#build': reason,
-        'gen#build': reason,
-      })
-      expect(dry('build', '--filter', 'other', '--dry')).toContain(
-        'affected: .vx/workspace.mjs changed (workspace-wide)',
-      )
+      const kept = plan.tasks.filter((t) => t.affected !== undefined)
+      expect(kept.map((t) => t.affected!.kind)).not.toContain('workspace')
+      expect(kept.map((t) => t.id)).not.toContain('other#build')
     } finally {
       await writeFile(ws, before)
     }
@@ -237,7 +216,7 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
       })
       expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
       expect(p.stdout.toString()).toContain(
-        'b#build  affected: pnpm-lock.yaml changed (every task in its project)',
+        'b#build  affected: pnpm-lock.yaml changed (in its key)',
       )
       expect(p.stdout.toString()).not.toContain('a#build')
     } finally {
@@ -307,13 +286,15 @@ describe("vx run --affected: a path under a task's own outputs, by its workspace
       const p = plan()
       expect(p.exitCode).toBe(0)
       expect(p.stdout.toString()).not.toContain('cg#gen')
-      expect(p.stderr.toString()).toContain('nothing affected since HEAD')
+      expect(p.stderr.toString()).toContain('Nothing affected: the change reaches no gen task')
     }))
 
   it('an untracked file under its own outputs.files that a workspaceFiles glob reaches is no input', () =>
     withFile('packages/cg/dist/o.js', 'built\n', () => {
-      // No task declares it, so the project is read whole, as for `files`.
-      expect(kept()['cg#gen']).toEqual({ kind: 'project', file: 'packages/cg/dist/o.js' })
+      // No task declares it, so it reaches no task (M, 2026-11-25).
+      const p = plan()
+      expect(p.exitCode).toBe(0)
+      expect(p.stdout.toString()).not.toContain('cg#gen')
     }))
 
   it('CONTROL: a tracked file under its own outputs.workspaceFiles that changed is an input', () =>
@@ -336,4 +317,51 @@ describe("vx run --affected: a path under a task's own outputs, by its workspace
     withFile('shared/b.txt', 'b\n', () => {
       expect(kept()['cg#gen']).toEqual({ kind: 'input', file: 'shared/b.txt' })
     }))
+})
+
+// Only the locks mark tasks (M, 2026-11-25): a project's closure digest
+// that moved in `.vx/dependencies.lock` marks its tasks, and no other
+// project's, though the claimant answers no project from the file.
+it('a dependencies.lock closure change marks only the tasks of the projects it moved', async () => {
+  const ws = await makeWorkspace({ prefix: 'vx-affected-closure-', git: false })
+  try {
+    const claim = `{ fingerprint: {
+      files: ['deps.txt'],
+      affected: () => [],
+      digests(file, ctx) {
+        const text = require('node:fs').readFileSync(require('node:path').join(ctx.workspaceRoot, file), 'utf8')
+        const projects = Object.fromEntries(text.trim().split('\\n').map((l) => l.split('=')))
+        return { hash: String(Bun.hash.xxHash3(text)), projects }
+      },
+    }, key() { return undefined } }`
+    await Bun.write(
+      path.join(ws, '.vx/workspace.mjs'),
+      localWorkspaceSource([edgesSource(), pluginSource('org/closure', claim)]),
+    )
+    await addProject(ws, 'a', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+    await addProject(ws, 'b', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+    const lock = (): void => {
+      const r = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws })
+      expect([r.exitCode, r.stderr.toString()]).toEqual([0, ''])
+    }
+    await writeFile(path.join(ws, 'deps.txt'), 'a=00aa\nb=00bb\n')
+    lock()
+    gitInitCommit(ws)
+    await writeFile(path.join(ws, 'deps.txt'), 'a=00aa\nb=11bb\n')
+    lock()
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'run', 'build', '--affected=HEAD', '--dry', '--format', 'json'],
+      cwd: ws,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
+    const plan = JSON.parse(p.stdout.toString()) as {
+      tasks: Array<{ id: string; affected?: unknown }>
+    }
+    expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
+      'b#build': { kind: 'workspace', file: '.vx/dependencies.lock' },
+    })
+  } finally {
+    await rm(ws, { recursive: true, force: true })
+  }
 })

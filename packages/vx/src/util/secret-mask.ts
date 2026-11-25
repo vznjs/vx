@@ -42,15 +42,6 @@ export function secretNamed(name: string): boolean {
 }
 
 /**
- * A URL's password (`postgres://app:<pw>@db/app`): a credential whatever
- * the variable is named, so `DATABASE_URL` and `REDIS_URL` printed it.
- * Split as WHATWG splits it: the userinfo ends at the LAST `@` before the
- * path, query or fragment, and the user name at its first `:`, so either
- * may hold an `@` (`app:p@ss@db` printed `p@ss` whole).
- */
-const URL_PASSWORD = /[a-z][a-z0-9+.-]*:\/\/[^\s:/?#]*:([^\s/?#]+)@/gi
-
-/**
  * Values shorter than this are not masked: `KEY=1` would mask every `1`
  * in every line, and a value that short is no secret worth the noise.
  */
@@ -110,15 +101,26 @@ export function secretMask(
   const add = (value: string | undefined): void => {
     if (value === undefined || value.length < min) return
     values.add(value)
+    // A secret pasted with a trailing blank or newline prints without it
+    // (`echo $T` splits it off, a tool trims it), and the whole value
+    // never matched.
+    const bare = value.trim()
+    if (bare !== value) add(bare)
     // A value with a `'` reaches a printed command spelled as shellQuote spells
     // it (`'\''`), which the plain value does not match.
     if (value.includes("'")) values.add(value.replaceAll("'", `'\\''`))
     // As a tool encodes it: a token's `/+=` in a query string, a quote,
     // backslash or newline inside a JSON string. Either printed it whole.
-    const url = encodeURIComponent(value)
-    if (url !== value) values.add(url)
+    for (const url of urlSpellings(value)) if (url !== value) values.add(url)
+    for (const b64 of base64Spellings(value)) if (b64.length >= min) values.add(b64)
     const json = JSON.stringify(value).slice(1, -1)
     if (json !== value) values.add(json)
+    // Python's json.dumps (`ensure_ascii`): every non-ASCII code unit as `\uXXXX`.
+    const ascii = json.replace(
+      /[\u007f-\uffff]/g,
+      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+    )
+    if (ascii !== json) values.add(ascii)
     // A multi-line value (a PEM key) is also masked line by line, as GitHub
     // Actions does: a tool that indents or reflows it prints no copy of the
     // whole value, and every line leaked.
@@ -171,11 +173,123 @@ function urlPasswords(value: string): string[] {
   let found = urlPasswordsOf.get(value)
   if (found === undefined) {
     found = []
-    for (const m of value.matchAll(URL_PASSWORD)) if (m[1] !== undefined) found.push(m[1])
+    for (const pw of urlPasswordsIn(value)) {
+      found.push(pw)
+      // A driver's error or config dump prints it decoded (`p@ss` for `p%40ss`).
+      try {
+        const plain = decodeURIComponent(pw)
+        if (plain !== pw) found.push(plain)
+      } catch {
+        // not a valid escape: printed as written
+      }
+    }
     urlPasswordsOf.set(value, found)
   }
   return found
 }
+
+/**
+ * A URL's password (`postgres://app:<pw>@db/app`): a credential whatever
+ * the variable is named, so `DATABASE_URL` and `REDIS_URL` printed it.
+ * Split as WHATWG splits it: the userinfo ends at the LAST `@` before the
+ * path, query or fragment, and the user name at its first `:`, so either
+ * may hold an `@` (`app:p@ss@db` printed `p@ss` whole). What
+ * `/[a-z][a-z0-9+.-]*:\/\/[^\s:/?#]*:([^\s/?#]+)@/gi` captures, in linear
+ * time: that regex tried every letter of a scheme-like run as a start and
+ * rescanned the rest from each (120 ms for a 20 KB value, seconds past it).
+ */
+export function urlPasswordsIn(value: string): string[] {
+  const found: string[] = []
+  let from = 0
+  for (let at = value.indexOf('://'); at !== -1; at = value.indexOf('://', at + 1)) {
+    // The scheme: a letter, then scheme characters up to `://`, no earlier
+    // than the last match's end.
+    let start = at
+    while (start > from && SCHEME_CHAR.test(value[start - 1]!)) start--
+    while (start < at && !LETTER.test(value[start]!)) start++
+    if (start === at) continue
+    let user = at + 3
+    while (user < value.length && USER_CHAR.test(value[user]!)) user++
+    if (value[user] !== ':') continue
+    let end = user + 1
+    while (end < value.length && PASSWORD_CHAR.test(value[end]!)) end++
+    const sign = value.lastIndexOf('@', end - 1)
+    if (sign <= user + 1) continue
+    found.push(value.slice(user + 1, sign))
+    from = sign + 1
+    at = sign
+  }
+  return found
+}
+
+const SCHEME_CHAR = /[a-z0-9+.-]/i
+const LETTER = /[a-z]/i
+const USER_CHAR = /[^\s:/?#]/
+const PASSWORD_CHAR = /[^\s/?#]/
+
+const UNRESERVED = /^[\w.-]*$/
+
+/**
+ * A value as URL encoders spell it. Each escapes its own set:
+ * encodeURIComponent keeps `!'()*`, curl and Python's quote() escape them,
+ * quote() keeps `/`, curl and quote_plus() write a space `+`, and
+ * URLSearchParams also escapes `~` and keeps `*`.
+ */
+function urlSpellings(value: string): string[] {
+  // No encoder escapes these: the common token (hex, a UUID) has one spelling.
+  if (UNRESERVED.test(value)) return []
+  const js = encodeURIComponent(value)
+  const strict = js.replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  const plus = strict.replaceAll('%20', '+')
+  return [
+    js,
+    strict,
+    strict.replaceAll('%2F', '/'),
+    plus,
+    plus.replaceAll('%2A', '*').replaceAll('~', '%7E'),
+  ]
+}
+
+/**
+ * The value's run in any base64 (`printf %s "$T" | base64`, a Basic auth
+ * header's `user:token`) and base64url (a JWT): the characters that hold
+ * only its bits, at each of the three offsets a prefix can put it, as
+ * GitHub Actions masks it. The edge characters that also hold a
+ * neighbour's bits are left out.
+ */
+function base64Spellings(value: string): string[] {
+  // One buffer, two zero bytes ahead of the value: each offset encodes from
+  // its own start, with no copy per offset.
+  const n = Buffer.byteLength(value)
+  const buf = Buffer.alloc(n + 2)
+  buf.write(value, 2)
+  const out: string[] = []
+  for (let shift = 0; shift < 3; shift++) {
+    const total = n + shift
+    const chars = Math.ceil((total * 4) / 3)
+    const end = total % 3 === 0 ? chars : chars - 1
+    const run = buf.toString('base64', 2 - shift).slice([0, 2, 3][shift], end)
+    out.push(run, run.replaceAll('+', '-').replaceAll('/', '_'))
+  }
+  return out
+}
+
+/**
+ * A value as the mask's pattern matches it: literal, but a percent escape's
+ * hex in either case (RFC 3986 § 2.1). `encodeURIComponent` prints `%2F`,
+ * other tools `%2f` or a mix, and each printed the value whole.
+ */
+function valuePattern(value: string): string {
+  return value
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(
+      /%([0-9A-Fa-f])([0-9A-Fa-f])/g,
+      (_, a: string, b: string) => `%${hexEither(a)}${hexEither(b)}`,
+    )
+}
+
+const hexEither = (c: string): string =>
+  /[0-9]/.test(c) ? c : `[${c.toLowerCase()}${c.toUpperCase()}]`
 
 function maskOf(values: ReadonlySet<string>): SecretMask {
   // Longest first, so the value tried first at a position is the longest
@@ -184,10 +298,7 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
   // A lookahead matches at every position, not only past the last match:
   // a value overlapping another's end (`${A}xyz789` where B is A's tail +
   // `xyz789`) is found too, and the union is masked (`***xyz789` leaked).
-  const pattern = new RegExp(
-    `(?=(${sorted.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}))`,
-    'g',
-  )
+  const pattern = new RegExp(`(?=(${sorted.map(valuePattern).join('|')}))`, 'g')
   /** Where values sit in `text`: overlapping or adjacent ones merged, in order. */
   const spans = (text: string): Array<[number, number]> => {
     const out: Array<[number, number]> = []
@@ -201,8 +312,8 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     }
     return out
   }
-  const mask = (text: string): string => {
-    const found = spans(text)
+  const mask = (text: string): string => render(text, spans(text))
+  const render = (text: string, found: ReadonlyArray<[number, number]>): string => {
     if (found.length === 0) return text
     let out = ''
     let at = 0
@@ -212,12 +323,23 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     }
     return out + text.slice(at)
   }
+  // A value's percent escapes match in either case, so a piece of one is
+  // compared folded: folding more only holds a tail back a little longer.
+  const folds = sorted.map((v) => (v.includes('%') ? v.toLowerCase() : undefined))
+  const piece = (text: string, at: number): string =>
+    folds[at] === undefined ? text : text.toLowerCase()
   /** The longest tail of `text` that is a proper prefix of a value. */
   const partialTail = (text: string): number => {
     let longest = 0
-    for (const v of sorted) {
-      for (let k = Math.min(v.length - 1, text.length); k > longest; k--) {
-        if (text.endsWith(v.slice(0, k))) {
+    for (const [i, raw] of sorted.entries()) {
+      const v = folds[i] ?? raw
+      const t = piece(text, i)
+      // A prefix ends on the text's last character: a compare of one
+      // character skips each other length (15 spellings a secret made the
+      // whole compare 5x slower per chunk).
+      const last = t.charCodeAt(t.length - 1)
+      for (let k = Math.min(v.length - 1, t.length); k > longest; k--) {
+        if (v.charCodeAt(k - 1) === last && t.endsWith(v.slice(0, k))) {
           longest = k
           break
         }
@@ -228,9 +350,12 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
   /** The longest head of `text` that is a proper suffix of a value. */
   const partialHead = (text: string): number => {
     let longest = 0
-    for (const v of sorted) {
-      for (let k = Math.min(v.length - 1, text.length); k > longest; k--) {
-        if (text.startsWith(v.slice(v.length - k))) {
+    for (const [i, raw] of sorted.entries()) {
+      const v = folds[i] ?? raw
+      const t = piece(text, i)
+      const first = t.charCodeAt(0)
+      for (let k = Math.min(v.length - 1, t.length); k > longest; k--) {
+        if (v.charCodeAt(v.length - k) === first && t.startsWith(v.slice(v.length - k))) {
           longest = k
           break
         }
@@ -238,15 +363,10 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     }
     return longest
   }
-  /**
-   * `text` cut where nothing after the cut could begin a value, and no
-   * masked span runs across it or ends at it with text after: a span
-   * ending there may yet merge with a value the next chunk completes.
-   */
+  /** `text` cut where nothing after the cut could begin a value, and no masked span runs across it. */
   const safeCut = (text: string): number => {
     let cut = text.length - partialTail(text)
-    for (const [s, e] of spans(text))
-      if (s < cut && (e > cut || (e === cut && cut < text.length))) cut = s
+    for (const [s, e] of spans(text)) if (s < cut && e > cut) cut = s
     return cut
   }
   return {
@@ -264,6 +384,18 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     },
     stream() {
       let carry = ''
+      // What went out ends in a mask: a value starting right after it joins
+      // that mask, as in the whole text. Holding the span back for that held
+      // back-to-back values forever and re-scanned them per chunk.
+      let joined = false
+      const out = (text: string): string => {
+        if (text === '') return ''
+        const found = spans(text)
+        let masked = render(text, found)
+        if (joined && found[0]?.[0] === 0) masked = masked.slice(MASKED.length)
+        joined = found.at(-1)?.[1] === text.length
+        return masked
+      }
       return {
         push(chunk) {
           const text = carry + chunk
@@ -271,10 +403,10 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
           // cannot be one is never delayed (a `readyWhen` line, a marker).
           const cut = safeCut(text)
           carry = text.slice(cut)
-          return mask(text.slice(0, cut))
+          return out(text.slice(0, cut))
         },
         end() {
-          const rest = mask(carry)
+          const rest = out(carry)
           carry = ''
           return rest
         },

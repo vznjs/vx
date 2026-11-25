@@ -406,8 +406,9 @@ describe('vx pipeline <name>', () => {
       'no pipeline named chek; pipelines: check, one, env, quiet, paths, policy',
     )
     expect(typo).toContain('fix  vx pipeline check')
+    // Not "narrow": in an affected pipeline --filter adds projects.
     expect((await vx('pipeline', 'check', 'lint')).err).toContain(
-      'vx pipeline runs one pipeline, whose tasks are its `tasks` (got lint)',
+      'vx pipeline runs one pipeline, whose tasks are its `tasks` (got lint); pick projects with --filter\n',
     )
     expect((await vx('pipeline', 'check', '--all')).err).toContain(
       '--all: a pipeline runs every project already',

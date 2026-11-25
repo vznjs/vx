@@ -1,6 +1,7 @@
 {
   "name": "lib",
   "private": true,
+  "exports": "./dist/greet.js",
   "scripts": {
     "build": "mkdir -p dist && cp src/*.js dist/"
   }

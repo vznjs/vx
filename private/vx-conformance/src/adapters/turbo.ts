@@ -62,8 +62,12 @@ export const turbo: Adapter = {
     for (const [name, p] of Object.entries(ws.projects)) {
       const pdir = path.join(dir, projectDir(name, p))
       const manifest = JSON.parse(await Bun.file(path.join(pdir, 'package.json')).text())
+      // A task without a command has no script: Turborepo runs nothing there but keeps its place in the graph.
       manifest.scripts = Object.fromEntries(
-        Object.keys(p.tasks ?? {}).map((t) => [t, command(name, t)]),
+        Object.keys(p.tasks ?? {}).flatMap((t) => {
+          const run = command(name, t)
+          return run === undefined ? [] : [[t, run]]
+        }),
       )
       await writeFile(path.join(pdir, 'package.json'), JSON.stringify(manifest, null, 2))
       for (const [t, spec] of Object.entries(p.tasks ?? {})) {

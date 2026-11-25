@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { mapRunCommands } from '../src/nx-command.js'
 import { mapNxWorkspace } from '../src/nx/nx-map.js'
+import { trackedKinds } from '../src/tracked-outputs.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'nx-exec.cjs')
 const NX_ENV = path.resolve(import.meta.dir, '..', 'src', 'nx-env.cjs')
@@ -367,7 +368,12 @@ describe.skipIf(!MODULES)('nx-exec against real Nx', () => {
             },
             dependencies: {},
           },
-          { cacheable: new Set() },
+          // A shell line loads the files only where git tracks one
+          // (9d8b9c95a); `.env.local` stays uncommitted, as in a repo.
+          {
+            cacheable: new Set(),
+            tracked: trackedKinds(Object.keys(files).filter((f) => f !== '.env.local')),
+          },
         )
         const exec = mapped.projects[0]!.tasks.find((t) => t.name === 'showenv')!.task!['exec'] as {
           command: string

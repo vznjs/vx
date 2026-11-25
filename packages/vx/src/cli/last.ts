@@ -256,6 +256,13 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
         error: `--stats does not combine with --list, --failed or --log${seeHelp('last')}`,
       }
     }
+    // A run id read as the task: "no recorded run of 0199b2c4".
+    if (out.runId !== undefined && RUN_ID_SHAPE.test(out.runId)) {
+      return {
+        ...out,
+        error: `a run id and --stats do not combine: replay ${out.runId}, or --stats [<task>]${seeHelp('last')}`,
+      }
+    }
     if (out.runId !== undefined) out.task = out.runId
     delete out.runId
     return out
@@ -475,16 +482,21 @@ function* jsonRows(
   refused: (err: unknown) => never,
 ): Generator<string> {
   let piece = '{"rows":['
+  let sent = false
   let row = first
   for (let n = 0; row.done !== true; n++) {
     piece += `${n === 0 ? '' : ','}${JSON.stringify(row.value)}`
     if (piece.length >= 65_536) {
       yield piece
       piece = ''
+      sent = true
     }
     try {
       row = rest.next()
     } catch (err) {
+      // Rows already out: the refusal's one-line document follows on a line
+      // of its own, not glued to the cut array where no reader could take it.
+      if (sent) yield '\n'
       refused(err)
     }
   }

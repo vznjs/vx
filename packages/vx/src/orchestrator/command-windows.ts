@@ -24,18 +24,29 @@ export interface CommandWindows {
    * Whether any command, restore or fetch whose reach covers `dir` (one in
    * `dir` or a directory above it, or one reaching the workspace) was
    * running at some point after `from` and at or before `to`. A write in
-   * contract to a file under `dir` in that span needs one.
+   * contract to a file under `dir` in that span needs one. One opened after
+   * `to` counts too: callers pass now, and a yes only re-checks more.
    */
   reachedSince(dir: string, from: number, to: number): boolean
   /** Told of each window as it opens, before its command may write. */
   onOpen(listener: (projectDir: string, reach: WriteReach) => void): void
 }
 
+/**
+ * A directory's windows as `reachedSince` asks them: how many are open, and
+ * the latest a closed one ended. A save asks it of each task under it, so
+ * scanning a project's every window made a 10,000-task chain cubic.
+ */
+interface Reach {
+  open: number
+  closedTo: number
+}
+
 export function commandWindows(): CommandWindows {
   const windows: Window[] = []
-  // By directory, so `reachedSince` asks a project's few windows, not the run's.
-  const byDir = new Map<string, Window[]>()
-  const wide: Window[] = []
+  // By directory, so `reachedSince` asks a project's own, not the run's.
+  const byDir = new Map<string, Reach>()
+  const wide: Reach = { open: 0, closedTo: -Infinity }
   const listeners: ((projectDir: string, reach: WriteReach) => void)[] = []
   const ancestors = new Map<string, readonly string[]>()
   const chainOf = (dir: string): readonly string[] => {
@@ -53,27 +64,26 @@ export function commandWindows(): CommandWindows {
     }
     return chain
   }
-  const overlaps = (list: readonly Window[] | undefined, from: number, to: number): boolean => {
-    if (list === undefined) return false
-    for (const w of list) if (w.to > from && w.from <= to) return true
-    return false
-  }
+  // A window that opened after `to` counts too: `to` is now at every call,
+  // and counting more only re-checks more.
+  const overlaps = (r: Reach | undefined, from: number): boolean =>
+    r !== undefined && (r.open > 0 || r.closedTo > from)
   return {
     open(id, projectDir, reach) {
       if (reach === 'none') return () => {}
       for (const l of listeners) l(projectDir, reach)
       const w: Window = { id, projectDir, reach, from: Date.now(), to: Infinity }
       windows.push(w)
-      if (reach === 'workspace') wide.push(w)
-      else {
-        const list = byDir.get(projectDir)
-        if (list === undefined) byDir.set(projectDir, [w])
-        else list.push(w)
-      }
+      let r = reach === 'workspace' ? wide : byDir.get(projectDir)
+      if (r === undefined) byDir.set(projectDir, (r = { open: 0, closedTo: -Infinity }))
+      r.open++
       return () => {
+        if (w.to !== Infinity) return
         // `Date.now()` floors to the ms and a ctime does not: the command's
         // last write can be stamped up to a millisecond past it.
         w.to = Date.now() + 1
+        r.open--
+        r.closedTo = Math.max(r.closedTo, w.to)
       }
     },
     writerDuring(self, file, from, to) {
@@ -83,9 +93,9 @@ export function commandWindows(): CommandWindows {
       }
       return undefined
     },
-    reachedSince(dir, from, to) {
-      if (overlaps(wide, from, to)) return true
-      for (const d of chainOf(dir)) if (overlaps(byDir.get(d), from, to)) return true
+    reachedSince(dir, from) {
+      if (overlaps(wide, from)) return true
+      for (const d of chainOf(dir)) if (overlaps(byDir.get(d), from)) return true
       return false
     },
     onOpen(listener) {

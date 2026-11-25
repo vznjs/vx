@@ -17,7 +17,6 @@
 // default configuration is folded into the base task.
 
 import { existsSync } from 'node:fs'
-import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   type Duration,
@@ -48,8 +47,8 @@ import { isRecord, packageScripts, relPosix } from '../paths.js'
 import { withLernaOrder } from './lerna.js'
 import { mapNxDeps, matchNxProjects, type TaskNameFor } from './nx-deps.js'
 import {
+  committedDotenv,
   dotenvCandidates,
-  type DotenvListing,
   existingDotenv,
   listDotenv,
   ownerTargetOf,
@@ -368,19 +367,14 @@ async function ignoredOutputs(
         untracked.add(o)
     }
   }
-  // A missing `dist` matches a `dist/` rule only spelled as a directory;
-  // an existing file never does.
+  // A missing `dist` matches a `dist/` rule only spelled as a directory.
+  // Either spelling counts, whatever is on disk: the answer is locked, and a
+  // fresh clone has no `dist` at all.
   const hit = await gitIgnored(
     root,
     [...untracked].flatMap((o) => [o, `${o}/`]),
   )
-  const out = new Set<string>()
-  for (const o of untracked) {
-    if (hit.has(o)) out.add(o)
-    else if (hit.has(`${o}/`) && !(await lstat(path.join(root, o)).catch(() => null))?.isFile())
-      out.add(o)
-  }
-  return out
+  return new Set([...untracked].filter((o) => hit.has(o) || hit.has(`${o}/`)))
 }
 
 function normRel(p: string): string {
@@ -498,12 +492,13 @@ export async function mapNxWorkspace(
   for (const meta of allMetas) {
     if (nodeByMeta.get(meta)?.data?.targets) relOf.set(meta, normRel(relPosix(root, meta.dir)))
   }
-  // Nx loads a task's `.env` files unless NX_LOAD_DOT_ENV_FILES is `false`;
-  // one listing per project dir decides which exist (~4 ms at 1,000).
-  const listing: DotenvListing | null =
-    process.env['NX_LOAD_DOT_ENV_FILES'] === 'false'
-      ? null
-      : await listDotenv(root, [...relOf.values()])
+  // Which `.env` candidates git tracks decides a shell line (nx-dotenv.ts);
+  // the disk's listing (~4 ms at 1,000) only names the uncommitted ones a
+  // shell line leaves out, in a note, never in a task.
+  const projectDirs = [...relOf.values()]
+  const committed = committedDotenv(opts.tracked, projectDirs)
+  const onDisk = await listDotenv(root, projectDirs)
+  const uncommitted = new Set<string>()
 
   const mapped: Array<{ meta: PackageMeta; tasks: GeneratedTask[] }> = []
   let releasePublish = 0
@@ -521,15 +516,17 @@ export async function mapNxWorkspace(
     const projectRel = relOf.get(meta)!
     const scripts = packageScripts(meta)
     // Relative to the project dir, where vx runs the task.
-    const dotenvFor = (
-      l: DotenvListing,
-      targetName: string,
-      configuration: string | undefined,
-    ): string[] => {
+    const dotenvFor = (targetName: string, configuration: string | undefined) => {
       const [owner, parent] = ownerTargetOf(targetName, targets, node?.data?.metadata?.targetGroups)
-      return existingDotenv(dotenvCandidates(projectRel, owner, configuration, parent), l).map(
-        (f) => relPosix(projectRel, f),
-      )
+      const all = dotenvCandidates(projectRel, owner, configuration, parent)
+      const tracked = existingDotenv(all, committed)
+      return {
+        dotenv: {
+          files: [...new Set(all.map((f) => relPosix(projectRel, f)))],
+          committed: tracked.length > 0,
+        },
+        uncommitted: existingDotenv(all, onDisk).filter((f) => !tracked.includes(f)),
+      }
     }
     const atomized = new Set(Object.values(targets).map((t) => t.metadata?.nonAtomizedTarget))
     // A target's name wins over a configuration task's (`vite`'s `build`
@@ -556,6 +553,7 @@ export async function mapNxWorkspace(
           }
           taken.add(v.name)
         }
+        const env = dotenvFor(targetName, v.configuration)
         const t = buildTask(
           meta,
           projectRel,
@@ -570,8 +568,11 @@ export async function mapNxWorkspace(
           nodeMap,
           taskNameFor,
           mapOpts,
-          listing === null ? null : dotenvFor(listing, targetName, v.configuration),
+          env.dotenv,
         )
+        const command = (t.task?.['exec'] as { command?: unknown } | undefined)?.command
+        if (!env.dotenv.committed && typeof command === 'string' && !command.startsWith('nx-exec '))
+          for (const f of env.uncommitted) uncommitted.add(f)
         if (v.name !== targetName) configured.set(t, v.configuration!)
         else base = t
         if (atomized.has(targetName)) split.add(t)
@@ -722,6 +723,17 @@ export async function mapNxWorkspace(
   if (optional !== undefined) notes.push(optional)
   const folded = opts.migration === true ? upstreamFoldNote(projects) : undefined
   if (folded !== undefined) notes.push(folded)
+  if (uncommitted.size > 0)
+    notes.push(
+      `${[...uncommitted]
+        .sort()
+        .map((f) => `\`${f}\``)
+        .join(
+          ', ',
+        )}: Nx loads ${uncommitted.size === 1 ? 'this `.env` file' : 'these `.env` files'}, ` +
+        'and a shell-line task loads only committed ones, so the lock is the same on every machine — ' +
+        'commit it, or load it in the command',
+    )
   refuseTaskNames(projects, 'target')
   return { projects, notes }
 }
@@ -973,7 +985,7 @@ function buildTask(
   nodeMap: Readonly<Record<string, NxNode>>,
   taskNameFor: TaskNameFor,
   opts: MapOpts,
-  dotenv: readonly string[] | null,
+  dotenv: TaskDotenv,
 ): GeneratedTask {
   const todos: string[] = []
   const options = variant.options
@@ -1162,16 +1174,16 @@ function buildTask(
     }
     return { name: variant.name, task: { dependsOn: deps }, todos }
   }
+  // The bins read it at run time, as Nx does: passed, and keyed.
+  if (mapped.envInputs.length > 0 && !inputs.envNames.includes('NX_LOAD_DOT_ENV_FILES'))
+    inputs.envNames.push('NX_LOAD_DOT_ENV_FILES')
   if (opts.migration === true) {
     const call = nxSelfCall(mapped.command)
     if (call !== undefined) todos.push(call)
   }
   const exec: Record<string, unknown> = { command: mapped.command }
+  // Nx's `{ env }` inputs are core's `inputs.env`, which passes what it keys.
   const env: Record<string, unknown> = {}
-  // A name that is no shell identifier never reached a task (`sh` drops it)
-  // and core refuses it in passThrough; the key still reads it.
-  const passThrough = inputs.envNames.filter((n) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(n))
-  if (passThrough.length > 0) env['passThrough'] = passThrough
   // Nx hands every task its target (`getNxEnvVariablesForTask`), and `nx exec
   // -- <cmd>`, a package script's way to run under Nx, reads it: unset, it
   // booted Nx's own task runner, which ran the target and its dependencies
@@ -1204,6 +1216,17 @@ function buildTask(
   }
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task['dependsOn'] = deps
+  // The `.env` files the command loads are literal inputs, keyed present or
+  // not and seen though gitignored: the project's own as `files`, the root's
+  // as `workspaceFiles`. Only an absolute `envFile` or one outside the
+  // workspace is read by a probe.
+  const envOutside: string[] = []
+  for (const f of mapped.envInputs) {
+    const ws = path.posix.normalize(path.posix.join(projectRel, f))
+    if (path.posix.isAbsolute(f) || ws === '..' || ws.startsWith('../')) envOutside.push(f)
+    else if (f === '..' || f.startsWith('../')) inputs.wsFiles.push(ws)
+    else inputs.files.push(f)
+  }
   const keyed: Record<string, unknown> = { files: withoutTakenBack(inputs.files) }
   // Nx hashes the root TypeScript config into every task (its TsConfiguration
   // input, other projects' `paths` left out): a compilerOptions edit re-ran
@@ -1224,10 +1247,7 @@ function buildTask(
     inputs.wsFiles.push(opts.lockfile)
   if (inputs.wsFiles.length > 0) keyed['workspaceFiles'] = withoutTakenBack(inputs.wsFiles)
   if (inputs.envNames.length > 0) keyed['env'] = inputs.envNames
-  // The `.env` files the task loads are inputs, and gitignored ones
-  // (`.env.local`) are invisible to a glob: their bytes, read per run.
-  // Their paths are project-relative: `runtime`, in the project dir.
-  if (mapped.envInputs.length > 0) keyed['runtime'] = [envProbe(mapped.envInputs)]
+  if (envOutside.length > 0) keyed['runtime'] = [envProbe(envOutside)]
   if (inputs.runtimeCmds.length > 0) keyed['workspaceRuntime'] = inputs.runtimeCmds
   task['inputs'] = keyed
   if (cacheEnabled) {
@@ -1440,11 +1460,16 @@ interface MappedCommand {
   readonly nxCalls?: readonly { readonly project: string; readonly target: string }[]
 }
 
+/** A task's `.env` candidates, relative to the project dir, and whether git tracks one. */
+interface TaskDotenv {
+  readonly files: readonly string[]
+  readonly committed: boolean
+}
+
 /**
- * `dotenv` is the task's existing `.env` files relative to the project dir,
- * or null when Nx would load none (NX_LOAD_DOT_ENV_FILES=false). A shell
- * line that has any, or a run-commands `envFile`, runs under `nx-env`; an
- * executor line hands them to `nx-exec`.
+ * An executor line hands `nx-exec` every candidate; a shell line runs under
+ * `nx-env` with them only when one is committed (or for a run-commands
+ * `envFile`). Never what this disk holds: the lock is every machine's.
  */
 function mapCommand(
   targetName: string,
@@ -1455,7 +1480,7 @@ function mapCommand(
   configuration: string | undefined,
   scripts: Record<string, unknown>,
   todos: string[],
-  dotenv: readonly string[] | null,
+  dotenv: TaskDotenv,
   pnp: boolean,
   hooks: boolean,
   manifest: { readonly name?: unknown; readonly version?: unknown },
@@ -1470,7 +1495,8 @@ function mapCommand(
     // (handled by the caller; nothing to map here).
     return null
   }
-  const files = dotenv ?? []
+  const files = dotenv.files
+  const shellFiles = dotenv.committed ? files : []
   const line = (command: string): MappedCommand => ({
     command,
     env: {},
@@ -1483,15 +1509,15 @@ function mapCommand(
     rest: Pick<MappedCommand, 'env' | 'readyWhen'> = { env: {}, readyWhen: undefined },
     readyAll: readonly string[] = [],
   ): MappedCommand => {
-    if (files.length === 0 && envFile === undefined && readyAll.length === 0)
+    if (shellFiles.length === 0 && envFile === undefined && readyAll.length === 0)
       return { ...rest, command, envInputs: [] }
-    const flags = files.flatMap((f) => ['--dotenv', shellQuote(f)])
+    const flags = shellFiles.flatMap((f) => ['--dotenv', shellQuote(f)])
     if (envFile !== undefined) flags.push('--envFile', shellQuote(envFile))
     for (const s of readyAll) flags.push('--ready-when', shellQuote(s))
     return {
       ...rest,
       command: `nx-env ${flags.join(' ')} -- ${shellQuote(command)}`,
-      envInputs: envFile === undefined ? files : [...files, envFile],
+      envInputs: envFile === undefined ? shellFiles : [...shellFiles, envFile],
     }
   }
   // run-commands, and a plain `command` (its shorthand, over the same
@@ -1506,9 +1532,9 @@ function mapCommand(
     )
     if (rc === null) return line(PLACEHOLDER)
     // Nx loads `envFile` from its own working directory, the workspace
-    // root, and not at all under NX_LOAD_DOT_ENV_FILES=false.
+    // root, and not at all under NX_LOAD_DOT_ENV_FILES=false (nx-env's check).
     const envFile =
-      rc.envFile === undefined || dotenv === null
+      rc.envFile === undefined
         ? undefined
         : path.posix.isAbsolute(rc.envFile)
           ? rc.envFile

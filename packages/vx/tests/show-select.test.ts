@@ -36,7 +36,8 @@ function names(...args: string[]): { code: number | null; names: string[]; err: 
   }
 }
 
-const LINT = `export default { tasks: { lint: { exec: { command: 'true' } } } }\n`
+// lint reads its own files: one with no `inputs` is marked by any change.
+const LINT = `export default { tasks: { lint: { exec: { command: 'true' }, inputs: { files: ['**'] } } } }\n`
 
 // app depends on lib; tool stands alone; lib and tool declare lint.
 beforeAll(async () => {
@@ -67,9 +68,10 @@ describe('vx show --filter / --affected', () => {
     ])
   })
 
-  it('lists the changed projects and their dependents, and a task among them', () => {
+  // app declares no task: only the default build, which a run never selects.
+  it('lists the projects with an affected task, and a task among them', () => {
     expect([names('--affected=HEAD'), names('lint', '--affected=HEAD')]).toEqual([
-      { code: 0, names: ['app', 'lib'], err: '' },
+      { code: 0, names: ['lib'], err: '' },
       { code: 0, names: ['lib'], err: '' },
     ])
   })
@@ -88,5 +90,28 @@ describe('vx show --filter / --affected', () => {
       1,
       '✗ vx show  --filter and --affected narrow a list: `vx show` or `vx show <task>`\n',
     ])
+  })
+})
+
+// With nothing changed, `vx show <task> --affected` said "nothing affected",
+// then "no selected project declares lint (2 outside the selection do)":
+// no filter left them out.
+describe('vx show <task> --affected with nothing changed', () => {
+  it('says only that nothing is affected', () => {
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'two')
+    const r = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'show', 'lint', '--affected=HEAD'],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect([r.exitCode, r.stdout.toString(), r.stderr.toString().split('\n').length]).toEqual([
+      0,
+      '',
+      2,
+    ])
+    expect(r.stderr.toString()).toStartWith('› vx show  nothing affected since HEAD')
   })
 })

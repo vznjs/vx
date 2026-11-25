@@ -33,6 +33,8 @@ interface CliWorkspace {
   branch: BranchFacts
   /** Setting path → the last plugin whose `config` hook changed it. */
   settingPlugins: ReadonlyMap<string, string>
+  /** The plugin that named `branch.base`. */
+  basePlugin?: string
   cacheDir: string
   /**
    * The shared store a run opens `cacheDir` with (`resolveStoreRoot`), asked
@@ -50,15 +52,14 @@ export async function loadCliWorkspace(
   workspaceRoot: string,
   warn: (message: string) => void = warnToStderr,
 ): Promise<CliWorkspace> {
-  const { workspaceConfig, plugins, branch, settingPlugins } = await loadWorkspacePlugins(
-    workspaceRoot,
-    warn,
-  )
+  const { workspaceConfig, plugins, branch, settingPlugins, basePlugin } =
+    await loadWorkspacePlugins(workspaceRoot, warn)
   return {
     workspaceConfig,
     plugins,
     branch,
     settingPlugins,
+    ...(basePlugin !== undefined ? { basePlugin } : {}),
     cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig),
     storeRoot: () => resolveStoreRoot(workspaceRoot, workspaceConfig),
   }

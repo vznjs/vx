@@ -28,7 +28,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { benchEnv } from '../bench-env.js'
-import { vxCompileEntries } from '../compile-entries.js'
+import { vxCompileEntries, vxCompileFlags } from '../compile-entries.js'
 import { type Matchup, verdict } from './verdict.js'
 import { ARMS, bestReps, dataRow, mergeRows, serializeData, settle, type DataRow } from './rows.js'
 
@@ -329,10 +329,7 @@ must(
     'bun',
     'build',
     '--compile',
-    '--minify',
-    '--bytecode',
-    '--format=esm',
-    '--splitting',
+    ...vxCompileFlags(),
     ...vxCompileEntries(path.join(REPO_ROOT, 'packages/vx/src/bin.ts')),
     '--outfile',
     vxBin,

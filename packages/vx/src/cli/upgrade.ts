@@ -648,7 +648,7 @@ export function projectManager(dir: string, execPath: string): ManagedInstall['m
       existsSync(path.join(d, 'npm-shrinkwrap.json'))
     )
       return 'npm'
-    const declared = readJson(path.join(d, 'package.json'))?.['packageManager']
+    const declared = declaredManager(path.join(d, 'package.json'))
     if (typeof declared === 'string') {
       const name = declared.split('@')[0]
       if (name === 'pnpm' || name === 'bun' || name === 'yarn' || name === 'npm') return name
@@ -659,6 +659,22 @@ export function projectManager(dir: string, execPath: string): ManagedInstall['m
     if (path.dirname(d) === d) break
   }
   return execPath.includes(`${path.sep}node_modules${path.sep}.pnpm${path.sep}`) ? 'pnpm' : 'npm'
+}
+
+/**
+ * A package.json's `packageManager`, read as Bun reads the file (comments, a
+ * trailing comma): `vx init` asks it of a manifest only Bun may parse, and a
+ * file that parses as nothing names no manager.
+ */
+function declaredManager(file: string): unknown {
+  try {
+    const v: unknown = Bun.JSONC.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, ''))
+    return typeof v === 'object' && v !== null
+      ? (v as Record<string, unknown>)['packageManager']
+      : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** `$name` as a POSIX path with `tail` after it; undefined when unset or relative. */

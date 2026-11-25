@@ -287,6 +287,32 @@ describe('the shared store', () => {
     expect(storedKeys(await store(), 'store.db')).toHaveLength(1)
   })
 
+  // The store made a salt of its own, so `vx why` after the first commit
+  // named every env value and plugin part changed, though none had.
+  it("a repository's first commit keeps the salt of the values it carries", async () => {
+    const a = await workspace('hi\n', null)
+    await writeFile(
+      path.join(a.pkg, 'vx.config.mjs'),
+      BUILD.replace("files: ['in.txt'] }", "files: ['in.txt'], env: ['VX_T_SALT'] }"),
+    )
+    process.env['VX_T_SALT'] = 'same'
+    await build(a)
+    gitIn(a.root)('add', '-A')
+    gitIn(a.root)('-c', 'user.email=t@vx', '-c', 'user.name=t', 'commit', '-q', '-m', 'first')
+    await writeFile(path.join(a.pkg, 'in.txt'), 'changed\n')
+    await build(a)
+    const db = new Database(path.join(await store(), 'store.db'), { readonly: true })
+    try {
+      const env = (
+        db.query('SELECT components FROM entry_inputs').all() as { components: string }[]
+      ).map((r) => (JSON.parse(r.components) as string[][]).find((c) => c[0] === 'env')![2])
+      expect(env).toHaveLength(2)
+      expect(env[0]).toBe(env[1]!)
+    } finally {
+      db.close()
+    }
+  })
+
   it("a repository's first commit keeps the outputs up to date", async () => {
     // The stamps were keyed by whether a store held the entries: none
     // before the first commit, one after, so the run after restored all.

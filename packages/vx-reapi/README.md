@@ -50,6 +50,8 @@ option. Name a value from CI in `.vx/workspace.ts`
 - It may also be a gRPC resolver target: `unix:`, `unix-abstract:`, `dns:`,
   `ipv4:` or `ipv6:`.
 - Any other endpoint is refused at startup, with a line naming the setting.
+- So is one with credentials before an `@` (`token@host`): warnings print
+  the endpoint. Put a token in `headers`.
 - So is a TLS endpoint at an IP address, since Bun's TLS refuses an IP as
   the server name.
 - Name the server by host name instead, or use `grpc://` for plaintext.
@@ -181,6 +183,9 @@ reapi({ endpoint: 'grpcs://cache.example.com:443', chunkBytes: 128 * 1024 })
 Every successful remote execution writes an execution record under the
 task's vx key (`vx-reapi-exec-v2`). A later run whose key already has a
 record skips the work entirely.
+
+- The `platform` is part of the record's address. It is not in the vx key,
+  so a new image executes once instead of replaying the old one's outputs.
 
 - The record lists the task's outputs by digest, plus its stdout and stderr.
 - Each stream is inline up to 64 KiB, and a CAS blob past it.
@@ -739,7 +744,8 @@ What happens, all verified live against a NativeLink scheduler and worker
   into `node_modules/.prisma`) is merged into it: the worker sees both.
 - A DECLARED input file under a grafted directory is replaced by the graft,
   with a warning.
-- The execution record lives under `sha256("vx-reapi-exec-v2\0" + key)`.
+- The execution record lives under `sha256("vx-reapi-exec-v2\0" + key)`,
+  with `"\0name=value"` per `platform` property after the key, by name.
 - That is a second AC namespace beside the artifact mapping. It lists
   outputs file by file, with workspace-relative paths.
 
@@ -791,8 +797,8 @@ has its own. Two reasons, and both matter:
 So a task that needs a value on a worker must do one of two things:
 
 - `define` it (a config literal)
-- list it in both `inputs.env` and `exec.env.passThrough` (a host value,
-  keyed, and seen by a local run the same way)
+- list it in `inputs.env` (a host value, passed and keyed, and seen by a
+  local run the same way)
 
 Keep a task whose command reads a `passThrough` secret local, with
 `exec: { remote: false }`.

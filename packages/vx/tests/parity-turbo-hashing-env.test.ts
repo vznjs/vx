@@ -143,15 +143,18 @@ describe('Turbo parity — env (turborepo-env)', () => {
   )
 
   it(
-    '`test_wildcard_to_regex_pattern` — divergence: vx refuses an env wildcard (D-53) rather than keying a pattern',
+    '`test_wildcard_to_regex_pattern` — a `*` env pattern keys each variable it matches',
     async () => {
       const own = await workspace('vx-parity-turbo-wild-', {
         lib: { config: config("{ files: [], env: ['FOO*'] }") },
       })
       try {
-        const r = await vx(own, ['run', 'lib#t', '--dry', '--format', 'json'])
-        expect(r.code).not.toBe(0)
-        expect(r.out + r.err).toContain('FOO*')
+        const base = await key(own, 'lib#t', { FOO_A: '1' })
+        expect(await key(own, 'lib#t', { FOO_A: '1' })).toBe(base)
+        expect(await key(own, 'lib#t', { FOO_A: '2' })).not.toBe(base)
+        expect(await key(own, 'lib#t', { FOO_A: '1', FOO_B: '1' })).not.toBe(base)
+        // CONTROL: a name the pattern does not match moves nothing.
+        expect(await key(own, 'lib#t', { FOO_A: '1', BAR: '1' })).toBe(base)
       } finally {
         await rm(own, { recursive: true, force: true })
       }

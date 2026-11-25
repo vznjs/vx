@@ -170,7 +170,7 @@ describe('every internal link in the built site', () => {
   // table moved to schema/workspace/; nothing checked the CLI's URLs.
   it('lands every site URL the CLI and plugins print', () => {
     const roots = ['vx', ...SRC_PLUGINS.map((p) => `vx-${p}`)].map((p) =>
-      path.resolve(import.meta.dir, `../../../packages/${p}/src`),
+      path.resolve(import.meta.dir, `../node_modules/@vzn/${p}/src`),
     )
     const dead = roots.flatMap((root) =>
       readdirSync(root, { recursive: true, encoding: 'utf8' })

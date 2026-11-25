@@ -151,7 +151,7 @@ vx run test --affected
 | ------------------------------------- | ---- | ---------------------------------------------------- |
 | no changed project declares `test`    | 0    | `No affected project declares task(s): test.`        |
 | the change reaches no `test` task     | 0    | `Nothing affected: the change reaches no test task.` |
-| the diff touched no project           | 0    | `nothing affected since <ref>` (stderr)              |
+| the diff changed no file              | 0    | `nothing affected since <ref>` (stderr)              |
 | no project anywhere declares the name | 1    | the refusal above                                    |
 
 <details class="vx-deeper" data-level="3">
@@ -296,6 +296,8 @@ Off a terminal (a pipe, CI) there is no list: name the task.
   `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`.
 - Outside any project it names every project's tasks:
   `not inside a project, the workspace's tasks with --all: build, test`.
+- In a project with no task of its own, such as the root one `vx init`
+  writes: `acme declares none, the workspace's tasks with --all: …`.
 - The list stops at twelve names, then `and N more`.
 - Under `--all` it names `every project's tasks: …`.
 - Under `--filter` or `--affected` it names
@@ -340,6 +342,8 @@ vx run build --all                 # every project that declares build
   every `!` exclude, so an exclude removes what any include added.
 - Includes add up: `--affected --filter other` runs other's tasks
   whether or not the change reaches them.
+- That holds for `--affected=main --filter '...[main]'` too: the filter
+  runs every task of the projects it picks.
 - `--all` with a filter is the filter's selection: `--all --filter
 '!docs'` is everything but docs.
 
@@ -458,6 +462,7 @@ filter(s): …`, plus a hint: running the rest would hide the typo.
   refuses, naming `nope`) and for an exclusion (`!nope`).
 - A filter that names no project (`...`, a bare `!`, an empty `{}`) is refused.
 - A path that climbs out of the root (`../`, `{..}`) is refused.
+- An empty git ref (`[]`, `@demo/web[]`) is refused.
 - A filter holding a control character is refused.
 - `@demo/web^...[main]` is refused: write `@demo/web[main]^...`, the
   dependencies of a changed app. `^...` never goes before a git ref.
@@ -523,6 +528,7 @@ Picking the base:
 
 - A `VX_AFFECTED_BASE` ref that does not resolve is named as its:
   `VX_AFFECTED_BASE=origin/develop: git ref "origin/develop" did not resolve`.
+- So is a plugin's: `the base @vzn/vx-ci named: git ref "<sha>" did not resolve`.
 - A plugin's base is `setBranch({ base })`: `github()` gives a pull
   request's base, `nx()` `NX_BASE`, `turbo()` `TURBO_SCM_BASE`.
 - On GitHub Actions, `turbo()` also gives the pull request's base branch
@@ -583,6 +589,7 @@ Refused before git sees it:
 - A range not ending at HEAD (`HEAD~2..HEAD~1`, `main...feature`):
   `ranges are not supported — pass the base alone ("HEAD~2")`.
   The other end is always the working tree.
+- An open range (`main..`), naming `main..HEAD`, which git reads it as.
 - An exclusion (`^main`), naming `main`.
 - A path inside a commit (`main:packages`), naming the commit to pass.
 
@@ -591,6 +598,8 @@ Errors from git:
 - A ref that does not exist is `git ref "<ref>" did not resolve`, with
   git's reason when it gives one. In a full clone it names up to six
   local branches to pass instead.
+- A branch name only a remote has here (`main` beside `origin/main`)
+  says `did you mean origin/main?`.
 - `main@{9}` adds `log for 'main' only has 2
 entries`.
 - In a shallow clone it adds how to fetch it: `git fetch --depth=1 origin <base>`.
@@ -611,9 +620,9 @@ git: <root> is not inside a git work tree`.
 </div>
 </details>
 
-**It selects the tasks the change reaches.** A change marks tasks in
-the projects it touches. A requested task runs when its `dependsOn`
-closure holds a marked task.
+**It selects the tasks the change reaches.** A change marks tasks by
+their inputs, in every project. A requested task runs when its
+`dependsOn` closure holds a marked task.
 
 With `@demo/web#test` behind `^build`:
 
@@ -621,7 +630,9 @@ With `@demo/web#test` behind `^build`:
   tasks and `@demo/web#test`;
 - an edit to `ui/src/button.test.ts`, which only `ui#test` reads, runs
   `ui#test` alone;
-- `@demo/web#lint`, which depends on nothing, never runs for a change in `ui`.
+- `@demo/web#lint`, with `inputs` and no dependency, never runs for a change in `ui`.
+- a task with `exec` and no `inputs` runs when its project changed, or
+  depends as a package on one that did.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -629,24 +640,28 @@ With `@demo/web#test` behind `^build`:
 
 What a change marks:
 
-- A cached task, when a changed path is one of its declared inputs
-  (`files`, `workspaceFiles`).
-- A cached task, when a changed path is a submodule or embedded
-  repository its `workspaceFiles` may reach into.
-- A task whose locked config moved when its project's `vx.config.*`
-  changed, and every task without `inputs` there (below).
-- Every task of a project that holds a changed path no task of its
-  declares: vx cannot prove that path changes no key.
+- A task with `exec` and no `inputs`: when its project is affected, that
+  is, it changed or depends as a package on one that did. Nothing it
+  declares rules a change there out.
+- Only the affected projects' tasks are scanned. Another project's task
+  is marked only through a dependency.
+- A task with `inputs` (a no-op task too), when a changed path is one of
+  them (`files`, `workspaceFiles`), or a submodule or embedded repository
+  its `workspaceFiles` may reach into.
+- `inputs: { files: [] }` on a task with `exec`: no path marks it, only
+  its dependencies and its own definition.
+- Any task, a group included, whose own definition moved (below).
+- A task with `inputs`, when its key's material moved for its project: a
+  lockfile claim, a deleted dependency, a changed nested repository.
+- An install that added or removed a dependency shows as the lockfile's change.
+- A changed path no input declares marks nothing: it is in no key.
+- A `vx.config.*` or `.vx/workspace.*` edit, or one to a file they
+  import, marks nothing by itself. Configs only generate the locks, and
+  the locks' diff marks tasks.
+- A run still refuses a config edited since `vx lock`.
 - An untracked file under a task's `outputs`, `files` or
   `workspaceFiles` is none of its inputs: the key folds only a tracked one.
-- Every task of a project that holds a changed submodule or embedded repository.
-- Every task of a project a lockfile plugin or a config import names.
-  An install that added or removed a dependency shows as the lockfile's change.
-- A task with no `inputs`, when a changed path lies in its project or
-  the whole project is marked.
-- A root file another task of its declares (`workspaceFiles`) is no
-  change for a task with no `inputs`.
-- A group marks nothing.
+- A group (no `exec`, no `inputs`) is marked only through its dependencies.
 
 How it spreads:
 
@@ -658,8 +673,7 @@ How it spreads:
   ([schema](schema.md)), so any change there reaches a dependent behind `^build`.
 - A `graph` plugin's dependency or input works as a declared one.
 - A task a `graph` plugin marks requested runs whatever the diff.
-- With a `graph` plugin, every project is a candidate once the diff
-  touched anything.
+- Every project is a candidate once the diff touched anything.
 
 The filter forms select whole projects instead:
 
@@ -716,14 +730,19 @@ What `vx lock` writes:
 - A project whose name, edges, project-level fields or set of tasks
   changed is selected whole, with the lock as the reason shown.
 - `vx lock` rewriting the same entries selects nothing.
-- When only some tasks' locked configs moved, a config edit selects
-  those tasks alone, with the config as the `input` shown.
-- An edit to a file the config imports does the same, with
-  `.vx/projects.lock` as the `input` shown.
+- When only some tasks' locked configs moved, those tasks alone are
+  selected, with `.vx/projects.lock` as the `input` shown.
+- That holds whether or not the diff holds the config edit.
+- A group's definition counts: a new `description` marks it and its
+  dependants.
+- An edit to a file the config imports does the same.
+- Each project that imports it counts on its own: one whose locked
+  tasks stayed the same is selected for none of them.
 - So changing `build`'s command does not re-run `test`.
 - An edit that moves no locked task (a comment) selects none of its
-  tasks with `inputs`.
-- A task without `inputs` reads its whole project, the config too.
+  tasks.
+- `.vx/dependencies.lock` counts project by project: one whose edges or
+  recorded dependency closure moved is selected whole, and no other.
 
 </div>
 </details>
@@ -789,15 +808,19 @@ inputs stop at every project below it.
 </div>
 </details>
 
-**A workspace config change selects everything.** The plugins in
-`.vx/workspace.*` shape every resolved config, so vx cannot tell which
-key an edit there changes.
+**A workspace config change selects what it moves.** The plugins in
+`.vx/workspace.*` shape every resolved config; the lock shows which.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- So does an edit to a file it imports, directly or through another file.
+- It marks the tasks whose locked config moved, as a project config does.
+- With a plugin that has a `key` hook and claims no file, it marks every
+  task with `inputs`: vx cannot tell what that key reads.
+- A comment marks only the tasks marked always.
+- `--filter '[<ref>]'` still selects every project for it.
+- An edit to a file it imports counts the same, directly or through another file.
 - That includes a workspace package it imports by name (linked into
   `node_modules`, as `workspace:*` does).
 - That includes a file above the workspace root in the same git repository.
@@ -1202,7 +1225,7 @@ Flags that cannot go together:
 - In `vx run --affected main build`, `main` is a task. When no project
   declares it, the refusal names `--affected=main`.
 - `vx watch` and `vx show` say so too.
-- A word from a closed set says so first: `--dry json` is refused with its `=` form.
+- `--dry json` is refused, naming `--dry --format json`.
 
 Empty values:
 
@@ -2213,8 +2236,9 @@ vx run build lint --affected=main --dry
 
 | `kind`      | Why the task is kept                                                   |
 | ----------- | ---------------------------------------------------------------------- |
-| `input`     | a changed `file` is one of its declared inputs                         |
-| `project`   | its project changed and the task reads the project whole               |
+| `input`     | a changed `file` is one of its inputs, or its definition               |
+| `always`    | it has `exec` and no `inputs`, and its project is affected             |
+| `project`   | its key's material moved for its whole project (a lockfile claim)      |
 | `workspace` | a `file` no project owns changed and reached every task of the project |
 | `package`   | a `^` edge passes a changed `project` that has no such task            |
 | `named`     | you named it as `pkg#task` beside a bare task                          |
@@ -2227,11 +2251,11 @@ vx run build lint --affected=main --dry
 <div class="vx-deeper-body">
 
 - On a terminal too narrow for the reason beside its row, the reason goes on its own line under the row.
-- `project` covers a task with no `inputs`, and a changed `file` no task of the project declares, often an output git does not ignore.
+- When one of its inputs changed too, the reason is `input`, the most precise one.
 - A `project` reason for a config import has no `file`.
 - `workspace` from the workspace config reaches every project, shown as `changed (workspace-wide)`.
 - `workspace` from a root file a plugin claims (a lockfile) or a folder it names reaches only the projects whose digest moved.
-- That one is shown as `changed (every task in its project)`.
+- That one is shown as `changed (in its key)`.
 - A dependency the kept tasks pull in carries no reason.
 - The reasons are gathered only for a plan. A run pays nothing for them.
 - `--dry --format json` also states `affectedBase`, the ref the diff was taken against.
@@ -2623,7 +2647,8 @@ Every other flag is `vx run`'s ([Flags](#flags)).
 - A cycle opens with a blank line and `changed <project> <relpath>`, plus ` (+N more)` when more paths changed.
 - Then come its task rows as `vx run` prints them, with no footer.
 - Where a hit prints no row (`--all`, `--filter`, `--affected`, `--output-logs errors-only` or `none`), a cycle of hits alone says ` N tasks cached, nothing ran`.
-- So a cycle back to cached bytes is not silent below the failure before it.
+- So a cycle back to cached bytes is not silent below the failure before it. An initial run of hits alone says it too.
+- N counts tasks with a command. A group or no-op task in the cycle neither counts nor silences it.
 - The named path is the first changed file that still exists, a folder only when no file changed.
 - An editor's temporary file renamed away names nothing. A deletion names the cycle when nothing else changed.
 - The `watching` line is said once. A cycle that re-reads the watched set (a member came or went, the lock or a plugin changed) says nothing more.
@@ -2640,12 +2665,14 @@ Every other flag is `vx run`'s ([Flags](#flags)).
 - That holds when its key is the one it ran under and no path that started the cycle lies in its project.
 - So editing the app runs no uncached generator it builds on, and an edit elsewhere runs no failing lint again.
 - A path outside every project, a timeout, a proven flake or a result its key does not vouch for keeps nothing.
+- A task with no `inputs`, or one whose key reads such a task's, runs every cycle: that key is new each run.
 - Events that arrive during a cycle queue and run after it.
 - A cycle starts ~150 ms after the last event, and at most 1 s after the first, so a writer that never pauses holds no edit back.
 
 **Exit**
 
-- `SIGINT` (`Ctrl+C`), `SIGTERM` or `SIGHUP` exits 0. `vx watch: stopped` is the last line, once the cycle in flight is down.
+- `SIGINT` (`Ctrl+C`), `SIGTERM` or `SIGHUP` exits 0, once the cycle in flight is down.
+- After a `Ctrl+C`, `vx watch: stopped` is the last line. `SIGTERM` and `SIGHUP` print nothing.
 
 </div>
 </details>
@@ -2736,9 +2763,9 @@ A root file a plugin claims starts a cycle: a lockfile under `@vzn/vx-lockfile` 
 
 A config edit alone changes no command, since every cycle reads its configs from `.vx/projects.lock`. The watch says so, and each cycle refuses the edited config, as a run does, until `vx lock`:
 
-```
-vx watch: packages/web/vx.config.ts changed; runs read the lock, so run `vx lock` to apply it
-vx watch: cycle failed: packages/web/vx.config.ts changed since the last `vx lock` — run `vx lock`
+```ansi
+[38;2;234;179;8m![0m [1mvx watch[0m  [38;2;203;213;225mpackages/web/vx.config.ts changed; runs read the lock, so run [0m[1m`vx lock`[0m[38;2;203;213;225m to apply it[0m
+[38;2;239;68;68m✗[0m [1mvx watch[0m  [38;2;203;213;225mcycle failed: packages/web/vx.config.ts changed since the last [0m[1m`vx lock`[0m[38;2;203;213;225m — run [0m[1m`vx lock`[0m
 ```
 
 <details class="vx-deeper" data-level="3">
@@ -2817,8 +2844,8 @@ Each edit rebuilds only the libraries it reaches on the way to the app. The serv
 
 ### Exit codes
 
-- `0` — clean Ctrl+C / SIGTERM exit; also once its reader is gone; also, with no watch, when `--affected` selects nothing (`vx watch: nothing affected since <ref>`, as `vx run` does).
-- `1` — parser error, missing scope, or a task name no project in scope declares (the initial run refuses it as `vx run` does, with the same `Did you mean` hint).
+- `0` — clean Ctrl+C / SIGTERM exit; also once its reader is gone; also, with no watch, when `--affected` selects nothing (`› vx watch  nothing affected since <ref>`, as `vx run` does).
+- `1` — parser error, missing scope, or a task name no project in scope declares (the initial run refuses it as `vx run` does, with the same `fix` hint).
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -2830,6 +2857,7 @@ Each edit rebuilds only the libraries it reaches on the way to the app. The serv
 - A Ctrl-C passes on as SIGINT. A SIGTERM or SIGHUP passes on as SIGTERM. Then a 2 s grace, then SIGKILL.
 - The process leaves only once the cycle has returned, so a CI cancellation never orphans a task.
 - A second signal during that teardown changes nothing: still `0`, once the cycle is down.
+- A SIGINT or SIGHUP watch was started with ignored (a script's `vx watch build &`, `nohup`) stays ignored. `SIGTERM` stops it.
 - `vx watch dev | head`, or a quit `| less`: Bun ignores SIGPIPE, so the next write's EPIPE stops the watch as a SIGTERM does.
 - An idle watch with no reader ends at its next output.
 
@@ -2837,7 +2865,7 @@ Each edit rebuilds only the libraries it reaches on the way to the app. The serv
 
 - A task name no project declares exits rather than re-run the refusal on every change.
 - So do `vx requires git`, when git is not on `PATH`, and a cache dir vx cannot make: no edit the watch hears fixes them.
-- A cycle that throws (no `.vx/projects.lock`, or one that locks a config since removed) prints `vx watch: cycle failed: <reason>` once.
+- A cycle that throws (no `.vx/projects.lock`, or one that locks a config since removed) prints `✗ vx watch  cycle failed: <reason>`.
 - Watch keeps watching, the initial run included, so the `vx lock` that fixes it re-runs.
 - A cycle whose run fails (`{ ok: false }`) does not end the watch. It prints the framed FAILED block and waits for the next change.
 
@@ -3254,12 +3282,21 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 - The message: `` <file> changed since the last `vx lock` — run `vx lock` ``.
 - It compares the file's size, mtime and bytes with those `vx lock` read, kept in the cache folder's `config-stamps.json`.
 - A file whose bytes moved is then evaluated, as `vx lock --check` does: one that evaluates as the lock holds (a comment, a config restored with its lock) runs, and is stamped again.
+- One that no longer evaluates (a throw, a syntax error) refuses the run with its error, as `vx lock --check` names it.
 - Stamps are kept per lock, the last 8, so a branch checked out again keeps its own.
 - A lock with none (a pull, a fresh clone, a branch another `vx lock` left) has the configs the run reads evaluated once, as `vx lock --check` does.
 - Then an edit is refused, and the rest are stamped once the cache folder exists (`--dry` makes none).
-- A file a `project` plugin made a config from is checked only beside a lock `vx lock` stamped.
+- A config unchanged since the lock's commit that evaluates otherwise is named so.
+- That message: `` <file> evaluates differently from the lock here: a file it imports, or the environment it reads, changed — run `vx lock` ``.
+- A file a `project` plugin made a config from (turbo.json, a package.json) whose bytes moved is mapped again, in every project that read it. One that maps as the lock holds (a version bump) runs.
+- A file a `project` plugin made a config from is stamped then only when every mapping that read it holds: a refused one stays refused, in every project that read it.
 - A config edit committed without relocking is refused like an uncommitted one.
-- A file a config imports is not checked.
+- A file a config imports by a local path (not from `node_modules`) is stamped with it.
+- Once its bytes moved, every config importing it is evaluated: one that holds runs, else the run refuses, naming the file.
+- Stamps an older vx took hold no imports: they read as none, so the configs are evaluated once.
+- `.vx/workspace.*` is stamped too. Once it moved, its plugins discover and map every project again, as `vx lock --check` does.
+- So is a file `.vx/workspace.*` imports by a local path, where a plugin option may live. Its edit is asked the same way, naming the file.
+- An edited plugin option that maps otherwise refuses the run. A `run.concurrency` edit runs.
 - A file a `project` plugin made a config from is otherwise checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`.
 - A named file that appears or goes counts as an edit. The plugin names it (`ProjectHookContext.read`).
 - In a pipeline, `vx lock --check` first re-evaluates every config and checks the rules.
@@ -3301,6 +3338,8 @@ that no longer matches the lockfile.
   refuses with `VX_E_LOCK`. `--affected` refuses too.
 - No dependencies lock while a plugin claims a lockfile that is there:
   the run refuses.
+- A lockfile the dependencies lock records that no plugin claims now (a
+  lockfile plugin removed since `vx lock`): the run refuses.
 - An install that moves no project's digest (a package that is no project
   yet) keys nothing, so it refuses nothing.
 - An edit in a `link:` or `file:` directory the lockfile names needs no
@@ -3513,8 +3552,11 @@ For review, it also writes each project's resolved config, pretty, to
 - `--check` names a project the plugins now map otherwise, a plugin added
   or dropped since included:
   `packages/ui: the plugins map it differently from the lock here`.
-- A run follows the record blindly, whatever plugins the workspace
-  declares now.
+- An edited `.vx/workspace.*` is evaluated. When its plugins now map,
+  discover or digest the dependencies otherwise, a run refuses, naming the
+  file.
+- That is an option such as `bun({ scope })`, or a plugin added or
+  dropped. An edit that changes none of them runs.
 - When a plugin fails before the stage ran (a `discover` refusal),
   `--check` names that failure alone: no config is compared with what
   the stage recorded.
@@ -3761,6 +3803,7 @@ config edited after `vx lock` adds a `dependsOn` loop:
   `vx: unhandled rejection: …`. The lock is still written.
 - A Ctrl-C (or SIGTERM, SIGHUP) ends it by that signal, also while a
   config is still loading. It leaves no temp file and writes no lock.
+- A SIGINT or SIGHUP it was started with ignored (`nohup`) stays ignored.
 
 </div>
 </details>
@@ -4303,10 +4346,10 @@ differently.
 
 ## `vx init`
 
-`vx init` sets up vx in a repository. It installs `@vzn/vx`, writes
+`vx init` sets up vx in a workspace. It installs `@vzn/vx`, writes
 `.vx/workspace.ts` and a root `vx.config.ts`, and writes the lock.
 
-In a Turborepo or Nx repo, it maps their config instead.
+In a Turborepo or Nx workspace, it maps their config instead.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -4358,19 +4401,19 @@ vx init --dry
 
 ### Options
 
-| Option               | Meaning                                                                   |
-| -------------------- | ------------------------------------------------------------------------- |
-| `--dry`              | print the files, and the lock's; write nothing                            |
-| `--format json`      | with `--dry`, the plan as one document                                    |
-| `--force`            | replace a file already there                                              |
-| `--mjs`              | write `.mjs` files instead of `.ts`                                       |
-| `--native`, `--keep` | in a Turbo or Nx repo: a `vx.config.ts` per package, or keep their config |
-| `--plugin <hook>`    | write a plugin for that hook instead, below                               |
+| Option               | Meaning                                                                        |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `--dry`              | print the files, and the lock's; write nothing                                 |
+| `--format json`      | with `--dry`, the plan as one document                                         |
+| `--force`            | replace a file already there                                                   |
+| `--mjs`              | write `.mjs` files instead of `.ts`                                            |
+| `--native`, `--keep` | in a Turbo or Nx workspace: a `vx.config.ts` per package, or keep their config |
+| `--plugin <hook>`    | write a plugin for that hook instead, below                                    |
 
 ### Install
 
 `vx init` first installs `@vzn/vx`: globally, and as a root
-devDependency with your repo's own package manager.
+devDependency with your workspace's own package manager.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -4391,13 +4434,13 @@ devDependency with your repo's own package manager.
 </div>
 </details>
 
-### In a Turborepo or Nx repo
+### In a Turborepo or Nx workspace
 
 Beside a `turbo.json` or `nx.json`, `vx init` runs `@vzn/vx-migrate`, so
 one command is enough.
 
 vx-migrate writes one `vx.config.ts` per package and the workspace file
-with the plugins the repo needs. It installs them and ends with
+with the plugins the workspace needs. It installs them and ends with
 `vx lock`.
 
 <details class="vx-deeper" data-level="3">
@@ -4419,7 +4462,7 @@ with the plugins the repo needs. It installs them and ends with
   `node_modules/@vzn/vx-migrate` instead.
 - `--dry`, `--format`, `--force`, `--mjs`, `--native` and `--keep` pass
   through, and the exit is vx-migrate's.
-- The plugins it declares: the lockfile's, and a remote cache the repo
+- The plugins it declares: the lockfile's, and a remote cache the workspace
   shows.
 - Its README holds the rules; [`bunx @vzn/vx-migrate`](#bunx-vznvx-migrate)
   below sums them up.
@@ -4427,7 +4470,7 @@ with the plugins the repo needs. It installs them and ends with
 </div>
 </details>
 
-### In any other repo
+### In any other workspace
 
 With none of those files, it writes a workspace whose one project is the
 root:
@@ -4484,6 +4527,8 @@ edges.
   one.
 - Beside a `.moon/workspace.yml`, a note says moon's tasks are not
   migrated: vx reads no moon config.
+- A note names each written file `.gitignore` drops, and how to keep
+  it: such a file is lost at the first commit.
 
 **What it prints next**
 
@@ -4511,7 +4556,7 @@ edges.
 - Its keys: `files` (each path and its whole text), `kept`, `replaced`,
   `todos`, `notes`, `next` and `installs`.
 - `installs` holds the install commands the real run runs.
-- `--native` and `--keep` answer a Turbo or Nx repo's question, so they
+- `--native` and `--keep` answer a Turbo or Nx workspace's question, so they
   are refused here.
 - `--format json` without `--dry`, or with `--plugin`, is refused
   (`VX_E_USAGE`).
@@ -4568,11 +4613,11 @@ the plugin in your workspace file.
 
 ## `bunx @vzn/vx-migrate`
 
-`@vzn/vx-migrate` turns a repo's own config into vx configs. It is its
+`@vzn/vx-migrate` turns a workspace's own config into vx configs. It is its
 own package, and it writes the workspace file, so you run it before one
 exists.
 
-`vx init` runs it for you in a repo with a `turbo.json`, `turbo.jsonc`,
+`vx init` runs it for you in a workspace with a `turbo.json`, `turbo.jsonc`,
 `nx.json`, an exported Nx graph or Lerna on Nx.
 
 ```sh
@@ -4582,23 +4627,23 @@ bunx @vzn/vx-migrate --force   # overwrite existing vx.config.*
 bunx @vzn/vx-migrate --from nx # disambiguate when several sources are checked in (turbo, nx, vite-task, scripts)
 ```
 
-In a Turborepo or Nx repo, it asks you to pick:
+In a Turborepo or Nx workspace, it asks you to pick:
 
-| Answer           | Writes                                                                            |
-| ---------------- | --------------------------------------------------------------------------------- |
-| native (default) | a `vx.config.ts` per package                                                      |
-| keep             | a workspace file declaring `turbo()` or `nx()`, which read the repo's config live |
+| Answer           | Writes                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| native (default) | a `vx.config.ts` per package                                                           |
+| keep             | a workspace file declaring `turbo()` or `nx()`, which read the workspace's config live |
 
 `--native` or `--keep` answers it. Without a terminal, it is native.
 
-In any other repo, each package's `package.json` scripts become its
+In any other workspace, each package's `package.json` scripts become its
 tasks.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- Both answers declare `turboCache()` / `nxCache()` when the repo shows
+- Both answers declare `turboCache()` / `nxCache()` when the workspace shows
   a remote cache.
 - The signs: turbo.json's `remoteCache`, a `turbo link`ed
   `.turbo/config.json`, or a CI file setting `TURBO_TOKEN` /
@@ -5033,7 +5078,7 @@ vx show <pkg>#<task>             # a single task (`//#<task>`: the root project'
 vx show <task>                   # that task in every project declaring it
 vx show [<task>] --filter <p>    # only the projects `vx run --filter <p>` selects
 vx show <task> --affected        # only the projects whose <task> `vx run <task> --affected` runs
-vx show --affected               # the run's candidates: the changed projects and their dependents
+vx show --affected               # only the projects one of whose tasks the change reaches
 vx show ... --format json        # machine-readable (default: pretty)
 ```
 
@@ -5123,15 +5168,17 @@ Fields the task does not set are left out. An empty list prints `none`.
 <div class="vx-deeper-body">
 
 - `config  none`: a package with no config file.
-- `command  (group)`: a group task.
+- `command  (group)`: a group task; `(no-op task)`: one with `inputs`
+  and no `exec`.
 - Fields shown: description, command, `dependsOn`, `timeout`, `retries`,
   `env.passThrough` / `env.define` / `env.secret`, `remote`, `platforms`,
   `sandbox`.
-- More fields: `persistent` and `interactive` (`yes` / `no`).
-- With `cache: true`: `inputs.files` / `.workspaceFiles` / `.env` /
-  `.tasks` / `.runtime` / `.workspaceRuntime`.
-- Also with `cache: true`: `outputs.files` / `.workspaceFiles` / `.clean`
-  (`yes` / `no`) and `inputs.stability.strategy` / `.severity`.
+- More fields: `persistent` (`yes`, or its `readyWhen`) and
+  `interactive` (`yes` / `no`).
+- When declared: `inputs.files` / `.workspaceFiles` / `.env` / `.tasks` /
+  `.runtime` / `.workspaceRuntime` / `.stability.strategy` / `.severity`.
+- Also when declared: `outputs.files` / `.workspaceFiles` / `.clean`
+  (`yes` / `no`).
 - `cache  yes`: the last row of a cached task.
 - A multi-line value, such as a command, continues under its first line.
 - `vx show <project> --format json`: `{ name, dir, defaultBuild, config }`, the config
@@ -5155,7 +5202,7 @@ Fields the task does not set are left out. An empty list prints `none`.
 projects, the way `vx run` selects them.
 
 ```sh
-vx show --affected               # changed projects and their dependents
+vx show --affected               # projects with a task the change reaches
 vx show test --affected          # projects whose test the run would run
 vx show --filter @demo/web
 ```
@@ -5169,9 +5216,10 @@ vx show --filter @demo/web
 - A dependent whose `test` has no `^test` is not listed.
 - `no affected project's test runs` (stderr): the selection left the list
   empty. `--format json` prints `[]`.
-- `vx show --affected`, no task: no edge to follow. The list is the run's
-  candidates, as `--filter "...[<base>]"` selects.
-- Those candidates are the changed projects and their package dependents.
+- `vx show --affected`, no task: a project is listed when the change
+  reaches one of its declared tasks, as `vx run <task> --affected` judges it.
+- A package dependent with no task edge to the change is not listed.
+- A workspace config edit that no plugin keys on lists nothing.
 - `vx show @demo/web --affected` and `vx show @demo/web#build --filter …`:
   refused beside one project or one task.
 - `vx show projects`, when nothing has that name: an unknown name, whose
@@ -5236,7 +5284,8 @@ It counts tasks from the lock, as a run does, and evaluates no config.
   `defaultBuilds`.
 - No lock: `projects` reads `—` and `projects lock` reads `no`.
 - A lock a run would refuse: `projects` reads `—` and `projects lock`
-  reads `refused:` and why. JSON: `lockError`, the counts zero.
+  reads `refused:` and why. JSON: `lockError`, `tasks` and `defaultBuilds`
+  zero, `projects` the lock's count.
 - A broken config is `vx lock`'s to report, not `vx info`'s.
 - A `.vx/workspace` that does not load (a syntax error, a plugin hook
   that threw): the report still prints, with a `workspace config` row
@@ -5430,6 +5479,8 @@ unreported`: the sandbox works but cannot report the reads it denies.
 - A bare `vx cache clean` frees both sizes.
 - `cache entries` reads `unreadable: <why and the fix>` when SQLite cannot
   read the index. The history rows read 0; the report still prints, exit 0.
+- `cache entries` leaves out an entry whose file is gone (deleted by hand):
+  no restore reads it.
 - `cache versions`: the key prefix (`CACHE_VERSION`) and index schema
   (`SCHEMA_VERSION`) that a bug report and the reset notice name.
 - A `CACHE_VERSION` bump orphans every entry.
@@ -5517,6 +5568,7 @@ no second source.
 | ---- | --------------------------------------------------- |
 | `0`  | the facts printed, with no lock included            |
 | `1`  | no workspace here or above, or a parse error        |
+| `1`  | a `--cache-dir` that is no directory                |
 | `1`  | the facts printed, and `.vx/workspace` did not load |
 
 ## `vx why`
@@ -5530,8 +5582,8 @@ It reads the local `cache.db` and hashes nothing again.
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- Configs are evaluated only when a dependency that moved is a group,
-  which records no run of its own.
+- Configs are evaluated only when a dependency that moved is a group or
+  a no-op task, which records no run of its own.
 
 </div>
 </details>
@@ -5580,7 +5632,8 @@ output and `--format json` keep them whole.
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- A group (`{ dependsOn }`, no `exec`) records no run, so it is refused,
+- A group (`{ dependsOn }`, no `exec`) or a no-op task (`inputs`, no
+  `exec`, like the default `build`) records no run, so it is refused,
   with fix `vx show PKG#TASK`.
 - `TASK` inside a project that declares it is that project's, as
   `vx run` picks.
@@ -5726,7 +5779,8 @@ its status, how it ended and its key.
 **What to do and root cause.** `What to do` gives one line per kind that
 changed: what moves it, and how to stop a move the task does not need.
 
-An `env` line says whether a value moved or a name joined or left `inputs.env`.
+An `env` line says whether a value moved, a name joined or left `inputs.env`,
+or, the config unchanged, a variable a pattern matches was set or unset.
 
 An `upstream` row only carries a change. `vx why` follows it down to the
 tasks whose own inputs moved, and prints each chain under `Root cause`:
@@ -5756,6 +5810,8 @@ tasks whose own inputs moved, and prints each chain under `Root cause`:
   line, naming the `vx why` to run next.
 - That line never names a group's `vx why`, which refuses. For a group it
   names the `vx show` that lists what it gathers.
+- For a no-op task it says its own inputs or a dependency moved its key,
+  and names its `vx show`.
 - A dependency added or removed moved no key. Its line says the graph
   changed (`dependsOn` or a project edge).
 - A `config` line names the `vx show` that prints the task's config now.
@@ -5978,7 +6034,7 @@ vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 <div class="vx-deeper-body">
 
 - `--log` does not combine with `--list` or `--failed`.
-- `--stats` does not combine with `--list`, `--failed` or `--log`.
+- `--stats` does not combine with `--list`, `--failed`, `--log` or a run id.
 - `--branch` combines only with `--stats`.
 
 </div>
@@ -6229,8 +6285,8 @@ vx last --stats test               # test, in every project
 | pass rate    | share of runs that passed                      |
 | hit rate     | share of runs served from cache                |
 | failure mode | `stable`, `flaky-recoverable` or `flaky-fatal` |
-| peak RSS     | the largest peak memory                        |
-| cpu          | the mean CPU parallelism                       |
+| peak RSS     | the largest peak memory of a passing run       |
+| cpu          | the mean CPU parallelism of passing runs       |
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -6239,6 +6295,10 @@ vx last --stats test               # test, in every project
 - p50 and p99 read one set of timings, the ones the forecast reads: the
   task's last five on the branch, else on any branch.
 - A hit counts what its producing run used.
+- Peak RSS and cpu leave out failed runs: one may stop early, so its use
+  is not what the task needs to pass.
+- A task with only failed runs shows `—` there; its run's own table shows
+  what it used.
 - Units match the run grid: `3.6MB`, cpu `127%`, `—` where unknown.
 - On a narrow terminal, columns go in this order: cpu, peak RSS, p99, hit
   rate, failure mode, runs. Task, p50 and pass rate stay.
@@ -6415,6 +6475,8 @@ milliseconds.
 - `--format json` prints each row as SQLite yields it, with no bound:
   a query whose rows never end streams until Ctrl+C, or until its reader
   leaves (`| head`), which ends it with exit 0.
+- A row SQLite fails on after rows went out (`integer overflow`) ends
+  the stream: the refusal's JSON follows on its own last line, exit 1.
 - The table needs every row for its column widths, so it holds at most
   100,000. Past that it is refused (exit 1) before any row prints: add
   a `LIMIT`, or use `--format json`.

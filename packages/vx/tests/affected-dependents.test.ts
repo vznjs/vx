@@ -2,8 +2,8 @@
 // when they depend on `lib`'s, or the gate proves nothing downstream. Until
 // 2026-09-16 the sugar was the changed-only `[<base>]` form (item 287); until
 // 2026-10-04 it reached every task of every manifest dependent. It now follows
-// task edges (owner): a change seeds the tasks whose inputs it touches (every
-// task of the project when no cached task declares the path), and a requested
+// task edges (owner): a change seeds the tasks whose inputs it touches (a
+// task with no inputs always), and a requested
 // task runs when its `dependsOn` closure holds a seeded one. This drives the
 // real CLI on a git fixture with a manifest edge.
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -31,7 +31,7 @@ const CONFIG = `export default {
       exec: { command: 'true' },
       inputs: { files: ['src/**'] }, outputs: { files: [] }, cache: true,
     },
-    lint: { exec: { command: 'true' } },
+    lint: { exec: { command: 'true' }, inputs: { files: ['src/**'] } },
   },
 }
 `
@@ -238,30 +238,26 @@ describe('--affected follows task edges (2026-10-04)', () => {
       // inherit `toString` from Object and must not read as declaring it.
       await Bun.write(
         path.join(root, 'pkgs/tool/vx.config.mjs'),
-        `export default { tasks: { toString: { exec: { command: 'true' } } } }\n`,
+        `export default { tasks: { toString: { exec: { command: 'true' }, inputs: { files: ['src/**'] } } } }\n`,
       )
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'toString')
       await commitEdit('pkgs/lib/src/index.ts', 'export const x = 3')
       const r = vx(root, 'run', 'toString', '--affected=HEAD~1')
       expect(r.code).toBe(0)
-      expect(r.text).toContain('No affected project declares task(s): toString.')
+      expect(r.text).toContain('Nothing affected: the change reaches no toString task.')
     },
     TIMEOUT,
   )
 
   it(
-    'a path no cached task declares reaches its whole project',
+    'a path no input declares reaches no task',
     async () => {
-      // vx cannot prove an undeclared file re-keys nothing (a plugin may read
-      // it), so it reaches lib#build and, through ^build, app.
+      // An undeclared file is in no key (M, 2026-11-25).
       await commitEdit('pkgs/lib/README.md', 'docs')
-      expect(planned(['test'], '--affected=HEAD~1')).toEqual([
-        'app#build',
-        'app#test',
-        'lib#build',
-        'lib#test',
-      ])
+      expect(vx(root, 'run', 'test', '--affected=HEAD~1', '--dry').text).toContain(
+        'Nothing affected: the change reaches no test task',
+      )
     },
     TIMEOUT,
   )
@@ -271,7 +267,7 @@ describe('--affected follows task edges (2026-10-04)', () => {
     async () => {
       await Bun.write(
         path.join(root, 'pkgs/app/vx.config.mjs'),
-        `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] } } } }\n`,
       )
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'unlink')
@@ -361,11 +357,7 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
         `const i = nodes.get('tool#build')?.config.inputs; if (i) i.workspaceFiles = ['pkgs/lib/README.md']`,
       )
       await commitEdit('pkgs/lib/README.md', 'docs')
-      expect(planned(['build'], '--affected=HEAD~1')).toEqual([
-        'app#build',
-        'lib#build',
-        'tool#build',
-      ])
+      expect(planned(['build'], '--affected=HEAD~1')).toEqual(['tool#build'])
     },
     TIMEOUT,
   )
