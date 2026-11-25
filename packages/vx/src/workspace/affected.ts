@@ -1925,7 +1925,7 @@ function localBranches(workspaceRoot: string): string {
 function trackingRef(workspaceRoot: string, name: string): string | undefined {
   if (!/^[^\s~^:?*[\\@{]+$/.test(name) || name.startsWith('refs/')) return undefined
   const proc = spawnGitSync(
-    ['for-each-ref', '--format=%(refname:short)', `refs/remotes/*/${name}`],
+    ['for-each-ref', '--format=%(refname:short)', '--end-of-options', `refs/remotes/*/${name}`],
     workspaceRoot,
     'ignore',
   )
