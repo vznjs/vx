@@ -57,7 +57,7 @@ export interface DeriveStableKeysArgs {
    */
   uncachedKeys?: Map<string, string>
   /**
-   * Filled with each unkeyed group's key and the upstream it folded:
+   * Filled with each group's key and the upstream it folded:
    * execute-task reuses the key when the live upstream matches.
    */
   groupKeys?: Map<string, UpfrontGroupKey>
@@ -305,7 +305,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       // instability. `computeGroupKey`, with the unkeyed branch kept
       // synchronous.
       if (node.config.inputs === undefined) {
-        const key = computeGroupHash(upstream)
+        const key = computeGroupHash(node, upstream)
         keyById.set(id, key)
         args.groupKeys?.set(id, { key, upstream })
       } else {
@@ -369,7 +369,7 @@ export async function rederiveKeys(
     keys.set(
       id,
       isGroupTask(node) && node.config.inputs === undefined
-        ? computeGroupHash(upstream)
+        ? computeGroupHash(node, upstream)
         : await computeTaskHash(hashInputs(args, node, upstream)),
     )
   }
@@ -645,7 +645,7 @@ export function probesAfterWrites(
 
 /**
  * Does this task's key fold the dependency's? What `computeTaskHash` folds; an
- * unkeyed group folds every keyed member. A keyed group has its filter: read as
+ * group folds every keyed member. A no-op task has its filter: read as
  * folding everything, its `tasks: []` hid a cached rewriter and its reader
  * restored the pre-rewrite key.
  */

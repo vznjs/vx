@@ -133,6 +133,9 @@ over (in order):
    key folds one, and everything built on it, may hit but does not
    save (`orchestrator/excluded-keys.ts`); a task with
    `inputs.tasks: []` folds none and saves as usual.
+   A group (no `exec`, no `inputs`) has no key of its own: it stands for
+   its definition (its resolved config, a `description` too) and its
+   upstream keys, so an edit to a group moves its dependants' keys.
 9. **Plugin key material** — the `{ name: value }` pairs a plugin's
    `key(task, ctx)` stage returned for this task, stored on the node as
    sorted `plugin/name` pairs and folded after the upstream keys and BEFORE the input files,

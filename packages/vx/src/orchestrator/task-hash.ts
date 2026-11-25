@@ -156,7 +156,7 @@ export async function keyOf<T>(derived: Promise<T>): Promise<T> {
  * forwardArgs) and have the cache layer combine them. Used by `executeTask` and
  * `plan()`.
  *
- * The caller handles groups first with `computeGroupKey`: an unkeyed group has
+ * The caller handles groups first with `computeGroupKey`: a group has
  * no `exec` or `inputs`.
  */
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
@@ -859,18 +859,18 @@ function sortedNames(names: readonly string[] | undefined): boolean {
 }
 
 /**
- * A group's key: its upstream, and for a keyed group — one with `inputs`,
+ * A group's key: its upstream, and for a no-op task — one with `inputs`,
  * the default `build` (projects.ts) or a config's — its own inputs too,
  * the way a task's key folds them.
  */
 export async function computeGroupKey(args: ComputeHashArgs): Promise<string> {
-  if (args.node.config.inputs === undefined) return computeGroupHash(args.upstream)
+  if (args.node.config.inputs === undefined) return computeGroupHash(args.node, args.upstream)
   return computeTaskHash(args)
 }
 
 /**
- * An unkeyed group's key is `computeGroupHash` of its upstream alone, so a
- * live upstream with the same ids and keys in the same order derives these
+ * A group's key is `computeGroupHash` of its definition and its
+ * upstream, so a live upstream with the same ids and keys in the same order derives these
  * bytes (execute-task's `sameUpstream`).
  */
 export interface UpfrontGroupKey {
@@ -879,14 +879,15 @@ export interface UpfrontGroupKey {
 }
 
 /**
- * A group's hash (no `exec`) from its upstream outcomes, so a dependent folding
- * the group invalidates when anything beneath it changes. Sorted,
- * order-independent; an empty group gets a fixed sentinel.
+ * A group's hash (no `exec`) from its own definition and its upstream
+ * outcomes, so a dependent folding the group invalidates when the group is
+ * edited (a new task, M 2026-11-25) or anything beneath it changes. Members
+ * sorted, order-independent.
  */
-export function computeGroupHash(upstream: TaskOutcome[]): string {
+export function computeGroupHash(node: TaskNode, upstream: TaskOutcome[]): string {
   const ids = upstream
     .map((u) => `${u.node.id}:${u.hash ?? ''}`)
     .sort()
     .join('|')
-  return xxh3hex(`group|${ids}`)
+  return xxh3hex(`group|${hashTaskConfig(node.config)}|${ids}`)
 }
