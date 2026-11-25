@@ -329,7 +329,9 @@ describe('--affected without a plugin: containment and task edges only', () => {
     async () => {
       const git = gitIn(root)
       await write(path.join(root, '.gitignore'), '.vx/cache/\n')
-      await write(path.join(root, 'vx.config.mjs'), config())
+      // Each task reads its own files: one with no `inputs` is marked by any change.
+      const owned = `export default { tasks: { hello: { exec: { command: 'echo hi' }, inputs: { files: ['**'] } } } }\n`
+      await write(path.join(root, 'vx.config.mjs'), owned)
       await write(
         path.join(root, 'lib/vx.config.mjs'),
         `export default { tasks: { hello: { exec: { command: 'echo lib' }, inputs: { files: ['**'] }, outputs: { files: [] }, cache: true } } }\n`,
@@ -337,10 +339,10 @@ describe('--affected without a plugin: containment and task edges only', () => {
       await write(path.join(root, 'lib/src/a.txt'), 'a\n')
       await write(
         path.join(root, 'app/vx.config.mjs'),
-        `export default { tasks: { hello: { dependsOn: ['lib#hello'], exec: { command: 'echo app' } } } }\n`,
+        `export default { tasks: { hello: { dependsOn: ['lib#hello'], exec: { command: 'echo app' }, inputs: { files: ['**'] } } } }\n`,
       )
       // A manifest edge core does not read: `other` depends on `lib` only by package.json.
-      await write(path.join(root, 'other/vx.config.mjs'), config())
+      await write(path.join(root, 'other/vx.config.mjs'), owned)
       await write(
         path.join(root, 'other/package.json'),
         JSON.stringify({ name: 'other', dependencies: { lib: 'workspace:*' } }),
