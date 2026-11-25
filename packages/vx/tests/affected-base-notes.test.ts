@@ -212,7 +212,9 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     git(root, 'commit', '-q', '-m', 'docs')
     const r = vx(root, 'run', 'build', '--affected=HEAD~1')
     expect(r.code).toBe(0)
-    expect(r.text).toContain('nothing affected since HEAD~1')
+    // A changed file in no project still makes every project a candidate
+    // (a task with exec and no inputs runs on any change): the task walk said it.
+    expect(r.text).toContain('Nothing affected: the change reaches no build task')
     expect(r.text).not.toContain('HEAD itself')
   })
 
@@ -229,7 +231,12 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     const none = dry('--affected=HEAD~1')
     expect(none.code).toBe(0)
     expect(JSON.parse(none.stdout)).toEqual({ affectedBase: 'HEAD~1', tasks: [] })
-    expect(none.stderr).toContain('nothing affected since HEAD~1')
+    expect(none.stderr).toContain('the change reaches no build task')
+    // No file changed at all: the base is named.
+    const empty = dry('--affected=HEAD')
+    expect(empty.code).toBe(0)
+    expect(JSON.parse(empty.stdout)).toEqual({ affectedBase: 'HEAD', tasks: [] })
+    expect(empty.stderr).toContain('nothing affected since HEAD')
     // An affected project that declares no such task.
     await mkdir(path.join(root, 'pkgs/docs'), { recursive: true })
     await writeFile(path.join(root, 'pkgs/docs/package.json'), JSON.stringify({ name: 'docs' }))
