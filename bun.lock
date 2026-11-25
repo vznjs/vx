@@ -255,6 +255,7 @@
         "sharp": "^0.35.2",
       },
       "devDependencies": {
+        "@types/bun": "1.4.4",
         "@vzn/vx": "workspace:*",
         "@vzn/vx-bench": "workspace:*",
         "@vzn/vx-cache": "workspace:*",
@@ -269,6 +270,8 @@
         "@vzn/vx-migrate": "workspace:*",
         "@vzn/vx-otel": "workspace:*",
         "@vzn/vx-reapi": "workspace:*",
+        "oxlint": "1.83.0",
+        "oxlint-tsgolint": "7.0.2001",
       },
     },
     "private/vx-dte-service": {

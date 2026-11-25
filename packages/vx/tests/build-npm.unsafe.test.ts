@@ -64,7 +64,10 @@ describe('the published @vzn/vx tree', () => {
 
   it('copies exactly what the workspace manifest declares', async () => {
     const core = (await Bun.file(path.join(CORE, 'package.json')).json()) as Manifest
-    expect(manifest.exports).toEqual(core.exports)
+    // Less `./testing`: the workspace's own tests import it, and tests/ never ships.
+    const { './testing': testing, ...shipped } = core.exports
+    expect(testing).toBeDefined()
+    expect(manifest.exports).toEqual(shipped)
     // node10 resolution reads no `exports`: `@vzn/vx/config` resolved only
     // in the workspace, and cal.com's published-package builds hit TS2307.
     expect(manifest.typesVersions).toEqual(core.typesVersions)

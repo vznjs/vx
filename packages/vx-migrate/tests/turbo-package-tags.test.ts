@@ -7,7 +7,7 @@
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { planned, vx } from '../../vx/tests/helpers/parity.js'
+import { planned, vx } from '@vzn/vx/testing'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 import type { PackageMeta } from '../src/packages.js'
 import { useTurboWorkspace } from './helpers/turbo-workspace.js'

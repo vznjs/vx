@@ -47,7 +47,8 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "^testing"
       ],
       "inputs": {
         "files": [
@@ -57,9 +58,6 @@
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
-        ],
-        "workspaceFiles": [
-          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {
@@ -139,7 +137,8 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "^testing"
       ],
       "inputs": {
         "files": [
@@ -147,9 +146,6 @@
           "tests/**",
           "package.json",
           "README.md"
-        ],
-        "workspaceFiles": [
-          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",
@@ -201,7 +197,8 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "^testing"
       ],
       "inputs": {
         "files": [
@@ -209,9 +206,6 @@
           "tests/**",
           "package.json",
           "README.md"
-        ],
-        "workspaceFiles": [
-          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",
@@ -263,7 +257,8 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "^testing"
       ],
       "inputs": {
         "files": [
@@ -271,9 +266,6 @@
           "tests/**",
           "package.json",
           "README.md"
-        ],
-        "workspaceFiles": [
-          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",
@@ -325,7 +317,8 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "^testing"
       ],
       "inputs": {
         "files": [
@@ -333,9 +326,6 @@
           "tests/**",
           "package.json",
           "README.md"
-        ],
-        "workspaceFiles": [
-          "packages/vx/tests/helpers/**"
         ],
         "env": [
           "VX_NX_MODULES",

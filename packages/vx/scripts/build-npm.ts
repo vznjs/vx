@@ -194,8 +194,8 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     description: corePkg.description,
     type: 'module',
     // The library surface — plugin authors `import { defineProject } from '@vzn/vx'`.
-    // The same exports map the workspace package declares.
-    exports: corePkg.exports,
+    // The workspace package's exports map, less what it does not ship.
+    exports: shippedExports(corePkg.exports, CORE_ENTRIES),
     types: './src/index.ts',
     // `@vzn/vx/config` under `moduleResolution: node` (node10), which reads no
     // `exports`: unpublished, cal.com's builds failed on it (TS2307).
@@ -229,6 +229,29 @@ interface WorkspaceManifest {
   devDependencies?: Record<string, string>
   scripts?: Record<string, string>
   [field: string]: unknown
+}
+
+/**
+ * The entries of an exports map whose every target lies under a shipped
+ * file or directory: `@vzn/vx/testing` serves the workspace's own tests
+ * through node_modules (a project never reads another by path) and its
+ * `tests/` never ships.
+ */
+function shippedExports(
+  exports: Record<string, unknown>,
+  files: readonly string[],
+): Record<string, unknown> {
+  const targets = (v: unknown): string[] =>
+    typeof v === 'string'
+      ? [v]
+      : v !== null && typeof v === 'object'
+        ? Object.values(v).flatMap(targets)
+        : []
+  const shipped = (t: string): boolean => {
+    const rel = t.replace(/^\.\//, '')
+    return files.some((f) => rel === f || rel.startsWith(`${f.replace(/\/$/, '')}/`))
+  }
+  return Object.fromEntries(Object.entries(exports).filter(([, v]) => targets(v).every(shipped)))
 }
 
 /** Each bin path without a leading `./`; any other value as it is. */
@@ -295,6 +318,9 @@ export async function emitPluginPackages(args: {
       version,
       // No `./`: npm rewrites one on publish, warning each time.
       bin: binPaths(pkg.bin),
+      ...(pkg.exports === undefined
+        ? {}
+        : { exports: shippedExports(pkg.exports as Record<string, unknown>, files) }),
       dependencies: atRelease(pkg.dependencies, version),
       peerDependencies: atRelease(pkg.peerDependencies, `^${version}`),
       files: [...files, 'LICENSE'],

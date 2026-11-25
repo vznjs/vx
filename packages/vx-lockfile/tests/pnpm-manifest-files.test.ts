@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
 import { type DiscoverContext, type Logger } from '@vzn/vx'
-import { planRun } from '../../vx/tests/helpers/orchestrator.js'
+import { planRun } from '@vzn/vx/testing'
 import { pnpm } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 

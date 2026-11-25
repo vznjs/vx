@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { normalize } from '../scripts/terminal-demo.ts'
 
@@ -30,4 +31,24 @@ describe('terminal-demo --check', () => {
       normalize(timeRow(['max 9ms'])),
     )
   })
+})
+
+// The README's terminal demo is a real run of the docs' ui/web workspace;
+// the script re-runs it and compares all but timings and cores.
+describe('the terminal demo', () => {
+  it("matches a real run of the docs' ui/web workspace", () => {
+    const r = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        path.join(import.meta.dir, '..', 'scripts', 'terminal-demo.ts'),
+        '--check',
+      ],
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(r.stderr.toString()).toBe('')
+    expect(r.exitCode).toBe(0)
+    // Three vx runs of two real vite builds: a loaded gate took the old,
+    // lighter demo past bun's 5 s default (5,006 ms) though it passed alone.
+  }, 30_000)
 })

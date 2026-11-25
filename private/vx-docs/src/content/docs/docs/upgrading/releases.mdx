@@ -18,7 +18,7 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
-### A config not in the lock is not there for a run
+### Runs read the lock only, never a config
 
 A run reads only the lock. A vx.config, or a package.json name, added since `vx lock` is not refused: the run ignores it until you run `vx lock`.
 

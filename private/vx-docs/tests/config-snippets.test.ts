@@ -17,8 +17,9 @@ import { expect, it } from 'bun:test'
 
 const SITE = path.resolve(import.meta.dir, '..')
 const DOCS = path.join(SITE, 'src/content/docs')
-const ROOT = path.resolve(SITE, '../..')
-const OXLINT = path.join(ROOT, 'node_modules/.bin/oxlint')
+const OXLINT = path.join(SITE, 'node_modules/.bin/oxlint')
+// The site's own dependencies (package.json): never the workspace root's.
+const MODULES = path.join(SITE, 'node_modules')
 
 /** The plugin packages a page imports, linked by this site (package.json)
  *  for this pin: a call to one is checked against its own source, as the
@@ -91,16 +92,17 @@ it('every config block on the site type-checks against @vzn/vx', async () => {
   }
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-config-snippets-'))
   try {
-    // The root's node_modules minus the plugin packages: linked whole, the
+    // The site's node_modules minus the plugin packages: linked whole, the
     // checker resolved `@vzn/vx-reapi` through it to the real package
     // before the ambient `any`, a read of a project the task does not own
     // (a seatbelt violation on macOS; Linux's sandbox hides it silently).
+    // `@vzn/vx` is the site's own link.
     const nm = path.join(dir, 'node_modules')
     await mkdir(path.join(nm, '@vzn'), { recursive: true })
-    for (const e of await readdir(path.join(ROOT, 'node_modules'))) {
-      if (e !== '@vzn') await symlink(path.join(ROOT, 'node_modules', e), path.join(nm, e))
+    for (const e of await readdir(MODULES)) {
+      if (e !== '@vzn') await symlink(path.join(MODULES, e), path.join(nm, e))
     }
-    await symlink(path.join(ROOT, 'node_modules/@vzn/vx'), path.join(nm, '@vzn/vx'), 'dir')
+    await symlink(path.join(SITE, 'node_modules/@vzn/vx'), path.join(nm, '@vzn/vx'), 'dir')
     await writeFile(
       path.join(dir, 'tsconfig.json'),
       JSON.stringify({

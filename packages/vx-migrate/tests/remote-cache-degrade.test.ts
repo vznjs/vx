@@ -13,7 +13,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test'
-import { run } from '../../vx/tests/helpers/orchestrator.js'
+import { run } from '@vzn/vx/testing'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 // A test here runs vx through the CLI and again in process: past 5 s on a
