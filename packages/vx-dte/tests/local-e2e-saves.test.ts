@@ -313,3 +313,49 @@ it('fails a task whose literal output its worker never wrote, and saves nothing'
     )
   }
 }, 60_000)
+
+// Its workers share the run's store: the run restored each entry from it,
+// then uploaded it again after the worker had (2026-11-25).
+it('uploads each entry a worker saved once', async () => {
+  const away = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-uploads-'))
+  try {
+    const store = path.join(away, 'store')
+    const puts = path.join(away, 'puts')
+    const plugin = path.join(away, 'plugin')
+    await mkdir(store, { recursive: true })
+    await mkdir(plugin, { recursive: true })
+    await writeFile(path.join(plugin, 'package.json'), '{"name":"e2e-remote"}')
+    const at = (h: string) => `${JSON.stringify(store)} + '/' + ${h}`
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { definePlugin } from ${JSON.stringify(CORE_INDEX)}
+import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [
+  dte({ workers: { linux: { machines: { small: { max: 2, cpu: 1, memory: '1GB' } } } }, adapter: local() }),
+  definePlugin({ dir: ${JSON.stringify(plugin)} }, { cache: () => ({
+    has: async (h) => (existsSync(${at('h')}) ? {} : null),
+    get: async (h) => (existsSync(${at('h')}) ? { body: new Blob([readFileSync(${at('h')})]), durationMs: 1 } : null),
+    put: async (h, b) => {
+      appendFileSync(${JSON.stringify(puts)}, h + '\\n')
+      if (!existsSync(${at('h')})) writeFileSync(${at('h')}, new Uint8Array(await b.arrayBuffer()))
+    },
+  }) }),
+] }
+`,
+    )
+    Bun.spawnSync(
+      ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'remote'],
+      {
+        cwd: root,
+      },
+    )
+    const r = vx(['run', 'b#use', 'b#pat'], 'uploads', { CI: 'true' })
+    expect([r.exitCode, r.stderr.toString()]).toEqual([0, r.stderr.toString()])
+    const sent = (await readFile(puts, 'utf8')).trim().split('\n')
+    // a#gen and b#use (outputs), b#pat (none): one put each.
+    expect([sent.length, new Set(sent).size]).toEqual([3, 3])
+  } finally {
+    await rm(away, { recursive: true, force: true })
+  }
+}, 90_000)

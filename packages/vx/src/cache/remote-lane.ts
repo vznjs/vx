@@ -126,6 +126,8 @@ export class RemoteLane {
   private readonly held = new Map<string, ArtifactInfo>()
   /** Keys whose bytes here did not read back (`distrust`). */
   private readonly distrusted = new Set<string>()
+  /** Keys another machine of the run saved where this one reads (`savedByRun`). */
+  private readonly savedElsewhere = new Set<string>()
 
   /**
    * A remote the run writes but does not read (`--force`): which up-front keys
@@ -353,6 +355,17 @@ export class RemoteLane {
     return got
   }
 
+  /**
+   * Another machine of the run saved `hash` where this one reads (a store
+   * `local()` workers share), and uploaded it: an upload asks first, past the
+   * run's probe, which ran before that save. Asked by its `restore`, a
+   * worker's entry went up twice, from it and from here.
+   */
+  savedByRun(hash: string): void {
+    this.absent.delete(hash)
+    this.savedElsewhere.add(hash)
+  }
+
   /** `hash`'s bytes here are unreadable: a save of it uploads, held or not. */
   distrust(hash: string): void {
     this.distrusted.add(hash)
@@ -377,7 +390,7 @@ export class RemoteLane {
    * else one `has`; a failure reads as absent.
    */
   private async holds(hash: string): Promise<boolean> {
-    const probed = await this.presence
+    const probed = this.savedElsewhere.has(hash) ? undefined : await this.presence
     if (probed !== undefined && probed !== null && probed.found !== null && probed.asked.has(hash))
       return probed.found.has(hash)
     return (await this.has(hash)) !== null
@@ -406,10 +419,12 @@ export class RemoteLane {
         if (this.stopped) return
         // A key whose bytes here did not read back is sent over them.
         const distrusted = this.distrusted.has(hash)
-        const known = !distrusted && (absent || this.absent.has(hash))
+        const elsewhere = this.savedElsewhere.has(hash)
+        const known = !distrusted && !elsewhere && (absent || this.absent.has(hash))
         if (!distrusted) {
           if (this.held.has(hash)) return void (holds = true)
-          if (!known && !this.read && (await this.holds(hash))) return void (holds = true)
+          if (!known && (!this.read || elsewhere) && (await this.holds(hash)))
+            return void (holds = true)
         }
         if (this.stopped) return
         const start = performance.now()
