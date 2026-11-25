@@ -198,7 +198,11 @@ takes it (under 4 MiB queued, `tests/logger-paced-output.test.ts`). The
 logger's state moves when a line is logged, not when it is written, and
 later lines wait behind the frame: the bytes and their order are those a
 reader that never pauses gets. A stream that never refuses (a file, a
-test's sink) is written at once, as before. `run()` awaits
+test's sink) is written at once, as before. A frame is read while the
+run writes on, so no compaction runs while a read is in flight (it would
+close the file under it); the progress and notify escapes wait their
+turn too, or one could land inside a task's own escape cut between two
+pieces. `run()` awaits
 `DefaultLogger.drained()` before it returns, so the CLI's own lines come
 after.
 

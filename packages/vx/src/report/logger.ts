@@ -537,7 +537,10 @@ export function defaultLogger(
       if (pct > progressShown || failed > 0 !== progressRed) {
         progressShown = Math.max(pct, progressShown)
         progressRed = failed > 0
-        out.write(progressEscape(progressShown, progressRed))
+        const escape = progressEscape(progressShown, progressRed)
+        // In turn: an escape between two pieces of a paced frame could cut a
+        // task's own escape in two.
+        pace.put(once(() => out.write(escape)))
       }
     }
     let running = 0
@@ -637,7 +640,7 @@ export function defaultLogger(
     }
     if (progressShown >= 0) {
       progressShown = -1
-      out.write(PROGRESS_CLEAR)
+      pace.put(once(() => out.write(PROGRESS_CLEAR)))
     }
     if (statusDead) return
     statusDead = true
@@ -1024,13 +1027,12 @@ export function defaultLogger(
       // A long run says it ended where the user is not looking. Once:
       // the status is dead after the first runEnd.
       if (signals.notify && !statusDead && !tail && Date.now() - startedAtMs >= NOTIFY_AFTER_MS) {
-        out.write(
-          notifyEscape(
-            failed > 0
-              ? `vx: ${failed} of ${total} task${total === 1 ? '' : 's'} failed`
-              : `vx: ${total} task${total === 1 ? '' : 's'} done`,
-          ),
+        const escape = notifyEscape(
+          failed > 0
+            ? `vx: ${failed} of ${total} task${total === 1 ? '' : 's'} failed`
+            : `vx: ${total} task${total === 1 ? '' : 's'} done`,
         )
+        pace.put(once(() => out.write(escape)))
       }
       if (!tail && !statusDead) {
         tail = true

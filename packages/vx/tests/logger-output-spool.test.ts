@@ -212,3 +212,26 @@ it("broad reads a ready server's log once", () => {
   }
   log.runDone?.()
 })
+
+it('a frame read while others write reads its own output, not a compacted file', () => {
+  // A paced frame is read a piece at a time while the run goes on: a
+  // compaction meanwhile closed the file under the read.
+  const spool = new OutputSpool()
+  const a = new TaskOutput(spool)
+  const line = 'a'.repeat(1023) + '\n'
+  for (let i = 0; i < 16 * 1024; i++) a.push(line, false)
+  const reading = a.chunks()[Symbol.iterator]()
+  let got = reading.next().value!.text
+  const mib = 'z'.repeat(1024 * 1024 - 1) + '\n'
+  for (let i = 0; i < 128; i++) {
+    const t = new TaskOutput(spool)
+    t.push(mib, false)
+    t.push(mib, false)
+    t.release()
+  }
+  for (let r = reading.next(); r.done !== true; r = reading.next()) got += r.value.text
+  expect(got.length).toBe(16 * 1024 * 1024)
+  expect(got === line.repeat(16 * 1024)).toBe(true)
+  a.release()
+  spool.end()
+})

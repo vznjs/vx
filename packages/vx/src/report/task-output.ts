@@ -235,6 +235,8 @@ export class OutputSpool {
   private readonly holders = new Set<TaskOutput>()
   // Bytes of the file the holders' records take: the rest is released.
   private live = 0
+  /** Reads in flight: a paced frame is read while the run writes on, and a compaction would close its file. */
+  reading = 0
   private ended = false
   private dir: string | undefined
 
@@ -264,7 +266,8 @@ export class OutputSpool {
   wrote(n: number): void {
     this.live += n
     const file = this.file!
-    if (file.size > COMPACT_BYTES && (file.size - this.live) * 2 >= file.size) this.compact()
+    if (this.reading === 0 && file.size > COMPACT_BYTES && (file.size - this.live) * 2 >= file.size)
+      this.compact()
   }
 
   free(task: TaskOutput): void {
@@ -439,9 +442,16 @@ export class TaskOutput {
 
   private *read(): Generator<OutputChunk> {
     this.flush()
-    // Read off the runs as they are now: none is written while a read runs.
+    // Read off the runs as they are now: others append meanwhile, past them,
+    // and no compaction moves them.
     const runs = this.runs
-    for (let i = 0; i < runs.length; i += 2) yield* this.spool.current.read(runs[i]!, runs[i + 1]!)
+    this.spool.reading++
+    try {
+      for (let i = 0; i < runs.length; i += 2)
+        yield* this.spool.current.read(runs[i]!, runs[i + 1]!)
+    } finally {
+      this.spool.reading--
+    }
     if (this.after !== null) yield* this.after
   }
 }
