@@ -17,7 +17,6 @@
 // default configuration is folded into the base task.
 
 import { existsSync } from 'node:fs'
-import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   type Duration,
@@ -368,19 +367,14 @@ async function ignoredOutputs(
         untracked.add(o)
     }
   }
-  // A missing `dist` matches a `dist/` rule only spelled as a directory;
-  // an existing file never does.
+  // A missing `dist` matches a `dist/` rule only spelled as a directory.
+  // Either spelling counts, whatever is on disk: the answer is locked, and a
+  // fresh clone has no `dist` at all.
   const hit = await gitIgnored(
     root,
     [...untracked].flatMap((o) => [o, `${o}/`]),
   )
-  const out = new Set<string>()
-  for (const o of untracked) {
-    if (hit.has(o)) out.add(o)
-    else if (hit.has(`${o}/`) && !(await lstat(path.join(root, o)).catch(() => null))?.isFile())
-      out.add(o)
-  }
-  return out
+  return new Set([...untracked].filter((o) => hit.has(o) || hit.has(`${o}/`)))
 }
 
 function normRel(p: string): string {

@@ -798,6 +798,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/nx-forwarded-output-option',
     'vx-migrate/nx-graph-edges',
     'vx-migrate/nx-helpers-sweep',
+    'vx-migrate/nx-ignored-outputs-machine',
     'vx-migrate/nx-init-e2e-live',
     'vx-migrate/nx-input-keyed-group',
     'vx-migrate/nx-input-projects',

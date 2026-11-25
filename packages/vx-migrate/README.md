@@ -719,7 +719,8 @@ With this file, `vx run build --all` maps every project's `build` target the way
 - Where Nx caches it, it is gitignored, and Nx's file map skips gitignored files.
 - So Nx hashes nothing there: a changed `dist` file is a cache hit under Nx 23.3.
 - So it is dropped without a todo, and the task that writes it keys its dependants through `dependsOn`.
-- Only an output git ignores drops it (one `git check-ignore` per mapping).
+- Only an output a committed `.gitignore` ignores drops it (one `git check-ignore` per mapping).
+- `.git/info/exclude` and `core.excludesFile` do not count: they differ by machine, and the lock must not.
 - An output git tracks a file under, or leaves untracked and unignored, is in Nx's file map, so the input stays.
 - The exception is an input under the cached task's own output (`{projectRoot}/gen/**` beside output `{projectRoot}/gen`).
 - vx cleans the output before the task runs, so core refuses such an input, which refused the whole `vx lock`.

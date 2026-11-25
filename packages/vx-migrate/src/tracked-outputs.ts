@@ -7,7 +7,8 @@
 // cleaned, not saved, not restored, still an input. The task keeps
 // its cache.
 
-import { lstat, readFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { outputsOverlap } from '@vzn/vx'
 import { relPosix } from './paths.js'
@@ -50,25 +51,62 @@ function filesUnder(files: readonly string[], rel: string): readonly string[] {
 }
 
 /**
- * Which of `rels` (root-relative) git ignores: a path no glob over git's
- * files can key. Untracked only (a tracked file is never ignored); empty
- * outside a repo or without git.
+ * Which of `rels` (root-relative) the committed `.gitignore` files ignore: a
+ * path no glob over git's files can key. What it decides lands in the
+ * committed lock, so `.git/info/exclude` and `core.excludesFile`, which
+ * differ by machine, are left out: git runs over an empty git dir of its
+ * own (no info/exclude), with `core.excludesFile` blank, against this work
+ * tree. `--no-index`: callers ask only of untracked paths. Empty outside a
+ * repo or without git.
  */
 export async function gitIgnored(root: string, rels: readonly string[]): Promise<Set<string>> {
   if (rels.length === 0) return new Set()
+  const top = await workTree(root)
+  if (top === null) return new Set()
+  const gitDir = await mkdtemp(path.join(tmpdir(), 'vx-migrate-ignore-'))
   try {
-    const p = Bun.spawn(['git', 'check-ignore', '--stdin', '-z'], {
-      cwd: root,
-      stdin: new TextEncoder().encode(rels.map((r) => `${r}\0`).join('')),
-      stdout: 'pipe',
-      stderr: 'ignore',
-    })
+    await Promise.all([
+      writeFile(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n'),
+      mkdir(path.join(gitDir, 'objects')),
+      mkdir(path.join(gitDir, 'refs')),
+    ])
+    const p = Bun.spawn(
+      [
+        'git',
+        `--git-dir=${gitDir}`,
+        `--work-tree=${top}`,
+        '-c',
+        'core.excludesFile=',
+        'check-ignore',
+        '--no-index',
+        '--stdin',
+        '-z',
+      ],
+      {
+        cwd: root,
+        stdin: new TextEncoder().encode(rels.map((r) => `${r}\0`).join('')),
+        stdout: 'pipe',
+        stderr: 'ignore',
+      },
+    )
     const out = await new Response(p.stdout).text()
     // 1: none ignored; anything else past 0 is no answer.
     if ((await p.exited) !== 0) return new Set()
     return new Set(out.split('\0').filter((f) => f !== ''))
   } catch {
     return new Set()
+  } finally {
+    await rm(gitDir, { recursive: true, force: true })
+  }
+}
+
+/** The nearest directory at or above `dir` holding `.git`; null outside a repo. */
+async function workTree(dir: string): Promise<string | null> {
+  for (let at = path.resolve(dir); ;) {
+    if ((await lstat(path.join(at, '.git')).catch(() => null)) !== null) return at
+    const up = path.dirname(at)
+    if (up === at) return null
+    at = up
   }
 }
 
