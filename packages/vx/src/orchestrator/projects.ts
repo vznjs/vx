@@ -656,6 +656,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         ? undefined
         : await (stamped ??= stampsBesideLock(workspaceRoot, args.cacheDir, digest))
     let edited: string[] = []
+    const elsewhere = new Set<string>()
     if (digest !== undefined && got === undefined) {
       // No stamps beside this lock (a clone, a cleared cache): every config
       // and every mapping is evaluated once, as `vx lock --check` does, and
@@ -686,6 +687,17 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
               return since.has(p) || [...since].some((s) => s.startsWith(`${p}/`))
             }),
           ]
+      }
+      // A config that is the lock's commit's and evaluates otherwise is no
+      // edit: on CI the environment it reads or a file it imports moved.
+      if (edited.length > 0) {
+        const configs = edited.filter((f) => PROJECT_CONFIG_FILENAMES.includes(path.basename(f)))
+        const posix = (f: string): string => f.split(path.sep).join('/')
+        const since =
+          configs.length === 0
+            ? null
+            : changedSinceCommitOf(workspaceRoot, LOCKFILE_NAME, configs.map(posix))
+        if (since !== null) for (const f of configs) if (!since.has(posix(f))) elsewhere.add(f)
       }
       // The workspace file too, as a run beside stamps asks it once it
       // moved: left unstamped, the next run evaluated every mapping again.
@@ -793,11 +805,20 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     // as a crash it causes is (cli/index.ts), on this failure path only.
     if (edited.length > 0 && lockEntryBroken(workspaceRoot))
       throw new UserError(LOCK_INVALID, 'VX_E_LOCK')
-    if (edited.length > 0)
-      throw new UserError(
-        `${listed(edited, 5)} changed since the last \`vx lock\` — run \`vx lock\``,
-        'VX_E_LOCK',
-      )
+    if (edited.length > 0) {
+      const moved = edited.filter((f) => !elsewhere.has(f))
+      const other = edited.filter((f) => elsewhere.has(f))
+      const one = other.length === 1
+      const parts = [
+        ...(moved.length > 0 ? [`${listed(moved, 5)} changed since the last \`vx lock\``] : []),
+        ...(other.length > 0
+          ? [
+              `${listed(other, 5)} ${one ? 'evaluates' : 'evaluate'} differently from the lock here: a file ${one ? 'it imports' : 'they import'}, or the environment ${one ? 'it reads' : 'they read'}, changed`,
+            ]
+          : []),
+      ]
+      throw new UserError(`${parts.join('; ')} — run \`vx lock\``, 'VX_E_LOCK')
+    }
     const loaded =
       fromLock.length === 0 ? [] : frozenProjectConfigs(await lock(), fromLock, workspaceRoot)
     let next = 0

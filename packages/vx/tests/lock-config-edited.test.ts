@@ -618,3 +618,51 @@ describe('a workspace with no stamps', () => {
     ])
   })
 })
+
+// With no stamps (a clone, CI) a config whose bytes are the lock's commit's
+// but whose evaluation differs was named "changed since the last `vx lock`":
+// on CI the cause is the environment it reads or a file it imports.
+describe('a config that evaluates otherwise on this machine', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-lock-elsewhere-' })
+    await addProject(
+      root,
+      'core',
+      `export default { tasks: { say: { exec: { command: 'echo ' + (process.env.VX_TEST_FLAVOR ?? 'plain') } } } }\n`,
+    )
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'lock')
+    await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'))
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('names the environment or an import, not an edit', async () => {
+    process.env['VX_TEST_FLAVOR'] = 'hot'
+    try {
+      const { code, out } = await vx(root, ['run', 'core#say'])
+      expect([code, out]).toEqual([
+        1,
+        expect.stringContaining(
+          'packages/core/vx.config.mjs evaluates differently from the lock here: a file it imports, or the environment it reads, changed — run `vx lock`',
+        ),
+      ])
+    } finally {
+      delete process.env['VX_TEST_FLAVOR']
+    }
+  })
+
+  it('CONTROL: an edit since the lock’s commit is named as one', async () => {
+    await writeFile(path.join(root, 'packages/core/vx.config.mjs'), config('after'))
+    const { code, out } = await vx(root, ['run', 'core#say'])
+    expect([code, out]).toEqual([
+      1,
+      expect.stringContaining(
+        'packages/core/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
+      ),
+    ])
+  })
+})
