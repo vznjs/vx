@@ -843,13 +843,15 @@ Nx loads a task's `.env` files into its environment, unless `NX_LOAD_DOT_ENV_FIL
 - A grouped target's files are named by its group's owner and parent.
 - Example: cypress's atomized `e2e-ci--a.cy.ts` loads `.env.e2e-ci` and `.env.e2e`.
 - The first file to define a name wins, and the environment wins over every file.
-- `nx()` finds the files that exist from one listing of each project dir per run, about 4 ms at 1,000 projects.
-- The task loads them when it runs, with Nx's own parser.
-- A shell line runs under `nx-env --dotenv <file>… --`. An executor line passes `--dotenv <file>` to `nx-exec`.
+- The lock is the same on every machine, so `nx()` never asks the disk which files exist.
+- An executor line passes every candidate name to `nx-exec` as `--dotenv <file>`, as Nx does.
+- A shell line runs under `nx-env --dotenv <file>… --`, with every candidate, only when git tracks one of them.
+- A shell line whose only `.env` files are not committed loads none. `vx lock` names those files: commit them, or load them in the command.
+- The bins load whichever candidates exist when the task runs, with Nx's own parser.
+- They read `NX_LOAD_DOT_ENV_FILES` there too. It is passed to the task and keyed.
 - Their values never enter a config, so a `.env.local` secret is not in `vx show`, `.vx/projects.lock` or a migrated `vx.config.ts`.
-- A cached task keys on their bytes through an `inputs.runtime` probe (`for f in …; do echo "$f"; cat -- "$f"; …`).
-- That probe sees a gitignored file a glob would not.
-- A file added or removed changes the command, and so the key, on the next run.
+- A cached task keys the candidates as literal inputs: the project's in `inputs.files`, the root's in `inputs.workspaceFiles`.
+- A literal is keyed present or not, and gitignored or not, so adding, editing or removing one is a miss.
 - `tests/nx-exec-live.test.ts` compares what the line sees with what `nx run` gives the same target.
 
 ### The target a task sees
@@ -1011,7 +1013,7 @@ A different key, or no snapshot, runs `node_modules/.bin/nx graph --file=<snapsh
 - A run pays neither.
 - The mapping itself is kept beside it, in `<cache dir>/vx-migrate-nx-mapping.json`, keyed on everything it reads.
 - It reads the graph, `nx.json` and its `extends` chain, every package manifest, and each project dir's `.env` names.
-- It also reads `NX_LOAD_DOT_ENV_FILES`, which bins are installed, and the mapper's own code.
+- It also reads which bins are installed, the files git tracks, and the mapper's own code.
 - So a `vx lock` with nothing changed maps nothing.
 
 </details>

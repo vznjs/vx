@@ -891,7 +891,7 @@ describe('vx migrate (nx)', () => {
 
       // Any executor runs as itself through nx-exec; dependsOn/cache parts kept.
       const serve = tasks.serve!
-      expect(serve.exec?.command).toBe(
+      expect(serve.exec?.command?.replace(/ --dotenv \S+/g, '')).toBe(
         `nx-exec @nx/webpack:dev-server --project pkg-a --target serve --options '{"port":4200}'`,
       )
 
@@ -1408,7 +1408,19 @@ describe('vx migrate (nx) — executors', () => {
       })
       expect(r.out).not.toContain('falls outside the project dir')
       // Cached by the legacy list, inputs from nx.json's `default` named input.
-      expect([tasks['odd']!.inputs, tasks['odd']!.outputs, tasks['odd']!.cache]).toEqual([
+      // An nx-exec line also keys Nx's `.env` candidates and its switch
+      // (nx-dotenv-machine.test.ts); the rest of its inputs, here.
+      const dotenv = (f: string) => /(^|\/)\.(env(\.[^/]*)?|[^/]*\.env)$/.test(f)
+      const odd = tasks['odd']!.inputs!
+      expect(odd.env).toEqual(['NX_LOAD_DOT_ENV_FILES'])
+      expect([
+        {
+          files: odd.files!.filter((f) => !dotenv(f)),
+          workspaceFiles: odd.workspaceFiles!.filter((f) => !dotenv(f)),
+        },
+        tasks['odd']!.outputs,
+        tasks['odd']!.cache,
+      ]).toEqual([
         { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
         { files: [] },
         true,
@@ -1421,16 +1433,15 @@ describe('vx migrate (nx) — executors', () => {
       ])
       expect(tasks['dev']!.exec?.persistent).toBeUndefined()
       // Every executor is its nx-exec line, a configuration named on it.
-      expect(tasks['test']!.exec?.command).toBe(
-        'nx-exec @nx/vitest:test --project app --target test',
-      )
-      expect(tasks['odd']!.exec?.command).toBe(
+      const line = (t: string) => tasks[t]!.exec?.command?.replace(/ --dotenv \S+/g, '')
+      expect(line('test')).toBe('nx-exec @nx/vitest:test --project app --target test')
+      expect(line('odd')).toBe(
         `nx-exec @acme/thing:do --project app --target odd --options '{"x":1,"s":"it'\\''s","list":[{"a":"b"}]}'`,
       )
-      expect(tasks['build']!.exec?.command).toBe(
+      expect(line('build')).toBe(
         `nx-exec @nx/js:tsc --project app --target build --configuration production --options '{"main":"src/index.ts","mode":"prod"}'`,
       )
-      expect(tasks['build:ci']!.exec?.command).toBe(
+      expect(line('build:ci')).toBe(
         `nx-exec @nx/js:tsc --project app --target build --configuration ci --options '{"main":"src/index.ts","mode":"ci","extra":true}'`,
       )
       expect(tasks['build:ci']!.dependsOn).toEqual(['^build'])

@@ -780,6 +780,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/nx-deps-dedupe',
     'vx-migrate/nx-deps-projects',
     'vx-migrate/nx-dotenv',
+    'vx-migrate/nx-dotenv-machine',
     'vx-migrate/nx-env-ready-when',
     'vx-migrate/nx-exec',
     'vx-migrate/nx-exec-cwd-live',

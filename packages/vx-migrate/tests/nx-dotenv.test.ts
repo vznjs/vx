@@ -145,6 +145,21 @@ describe('nx-env', () => {
     })
   })
 
+  // The line lists every candidate, the same on every machine: a missing
+  // one loads nothing, and Nx's switch is read where the task runs.
+  it('a missing candidate loads nothing; NX_LOAD_DOT_ENV_FILES=false loads none', async () => {
+    await writeFile(path.join(cwd, '.env'), 'A=project\n')
+    await writeFile(path.join(cwd, '.env.custom'), 'B=custom\n')
+    const args = ['--dotenv', '.env.local', '--dotenv', '.env', '--envFile', '.env.custom', '--']
+    const line = 'printf "%s|%s" "$A" "$B"'
+    expect(await nxEnv([...args, line])).toEqual({ code: 0, out: 'project|custom', err: '' })
+    expect(await nxEnv([...args, line], { NX_LOAD_DOT_ENV_FILES: 'false' })).toEqual({
+      code: 0,
+      out: '|',
+      err: '',
+    })
+  })
+
   it('an envFile it cannot read fails the task, as Nx fails it', async () => {
     const r = await nxEnv(['--envFile', 'nope.env', '--', 'echo ran'])
     expect({ code: r.code, out: r.out, hit: r.err.startsWith('nx-env: ') }).toEqual({
