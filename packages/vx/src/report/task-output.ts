@@ -1,8 +1,9 @@
 // Where a task's output waits until the logger prints it or drops it: a
-// file, not memory (M, 2026-11-25). Held whole in memory, 300 MB of output
-// peaked vx at 1.39 GB under errors-only. Only a small head waits in memory,
-// so a task that prints little costs no file; past it, every chunk goes to a
-// file read back in pieces. A file is unlinked as soon as it is open, so a
+// file, never memory (M, 2026-11-25). Held whole in memory, 300 MB of output
+// peaked vx at 1.93 GB under errors-only. Every chunk goes to one file the
+// run's tasks share, from the first byte, and is read back in pieces. A file
+// per task cost a warm run of 200 hits 18-43 ms more than memory (an open, an
+// unlink and a close each). The file is unlinked as soon as it is open, so a
 // crash leaves nothing behind.
 
 import { randomUUID } from 'node:crypto'
@@ -13,8 +14,8 @@ import { hasEscape, leavesStyle } from '../ui/index.js'
 import { MASKED, maskStreams, type SecretMask } from '../util/index.js'
 import type { OutputChunk, OutputSource } from './framed-output.js'
 
-/** What a task's output may hold in memory before it goes to a file. */
-const SPILL_CHARS = 64 * 1024
+/** A spool no task holds that has grown past this gives its disk back. */
+const SHRINK_BYTES = 64 * 1024 * 1024
 /**
  * The most of a file read back at once; even, so a UTF-16 piece never splits
  * a unit, and above the bytes of the longest log read back whole (1 Mi
@@ -31,6 +32,10 @@ const WIDE = 2
 /** Chunks appended to an unlinked temporary file, read back in pieces. */
 class RecordFile {
   size = 0
+  // One buffer for every write and read up to READ_BYTES: a buffer each
+  // took 50-100 µs a 100 KB log, in collection. A read decodes what it read
+  // before it yields, so readers in turn share it.
+  private scratch = Buffer.allocUnsafe(64 * 1024)
 
   private constructor(private readonly fd: number) {}
 
@@ -51,44 +56,47 @@ class RecordFile {
     const wide = !(text as string & { isWellFormed(): boolean }).isWellFormed()
     const enc = wide ? 'utf16le' : 'utf8'
     const n = Buffer.byteLength(text, enc)
-    const buf = Buffer.allocUnsafe(HEAD_BYTES + n)
+    const buf = this.buffer(HEAD_BYTES + n)
     buf[0] = (err ? ERR : 0) | (wide ? WIDE : 0)
     buf.writeUInt32LE(n, 1)
     buf.write(text, HEAD_BYTES, enc)
     try {
-      for (let at = 0; at < buf.length;)
-        at += writeSync(this.fd, buf, at, buf.length - at, this.size + at)
+      for (let at = 0; at < HEAD_BYTES + n;)
+        at += writeSync(this.fd, buf, at, HEAD_BYTES + n - at, this.size + at)
     } catch {
       try {
         ftruncateSync(this.fd, this.size)
       } catch {}
       return false
     }
-    this.size += buf.length
+    this.size += HEAD_BYTES + n
     return true
   }
 
   /** The chunks between two sizes this file had, each in pieces of at most `READ_BYTES`. */
   *read(from: number, to: number): Generator<OutputChunk> {
-    const head = Buffer.allocUnsafe(HEAD_BYTES)
-    const buf = Buffer.allocUnsafe(Math.min(READ_BYTES, Math.max(0, to - from)))
     let at = from
     while (at < to) {
+      const head = this.buffer(HEAD_BYTES)
       this.readAt(head, HEAD_BYTES, at)
       at += HEAD_BYTES
       const err = (head[0]! & ERR) !== 0
       const wide = (head[0]! & WIDE) !== 0
       const end = at + head.readUInt32LE(1)
-      // `ignoreBOM`: a chunk that starts with U+FEFF keeps it.
-      const utf8 = wide ? null : new TextDecoder('utf-8', { ignoreBOM: true })
+      // A record read in one piece decodes whole; a longer one through a
+      // decoder that holds a character cut between pieces. `ignoreBOM`: a
+      // chunk that starts with U+FEFF keeps it.
+      const utf8 =
+        wide || end - at <= READ_BYTES ? null : new TextDecoder('utf-8', { ignoreBOM: true })
       while (at < end) {
         const n = Math.min(READ_BYTES, end - at)
+        const buf = this.buffer(n)
         this.readAt(buf, n, at)
         at += n
         const text =
-          utf8 === null
-            ? buf.toString('utf16le', 0, n)
-            : utf8.decode(buf.subarray(0, n), { stream: at < end })
+          utf8 !== null
+            ? utf8.decode(buf.subarray(0, n), { stream: at < end })
+            : buf.toString(wide ? 'utf16le' : 'utf8', 0, n)
         if (text.length > 0) yield { text, err }
       }
     }
@@ -96,6 +104,23 @@ class RecordFile {
 
   close(): void {
     closeSync(this.fd)
+  }
+
+  /** Written from the start again: nothing in it is read any more. */
+  reset(): void {
+    if (this.size > SHRINK_BYTES)
+      try {
+        ftruncateSync(this.fd, 0)
+      } catch {}
+    this.size = 0
+  }
+
+  /** A buffer of at least `n` bytes: the shared one, grown up to READ_BYTES. */
+  private buffer(n: number): Buffer {
+    if (n <= this.scratch.length) return this.scratch
+    if (n > READ_BYTES) return Buffer.allocUnsafe(n)
+    this.scratch = Buffer.allocUnsafe(Math.min(READ_BYTES, Math.max(n, this.scratch.length * 2)))
+    return this.scratch
   }
 
   private readAt(buf: Buffer, n: number, at: number): void {
@@ -108,9 +133,30 @@ class RecordFile {
 }
 
 /**
- * One task's output while it runs: a head in memory, the rest in a file.
- * What the frame needs to know before it reads the output back is counted
- * as it arrives.
+ * The one file a logger's tasks write their output to, opened at the first
+ * chunk (`none` and `hash-only` drop theirs, and open none), written from
+ * its start again whenever no task's output is in it.
+ */
+export class OutputSpool {
+  private file: RecordFile | null | undefined
+  private held = 0
+
+  /** The file, held for a task until `free`; null where none can be opened. */
+  take(): RecordFile | null {
+    if (this.file === undefined) this.file = RecordFile.open()
+    if (this.file !== null) this.held++
+    return this.file
+  }
+
+  free(): void {
+    if (--this.held === 0) this.file!.reset()
+  }
+}
+
+/**
+ * One task's output while it runs, in the spool: where its records lie,
+ * runs of them back to back. What the frame needs to know before it reads
+ * the output back is counted as it arrives.
  */
 export class TaskOutput {
   /** Characters pushed. */
@@ -119,11 +165,14 @@ export class TaskOutput {
   content = false
   /** Whether the last chunk with an escape leaves a style on. */
   leaves = false
-  private mem: OutputChunk[] = []
   private file: RecordFile | null = null
+  // [start, end) of each run of this task's records in the file.
+  private runs: number[] = []
   // What memory holds after the file: what a file that could not be opened
   // or written refused. A log is never dropped for want of disk.
   private after: OutputChunk[] | null = null
+
+  constructor(private readonly spool: OutputSpool) {}
 
   push(text: string, err: boolean): void {
     if (text.length === 0) return
@@ -131,14 +180,21 @@ export class TaskOutput {
     // `\S` is what `trim` keeps: the same whitespace.
     if (!this.content && /\S/.test(text)) this.content = true
     if (hasEscape(text)) this.leaves = leavesStyle(text)
-    const c = { text, err }
-    if (this.after !== null) this.after.push(c)
-    else if (this.file !== null) {
-      if (!this.file.append(text, err)) this.after = [c]
-    } else {
-      this.mem.push(c)
-      if (this.chars > SPILL_CHARS) this.spill()
+    if (this.after === null) {
+      if (this.file === null) this.file = this.spool.take()
+      const file = this.file
+      if (file !== null) {
+        const at = file.size
+        if (file.append(text, err)) {
+          const n = this.runs.length
+          if (n > 0 && this.runs[n - 1] === at) this.runs[n - 1] = file.size
+          else this.runs.push(at, file.size)
+          return
+        }
+      }
+      this.after = []
     }
+    this.after.push({ text, err })
   }
 
   /** Whether a chunk was pushed. */
@@ -188,30 +244,15 @@ export class TaskOutput {
   }
 
   release(): void {
-    this.file?.close()
+    if (this.file !== null) this.spool.free()
     this.file = null
-    this.mem = []
+    this.runs = []
     this.after = null
   }
 
-  private spill(): void {
-    const held = this.mem
-    this.mem = []
-    this.file = RecordFile.open()
-    if (this.file === null) {
-      this.after = held
-      return
-    }
-    for (let i = 0; i < held.length; i++)
-      if (!this.file.append(held[i]!.text, held[i]!.err)) {
-        this.after = held.slice(i)
-        return
-      }
-  }
-
   private *read(): Generator<OutputChunk> {
-    yield* this.mem
-    if (this.file !== null) yield* this.file.read(0, this.file.size)
+    for (let i = 0; i < this.runs.length; i += 2)
+      yield* this.file!.read(this.runs[i]!, this.runs[i + 1]!)
     if (this.after !== null) yield* this.after
   }
 }

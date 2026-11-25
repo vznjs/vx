@@ -19,7 +19,7 @@ import {
   type TaskBlockBody,
   writeTaskBlock,
 } from './framed-output.js'
-import { DeferredFrames, TaskOutput } from './task-output.js'
+import { DeferredFrames, OutputSpool, TaskOutput } from './task-output.js'
 import {
   formatFailureLine,
   formatStatusRegion,
@@ -264,8 +264,9 @@ export function defaultLogger(
   // stderr decides its own colour: `vx run 2> warn.log` on a terminal wrote
   // escapes into the file. A given stream is the caller's and takes `colors`.
   const errColors = opts.err === undefined && colors.enabled ? detectColors(process.stderr) : colors
-  // Each task's output until it ends, in order, both streams: a file past a
-  // small head (`TaskOutput`), never memory.
+  // Each task's output until it ends, in order, both streams: in one file the
+  // tasks share (`OutputSpool`), never memory.
+  const spool = new OutputSpool()
   const outputs = new Map<string, TaskOutput>()
   const keptServers = new Set<string>()
   const stoppedServers = new Set<string>()
@@ -279,12 +280,12 @@ export function defaultLogger(
   let streamMidLine = false
   const pushChunk = (id: string, text: string, err: boolean): void => {
     let out = outputs.get(id)
-    if (out === undefined) outputs.set(id, (out = new TaskOutput()))
+    if (out === undefined) outputs.set(id, (out = new TaskOutput(spool)))
     out.push(text, err)
   }
   const takeOutput = (id: string): TaskOutput => {
     const out = outputs.get(id)
-    if (out === undefined) return new TaskOutput()
+    if (out === undefined) return new TaskOutput(spool)
     outputs.delete(id)
     return out
   }
@@ -1063,7 +1064,7 @@ export function defaultLogger(
       // apart, so its stdout reads first.
       let output: TaskOutput
       if (preReady) {
-        output = new TaskOutput()
+        output = new TaskOutput(spool)
         output.push(tailText(preReady.out), false)
         output.push(tailText(preReady.err), true)
       } else output = takeOutput(node.id)

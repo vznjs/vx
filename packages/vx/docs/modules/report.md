@@ -148,12 +148,16 @@ live frame opens before it and closes after, and what vx says about it
 (a timeout, a shell verdict) streams inside.
 
 A task's output waits for its frame in a file, never in memory (M,
-2026-11-25; `src/report/task-output.ts`, `TaskOutput`): the first 64 Ki
-characters stay in memory, so a task that prints little costs no file;
-past them every chunk is appended to a temporary file, unlinked as soon
-as it is open so a crash leaves nothing behind. A file that cannot be
-opened or written keeps the rest in memory: a log is never dropped for
-want of disk. `none` and `hash-only` drop a chunk on arrival, not even
+2026-11-25; `src/report/task-output.ts`): from its first byte every
+chunk is appended to one temporary file the run's tasks share
+(`OutputSpool`), unlinked as soon as it is open so a crash leaves
+nothing behind; each task (`TaskOutput`) keeps only where its records
+lie. The file is written from its start again whenever no task's output
+is in it, and truncated then once past 64 MiB. A file per task cost a
+warm run of 200 hits 18-43 ms; the shared one costs nothing measurable
+at 1 KB a hit and 15-28 ms at 100 KB in `full` (20 MB written and read
+back). A file that cannot be opened or written keeps the rest in
+memory: a log is never dropped for want of disk. `none` and `hash-only` drop a chunk on arrival, not even
 written. Held in memory, 300 MB of output peaked vx at 1.93 GB under
 `errors-only` when the task failed and 786 MB when it passed; from its
 file, +67 MiB (read by a fast reader) and +23 over an idle run. A frame a view defers to the
