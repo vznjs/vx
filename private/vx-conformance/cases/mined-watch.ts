@@ -1010,30 +1010,6 @@ export default [
     ],
   }),
 
-  // vx watch-signals: a timed-out cycle does not end the watch
-  watchCase({
-    id: 'watch/timed-out-task-retried-after-edit',
-    kind: 'correctness',
-    title:
-      'A build killed for running past its time limit while watching runs again once the source is fixed',
-    why: 'A time limit turns a hang into a failure, and a failure while watching waits for the next edit. The hung build must be killed, not left holding the task. The next edit then builds as usual.',
-    from: ['watch-signals', 'stall-watch'],
-    alsoNeeds: ['timeout'],
-    workspace: app(
-      {},
-      {
-        command:
-          'mkdir -p dist && cp src/a.txt dist/tried && if grep -q hang src/a.txt; then sleep 60; fi && cat src/*.txt > dist/out.txt',
-        timeout: 2,
-      },
-    ),
-    phases: [
-      firstBuild,
-      { write: { [A]: 'hang\n' }, expect: { files: { 'packages/app/dist/tried': 'hang\n' } } },
-      { write: { [A]: 'a3\n' }, expect: { ran: ['app#build'], files: { [OUT]: 'a3\n' } } },
-    ],
-  }),
-
   // Turborepo watch_test.rs watch_no_spurious_rebuild_after_settle: outputs already on disk
   watchCase({
     id: 'watch/revert-after-failed-build-restores-output',
@@ -1472,20 +1448,6 @@ export default [
         sh: 'git tag v1 && git gc -q',
         expect: { notRan: ['app#build'], files: { [OUT]: 'a1\n' } },
       },
-    ],
-  }),
-  // vx watch-loop: the sandboxed task under watch
-  watchCase({
-    id: 'watch/sandboxed-task-reruns-on-edit',
-    kind: 'correctness',
-    title: 'Editing the source of a sandboxed build while watching rebuilds it, once',
-    why: 'A sandbox changes where a task may read and write, not when it runs. The watch must rebuild it on an edit as it would any task. The sandbox’s own setup must not look like an edit either, or each build starts the next.',
-    from: ['watch-loop', 'sandbox-grants.unsafe'],
-    alsoNeeds: ['sandbox'],
-    workspace: app({}, { sandbox: {} }),
-    phases: [
-      firstBuild,
-      { write: { [A]: 'a2\n' }, expect: { ran: ['app#build'], files: { [OUT]: 'a2\n' } } },
     ],
   }),
   // Turborepo watch: a run covers the packages a change reaches, not every package

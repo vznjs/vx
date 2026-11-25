@@ -42,7 +42,6 @@ import persistentReady from './persistent-ready.ts'
 import persistentServers from './persistent-servers.ts'
 import hardeningFixes from './hardening-fixes.ts'
 import recentFixes from './recent-fixes.ts'
-import report from './report.ts'
 import runGuards from './run-guards.ts'
 import runModes from './run-modes.ts'
 import sandbox from './sandbox.ts'
@@ -57,10 +56,8 @@ import rivalShapes from './rival-shapes.ts'
 import rivalConfig from './rival-config.ts'
 import rivalGlobs from './rival-globs.ts'
 import rivalModes from './rival-modes.ts'
-import rivalReport from './rival-report.ts'
 import rivalDiscovery from './rival-discovery.ts'
 import minedSandbox from './mined-sandbox.ts'
-import minedReport from './mined-report.ts'
 import minedConfig from './mined-config.ts'
 import minedPipeline from './mined-pipeline.ts'
 import minedWatch from './mined-watch.ts'
@@ -123,7 +120,6 @@ export const CASES: Case[] = [
   ...affectedTasks,
   ...runModes,
   ...runGuards,
-  ...report,
   ...sandbox,
   ...watch,
   ...viteTaskE2eA,
@@ -142,10 +138,8 @@ export const CASES: Case[] = [
   ...rivalConfig,
   ...rivalGlobs,
   ...rivalModes,
-  ...rivalReport,
   ...rivalDiscovery,
   ...minedSandbox,
-  ...minedReport,
   ...minedConfig,
   ...minedPipeline,
   ...minedWatch,

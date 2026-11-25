@@ -51,8 +51,8 @@ const REFS = Object.fromEntries(cases.map((c) => [c.ref, c.category]))
         </p>
         <p class="lede">
           Each case runs sandboxed on each tool, and only the outcome counts: which commands ran,
-          the files left on disk, the exit code, and what the tool reports about the run. Every
-          week the suite runs again on each tool's latest release.
+          the files left on disk and the exit code. A case tests a correct result, never a design
+          choice. Every week the suite runs again on each tool's latest release.
         </p>
         <ul class="chips" aria-label="Tool versions">
           {

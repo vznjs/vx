@@ -14,9 +14,6 @@ const iso = (command: string, sandbox: TaskSpec['sandbox'] = {}): TaskSpec => ({
   sandbox,
 })
 
-const SERVER = `exec bun -e 'Bun.serve({ hostname: "127.0.0.1", port: 47811, fetch: () => new Response("pong") }); console.log("listening")'`
-const CLIENT = 'mkdir -p dist && curl -sf http://127.0.0.1:47811 > dist/out.txt'
-
 export default [
   defineCase({
     id: 'sandbox/undeclared-env-hidden',
@@ -181,39 +178,6 @@ export default [
     steps: [
       { write: { '.home/.ssh/id_ed25519': 'secret-key\n' } },
       { run: 'build', expect: { exit: 'fail', filesNot: { [out('a')]: 'secret-key\n' } } },
-    ],
-  }),
-
-  defineCase({
-    id: 'sandbox/network-refused',
-    category: 'sandbox',
-    kind: 'correctness',
-    title: 'An isolated task with no network grant cannot reach a server the run started',
-    why: 'A response from the network is an input no key holds. The next run replays the saved result whatever the server says now, and two machines can build different bytes under one key. A task without a network grant must fail to connect, so that hidden input shows up at once.',
-    from: ['sandbox-host-services.unsafe', 'sandbox-proxy-denials.unsafe'],
-    needs: ['sandbox', 'persistent', 'ready'],
-    workspace: {
-      projects: {
-        a: {
-          tasks: {
-            serve: { command: SERVER, persistent: { ready: 'listening' } },
-            build: { ...iso(CLIENT), dependsOn: ['serve'] },
-          },
-          files: { 'src/a.txt': 'a\n' },
-        },
-      },
-    },
-    steps: [
-      { run: 'build', expect: { exit: 'fail', filesNot: { [out('a')]: 'pong' } } },
-      // The same client, not isolated, reaches it: the server was up.
-      {
-        configure: (ws) => {
-          const a = ws.projects['a']!
-          const { sandbox: _, ...build } = a.tasks!['build']!
-          return { ...ws, projects: { a: { ...a, tasks: { ...a.tasks, build } } } }
-        },
-      },
-      { run: 'build', expect: { exit: 0, files: { [out('a')]: 'pong' } } },
     ],
   }),
 

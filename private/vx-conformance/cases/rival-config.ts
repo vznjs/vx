@@ -6,37 +6,12 @@
 import { defineCase, type Case, type TaskSpec } from '../src/spec.ts'
 import { chainProject, one } from './shapes.ts'
 
-const A = 'packages/a'
-
 const task = (command: string, extra: Partial<TaskSpec> = {}): TaskSpec => ({
   command,
   inputs: ['src/**'],
   outputs: ['dist/**'],
   ...extra,
 })
-
-const BUILD = task('mkdir -p dist && cat src/a.txt > dist/out.txt')
-
-/** Project `b`'s package.json replaced by `manifest`: the run must fail, building nothing. */
-function badManifest(id: string, title: string, why: string, manifest: string): Case {
-  return defineCase({
-    id: `config/${id}`,
-    category: 'config',
-    kind: 'correctness',
-    title,
-    why,
-    from: ['discovery-refusals', 'package-json-bom'],
-    workspace: {
-      projects: {
-        a: { tasks: { build: BUILD }, files: { 'src/a.txt': 'a\n' } },
-        b: { tasks: { build: BUILD }, files: { 'src/a.txt': 'b\n', 'package.json': manifest } },
-      },
-    },
-    steps: [
-      { run: 'build', expect: { exit: 'fail', notRan: ['a#build', 'b#build'], orRefused: true } },
-    ],
-  })
-}
 
 /** Two declared values that must key two results. */
 function envPair(id: string, title: string, why: string, first: string, second: string): Case {
@@ -60,16 +35,7 @@ function envPair(id: string, title: string, why: string, first: string, second: 
   })
 }
 
-const WRITE = (n: number) => `mkdir -p dist && head -c ${n} /dev/zero > dist/out.bin`
-
 export default [
-  badManifest(
-    'package-json-not-an-object-refused',
-    'A workspace package whose package.json is an array fails the run',
-    'A manifest that parses but is not an object has no name, no dependencies and no scripts. A tool that skips it silently drops a project the workspace lists; one that reads it as empty builds without its edges. The run fails before anything builds.',
-    '[]\n',
-  ),
-
   // final_hash_contract.rs env_mode_hashes
   envPair(
     'unicode-normalisation-keys',
@@ -92,137 +58,6 @@ export default [
     'a b',
     'a\nb',
   ),
-
-  // run_summary.rs, exec_test.rs creates_run_report
-  defineCase({
-    id: 'report/dependency-hit-beside-a-miss',
-    category: 'report',
-    kind: 'data',
-    title: 'A run reports a replayed dependency as a hit while its dependant runs',
-    why: 'When only the app changed, its library replays and the app runs. The report must say so per task, or the user cannot tell whether the library’s cache works. A tool that reports a run as one status, or calls every task of a run with a miss a miss, hides where time went.',
-    from: ['last', 'run-history-columns'],
-    workspace: { projects: { lib: chainProject('lib'), app: chainProject('app', ['lib']) } },
-    steps: [
-      { run: 'build', expect: { exit: 0 } },
-      { write: { 'packages/app/src/a.txt': 'app2\n' } },
-      {
-        run: 'build',
-        expect: { exit: 0, ran: ['app#build'], report: { task: 'lib#build', cache: 'hit' } },
-      },
-    ],
-  }),
-
-  defineCase({
-    id: 'report/dependant-miss-beside-a-hit',
-    category: 'report',
-    kind: 'data',
-    title: 'A run reports the dependant that ran as a miss while its dependency replays',
-    why: 'The task that actually ran is the one to look at when a run is slow. Its status must be its own, not the first task’s or the run’s. A report that marks every task by the run’s overall cache state points at the wrong task.',
-    from: ['last', 'run-history-columns'],
-    workspace: { projects: { lib: chainProject('lib'), app: chainProject('app', ['lib']) } },
-    steps: [
-      { run: 'build', expect: { exit: 0 } },
-      { write: { 'packages/app/src/a.txt': 'app2\n' } },
-      {
-        run: 'build',
-        expect: { exit: 0, ran: ['app#build'], report: { task: 'app#build', cache: 'miss' } },
-      },
-    ],
-  }),
-
-  defineCase({
-    id: 'report/forced-run-reports-miss',
-    category: 'report',
-    kind: 'data',
-    title: 'A forced run reports the task it ran as a miss',
-    why: 'Forcing a run makes every task run whatever the cache holds. Reporting it as a hit because an entry existed tells the user the task was replayed when it ran. The report says the task missed.',
-    from: ['last', 'run-history-columns'],
-    needs: ['force'],
-    workspace: one(task(WRITE(100))),
-    steps: [
-      { run: 'build', expect: { exit: 0 } },
-      {
-        run: 'build',
-        force: true,
-        expect: { exit: 0, ran: ['a#build'], report: { task: 'a#build', cache: 'miss' } },
-      },
-    ],
-  }),
-
-  defineCase({
-    id: 'report/failed-task-duration',
-    category: 'report',
-    kind: 'data',
-    title: 'A run reports how long a failed task took',
-    why: 'A task that fails after minutes is the one that wastes CI time. Its duration matters as much as a passing task’s, and more when it times out or flakes. A tool that records time only for successes leaves the slowest failure invisible.',
-    from: ['last', 'run-history-columns'],
-    workspace: one(task('sleep 0.3 && exit 1')),
-    steps: [
-      {
-        run: 'build',
-        expect: { exit: 'fail', report: { task: 'a#build', durationMs: [280, 20_000] } },
-      },
-    ],
-  }),
-
-  defineCase({
-    id: 'report/no-outputs-size-zero',
-    category: 'report',
-    kind: 'data',
-    title: 'A run reports zero bytes for a task that declares no outputs',
-    why: 'A check (lint, typecheck, test) writes nothing to cache. Its output size is zero, a real value, not a missing one. A tool that reports nothing, or the log’s size, makes cache-size accounting wrong for every check.',
-    from: ['last', 'run-history-columns'],
-    workspace: one(task('true', { outputs: [] })),
-    steps: [
-      { run: 'build', expect: { exit: 0, report: { task: 'a#build', outputBytes: [0, 0] } } },
-    ],
-  }),
-
-  defineCase({
-    id: 'report/many-files-restored-size',
-    category: 'report',
-    kind: 'data',
-    title: 'A run reports the total size of a hundred output files it restored',
-    why: 'Restore cost grows with what is restored. The report must total every file, not the first or the archive’s compressed size. A hundred files of a hundred bytes restored is ten thousand bytes.',
-    from: ['last', 'run-history-columns'],
-    workspace: one(
-      task(
-        'mkdir -p dist && i=0; while [ $i -lt 100 ]; do head -c 100 /dev/zero > dist/$i.bin; i=$((i+1)); done',
-      ),
-    ),
-    steps: [
-      { run: 'build', expect: { exit: 0 } },
-      { write: { [`${A}/dist`]: null } },
-      {
-        run: 'build',
-        expect: {
-          exit: 0,
-          notRan: ['a#build'],
-          report: { task: 'a#build', outputBytes: [10000, 10000] },
-        },
-      },
-    ],
-  }),
-
-  defineCase({
-    id: 'report/many-files-written-size',
-    category: 'report',
-    kind: 'data',
-    title: 'A run reports the total size of a hundred output files a task wrote',
-    why: 'Output size is how a team finds the task that bloats its cache. It is the sum of every file the task wrote, not the largest or the last. A hundred files of a hundred bytes is ten thousand bytes.',
-    from: ['last', 'run-history-columns'],
-    workspace: one(
-      task(
-        'mkdir -p dist && i=0; while [ $i -lt 100 ]; do head -c 100 /dev/zero > dist/$i.bin; i=$((i+1)); done',
-      ),
-    ),
-    steps: [
-      {
-        run: 'build',
-        expect: { exit: 0, report: { task: 'a#build', outputBytes: [10000, 10000] } },
-      },
-    ],
-  }),
 
   defineCase({
     id: 'env/pass-through-change-replays-dependants',

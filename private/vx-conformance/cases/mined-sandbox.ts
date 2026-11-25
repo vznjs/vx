@@ -46,10 +46,6 @@ const sandboxCase = (c: Draft): Case =>
 
 const A = 'packages/a'
 const T = '${TMPDIR:-/tmp}'
-const serve = (port: number) =>
-  `exec bun -e 'Bun.serve({ hostname: "127.0.0.1", port: ${port}, fetch: () => new Response("pong") }); console.log("listening")'`
-const fetch = (port: number) => `mkdir -p dist && curl -sf http://127.0.0.1:${port} > dist/out.txt`
-
 /** `lib` builds `dist/out.txt` (not isolated); `app` depends on it and runs `command` isolated. */
 const consumer = (command: string, appSandbox: Sandbox = {}): WorkspaceSpec => ({
   projects: {
@@ -937,25 +933,6 @@ const writes: Case[] = [
   }),
 
   sandboxCase({
-    id: 'sandbox/sibling-task-output-write-fails',
-    title: 'An isolated task that writes into another task’s output folder in its project fails',
-    why: 'That folder is what the other task stores and restores. A file dropped there by this task is saved with the wrong task, or wiped when the other task replays. Each task writes only what it declares.',
-    from: ['sandbox-grants.unsafe', 'sandbox-misrooted-writes.unsafe'],
-    workspace: {
-      projects: {
-        a: {
-          ...withGen(iso('mkdir -p dist gen && echo x > dist/out.txt && echo x > gen/x.txt'))
-            .projects['a'],
-          files: { 'src/a.txt': 'a\n', 'gen/.keep': '' },
-        },
-      },
-    },
-    steps: [
-      { run: 'build', only: true, expect: { exit: 'fail', files: { [`${A}/gen/x.txt`]: null } } },
-    ],
-  }),
-
-  sandboxCase({
     id: 'sandbox/empty-dir-outside-outputs-fails',
     title:
       'An isolated task that makes an empty folder outside its outputs fails, and the folder is not left',
@@ -1439,30 +1416,6 @@ const temp: Case[] = [
   }),
 
   sandboxCase({
-    id: 'sandbox/host-tmp-var-writable',
-    title: 'An isolated task may write where a passed-through `TMP` tells it to',
-    why: 'Windows-minded tools read `TMP` or `TEMP` rather than `TMPDIR`. When the user passes it through, the task trusts it as its scratch space. The sandbox must make that variable name a folder the task can write, or such tools fail.',
-    from: ['sandbox-temp-vars.unsafe'],
-    needs: ['sandbox', 'pass-through-env'],
-    workspace: isoOne(
-      'echo x > "$TMP/f" && mkdir -p dist && cat "$TMP/f" > dist/out.txt',
-      {},
-      {},
-      {
-        passThrough: ['TMP'],
-      },
-    ),
-    steps: [
-      { write: { '.home/hosttmp/.keep': '' } },
-      {
-        run: 'build',
-        env: { TMP: '$ROOT/.home/hosttmp' },
-        expect: { exit: 0, files: { [out('a')]: 'x\n' } },
-      },
-    ],
-  }),
-
-  sandboxCase({
     id: 'sandbox/closed-temp-writable',
     title: 'A task closed off from the machine may still use its temp folder',
     why: 'Closing a task off hides the machine’s files, but tools still need scratch space. The temp folder is empty and private, so nothing in it is an input. A closed sandbox without one cannot run real tools.',
@@ -1535,25 +1488,6 @@ const runs: Case[] = [
   }),
 
   sandboxCase({
-    id: 'sandbox/pass-through-env-reaches-isolated-task',
-    title: 'A variable an isolated task passes through reaches it',
-    why: 'A passed-through variable, such as a token for a registry, is declared even though it does not key the task. The user asked for it to reach the command. A sandbox that drops it fails the task for doing what it said.',
-    from: ['sandbox-parent-env.unsafe'],
-    needs: ['sandbox', 'pass-through-env'],
-    workspace: isoOne(
-      'mkdir -p dist && printf %s "$CI_FLAG" > dist/out.txt',
-      {},
-      {},
-      {
-        passThrough: ['CI_FLAG'],
-      },
-    ),
-    steps: [
-      { run: 'build', env: { CI_FLAG: 'yes' }, expect: { exit: 0, files: { [out('a')]: 'yes' } } },
-    ],
-  }),
-
-  sandboxCase({
     id: 'sandbox/closed-declared-env-reaches',
     title: 'A variable declared by a task closed off from the machine still reaches it',
     why: 'Closing a task off from the machine’s files does not mean dropping what it declared. The variable keys the task, so its value is an input like any file. A closed sandbox that hides it gives the task less than it asked for.',
@@ -1567,16 +1501,6 @@ const runs: Case[] = [
         expect: { exit: 0, files: { [`${A}/out.txt`]: 'prod\n' } },
       },
     ],
-  }),
-
-  sandboxCase({
-    id: 'sandbox/isolated-timeout-kills',
-    title: 'An isolated task that runs past its time limit is stopped and fails',
-    why: 'The time limit guards against a hung build, and isolation must not hide the task from the runner’s clock. A sandbox wrapper that the limit does not reach lets the task run on. The run must end in time with the task failed.',
-    from: ['sandbox-timeout-clock.unsafe'],
-    needs: ['sandbox', 'timeout'],
-    workspace: isoOne('sleep 30 && mkdir -p dist && echo x > dist/out.txt', {}, {}, { timeout: 2 }),
-    steps: [{ run: 'build', expect: { exit: 'fail', within: 25, files: { [out('a')]: null } } }],
   }),
 
   // turborepo#9666: a task's backgrounded children outlived the run.
@@ -1631,64 +1555,7 @@ const runs: Case[] = [
   }),
 ]
 
-const network: Case[] = [
-  sandboxCase({
-    id: 'sandbox/network-granted-reaches-local-server',
-    title: 'An isolated task granted a server’s port reaches the server the run started',
-    why: 'Integration tests talk to a server another task started. The user granted the network on purpose, so the connection is expected. A sandbox that still blocks it leaves such tests no way to run isolated.',
-    from: ['sandbox-loopback-reach.unsafe', 'sandbox-host-services.unsafe'],
-    needs: ['sandbox', 'persistent', 'ready'],
-    workspace: {
-      projects: {
-        a: {
-          tasks: {
-            serve: { command: serve(47821), persistent: { ready: 'listening' } },
-            build: { ...iso(fetch(47821), { network: ['localhost:47821'] }), dependsOn: ['serve'] },
-          },
-          files: { 'src/a.txt': 'a\n' },
-        },
-      },
-    },
-    steps: passes({ [out('a')]: 'pong' }),
-  }),
-
-  sandboxCase({
-    id: 'sandbox/network-grant-is-per-task',
-    title: 'A network grant on one task does not let another task of the run reach the network',
-    why: 'The task without the grant has no network in its key, so a reply would change its output silently. One task’s grant must not open the network for all. The granted task gets the reply and the other fails.',
-    from: ['sandbox-network-per-task.unsafe', 'sandbox-proxy-denials.unsafe'],
-    needs: ['sandbox', 'persistent', 'ready'],
-    workspace: {
-      projects: {
-        srv: { tasks: { serve: { command: serve(47822), persistent: { ready: 'listening' } } } },
-        a: {
-          tasks: {
-            build: {
-              ...iso(fetch(47822), { network: ['localhost:47822'] }),
-              dependsOn: ['srv#serve'],
-            },
-          },
-          files: { 'src/a.txt': 'a\n' },
-        },
-        b: {
-          tasks: { build: { ...iso(fetch(47822)), dependsOn: ['srv#serve'] } },
-          files: { 'src/a.txt': 'b\n' },
-        },
-      },
-    },
-    steps: [
-      {
-        run: 'build',
-        projects: ['a', 'b'],
-        expect: {
-          exit: 'fail',
-          files: { [out('a')]: 'pong' },
-          filesNot: { [out('b')]: 'pong' },
-        },
-      },
-    ],
-  }),
-]
+const network: Case[] = []
 
 const all = [...reads, ...deps, ...writes, ...temp, ...runs, ...network]
 

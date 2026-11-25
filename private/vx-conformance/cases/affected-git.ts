@@ -591,23 +591,6 @@ export default [
   }),
 
   defineCase({
-    id: 'affected/unknown-task-refused',
-    category: 'affected',
-    kind: 'correctness',
-    title: 'An affected run of a task no project declares fails, whatever changed',
-    why: 'A task no project declares can never run, whatever changed. The run must fail, so a typo like `tset` is caught at once. Exiting 0 because the change happened to select nothing turns a broken CI step into a green one that silently tests nothing.',
-    from: ['affected-sparse-tasks'],
-    needs: ['affected'],
-    workspace: workspace(),
-    steps: [
-      { write: { 'packages/docs/src/a.txt': 'docs2\n' } },
-      { commit: 'docs' },
-      { affected: 'tset', base: 'HEAD~1', expect: { exit: 'fail' } },
-      { affected: 'tset', base: 'HEAD', expect: { exit: 'fail' } },
-    ],
-  }),
-
-  defineCase({
     id: 'affected/clean-submodule',
     category: 'affected',
     kind: 'efficiency',

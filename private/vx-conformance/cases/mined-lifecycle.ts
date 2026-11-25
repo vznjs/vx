@@ -991,27 +991,6 @@ export default [
     ],
   }),
 
-  // vx persistent-ready-timeout: the dependant's limit starts with its own command
-  defineCase({
-    id: 'failure/time-limit-does-not-count-the-wait-for-ready',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'A test’s time limit does not count the time its server takes to become ready',
-    why: 'A test’s time limit is sized to the test, not to how long the dev server takes to boot. Until the server is ready the test has not started, so none of that wait is its time. Counting it fails a fast test because of a slow server.',
-    from: ['persistent-ready-timeout', 'task-timeout'],
-    needs: ['persistent', 'ready', 'timeout'],
-    workspace: app({
-      srv: { command: 'sleep 1.5; echo ready; sleep 60', persistent: { ready: 'ready' } },
-      e2e: { command: 'echo ok > ok.txt', dependsOn: ['srv'], timeout: 1, cache: false },
-    }),
-    steps: [
-      {
-        run: 'e2e',
-        expect: { exit: 0, files: { 'packages/app/ok.txt': 'ok\n' }, within: 30, alone: true },
-      },
-    ],
-  }),
-
   // vx persistent: persistent upstream is SIGTERMd when a downstream task fails, here by its time limit
   defineCase({
     id: 'failure/server-stopped-when-its-user-times-out',

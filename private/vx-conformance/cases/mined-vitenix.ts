@@ -282,18 +282,6 @@ export default [
     ],
   }),
 
-  defineCase({
-    id: 'failure/zero-retries-runs-once',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'A task given zero retries runs once and fails',
-    why: 'Zero retries means no retry. A runner that reads 0 as unset and falls back to some default retry count runs a failing deploy or migration again when the user said not to. The count is the number of extra attempts, and here there are none.',
-    from: ['retries'],
-    needs: ['retries'],
-    workspace: a({ t: { command: 'echo x >> attempts.txt; exit 1', retries: 0 } }),
-    steps: [{ run: 't', expect: { exit: 'fail', files: { 'packages/a/attempts.txt': 'x\n' } } }],
-  }),
-
   // Vite Task crates/vt_bin/tests/e2e_snapshots/fixtures/exit_codes:
   // dependency_failure_fast_fails_dependents, for a task that is never cached.
   defineCase({

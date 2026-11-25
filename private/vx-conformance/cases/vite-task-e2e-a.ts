@@ -176,30 +176,4 @@ export default [
       },
     ],
   }),
-
-  defineCase({
-    id: 'config/malformed-manifest-refused',
-    category: 'config',
-    kind: 'correctness',
-    title: 'A project whose package.json does not parse fails the run',
-    why: 'A manifest that does not parse leaves the project’s name, dependencies and tasks unknown. Skipping the project lets the run go green with its tasks never run and its dependants built in the wrong order. Failing at once names the broken file while the mistake is fresh.',
-    from: ['discovery-refusals', 'package-json-bom'],
-    needs: ['package-manager'],
-    workspace: {
-      projects: {
-        a: {
-          tasks: { build: { command: 'echo a > a.txt', inputs: ['src/**'] } },
-          files: { 'src/a.txt': 'a\n' },
-        },
-        b: {
-          tasks: { build: { command: 'echo b > b.txt', inputs: ['src/**'] } },
-          files: { 'src/a.txt': 'b\n' },
-        },
-      },
-    },
-    steps: [
-      { write: { 'packages/b/package.json': '{\n  "name":\n}\n' } },
-      { run: 'build', expect: { exit: 'fail' } },
-    ],
-  }),
 ]

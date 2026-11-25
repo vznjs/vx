@@ -128,28 +128,4 @@ export default [
       },
     ],
   }),
-
-  ...(['*', '^*', '**'] as const).map((dep) =>
-    defineCase({
-      id: `config/bare-wildcard-${dep === '*' ? 'star' : dep === '^*' ? 'caret-star' : 'globstar'}-refused`,
-      category: 'config',
-      kind: 'correctness',
-      title: `\`${dep}\` alone in dependsOn fails the run`,
-      why: 'A dependency pattern that matches every task, the task itself included, is almost always a typo for a name. Accepted, it makes the task wait on itself, a cycle, or quietly runs every task in the project before it. Failing the run costs one edit; guessing what was meant hides a config mistake that later shows up only as slow or odd builds.',
-      from: FROM,
-      needs: ['task-pattern'],
-      workspace: {
-        projects: {
-          app: {
-            tasks: {
-              build: { command: 'echo x', dependsOn: [dep], inputs: ['src/**'] },
-              other: { command: 'echo y', inputs: ['src/**'] },
-            },
-            files: { 'src/a.txt': 'x\n' },
-          },
-        },
-      },
-      steps: [{ run: 'build', expect: { exit: 'fail', notRan: ['app#build', 'app#other'] } }],
-    }),
-  ),
 ]

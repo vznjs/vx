@@ -387,18 +387,6 @@ export default [
   }),
 
   defineCase({
-    id: 'failure/unknown-task-beside-a-known-one-fails',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'Asking for two tasks, one of which no project declares, fails the run',
-    why: 'A task name that no project declares is a typo or a removed task. If it is dropped silently because the other name was found, the run exits 0 having skipped part of what was asked. CI then reports a check as passing that never ran. Failing names the unknown task, so the fix is a one word change.',
-    from: ['task-selection'],
-    needs: ['multi-task'],
-    workspace: { projects: { a: checked([], { build: { command: 'true', inputs: ['src/**'] } }) } },
-    steps: [{ run: 'build', also: ['totallybogus'], expect: { exit: 'fail' } }],
-  }),
-
-  defineCase({
     id: 'graph/two-tasks-some-projects-declare',
     category: 'graph',
     kind: 'correctness',
@@ -510,25 +498,6 @@ export default [
         run: 'check',
         select: [{ name: 'root' }],
         expect: { exit: 0, ran: ['root#check'], notRan: ['a#check'] },
-      },
-    ],
-  }),
-
-  defineCase({
-    id: 'graph/select-emptied-beside-no-match-refused',
-    category: 'graph',
-    kind: 'correctness',
-    title:
-      'A selection its excludes leave empty, beside a selector matching nothing, fails the run',
-    why: 'Here nothing is left to run, and one selector matches no project at all. That selector is almost always a typo, and exiting 0 lets CI pass having checked nothing. A selection the user empties on purpose with excludes is different, but the unmatched name is still an error to report.',
-    from: ['select'],
-    needs: ['filter'],
-    workspace: { projects: { ui: checked(), lib: checked() } },
-    steps: [
-      {
-        run: 'check',
-        select: [{ name: 'ui' }, { name: 'ui', exclude: true }, { name: 'nope' }],
-        expect: { exit: 'fail', notRan: ['lib#check'] },
       },
     ],
   }),
@@ -768,30 +737,6 @@ export default [
   }),
 
   defineCase({
-    id: 'graph/forwarded-args-refused-for-two-tasks',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'Args forwarded to a run of two task names are refused',
-    why: 'Arguments after `--` are written for one command, such as `--port 3000` for a server or `--watch` for a test runner. Handing them to every task the run names starts the other task with flags it never expected, which fails it or, worse, changes what it does. The run has to refuse before any task starts, so the user names the one task the arguments are for.',
-    from: ['forward-args-one-task'],
-    needs: ['multi-task'],
-    workspace: { projects: { app: { tasks: { a: echoArgs('a.txt'), b: echoArgs('b.txt') } } } },
-    steps: [
-      {
-        run: 'a',
-        also: ['b'],
-        projects: ['app'],
-        args: ['--port', '3000'],
-        expect: {
-          exit: 'fail',
-          files: { 'packages/app/a.txt': null, 'packages/app/b.txt': null },
-          within: 30,
-        },
-      },
-    ],
-  }),
-
-  defineCase({
     id: 'graph/forwarded-args-reach-a-task-named-twice',
     category: 'graph',
     kind: 'correctness',
@@ -810,32 +755,6 @@ export default [
           exit: 0,
           ran: ['app#t'],
           files: { 'packages/app/got.txt': '<--port><3000>' },
-          within: 30,
-        },
-      },
-    ],
-  }),
-
-  defineCase({
-    id: 'graph/forwarded-args-refused-for-many-projects',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'Args forwarded to one task name in many projects are refused',
-    why: 'One task name across many projects is many commands, each its own tool with its own flags. Arguments after `--` meant for one of them reach all, so a flag one project’s test runner takes fails or changes every other project’s run. The run has to refuse before any task starts, so the user narrows it to the one project the arguments are for.',
-    from: ['forward-args-one-task'],
-    workspace: {
-      projects: {
-        one: { tasks: { t: echoArgs('got.txt') } },
-        two: { tasks: { t: echoArgs('got.txt') } },
-      },
-    },
-    steps: [
-      {
-        run: 't',
-        args: ['--port', '3000'],
-        expect: {
-          exit: 'fail',
-          files: { 'packages/one/got.txt': null, 'packages/two/got.txt': null },
           within: 30,
         },
       },

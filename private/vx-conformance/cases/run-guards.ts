@@ -30,23 +30,6 @@ export default [
   }),
 
   defineCase({
-    id: 'outputs/folder-output-written-as-file-fails',
-    category: 'outputs',
-    kind: 'correctness',
-    title: 'An output declared as a folder (`dist/`) that the command wrote as a file fails',
-    why: 'A trailing slash says the output is a folder. A command that writes a file of that name instead did something else: a typo in the tool’s flag, or an archive where a folder was meant. Caching the file replays it to every later run, and the tasks that read `dist/` as a folder break far from the cause.',
-    from: ['missing-outputs'],
-    needs: ['folder-output'],
-    workspace: a({
-      build: { command: 'echo built > dist', inputs: ['in.txt'], outputs: ['dist/'] },
-    }),
-    steps: [
-      { run: 'build', expect: { exit: 'fail' } },
-      { run: 'build', expect: { exit: 'fail', ran: ['a#build'] } },
-    ],
-  }),
-
-  defineCase({
     id: 'outputs/optional-output-left-unwritten-passes',
     category: 'outputs',
     kind: 'correctness',

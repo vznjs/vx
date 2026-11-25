@@ -1181,38 +1181,6 @@ export default [
   }),
 
   defineCase({
-    id: 'report/retried-duration-all-attempts',
-    category: 'report',
-    kind: 'data',
-    title: 'A retried task’s reported time covers every attempt, not only the last',
-    why: 'A task’s reported time is how long it held up the run, and a retried task held it up for every attempt. Reporting only the last attempt hides the cost of flaky tasks. Time budgets, critical-path estimates and CI dashboards then look better than the build really is. Each attempt counts.',
-    from: ['retries'],
-    needs: ['retries'],
-    workspace: {
-      projects: {
-        a: {
-          tasks: {
-            build: {
-              command:
-                'sleep 0.3; if [ -f flag.txt ]; then mkdir -p dist && echo ok > dist/out.txt; else touch flag.txt; exit 1; fi',
-              retries: 1,
-              inputs: ['src/**'],
-              outputs: ['dist/**'],
-            },
-          },
-          files: { 'src/a.txt': 'a\n', '.gitignore': 'flag.txt\n' },
-        },
-      },
-    },
-    steps: [
-      {
-        run: 'build',
-        expect: { exit: 0, report: { task: 'a#build', durationMs: [580, 20_000] } },
-      },
-    ],
-  }),
-
-  defineCase({
     id: 'outputs/retry-spares-a-sibling-root-output',
     category: 'outputs',
     kind: 'correctness',
