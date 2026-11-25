@@ -2332,6 +2332,10 @@ export function isStarterConfig(file: string): boolean
 // (a tsconfig.json with no `include` or `files`: a NestJS app's output moves).
 // `vx init` and a migration print them.
 export function tscCompilesConfigNotes(root: string, written: readonly string[]): string[]
+// After `vx init` writes its starter: the config joins the tsconfig's
+// `exclude`, the locks join `.prettierignore`, biome's lines are named, as a
+// migration does. The notes.
+export function settleToolFiles(root: string, written: readonly string[]): string[]
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TODO: string
 // Drops `note` from each persistent task no `dependsOn` in the mapping

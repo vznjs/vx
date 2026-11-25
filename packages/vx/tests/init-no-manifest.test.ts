@@ -88,6 +88,30 @@ describe('vx init with no package.json', () => {
     ])
   })
 
+  // vx-migrate settled other tools' files, init alone did not: prettier
+  // --check failed on the locks, tsc compiled the config, biome checked them.
+  it("settles prettier's, tsc's and biome's files, as vx-migrate does", async () => {
+    const root = await tmp('vx-init-tools-')
+    await writeFile(path.join(root, '.prettierignore'), 'dist\n')
+    await writeFile(path.join(root, 'biome.json'), '{}\n')
+    await writeFile(
+      path.join(root, 'tsconfig.json'),
+      '{ "compilerOptions": { "outDir": "dist" }, "exclude": ["node_modules"] }\n',
+    )
+    const r = await vx(root, ['init'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect([
+      await readFile(path.join(root, '.prettierignore'), 'utf8'),
+      JSON.parse(await readFile(path.join(root, 'tsconfig.json'), 'utf8')).exclude,
+    ]).toEqual([
+      'dist\n\n# vx: what vx lock and runs write\n.vx/cache\n.vx/tmp\n.vx/projects.lock\n.vx/dependencies.lock\nvx.lock.json\n',
+      ['vx.config.ts', 'node_modules'],
+    ])
+    expect(r.out).toContain('added the config to "exclude" in tsconfig.json')
+    expect(r.out).not.toContain('add "vx.config.ts" to "exclude"')
+    expect(r.out).toContain("biome checks vx's locks")
+  })
+
   it('--dry --mjs writes nothing and prints the .mjs files', async () => {
     const root = await tmp('vx-init-bare-dry-')
     const r = await vx(root, ['init', '--dry', '--mjs'])

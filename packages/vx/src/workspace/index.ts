@@ -95,6 +95,7 @@ export {
   pruneOrphanPersistentNotes,
   quoteTsLiteral,
   renderWorkspace,
+  settleToolFiles,
   starterProject,
   tscCompilesConfigNotes,
   writeMigration,

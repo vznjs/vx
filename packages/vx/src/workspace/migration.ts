@@ -740,6 +740,15 @@ function lockAnswer(answer: unknown): { code: number; said: string } {
   return { code: 1, said: 'vx lock: the migration tool answered no result: run `vx lock`\n' }
 }
 /**
+ * What `vx init`'s starter settles in other tools' files after writing
+ * `written`, as `writeMigration` does: the config joins its tsconfig's
+ * `exclude`, the locks join `.prettierignore`, biome's lines are named.
+ */
+export function settleToolFiles(root: string, written: readonly string[]): string[] {
+  return [...excludeFromTsc(root, written), ...formatterIgnore(root), ...biomeNote(root)]
+}
+
+/**
  * Adds a written config to the `exclude` its package's tsconfig already
  * lists, where tsc would compile it: tldraw's editor (`rootDir: src`, no
  * `include`) stopped at TS6059 on the first `vx run`. A tsconfig with no

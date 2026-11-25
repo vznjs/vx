@@ -44,6 +44,7 @@ import {
   readLockfile,
   REVIEW_FILE,
   renderWorkspace,
+  settleToolFiles,
   starterProject,
   tscCompilesConfigNotes,
   WORKSPACE_CONFIG_FILENAMES,
@@ -630,14 +631,11 @@ async function starter(
   const gitInit =
     root === process.cwd() ? 'git init' : `git init ${path.relative(process.cwd(), root)}`
   const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `${migrateHint(args.mjs === true)} to make package.json scripts tasks, or ${declare}` : declare}`
-  const notes = [
-    ...unreadRunnerNotes(root),
-    ...keptWithoutPluginNotes(root, kept, plugin, pkgRoot),
-    ...tscCompilesConfigNotes(
-      root,
-      files.map((f) => path.join(root, f.path)),
-    ),
-  ]
+  const written = files.map((f) => path.join(root, f.path))
+  const notes = [...unreadRunnerNotes(root), ...keptWithoutPluginNotes(root, kept, plugin, pkgRoot)]
+  // Settled after the write, as vx-migrate settles them: a dry run names
+  // what tsc would compile.
+  if (args.json === true || args.dry) notes.push(...tscCompilesConfigNotes(root, written))
   if (args.json === true) {
     ui.data(
       'out',
@@ -653,8 +651,8 @@ async function starter(
   if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])
   if (kept.length > 0) rows.push(['kept', ...kept])
   if (overwritten.length + replaced.length > 0) rows.push(['replaced', ...overwritten, ...replaced])
-  if (notes.length > 0) rows.push(['note', ...notes])
   if (args.dry) {
+    if (notes.length > 0) rows.push(['note', ...notes])
     rows.push([
       'lock',
       LOCKFILE_NAME,
@@ -680,6 +678,8 @@ async function starter(
     )
   }
   for (const f of replaced) await unlink(path.join(root, f))
+  notes.push(...settleToolFiles(root, written), ...tscCompilesConfigNotes(root, written))
+  if (notes.length > 0) rows.push(['note', ...notes])
   // The lock that follows loads the workspace file just written.
   workspaceFileWritten()
   const lock = await lockAfterMigration(root)
