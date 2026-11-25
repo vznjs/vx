@@ -487,10 +487,15 @@ async function classifyExit(
   // A placeholder the task never wrote is not its output: take it back
   // before the outputs are collected. On a failure it is also the one clue
   // to a grant that meant a directory: say so beside the failure, and
-  // beside any violation too (Bun's refused `bunfig.toml` read held it back).
+  // beside any violation too (Bun's refused `bunfig.toml` read held it back)
+  // when the name reads as a directory's: beside a refused or hidden read,
+  // `out.txt` never written is the read's failure, not a grant meant as
+  // `out.txt/`.
   const untouched = await sweepPlaceholders(m.sandbox.placeholders)
   if (res.exitCode !== 0) {
+    const said = violations.length > 0
     for (const p of untouched) {
+      if (said && path.extname(p) !== '') continue
       violations.push({
         timestamp: new Date(),
         hint: true,
