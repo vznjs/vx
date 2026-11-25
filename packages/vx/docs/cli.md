@@ -4322,10 +4322,10 @@ differently.
 
 ## `vx init`
 
-`vx init` sets up vx in a repository. It installs `@vzn/vx`, writes
+`vx init` sets up vx in a workspace. It installs `@vzn/vx`, writes
 `.vx/workspace.ts` and a root `vx.config.ts`, and writes the lock.
 
-In a Turborepo or Nx repo, it maps their config instead.
+In a Turborepo or Nx workspace, it maps their config instead.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -4377,19 +4377,19 @@ vx init --dry
 
 ### Options
 
-| Option               | Meaning                                                                   |
-| -------------------- | ------------------------------------------------------------------------- |
-| `--dry`              | print the files, and the lock's; write nothing                            |
-| `--format json`      | with `--dry`, the plan as one document                                    |
-| `--force`            | replace a file already there                                              |
-| `--mjs`              | write `.mjs` files instead of `.ts`                                       |
-| `--native`, `--keep` | in a Turbo or Nx repo: a `vx.config.ts` per package, or keep their config |
-| `--plugin <hook>`    | write a plugin for that hook instead, below                               |
+| Option               | Meaning                                                                        |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `--dry`              | print the files, and the lock's; write nothing                                 |
+| `--format json`      | with `--dry`, the plan as one document                                         |
+| `--force`            | replace a file already there                                                   |
+| `--mjs`              | write `.mjs` files instead of `.ts`                                            |
+| `--native`, `--keep` | in a Turbo or Nx workspace: a `vx.config.ts` per package, or keep their config |
+| `--plugin <hook>`    | write a plugin for that hook instead, below                                    |
 
 ### Install
 
 `vx init` first installs `@vzn/vx`: globally, and as a root
-devDependency with your repo's own package manager.
+devDependency with your workspace's own package manager.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -4410,13 +4410,13 @@ devDependency with your repo's own package manager.
 </div>
 </details>
 
-### In a Turborepo or Nx repo
+### In a Turborepo or Nx workspace
 
 Beside a `turbo.json` or `nx.json`, `vx init` runs `@vzn/vx-migrate`, so
 one command is enough.
 
 vx-migrate writes one `vx.config.ts` per package and the workspace file
-with the plugins the repo needs. It installs them and ends with
+with the plugins the workspace needs. It installs them and ends with
 `vx lock`.
 
 <details class="vx-deeper" data-level="3">
@@ -4438,7 +4438,7 @@ with the plugins the repo needs. It installs them and ends with
   `node_modules/@vzn/vx-migrate` instead.
 - `--dry`, `--format`, `--force`, `--mjs`, `--native` and `--keep` pass
   through, and the exit is vx-migrate's.
-- The plugins it declares: the lockfile's, and a remote cache the repo
+- The plugins it declares: the lockfile's, and a remote cache the workspace
   shows.
 - Its README holds the rules; [`bunx @vzn/vx-migrate`](#bunx-vznvx-migrate)
   below sums them up.
@@ -4446,7 +4446,7 @@ with the plugins the repo needs. It installs them and ends with
 </div>
 </details>
 
-### In any other repo
+### In any other workspace
 
 With none of those files, it writes a workspace whose one project is the
 root:
@@ -4532,7 +4532,7 @@ edges.
 - Its keys: `files` (each path and its whole text), `kept`, `replaced`,
   `todos`, `notes`, `next` and `installs`.
 - `installs` holds the install commands the real run runs.
-- `--native` and `--keep` answer a Turbo or Nx repo's question, so they
+- `--native` and `--keep` answer a Turbo or Nx workspace's question, so they
   are refused here.
 - `--format json` without `--dry`, or with `--plugin`, is refused
   (`VX_E_USAGE`).
@@ -4589,11 +4589,11 @@ the plugin in your workspace file.
 
 ## `bunx @vzn/vx-migrate`
 
-`@vzn/vx-migrate` turns a repo's own config into vx configs. It is its
+`@vzn/vx-migrate` turns a workspace's own config into vx configs. It is its
 own package, and it writes the workspace file, so you run it before one
 exists.
 
-`vx init` runs it for you in a repo with a `turbo.json`, `turbo.jsonc`,
+`vx init` runs it for you in a workspace with a `turbo.json`, `turbo.jsonc`,
 `nx.json`, an exported Nx graph or Lerna on Nx.
 
 ```sh
@@ -4603,23 +4603,23 @@ bunx @vzn/vx-migrate --force   # overwrite existing vx.config.*
 bunx @vzn/vx-migrate --from nx # disambiguate when several sources are checked in (turbo, nx, vite-task, scripts)
 ```
 
-In a Turborepo or Nx repo, it asks you to pick:
+In a Turborepo or Nx workspace, it asks you to pick:
 
-| Answer           | Writes                                                                            |
-| ---------------- | --------------------------------------------------------------------------------- |
-| native (default) | a `vx.config.ts` per package                                                      |
-| keep             | a workspace file declaring `turbo()` or `nx()`, which read the repo's config live |
+| Answer           | Writes                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| native (default) | a `vx.config.ts` per package                                                           |
+| keep             | a workspace file declaring `turbo()` or `nx()`, which read the workspace's config live |
 
 `--native` or `--keep` answers it. Without a terminal, it is native.
 
-In any other repo, each package's `package.json` scripts become its
+In any other workspace, each package's `package.json` scripts become its
 tasks.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- Both answers declare `turboCache()` / `nxCache()` when the repo shows
+- Both answers declare `turboCache()` / `nxCache()` when the workspace shows
   a remote cache.
 - The signs: turbo.json's `remoteCache`, a `turbo link`ed
   `.turbo/config.json`, or a CI file setting `TURBO_TOKEN` /
