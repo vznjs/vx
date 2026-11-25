@@ -487,6 +487,24 @@ it('the README shows the workflow vx dte init writes for its sizes', async () =>
   expect(readme).toContain('```yaml\n# .gitlab-ci.yml\n' + gl.files['.gitlab-ci.yml'] + '```')
 })
 
+// The hint named one line, 'vx run build test --affected'; a ci.yml
+// that ran it on a push to main refused there: main has no default base.
+it('the unnamed GitHub run asks for tasks before both flags', async () => {
+  const gh = (
+    await github().init!({
+      workspaceRoot: root,
+      dir: '',
+      relay: 'https://r',
+      sizes: [{ name: 'small', max: 4 }],
+      manager: 'bun',
+      tasks: { main: '', change: '' },
+    })
+  ).files['.github/workflows/ci.yml']!
+  expect(gh).toContain(
+    "      # Name the tasks in both quotes, as 'build test --affected' and\n      # 'build test --all': with none named, vx fails, listing them.\n      - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}\n",
+  )
+})
+
 it('writes the tasks asked for: main with --all, a change request with --affected', async () => {
   const setup = {
     workspaceRoot: root,

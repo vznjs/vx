@@ -368,8 +368,8 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile --filter './'
       - run: bun vx lock --check
-      # Name the tasks to run, as 'bun vx run build test --affected': with
-      # none named, vx fails, listing the workspace's tasks.
+      # Name the tasks in both quotes, as 'build test --affected' and
+      # 'build test --all': with none named, vx fails, listing them.
       - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
 ```
 

@@ -341,8 +341,8 @@ ${rootInstall(setup.manager, setup.dir).join('\n')}
 ${
   named
     ? ''
-    : `      # Name the tasks to run, as '${VX} run build test --affected': with
-      # none named, vx fails, listing the workspace's tasks.
+    : `      # Name the tasks in both quotes, as 'build test --affected' and
+      # 'build test --all': with none named, vx fails, listing them.
 `
 }      - run: ${VX} run \${{ github.event_name == 'pull_request' && '${both(setup.tasks.change, '--affected')}' || '${both(setup.tasks.main, '--all')}' }}
 `
