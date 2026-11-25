@@ -290,12 +290,12 @@ check: {
 - `dependsOn: []` is the deliberate empty group: a task by that name
   exists and does nothing.
 - No `build` declared by the config or its plugins: the project gets one.
-  It is a group with `dependsOn: ['^build']` and `inputs.files: ['**']`,
-  no outputs.
+  It is a no-op task with `dependsOn: ['^build']` and `inputs.files:
+['**']`, no outputs.
 - That `build` runs nothing, but a dependant behind `^build` folds its
   key. A package used as source moves its dependants' keys and reaches
   them under `--affected`.
-- A config can declare a keyed group too (Group tasks, below).
+- A config can declare a no-op task too (No-op tasks, below).
 - `vx run build` alone does not select the given `build`. Where no
   selected project declares `build`, it is refused as any undeclared name
   is.
@@ -1287,7 +1287,10 @@ Default: none. A task without `inputs` has no key, and `cache` needs one.
 - Declare `inputs` on an uncached task a cached one depends on.
 - `inputs: { files: [] }` is a declaration: it keys the task on its config and its dependencies' keys, so a task behind it can hit.
 - An absent `inputs` and an empty one differ.
-- A group (no `exec`) with `inputs` is a keyed group: see Group tasks, below.
+- A task with `inputs` and no `exec` is a no-op task: see No-op tasks, below.
+- A no-op task needs at least one entry in `files`, `workspaceFiles`, `env`,
+  `runtime` or `workspaceRuntime`. With none, the load refuses it: add
+  `exec`, or drop `inputs` to make it a group.
 - A project without a `build` task gets `{ dependsOn: ['^build'], inputs: { files: ['**'] } }`.
 
 </div>
@@ -2685,8 +2688,17 @@ pack: {
 
 ## Group tasks (no `exec`)
 
-A task with no `exec` and a `dependsOn` is a group: running it runs its
-dependencies, and nothing else.
+A task is one of three kinds:
+
+| Has                     | Kind       | Runs             | `--affected` when                          |
+| ----------------------- | ---------- | ---------------- | ------------------------------------------ |
+| `exec`                  | task       | its command      | an input changed; with no `inputs`, always |
+| `inputs`, no `exec`     | no-op task | nothing          | an input changed                           |
+| neither (a `dependsOn`) | group      | its dependencies | only through its dependencies              |
+
+Each kind is also affected when its own definition changes, or a task it
+depends on is affected. A task with no `exec` and a `dependsOn` is a
+group: running it runs its dependencies, and nothing else.
 
 ```ts
 // `vx run ci`  →  runs format-check + lint + test in the cwd project
@@ -2701,7 +2713,7 @@ ci: {
 | `dependsOn: ['lint', 'test']`        | runs `lint` and `test`                     |
 | `dependsOn: ['^build']`              | runs `build` in every workspace dependency |
 | `dependsOn: []`                      | runs nothing; exists to be named           |
-| `inputs: { files: ['fixtures/**'] }` | a keyed group: a key for dependants        |
+| `inputs: { files: ['fixtures/**'] }` | a no-op task: a key for dependants         |
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -2723,18 +2735,21 @@ ci: {
   }
   ```
 
-- A project with no `build` gets a keyed one (see
+- A project with no `build` gets a no-op task (see
   [`TaskConfig`](#taskconfig)). A bare `vx run build` does not select it.
 
-**Keyed groups.**
+**No-op tasks.**
 
-- `fixtures: { inputs: { files: ['fixtures/**'] } }`: a group with
-  `inputs` is a key. Nothing runs for it.
-- A task that depends on a keyed group folds its key, so an edit to those
+- `fixtures: { inputs: { files: ['fixtures/**'] } }`: a task with
+  `inputs` and no `exec` is a key. Nothing runs for it.
+- Its `inputs` must list something: `inputs: { files: [] }` with no `exec`
+  is refused, in the types and at load.
+- It never shows as a run row.
+- A task that depends on a no-op task folds its key, so an edit to those
   inputs re-runs the dependant, and `--affected` reaches it.
-- A keyed group needs no `dependsOn`. It spawns nothing, writes no cache
+- A no-op task needs no `dependsOn`. It spawns nothing, writes no cache
   entry, and the run summary does not count it.
-- `@vzn/vx-migrate` writes keyed groups for the shared input sets of a
+- `@vzn/vx-migrate` writes no-op tasks for the shared input sets of a
   repo it converts.
 
   ```ts

@@ -1194,7 +1194,7 @@ export async function mapTurboWorkspace(
   // `test: { dependsOn: ["transit"] }` (or `["^transit"]`). Turbo hashes the no-op per package,
   // over its files, so `test` keys on its dependencies' sources. Dropped,
   // vx keyed `test` on its own files alone: a dependency's edit was a hit.
-  // Each package has it as a key-only task, a keyed group, as nx()'s
+  // Each package has it as a key-only task, a no-op task, as nx()'s
   // `inputs:*` twins are.
   const sameRefs = new Set<string>()
   const caretSelf = new Set<string>()
@@ -1836,7 +1836,7 @@ function entryEdges(deps: readonly string[], pkg: string, rootName: string | und
 }
 
 /**
- * A no-op `true` task as a keyed group: dependants fold the same key and
+ * A no-op `true` task as a no-op task: dependants fold the same key and
  * nothing spawns. Kept a task when it writes outputs, stays up or takes a
  * terminal, and when it has neither a key nor an edge (a group needs one).
  */

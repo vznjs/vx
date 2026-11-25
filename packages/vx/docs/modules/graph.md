@@ -175,7 +175,7 @@ The micro-syntax parser is shared with `inputs.tasks`; the
 builder enforces the dependsOn-specific rejections.
 
 **The default `build` on a package cycle** (X-100). Every project the
-loader gives the default `build` (a keyed group, `isChainGroup`)
+loader gives the default `build` (a no-op task, `isChainGroup`)
 holds `build`, so on a package cycle (`directDeps`' strongly connected
 components, found on the first ask) `^build` closed a task cycle no
 config declares. A default `build` on a cycle walks last, once the rest
@@ -197,9 +197,9 @@ alone, `tasks: ['build']` or `['a#build']` kept `a#build`, dropped
 `TaskNode`'s public shape; the graph memo stores it, and
 `applyGraphStage` re-attaches it by id to a node a `graph` hook rebuilt,
 less any edge the hook removed. Off a cycle it is a holder like any other. A config's
-keyed group of the same shape (`inputs`, no `exec`, `dependsOn` exactly
+no-op task of the same shape (`inputs`, no `exec`, `dependsOn` exactly
 `['^name']` of its own name; `isChainGroup`) is treated the same; any
-other keyed group on a cycle expands its own `dependsOn` like a task
+other no-op task on a cycle expands its own `dependsOn` like a task
 (a `ci` keyed on `lint` was deferred as a default build, lost its edge
 and ran nothing).
 
@@ -724,7 +724,7 @@ same tick: `onStart` hears it, the thunk runs (a hit replays its output
 there), and `onFinish` hears the outcome the thunk returned, its queue
 time set on it, not on a copy; no slot, no admission ask, no `execute`
 promise. A throw from either dispatches it instead, started
-once. The run passes it for unkeyed groups (they run nothing, X-192)
+once. The run passes it for groups (they run nothing, X-192)
 and for restore-tier hits whose tree is current (`currentHit`), unless a
 taint needs the full path.
 

@@ -748,16 +748,16 @@ function validateTask(
   }
   if (exec !== undefined) validateExec(exec, where, cache)
   else {
-    // Group task: no exec, just dependencies. Only an ABSENT `dependsOn` is
+    // A group: no exec, just dependencies. Only an ABSENT `dependsOn` is
     // refused (neither is a typo). An EMPTY one is deliberate: `build: {
     // dependsOn: [] }` is how a package consumed as source says it has
-    // nothing to build, so a dependant's `^build` waits on nothing. A keyed
-    // group (`inputs`, no `exec`) is a declaration on its own: a key
+    // nothing to build, so a dependant's `^build` waits on nothing. A no-op
+    // task (`inputs`, no `exec`) is a declaration on its own: a key
     // dependants fold, with no process.
     if (dependsOn === undefined && (task as { inputs?: unknown }).inputs === undefined) {
       throw new UserError(
-        `${where}: a task with no \`exec\` must declare \`dependsOn\` or \`inputs\` ` +
-          `(group tasks exist to chain dependencies or carry a key)`,
+        `${where}: a task with no \`exec\` must declare \`dependsOn\` (a group) ` +
+          `or \`inputs\` (a no-op task, a key its dependants fold)`,
       )
     }
   }
@@ -777,7 +777,17 @@ function validateTask(
     }
   }
   const inputs = (task as { inputs?: unknown }).inputs
-  if (inputs !== undefined) validateInputs(inputs, task, where)
+  if (inputs !== undefined) {
+    validateInputs(inputs, task, where)
+    // A no-op task is its inputs: with none it is a group that reads as a
+    // key (M, 2026-11-25).
+    if (exec === undefined && NO_OP_MATERIAL.every((f) => !hasEntries(inputs as object, f))) {
+      throw new UserError(
+        `${where}: a task with no \`exec\` needs non-empty \`inputs\` — ` +
+          `add \`exec\`, or drop \`inputs\` to make it a group`,
+      )
+    }
+  }
   const outputs = (task as { outputs?: unknown }).outputs
   if (cache === true) {
     // The key is the task's inputs, and a group runs nothing to cache.
@@ -1278,6 +1288,12 @@ const INPUT_FIELDS = new Set([
   'stability',
 ])
 const OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean'])
+/** The inputs a no-op task keys on: one needs at least one entry. */
+const NO_OP_MATERIAL = ['files', 'workspaceFiles', 'env', 'runtime', 'workspaceRuntime'] as const
+const hasEntries = (inputs: object, field: string): boolean => {
+  const v = (inputs as Record<string, unknown>)[field]
+  return Array.isArray(v) && v.length > 0
+}
 
 /**
  * Another runner's spelling of a field vx has under another name, by the

@@ -243,7 +243,7 @@ Rules:
 
 **Transit nodes.** Turbo's with-vitest example documents this pattern: `transit: { dependsOn: ["^transit"] }` with no script anywhere, and `test: { dependsOn: ["transit"] }`.
 
-- A transit node is a key-only task in each package that defines it. It is a keyed group (no command, nothing spawns) keyed on its inputs.
+- A transit node is a key-only task in each package that defines it. It is a no-op task (no command, nothing spawns) keyed on its inputs.
 - It keeps its `^transit` edge. So a dependant's `test` re-keys on its dependencies' sources, as Turbo re-hashes it.
 - A `^` task that some package has a script for, or that nothing depends on, is no transit node.
 
@@ -451,7 +451,7 @@ So the loader refuses two cached tasks whose outputs provably overlap. Example: 
 - Why: Turbo walks an explicit glob on disk, so it re-runs `build` after `gen` rewrites it. Taken back, `build` replayed the old output.
 - A glob led by `**` (`**/*.ts`) keeps the `!`, as the default does.
 - A committed file under such an output is still a source. A reader the `!` would hide it from runs uncached with a todo.
-- A keyed group (an `inputs:<name>` twin, a transit node) runs nothing, so core lets it read what a task writes.
+- A no-op task (an `inputs:<name>` twin, a transit node) runs nothing, so core lets it read what a task writes.
 - Such a group gets no `!` for a literal, the `!` that would hide a committed file goes, and it keeps its key.
 - Example: typescript-eslint's ast-spec commits the `*.shot` snapshots its `test` outputs. Its twin was written as `{}`, which core refuses.
 - An output that names one committed file stays an output, so a task that rewrites it caches.
@@ -689,7 +689,7 @@ With this file, `vx run build --all` maps every project's `build` target the way
 <details><summary>Details</summary>
 
 - Each project some reader reaches gets an `inputs:<name>` task.
-- It is a keyed group (no command, nothing spawns, not counted in the run summary) keyed on its own `name` input.
+- It is a no-op task (no command, nothing spawns, not counted in the run summary) keyed on its own `name` input.
 - It depends on its Nx dependencies' twins. A project nothing reaches gets none.
 - A task that reads `^name` depends on its direct dependencies' twins. So the whole closure goes into its key, with each project hashed once.
 - A dependency fileset is keyed the same way: `^{projectRoot}/tsconfig.lib.json`, or `{ fileset, dependencies: true }`.

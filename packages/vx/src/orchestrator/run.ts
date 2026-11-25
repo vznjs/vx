@@ -1618,7 +1618,7 @@ async function runOnBus(
           return executeWithDedup(node, up)
         })
       },
-      // An unkeyed group runs nothing, and a restore-tier hit whose tree is
+      // A group runs nothing, and a restore-tier hit whose tree is
       // current restores nothing: settled in place, unless a taint may ride it.
       ...(taintSeeds.size === 0
         ? {

@@ -99,7 +99,7 @@ export function taskId(project: string, task: string): string {
 }
 
 /**
- * A keyed group that is only its dependencies' own `name` (`^name`), like the
+ * A no-op task that is only its dependencies' own `name` (`^name`), like the
  * default `build`: only this shape walks last on a package cycle and is passed
  * through.
  */
@@ -1843,7 +1843,7 @@ interface Side {
  * inputs against every `workspaceFiles` output and, with the root known,
  * rebased `files` outputs, and rebased `files` inputs against `workspaceFiles`
  * outputs. A task's own outputs and outputs taken back whole by the reader's
- * `!` are no overlap. A keyed group runs nothing and is exempt.
+ * `!` are no overlap. A no-op task runs nothing and is exempt.
  */
 function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: string): void {
   const byProject = new Map<string, Side[]>()

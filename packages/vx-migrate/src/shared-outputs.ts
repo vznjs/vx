@@ -366,7 +366,7 @@ function prefixIndex(): {
 }
 
 /**
- * A keyed group (`cache`, no `exec`: the `inputs:<name>` twins, Turbo's
+ * A no-op task (`cache`, no `exec`: the `inputs:<name>` twins, Turbo's
  * transit nodes) runs nothing, so core lets its key read what a task
  * writes (`detectInputOverlaps` exempts it). Uncaching one left `{}`, a
  * task core refuses, and every verb failed.

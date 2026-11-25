@@ -56,6 +56,18 @@ describe('defineProject', () => {
     })
   })
 
+  it('a no-op task with empty inputs needs exec, in the types', () => {
+    defineProject({
+      tasks: {
+        key: { inputs: { files: ['src/**'] } },
+        // @ts-expect-error a no-op task keys on its inputs: none needs exec.
+        empty: { inputs: { files: [] } },
+        group: { dependsOn: ['key'] },
+        run: { exec: { command: 'true' }, inputs: { files: [] } },
+      },
+    })
+  })
+
   it('takes a preset typed TaskConfig, as schema.md § Presets writes it', () => {
     // A preset's `dependsOn` is `readonly string[]`: its names are not
     // literals, so there is nothing to check them against, and holding them
