@@ -326,26 +326,6 @@ describe('examples/ci', () => {
   })
 })
 
-// The README's terminal demo is a real run of the docs' ui/web workspace;
-// the script re-runs it and compares all but timings and cores.
-describe('the terminal demo', () => {
-  it("matches a real run of the docs' ui/web workspace", () => {
-    const r = Bun.spawnSync({
-      cmd: [
-        process.execPath,
-        path.resolve(CORE, '..', '..', 'private', 'vx-docs', 'scripts', 'terminal-demo.ts'),
-        '--check',
-      ],
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    expect(r.stderr.toString()).toBe('')
-    expect(r.exitCode).toBe(0)
-    // Three vx runs of two real vite builds: a loaded gate took the old,
-    // lighter demo past bun's 5 s default (5,006 ms) though it passed alone.
-  }, 30_000)
-})
-
 // Each starter's README opens with `bun install`, and the fixtures above
 // link node_modules instead of installing, so nothing ran it: the lockfile
 // plugin each workspace declares must read the lockfile that install writes.

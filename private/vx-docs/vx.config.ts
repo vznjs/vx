@@ -244,6 +244,8 @@ export default defineProject({
           '.gitignore',
           'package.json',
           'scripts/**',
+          // terminal-demo.test.ts re-runs the README's demo against it.
+          'public/demo.svg',
           ...NOT_GENERATED,
         ],
       },

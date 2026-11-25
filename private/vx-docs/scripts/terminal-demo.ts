@@ -4,8 +4,8 @@
 // build` under this checkout's vx, cold then warm, its real colored output
 // drawn as an SVG that prints line by line. Nothing in the picture is typed by hand;
 // `--check` re-runs it and fails when anything but a timing, the worker
-// count or the run id differs from the committed file (core's tests/examples.unsafe.test.ts
-// runs the check, the suite that may read examples/ and spawn git).
+// count or the run id differs from the committed file (tests/terminal-demo.test.ts
+// runs the check).
 //
 //   bun private/vx-docs/scripts/terminal-demo.ts          # rewrite public/demo.svg
 //   bun private/vx-docs/scripts/terminal-demo.ts --check  # exit 1 if it drifted

@@ -260,6 +260,7 @@
           ".gitignore",
           "package.json",
           "scripts/**",
+          "public/demo.svg",
           "!src/content/docs/all-features.md",
           "!src/content/docs/api.md",
           "!src/content/docs/architecture.md",
