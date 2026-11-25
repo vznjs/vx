@@ -1756,8 +1756,8 @@ export class Orchestrator extends RunReport<Worker> {
       return
     }
     const read = () => (eager ? restore() : this.o.artifacts.output(key))
-    // A failed download is asked again by the cache itself (`getSaved`),
-    // over a budget of its own: this entry must come home.
+    // Asked once: the cache's `getSaved` asks again past a stalled download
+    // and a first "none", within a budget of its own.
     const log = await (eager ? upstream().then(() => this.clear(job, node)) : Promise.resolve())
       .then(read)
       .catch((err: unknown) => {

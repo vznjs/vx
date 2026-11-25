@@ -2960,8 +2960,7 @@ it('a task whose entry reached no cache this machine reads names the upload firs
     ).toBe(
       't1: worker#1 ran it, and no cache this machine reads gave its entry: a download failed (warned above), or the workers and this machine share no remote cache the workers write',
     )
-    // The cache asks again past a failed download (`getSaved`); asked
-    // twice here too, a remote that never answers held the run twice as long.
+    // Asked once here: the cache's `getSaved` does the asking again.
     expect(h.store.restored).toEqual(['k-t1'])
   } finally {
     await h.stop()
