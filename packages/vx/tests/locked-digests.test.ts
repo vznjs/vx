@@ -213,6 +213,12 @@ it(
   async () => {
     await lock(root)
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
+    // Beside its stamp the edited workspace file is named (0f67f63fe).
+    await expect(part()).rejects.toThrow(
+      '.vx/workspace.mjs changed since the last `vx lock` — run `vx lock`',
+    )
+    // With no stamps (a clone) a differing digest is the key path's to name.
+    await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
     await expect(part()).rejects.toThrow(
       `deps.lock is in ${LOCK} but no plugin claims it: run \`vx lock\``,
     )
