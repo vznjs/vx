@@ -1018,19 +1018,19 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 2144,
-        "can": 2144,
-        "of": 2214
+        "pass": 2149,
+        "can": 2149,
+        "of": 2219
       },
       "correctness": {
-        "pass": 1730,
-        "can": 1730,
-        "of": 1791
+        "pass": 1733,
+        "can": 1733,
+        "of": 1794
       },
       "efficiency": {
-        "pass": 325,
-        "can": 325,
-        "of": 333
+        "pass": 327,
+        "can": 327,
+        "of": 335
       },
       "data": {
         "pass": 89,
@@ -1053,14 +1053,14 @@
         "of": 169
       },
       "affected": {
-        "pass": 186,
-        "can": 186,
-        "of": 186
+        "pass": 190,
+        "can": 190,
+        "of": 190
       },
       "cache": {
-        "pass": 105,
-        "can": 105,
-        "of": 128
+        "pass": 106,
+        "can": 106,
+        "of": 129
       },
       "inputs": {
         "pass": 481,
@@ -1096,18 +1096,18 @@
     "turbo": {
       "all": {
         "pass": 1397,
-        "can": 1814,
-        "of": 2214
+        "can": 1819,
+        "of": 2219
       },
       "correctness": {
         "pass": 1123,
-        "can": 1467,
-        "of": 1791
+        "can": 1470,
+        "of": 1794
       },
       "efficiency": {
         "pass": 244,
-        "can": 317,
-        "of": 333
+        "can": 319,
+        "of": 335
       },
       "data": {
         "pass": 30,
@@ -1131,13 +1131,13 @@
       },
       "affected": {
         "pass": 144,
-        "can": 185,
-        "of": 186
+        "can": 189,
+        "of": 190
       },
       "cache": {
         "pass": 87,
-        "can": 104,
-        "of": 128
+        "can": 105,
+        "of": 129
       },
       "inputs": {
         "pass": 342,
@@ -1173,18 +1173,18 @@
     "nx": {
       "all": {
         "pass": 1395,
-        "can": 1849,
-        "of": 2214
+        "can": 1854,
+        "of": 2219
       },
       "correctness": {
         "pass": 1082,
-        "can": 1492,
-        "of": 1791
+        "can": 1495,
+        "of": 1794
       },
       "efficiency": {
         "pass": 283,
-        "can": 327,
-        "of": 333
+        "can": 329,
+        "of": 335
       },
       "data": {
         "pass": 30,
@@ -1208,13 +1208,13 @@
       },
       "affected": {
         "pass": 124,
-        "can": 186,
-        "of": 186
+        "can": 190,
+        "of": 190
       },
       "cache": {
         "pass": 81,
-        "can": 96,
-        "of": 128
+        "can": 97,
+        "of": 129
       },
       "inputs": {
         "pass": 346,
@@ -1250,18 +1250,18 @@
     "vite-task": {
       "all": {
         "pass": 1028,
-        "can": 1397,
-        "of": 2214
+        "can": 1402,
+        "of": 2219
       },
       "correctness": {
         "pass": 863,
-        "can": 1176,
-        "of": 1791
+        "can": 1179,
+        "of": 1794
       },
       "efficiency": {
         "pass": 156,
-        "can": 212,
-        "of": 333
+        "can": 214,
+        "of": 335
       },
       "data": {
         "pass": 9,
@@ -1285,13 +1285,13 @@
       },
       "affected": {
         "pass": 0,
-        "can": 0,
-        "of": 186
+        "can": 4,
+        "of": 190
       },
       "cache": {
         "pass": 72,
-        "can": 83,
-        "of": 128
+        "can": 84,
+        "of": 129
       },
       "inputs": {
         "pass": 314,
@@ -1327,18 +1327,18 @@
     "nix": {
       "all": {
         "pass": 1100,
-        "can": 1393,
-        "of": 2214
+        "can": 1398,
+        "of": 2219
       },
       "correctness": {
         "pass": 943,
-        "can": 1197,
-        "of": 1791
+        "can": 1200,
+        "of": 1794
       },
       "efficiency": {
         "pass": 147,
-        "can": 186,
-        "of": 333
+        "can": 188,
+        "of": 335
       },
       "data": {
         "pass": 10,
@@ -1362,13 +1362,13 @@
       },
       "affected": {
         "pass": 0,
-        "can": 0,
-        "of": 186
+        "can": 4,
+        "of": 190
       },
       "cache": {
         "pass": 85,
-        "can": 101,
-        "of": 128
+        "can": 102,
+        "of": 129
       },
       "inputs": {
         "pass": 346,
@@ -1404,18 +1404,18 @@
     "moon": {
       "all": {
         "pass": 1282,
-        "can": 1737,
-        "of": 2214
+        "can": 1742,
+        "of": 2219
       },
       "correctness": {
         "pass": 1011,
-        "can": 1418,
-        "of": 1791
+        "can": 1421,
+        "of": 1794
       },
       "efficiency": {
         "pass": 236,
-        "can": 284,
-        "of": 333
+        "can": 286,
+        "of": 335
       },
       "data": {
         "pass": 35,
@@ -1439,13 +1439,13 @@
       },
       "affected": {
         "pass": 144,
-        "can": 186,
-        "of": 186
+        "can": 190,
+        "of": 190
       },
       "cache": {
         "pass": 84,
-        "can": 102,
-        "of": 128
+        "can": 103,
+        "of": 129
       },
       "inputs": {
         "pass": 350,
@@ -32868,6 +32868,87 @@
           "status": "fail",
           "step": 1,
           "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "affected/undeclared-file-marks-no-task",
+      "ref": "kgi7uc",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "An edit to a file no task declares selects no task, in its project or its dependents",
+      "why": "Every task here declares the files it reads, and none reads the README. Editing it cannot change any result, so an affected run has nothing to do. Selecting the project’s tasks, and its dependents’ through them, because the file sits in the project reruns work whose answer is already known.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "cache/definition-edit-misses-task-and-dependents",
+      "ref": "vebf2w",
+      "category": "cache",
+      "kind": "correctness",
+      "title": "A new command for a task reruns it and every task that depends on it, and only those",
+      "why": "A task’s definition is part of what it produces: a new command can write other bytes. The task and every task built on its result must miss the cache, while a project with no edge to it still replays. Replaying the old result under the new command is a stale hit that ships the wrong build.",
+      "from": [
+        "affected-by-inputs",
+        "task-hash-derive"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/task-without-inputs-always-selected",
+      "ref": "wq2ih5",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A task that declares no inputs is selected by every change",
+      "why": "A task that names no inputs has not said what it reads, so no change can be ruled out: it may read any file, here or elsewhere. An affected run must select it wherever it is declared. Leaving it out because nothing declared the edited file skips a check the edit can make fail.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/empty-inputs-task-reached-through-dependency",
+      "ref": "9fouvi",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A task that reads no files is selected when a task it depends on is",
+      "why": "Empty inputs say the task reads none of its own project’s files, not that nothing can change it. A deploy step that waits on a build depends on that build’s result. When the build is affected, the step is too; leaving it out ships the old build while the new one passes.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "affected/unaffected-task-not-restored",
+      "ref": "pvkroi",
+      "category": "affected",
+      "kind": "efficiency",
+      "title": "A task the change does not reach is not restored from the cache, though its project changed",
+      "why": "An affected run selects the tasks a change reaches, not every task of a changed project. The project’s `guide` reads only its own folder, so an edit to its sources leaves it out. Replaying it from the cache anyway downloads and writes outputs nobody asked for, and on a remote cache each one costs a round trip.",
+      "from": [
+        "affected-by-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
         }
       }
     },
