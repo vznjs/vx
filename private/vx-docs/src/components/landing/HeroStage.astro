@@ -7,6 +7,8 @@
 // as it travels. At rest (no script, reduced motion) it is a plain section:
 // the copy, the graph, and the six groups listed.
 import run from '../../data/hero-run.json'
+import { FIGURES } from '../../bench/data.ts'
+import { RESULTS } from '../../conformance/data.ts'
 import SystemMap from './SystemMap.astro'
 import { GROUPS, TRAVEL_MS, WIRES, play, type Run } from './system-map.ts'
 
@@ -18,10 +20,17 @@ const { base, latest } = Astro.props
 const href = (p: string) => `${base}${p}`
 const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
 const data = { ...play(run as Run), travel: TRAVEL_MS, ends: Object.fromEntries(WIRES.map((w) => [w.id, [w.from, w.to]])) }
+// What matters, each figure read from src/data or a page that proves it.
+const vx = RESULTS.scores['vx']!
+const cache = vx['cache']!
+const all = vx['all']!
+const n = (x: number): string => x.toLocaleString('en-US')
 const specs = [
-  { n: '16', line: 'stages a plugin can take over' },
-  { n: 'MIT', line: 'every piece, no paid tier' },
-  { n: '0', line: 'daemons, accounts or clouds' },
+  { tone: 'dte', what: 'Distributed task execution', n: '1 run', line: 'over every worker your CI starts', to: 'docs/distributed-task-execution/' },
+  { tone: 'remote', what: 'Cache', n: n(cache.can - cache.pass), line: `issues in ${n(cache.of)} cache cases`, to: 'docs/caching/' },
+  { tone: 'read', what: 'History', n: 'vx why', line: 'names what made a task run again', to: 'cli/why/' },
+  { tone: 'core', what: 'Speed', n: FIGURES.get('vx.warm')!, line: `${FIGURES.get('tasks')!} tasks, nothing changed`, to: 'benchmarks/' },
+  { tone: 'core', what: 'Conformance', n: n(all.pass), line: `of ${n(all.of)} cases pass, ${n(all.can - all.pass)} issues`, to: 'conformance/' },
 ]
 ---
 
@@ -48,9 +57,12 @@ const specs = [
       <ul class="specs">
         {
           specs.map((s) => (
-            <li>
-              <strong>{s.n}</strong>
-              <span>{s.line}</span>
+            <li style={`--tone: var(--tone-${s.tone})`}>
+              <a href={href(s.to)}>
+                <small>{s.what}</small>
+                <strong>{s.n}</strong>
+                <span>{s.line}</span>
+              </a>
             </li>
           ))
         }

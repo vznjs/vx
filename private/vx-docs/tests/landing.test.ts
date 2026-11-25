@@ -194,17 +194,45 @@ describe('the landing page', () => {
     ])
   })
 
-  // Ownership and extensibility, never a speed multiple (2026-10-12: the
-  // benchmark shows speed, copy does not).
-  it('leads with seams, no paid tier and nothing to run beside it', () => {
+  // What matters (M 2026-11-25: Distributed task execution, cache,
+  // history, speed, conformance), each figure read from the site's data
+  // and linked to its proof; never a speed multiple (2026-10-12).
+  it('leads with the five things that matter, each linked to its proof', () => {
     const specs = [
-      ...stage.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
+      ...stage.matchAll(
+        /<li[^>]*>\s*<a href="([^"]*)">\s*<small>([\s\S]*?)<\/small>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g,
+      ),
     ]
-    expect(specs.map((m) => `${text(m[1]!)} ${text(m[2]!)}`)).toEqual([
-      `${PLUGIN_HOOKS.length} stages a plugin can take over`,
-      'MIT every piece, no paid tier',
-      '0 daemons, accounts or clouds',
+    const vx = RESULTS.scores['vx']!
+    const n = (x: number): string => x.toLocaleString('en-US')
+    expect(specs.map((m) => [m[1], text(m[2]!), text(m[3]!), text(m[4]!)])).toEqual([
+      [
+        `${BASE}docs/distributed-task-execution/`,
+        'Distributed task execution',
+        '1 run',
+        'over every worker your CI starts',
+      ],
+      [
+        `${BASE}docs/caching/`,
+        'Cache',
+        n(vx['cache']!.can - vx['cache']!.pass),
+        `issues in ${n(vx['cache']!.of)} cache cases`,
+      ],
+      [`${BASE}cli/why/`, 'History', 'vx why', 'names what made a task run again'],
+      [
+        `${BASE}benchmarks/`,
+        'Speed',
+        FIGURES.get('vx.warm')!,
+        `${FIGURES.get('tasks')!} tasks, nothing changed`,
+      ],
+      [
+        `${BASE}conformance/`,
+        'Conformance',
+        n(vx['all']!.pass),
+        `of ${n(vx['all']!.of)} cases pass, ${n(vx['all']!.can - vx['all']!.pass)} issues`,
+      ],
     ])
+    expect(specs.map((m) => text(m[4]!)).join(' ')).not.toMatch(/\d\s*[×x]\b|fastest|faster/i)
   })
 
   // The graph is drawn once per layout, and every hook group is in the
