@@ -822,8 +822,8 @@ describe('every page enumerating the run signal handlers names all three', () =>
     for (const { page, text } of units) {
       // A page ENUMERATES the set when it names the exit code SIGINT gets
       // on the vx process. 143 alone is a timeout's SIGTERM, 137 a SIGKILL;
-      // 130 is only ever this.
-      if (!/\b130\b/.test(text)) continue
+      // 130 is only ever this; `130 MB` is a size, not the code.
+      if (!/\b130\b(?! ?[KMG]i?B\b)/.test(text)) continue
       if (!/handler|teardown|Ctrl-C|every way a run/i.test(text)) continue
       // A page that DISCLAIMS installing handlers is not claiming the set:
       // `runner.md` says "Doesn't install signal handlers" and then maps
