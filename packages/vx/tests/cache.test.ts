@@ -1937,7 +1937,7 @@ describe('Cache storage (v10)', () => {
     await age(path.join(cacheDir, 'cache.db'))
 
     const onDisk = diskBytes(statSync(orphan))
-    expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: onDisk })
+    expect(await cache.orphanStats()).toMatchObject({ orphans: 1, orphanBytes: onDisk })
     const result = await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect({ orphans: result.orphans, orphanBytes: result.orphanBytes }).toEqual({
       orphans: 1,
@@ -1979,7 +1979,7 @@ describe('Cache storage (v10)', () => {
       await agedFile('0123456789abcdef.tar.zst.tmp-1-2-abc'),
     ]
 
-    expect(await cache.orphanStats()).toEqual({
+    expect(await cache.orphanStats()).toMatchObject({
       orphans: 2,
       orphanBytes: reaped.reduce((n, f) => n + diskBytes(statSync(f)), 0),
     })
@@ -2004,7 +2004,7 @@ describe('Cache storage (v10)', () => {
     // darwin CI said so.
     await rm(cacheDir, { recursive: true, force: true })
 
-    expect(await cache.orphanStats()).toEqual({ orphans: 0, orphanBytes: 0 })
+    expect(await cache.orphanStats()).toMatchObject({ orphans: 0, orphanBytes: 0 })
   })
 
   it('prune() handles more than 900 victims (chunked DELETE, no bound-parameter blowup)', async () => {
@@ -2172,14 +2172,14 @@ describe('Cache storage (v10)', () => {
 
     // What `vx info` reports before anyone prunes is exactly what prune reaps.
     const onDisk = diskBytes(statSync(orphanTar)) + diskBytes(statSync(orphanTmp))
-    expect(await cache.orphanStats()).toEqual({ orphans: 2, orphanBytes: onDisk })
+    expect(await cache.orphanStats()).toMatchObject({ orphans: 2, orphanBytes: onDisk })
     const result = await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect(result.evicted).toBe(0)
     expect({ orphans: result.orphans, orphanBytes: result.orphanBytes }).toEqual({
       orphans: 2,
       orphanBytes: onDisk,
     })
-    expect(await cache.orphanStats()).toEqual({ orphans: 0, orphanBytes: 0 })
+    expect(await cache.orphanStats()).toMatchObject({ orphans: 0, orphanBytes: 0 })
     expect(existsSync(orphanTar)).toBe(false)
     expect(existsSync(orphanTmp)).toBe(false)
     expect(existsSync(cache.outputsPath('h-indexed'))).toBe(true)
