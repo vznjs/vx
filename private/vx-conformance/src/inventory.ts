@@ -1380,6 +1380,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'warm-shell',
     'warn-in-live-frame',
     'watch-affected',
+    'watch-all-cached-groups',
     'watch-claimed-extras',
     'watch-claimed-files',
     'watch-cycle-clock',

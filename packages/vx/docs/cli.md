@@ -2634,6 +2634,7 @@ Every other flag is `vx run`'s ([Flags](#flags)).
 - Then come its task rows as `vx run` prints them, with no footer.
 - Where a hit prints no row (`--all`, `--filter`, `--affected`, `--output-logs errors-only` or `none`), a cycle of hits alone says ` N tasks cached, nothing ran`.
 - So a cycle back to cached bytes is not silent below the failure before it. An initial run of hits alone says it too.
+- N counts tasks with a command. A group or no-op task in the cycle neither counts nor silences it.
 - The named path is the first changed file that still exists, a folder only when no file changed.
 - An editor's temporary file renamed away names nothing. A deletion names the cycle when nothing else changed.
 - The `watching` line is said once. A cycle that re-reads the watched set (a member came or went, the lock or a plugin changed) says nothing more.

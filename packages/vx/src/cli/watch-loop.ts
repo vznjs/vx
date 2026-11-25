@@ -39,7 +39,7 @@ import { type WatchCycle, watchCycle } from './watch-cycle.js'
 import { limitSetting, maskedLine, printable, restartTimings, untimed } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice } from '../ui/index.js'
-import { isCacheHit } from '../graph/index.js'
+import { isCacheHit, type TaskNode } from '../graph/index.js'
 import { type Logger, resolveOutputView } from '../report/index.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -52,11 +52,16 @@ function sayCannot(what: string, err: unknown): void {
  * footer: it said nothing, and the previous cycle's failure stayed the last
  * outcome on screen.
  */
-export function sayAllCached(opts: CoreRunOptions, outcomes: readonly { status: string }[]): void {
-  if (outcomes.length === 0 || !outcomes.every((o) => isCacheHit(o.status))) return
+export function sayAllCached(
+  opts: CoreRunOptions,
+  outcomes: readonly { status: string; node: Pick<TaskNode, 'config'> }[],
+): void {
+  // A group or no-op task settles `success` without asking the cache.
+  const tasks = outcomes.filter((o) => o.node.config.exec !== undefined)
+  if (tasks.length === 0 || !tasks.every((o) => isCacheHit(o.status))) return
   const mode = resolveOutputView(opts).mode
   if (mode !== 'broad' && mode !== 'errors-only' && mode !== 'none') return
-  const n = outcomes.length
+  const n = tasks.length
   ui.print('out', ui.line(' ', n === 1 ? '1 task' : `${n} tasks`, ' cached, nothing ran'))
 }
 
