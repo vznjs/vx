@@ -1654,12 +1654,11 @@ describe('nx() under vx lock', () => {
         path.join(root, 'packages', 'app', 'package.json'),
         JSON.stringify({ name: 'app', version: '1.0.0' }),
       )
-      // The run follows the lock's edge. It exports once to compare the
-      // edited file's mapping (63c8d1b8f), which held: the edge is
-      // `.vx/dependencies.lock`'s, which `--check` holds to the graph.
+      // The run follows the lock's edge and never asks Nx (2026-11-25): the
+      // edge is `.vx/dependencies.lock`'s, which `--check` holds to the graph.
       const stale = vx('run', 'build', '--filter', 'app', '--dry')
       expect([stale.code, stale.out]).toEqual([0, expect.stringContaining('lib#build')])
-      expect(await nxCalls(root)).toBe(2)
+      expect(await nxCalls(root)).toBe(1)
       const check = vx('lock', '--check')
       expect(check.code).toBe(1)
       expect(check.err).toContain(
@@ -1667,7 +1666,7 @@ describe('nx() under vx lock', () => {
       )
       // `--check` exported; the lock reuses that snapshot.
       expect(vx('lock').code).toBe(0)
-      expect(await nxCalls(root)).toBe(3)
+      expect(await nxCalls(root)).toBe(2)
       expect(vx('run', 'build', '--filter', 'app', '--dry').out).not.toContain('lib#build')
     },
     TIMEOUT,

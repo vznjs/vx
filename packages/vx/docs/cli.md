@@ -3274,7 +3274,9 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 
 - It never walks for configs. An `--all` run asks git for the names alone, to refuse one the lock lacks.
 - It never checks the graph rules (`run.rules`) and never writes the lock. Only `vx lock` does.
-- It never evaluates a config, a file one imports, `.vx/workspace.*`'s plugin options, or a file a `project` plugin made a config from (`turbo.json`, a `package.json` script, `project.json`, the Nx graph). It never refuses an edit to one either: it runs what the lock holds until `vx lock`. A fresh clone is no different.
+- It never evaluates a config, a file one imports, or `.vx/workspace.*`'s plugin options.
+- It never reads a file a `project` plugin made a config from: `turbo.json`, a `package.json` script, `project.json`, the Nx graph.
+- It never refuses an edit to one of them: it runs what the lock holds until `vx lock`, on a fresh clone too.
 - It loads `.vx/workspace.*` for its plugins and settings, and runs their `config` stage.
 
 **What a run still refuses**

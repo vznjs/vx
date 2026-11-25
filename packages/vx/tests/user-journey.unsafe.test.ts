@@ -268,7 +268,7 @@ describe('a new user, end to end', () => {
     const r = await vx(['run', 'build', '--all'])
     expect([r.code, r.out]).toEqual([
       1,
-      expect.stringContaining('its vx.config.ts is gone — run `vx lock`'),
+      expect.stringContaining('its directory is gone — run `vx lock`'),
     ])
     await rename(away, path.join(root, 'packages', 'web'))
     expect((await vx(['run', 'build', '--all'])).code).toBe(0)
