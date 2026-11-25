@@ -235,15 +235,62 @@ describe('the CI guide states the wire chunk sizes', () => {
   })
 })
 
-describe("the README's comparison agrees with comparison.md on Turbo's daemon", () => {
-  // The README called Turbo's daemon "Optional" for speed; Turbo 2.10's
-  // `run --help` marks --daemon and --no-daemon deprecated ("The daemon is
-  // no longer used for `turbo run`"), as comparison.md says (J-111).
-  it('both say turbo run uses none', () => {
+describe("the README's conformance table is the site's data", () => {
+  // M 2026-11-25: the README compares tools by the conformance scores, not
+  // by hand-written claims. Update it when conformance.json changes.
+  it('every tool, highest pass first, with its version and issues', () => {
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const readme = readFileSync(path.join(repo, 'README.md'), 'utf8')
-    const row = /^\| Daemon +\|[^|]*\| ([^|]*?) +\|/m.exec(readme)![1]
-    expect(row).toBe('None for `turbo run`')
+    const data = JSON.parse(
+      readFileSync(
+        path.join(repo, 'private', 'vx-docs', 'src', 'data', 'conformance.json'),
+        'utf8',
+      ),
+    ) as {
+      tools: Record<string, string>
+      scores: Record<string, Record<string, { pass: number; can: number; of: number }>>
+    }
+    const names: Record<string, string> = {
+      vx: 'vx',
+      turbo: 'Turborepo',
+      nx: 'Nx',
+      'vite-task': 'Vite Task',
+      nix: 'Nix',
+      moon: 'moon',
+    }
+    const n = (x: number): string => x.toLocaleString('en-US')
+    const want = Object.entries(data.scores)
+      .sort(([, a], [, b]) => b['all']!.pass - a['all']!.pass)
+      .map(([t, s]) => {
+        const a = s['all']!
+        return [
+          t === 'vx' ? 'vx' : `${names[t]} ${data.tools[t]}`,
+          `${n(a.pass)} of ${n(a.of)}`,
+          n(a.can - a.pass),
+        ]
+      })
+    const table = /## How it compares\n[\s\S]*?\n\| Tool[^\n]*\n\|[-| ]+\|\n((?:\|[^\n]*\n)+)/.exec(
+      readme,
+    )![1]!
+    const got = table
+      .trim()
+      .split('\n')
+      .map((r) =>
+        r
+          .split('|')
+          .slice(1, -1)
+          .map((c) => c.trim().replace(/\*\*/g, '')),
+      )
+    expect(got).toEqual(want)
+    for (const [area, s] of Object.entries(data.scores['vx']!))
+      expect([area, s.can - s.pass]).toEqual([area, 0])
+  })
+})
+
+describe('comparison.md says turbo run uses no daemon', () => {
+  // Turbo 2.10's `run --help` marks --daemon and --no-daemon deprecated
+  // ("The daemon is no longer used for `turbo run`") (J-111).
+  it('says turbo run uses none', () => {
     const doc = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'comparison.md'), 'utf8')
     // Bisected over npm: 2.8.10's help still offers --daemon, 2.8.11's marks
     // it deprecated and unused by `turbo run`; 2.10 deprecates neither
@@ -2176,18 +2223,10 @@ describe('the git-index claim names what a clean key still reads', () => {
   // now (2026-10-14), but a lockfile plugin still reads its lockfile and
   // settings, and a listed package.json is an input. What the index spares
   // is the sources.
-  it('both pages say "source"', () => {
-    const readme = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', '..', 'README.md'),
-      'utf8',
-    )
-    expect(readme.replace(/\s+/g, ' ')).toContain(
-      "**No source-file reads to hash:** on a clean tree, keys come from git's index;",
-    )
+  it('every page says "source"', () => {
     const post = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8').replace(/\s+/g, ' ')
     expect(post).toContain('is keyed with no read of a source file')
     const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
-    expect(readme).toContain('| **No source reads** (git index OIDs)')
     expect(flat(path.resolve(import.meta.dir, '..', 'docs', 'README.md'))).toContain(
       'deriving every cache key costs **zero source-file reads**',
     )

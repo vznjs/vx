@@ -131,22 +131,22 @@ Write your own: [Write a plugin](https://vznjs.github.io/vx/docs/writing-plugins
 
 ## How it compares
 
-|                    | vx                                        | Turborepo                      | Nx               |
-| ------------------ | ----------------------------------------- | ------------------------------ | ---------------- |
-| Config             | TypeScript, evaluated into the cache key  | JSON (static)                  | JSON (static)    |
-| Output ownership   | **Strict**: wiped before exec and restore | Additive (stale files survive) | Additive         |
-| Clean-tree hashing | **No source reads** (git index OIDs)      | git OIDs                       | re-hash / daemon |
-| Daemon             | **None**                                  | None for `turbo run`           | On by default    |
-| Per-task sandbox   | **Yes**: kernel-level, opt-in, local      | No                             | On Nx Cloud only |
-| Plugin API         | **Yes**: every step of a run              | No                             | Yes (TS-tied)    |
-| Install            | **Single binary**; no Bun, Node optional  | npm + Node                     | npm + Node       |
+Every test in vx, Turborepo, Nx, Vite Task, Nix and moon, turned into one
+suite and run sandboxed against each tool. An issue is a case a tool
+supports but gets wrong.
 
-- **Nothing boots per task:** no daemon, no Node process; vx spawns your command.
-- **No source-file reads to hash:** on a clean tree, keys come from git's index; each project's `package.json` and the lockfile are still read.
+| Tool              | Cases passed   | Issues |
+| ----------------- | -------------- | ------ |
+| **vx**            | 1,945 of 2,014 | **0**  |
+| Nx 24.0.2         | 1,341 of 2,014 | 409    |
+| Turborepo 2.11.10 | 1,318 of 2,014 | 395    |
+| moon 2.6.5        | 1,200 of 2,014 | 426    |
+| Nix 2.34.6        | 1,051 of 2,014 | 272    |
+| Vite Task 1.4.0   | 971 of 2,014   | 348    |
 
-Every gap: [vx vs Turborepo vs Nx](https://vznjs.github.io/vx/comparison/).
-Every tool on one suite of cases: [conformance](https://vznjs.github.io/vx/conformance/).
-Re-measured on every change: [benchmarks](https://vznjs.github.io/vx/benchmarks/).
+vx has 0 issues in every area: cache, inputs, outputs, affected, sandbox
+and watch. Every case, every tool: [conformance](https://vznjs.github.io/vx/conformance/).
+Speed, same commands on the same machine: [benchmarks](https://vznjs.github.io/vx/benchmarks/).
 
 ## Status
 
