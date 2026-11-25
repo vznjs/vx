@@ -1291,7 +1291,7 @@ export class Orchestrator extends RunReport<Worker> {
       // A task sent here leaves its outputs here for its dependants.
       a.has.add(req.taskId)
       const node = nodes?.get(req.taskId)
-      const keyed = hostKeyed(req)
+      const keyed = hostKeyed(req, node?.config.inputs?.env)
       const env = defined(req.env, req.envDefine, keyed)
       const unset = keyed.filter((k) => req.env[k] === undefined && !(k in req.envDefine))
       const order = {
@@ -2703,7 +2703,16 @@ function defined(
   return out
 }
 
-/** The `HOST_ENV` names the task's `inputs.env` keys: their value is this machine's, as keyed. */
-function hostKeyed(req: ExecuteRequest): string[] {
-  return (req.inputs?.env ?? []).map((e) => e.name).filter((k) => HOST_ENV.includes(k))
+/**
+ * The `HOST_ENV` names the task's `inputs.env` keys: their value is this
+ * machine's, as keyed. A pattern (`TMP*`) keys every name it covers, the ones
+ * unset here as unset: the worker's own TMPDIR ran under a key that saw none.
+ */
+function hostKeyed(req: ExecuteRequest, patterns: readonly string[] = []): string[] {
+  const keyed = new Set((req.inputs?.env ?? []).map((e) => e.name))
+  // The schema allows letters, digits, `_` and `*` only: nothing to escape.
+  const covers = patterns
+    .filter((p) => p.includes('*'))
+    .map((p) => new RegExp(`^${p.split(/\*+/).join('[A-Za-z0-9_]*')}$`))
+  return HOST_ENV.filter((k) => keyed.has(k) || covers.some((re) => re.test(k)))
 }

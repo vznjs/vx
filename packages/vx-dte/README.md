@@ -770,6 +770,8 @@ a plugin changes where a command runs, never what it is.
   task's `env.define` sets them or its `inputs.env` keys them.
 - A keyed one is the orchestrator's value, or unset where it is unset
   there. So the worker runs on what the key saw.
+- A pattern (`TMP*`) keys each name it covers: one unset on the
+  orchestrator is unset on the worker too.
 - `npm_execpath` is the workspace's package manager on the worker, as core
   sets it on a local task.
 - A task whose key hashes a runtime probe (`inputs.runtime`, such as
