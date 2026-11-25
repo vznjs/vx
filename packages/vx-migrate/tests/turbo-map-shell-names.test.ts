@@ -43,9 +43,7 @@ describe('turbo-map: an env name no shell can hold', () => {
       inputs: { env: unknown[] }
       exec: { env: { passThrough: unknown[] } }
     }
-    expect([t.inputs.env, t.exec.env.passThrough]).toEqual([
-      ['my.var', 'A'],
-      ['A', 'P'],
-    ])
+    // `env` is inputs.env alone: core passes what it keys.
+    expect([t.inputs.env, t.exec.env.passThrough]).toEqual([['my.var', 'A'], ['P']])
   })
 })

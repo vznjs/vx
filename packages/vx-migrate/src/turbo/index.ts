@@ -6,7 +6,7 @@
 // what a migration would have written, plus Turbo's global fields and
 // implicit hash inputs, inlined into each task (a written config carries
 // none). `vx lock` maps and records it; a run reads the lock. An env
-// wildcard expands over the environment `vx lock` runs in.
+// wildcard stays a pattern, which each run matches.
 // A task the package's own vx.config already declares wins; the plugin never
 // overwrites a user's hand.
 
@@ -32,13 +32,7 @@ import {
 } from '../tsc-buildinfo.js'
 import type * as TurboMap from './turbo-map.js'
 import type { TurboMappedProject } from './turbo-map.js'
-import {
-  ENV_CONDITION_KEYS,
-  envNamesThatMap,
-  microfrontendsConfigs,
-  rootTaskProject,
-  turboConfigFile,
-} from './turbo-reads.js'
+import { microfrontendsConfigs, rootTaskProject, turboConfigFile } from './turbo-reads.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
@@ -249,8 +243,6 @@ function forcedPolicy(spec = ''): string {
   return [...flags].map(([layer, f]) => `${layer}:${f}`).join(',')
 }
 
-const envNamesNow = (): string[] => Object.keys(process.env).sort()
-
 const textOf = (file: string): Promise<string> =>
   Bun.file(file)
     .text()
@@ -273,7 +265,6 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
     // Whether the manager runs `pre` / `post` hooks, so whether they fold.
     Promise.all(['.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f)))),
   ])
-  const envNames = envNamesThatMap(configs, envNamesNow())
   // The tsconfigs a `tsc` script reads are the mapping's inputs too.
   const tsc = onceReader()
   for (const m of metas)
@@ -284,11 +275,6 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
     spareTracked: true,
     reads: [
       JSON.stringify(dirs),
-      // An env wildcard expands over these; a new name it matches maps afresh at `vx lock`.
-      JSON.stringify(envNames),
-      process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
-      // A framework conditional keys its names on these values (skew protection).
-      JSON.stringify(ENV_CONDITION_KEYS.map((k) => process.env[k] ?? null)),
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
       yarnrc,
@@ -301,7 +287,7 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
       JSON.stringify([...tsc.texts]),
     ],
-    map: (tracked) => mapAll(root, metas, envNames, tracked, tsc.read),
+    map: (tracked) => mapAll(root, metas, tracked, tsc.read),
   }
 }
 
@@ -313,7 +299,6 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
 async function mapAll(
   root: string,
   metas: readonly PackageMeta[],
-  envNames: readonly string[],
   trackedFiles: () => Promise<readonly string[] | null>,
   read: ReadText,
 ): Promise<AdoptionMapping> {
@@ -329,9 +314,7 @@ async function mapAll(
     // Inline: the values themselves.
     splice: (_kind, values) => values,
     persistentTodo: PERSISTENT_NOTE,
-    envNames,
-    envValue: (name) => process.env[name],
-    vendorEnvPrefix: process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
+    live: true,
     envMode: process.env['TURBO_ENV_MODE'] ?? '',
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: (rel) => configs.get(rel === '.' ? '' : rel) ?? null,

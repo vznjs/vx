@@ -1,7 +1,7 @@
 // Turbo infers a framework's variables (Next's NEXT_PUBLIC_*) and hashes
 // and passes them. The written configs only named the prefix in a note,
 // so a migrated Next build inlined every NEXT_PUBLIC_ value empty. They
-// list the names the package's files and its workspace dependencies' spell.
+// key the prefix as written: core matches it each run.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -57,26 +57,17 @@ const env = async () => {
 }
 
 describe('migrateTurbo: a framework Turbo infers', () => {
-  it('lists the prefixed names its source, env example and workspace dependencies spell', async () => {
+  it('keys and passes the framework names as written, the same with git or without', async () => {
+    const expected = {
+      env: ['NEXT_PUBLIC_*', 'NEXT_DEPLOYMENT_ID', 'VERCEL_DEPLOYMENT_ID'],
+      pass: undefined,
+      notes: [BUILTIN_FAMILIES_NOTE],
+    }
+    expect(await env()).toEqual(expected)
     const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: root })
     git('init', '-q')
     git('add', '-A')
-    const names = [
-      'NEXT_PUBLIC_API_URL',
-      'NEXT_PUBLIC_FROM_UI',
-      'NEXT_PUBLIC_SITE',
-      'NEXT_DEPLOYMENT_ID',
-    ]
-    expect(await env()).toEqual({
-      env: [...names, 'VERCEL_DEPLOYMENT_ID'],
-      pass: [...names, 'VERCEL_DEPLOYMENT_ID'],
-      notes: [
-        BUILTIN_FAMILIES_NOTE,
-        'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; the configs ' +
-          'list the names the package and its workspace dependencies spell, so add any an ' +
-          'installed dependency reads to inputs.env and exec.env.passThrough',
-      ],
-    })
+    expect(await env()).toEqual(expected)
   })
 
   it('infers Next only for the package that depends on next (vercel/turborepo#14188)', async () => {
@@ -93,9 +84,5 @@ describe('migrateTurbo: a framework Turbo infers', () => {
     }
     expect(JSON.stringify([t.inputs.env, t.exec.env?.passThrough])).not.toContain('NEXT_')
     expect(p.notes.filter((n) => n.includes('in other'))).toEqual([])
-  })
-
-  it('without git lists only the literal names', async () => {
-    expect((await env()).env).toEqual(['NEXT_DEPLOYMENT_ID', 'VERCEL_DEPLOYMENT_ID'])
   })
 })

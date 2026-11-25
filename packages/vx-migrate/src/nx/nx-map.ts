@@ -1182,11 +1182,8 @@ function buildTask(
     if (call !== undefined) todos.push(call)
   }
   const exec: Record<string, unknown> = { command: mapped.command }
+  // Nx's `{ env }` inputs are core's `inputs.env`, which passes what it keys.
   const env: Record<string, unknown> = {}
-  // A name that is no shell identifier never reached a task (`sh` drops it)
-  // and core refuses it in passThrough; the key still reads it.
-  const passThrough = inputs.envNames.filter((n) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(n))
-  if (passThrough.length > 0) env['passThrough'] = passThrough
   // Nx hands every task its target (`getNxEnvVariablesForTask`), and `nx exec
   // -- <cmd>`, a package script's way to run under Nx, reads it: unset, it
   // booted Nx's own task runner, which ran the target and its dependencies

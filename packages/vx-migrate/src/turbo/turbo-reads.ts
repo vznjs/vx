@@ -10,11 +10,9 @@ export const ROOT = '//'
 
 // Turbo 2's framework inference: a package that depends on a framework has its
 // variables hashed into its tasks and passed to them, with nothing in
-// turbo.json saying so. vx env names are explicit, so the variables were
-// stripped in silence and a build that inlines them (Next's `NEXT_PUBLIC_*`)
-// read empty values. A live mapping (`envNames`) infers them as Turbo does; the
-// migrate CLI lists the names the package's own files spell (`sourceNames`) and
-// says so in a note. Turbo's own table
+// turbo.json saying so. Unmapped, a build that inlines them (Next's
+// `NEXT_PUBLIC_*`) read empty values; mapped, they join each task's
+// `inputs.env` as written, `*` names included. Turbo's own table
 // (`packages/turbo-types/src/json/frameworks.json`), in its order: a package
 // takes the FIRST framework it matches, `all` needing every dependency and
 // `some` any one.
@@ -91,11 +89,6 @@ export const FRAMEWORK_ENV: ReadonlyArray<{
   },
 ]
 
-/** The variables each framework conditional reads; a live mapping is keyed on their values. */
-export const ENV_CONDITION_KEYS: readonly string[] = FRAMEWORK_ENV.flatMap((f) =>
-  (f.conditionals ?? []).map((c) => c.key),
-)
-
 // Turbo's own env, from crates/turborepo-env (edace4621): the promise is a
 // Turbo repo run unchanged, so these mirror it exactly.
 /** `DEFAULT_ENV_VARS`: hashed into every task as if listed in `globalEnv` (a `!` there takes them back). */
@@ -171,37 +164,18 @@ export const keyable = (name: string): boolean =>
   name.length > 0 && !name.startsWith('!') && !/[*?[\]{}=\0]/.test(name)
 
 /**
- * The names of `names` a live mapping can read differently: each a `*` in
- * one of `configs` (turbo.json texts, any string, a superset), in Turbo's
- * framework table or in its builtin env matches, each of those tables'
- * literals, and each core cannot key (a literal one is
- * dropped only when no variable has it). The kept mapping keyed on every
- * name, so any variable that came or went (a CI step's, `VX_DEBUG_TIMING`)
- * remapped the workspace: ~330 ms a run on vercel/ai.
+ * Whether some name may match both `*` patterns (or a pattern and a name):
+ * their heads before the first `*`, and tails after the last, agree.
  */
-export function envNamesThatMap(configs: readonly string[], names: readonly string[]): string[] {
-  const patterns = new Set(
-    [...FRAMEWORK_ENV.flatMap((f) => f.env), ...TURBO_BUILTIN_PASS_THROUGH].filter((e) =>
-      e.includes('*'),
-    ),
-  )
-  // A builtin or conditional literal is passed or keyed only when set.
-  const literals = new Set([
-    ...TURBO_BUILTIN_PASS_THROUGH.filter((e) => !e.includes('*')),
-    ...FRAMEWORK_ENV.flatMap((f) => (f.conditionals ?? []).flatMap((c) => c.include)),
-  ])
-  for (const text of configs)
-    for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"/g))
-      if (m[1]!.includes('*')) patterns.add(m[1]!)
-  // Backslashes and a leading `!` dropped, every `*` a wildcard: wider
-  // than Turbo's reading, never narrower.
-  const res = [...patterns].map(
-    (p) =>
-      new RegExp(
-        `^${p.replaceAll('\\', '').replace(/^!/, '').split('*').map(RegExp.escape).join('.*')}$`,
-      ),
-  )
-  return names.filter((n) => !keyable(n) || literals.has(n) || res.some((re) => re.test(n)))
+export function mayOverlap(a: string, b: string): boolean {
+  const head = (p: string) => (p.includes('*') ? p.slice(0, p.indexOf('*')) : p)
+  const tail = (p: string) => (p.includes('*') ? p.slice(p.lastIndexOf('*') + 1) : p)
+  if (!a.includes('*') || !b.includes('*')) {
+    const [pat, name] = a.includes('*') ? [a, b] : [b, a]
+    return new RegExp(`^${pat.split('*').map(RegExp.escape).join('.*')}$`).test(name)
+  }
+  const [ha, hb, ta, tb] = [head(a), head(b), tail(a), tail(b)]
+  return (ha.startsWith(hb) || hb.startsWith(ha)) && (ta.endsWith(tb) || tb.endsWith(ta))
 }
 
 /**

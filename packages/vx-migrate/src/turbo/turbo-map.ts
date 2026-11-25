@@ -47,6 +47,7 @@ import { isRecord, packageScripts, relPosix } from '../paths.js'
 import {
   FRAMEWORK_ENV,
   keyable,
+  mayOverlap,
   microfrontendsConfigs,
   ROOT,
   TURBO_BUILTIN_PASS_THROUGH,
@@ -97,29 +98,26 @@ const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 /** A command that runs tshy, which writes the package.json `exports` in place. */
 const TSHY = /(?:^|[\s;&|(/])tshy(?=$|[\s;&|)])/
 
+/** A Turbo `*` name core takes as is: letters, digits, `_` and `*`, not `*` alone. */
+const VX_PATTERN = /^(?!\*+$)[A-Za-z_*][A-Za-z0-9_*]*$/
+
 /**
- * A Turbo env list's explicit names, read as Turbo reads them
- * (`wildcard_to_regex_pattern`): `*` is the one wildcard, `\*` a
- * literal `*`, a leading `\!` a literal `!`, and every other character
- * (`?`, `[`) itself. A `!` entry takes names back out of what the list
- * matched (openstatus drops `!NEXT_PUBLIC_VERCEL_URL` from a
- * `NEXT_PUBLIC_*` it would otherwise hash); vx matches no name it is not
- * given, so an exclusion only removes the list's own names and needs no
- * todo. With `live`, a `*` name expands over those names, and a literal
- * core cannot key (unkey's `NEXT_PUBLIC_\*`) is dropped when no variable
- * has it, as Turbo hashes nothing for it then. Any other wildcard, or such
- * a literal, is `gap(entry, literal)`'s to report.
+ * A Turbo env list as vx env names, read as Turbo reads them
+ * (`wildcard_to_regex_pattern`): `*` is the one wildcard, `\*` a literal
+ * `*`, a leading `\!` a literal `!`, and every other character (`?`, `[`)
+ * itself. A `*` name is kept as written: core matches it each run, as Turbo
+ * does. A `!` entry takes the list's own names back (openstatus drops
+ * `!NEXT_PUBLIC_VERCEL_URL`); one a kept pattern still matches is
+ * `gap(entry, null, pattern)`'s to report, since core has no exclusion. A
+ * literal core cannot key (unkey's `NEXT_PUBLIC_\*`), or a pattern it cannot
+ * take, is `gap(entry, literal)`'s.
  */
 function explicitEnv(
   entries: readonly string[],
-  gap: (entry: string, literal: string | null) => void,
-  live?: readonly string[],
-  spelled?: { readonly names: readonly string[]; readonly used: (entry: string) => void },
-  matched?: (entry: string, names: readonly string[]) => void,
+  gap: (entry: string, literal: string | null, kept?: string) => void,
 ): string[] {
   const out: string[] = []
-  const excluded: RegExp[] = []
-  const matches: [string, string[]][] = []
+  const excluded: [string, RegExp][] = []
   // Literal runs split at each unescaped `*`; one run is a literal name.
   const runs = (p: string): string[] => p.split(/(?<!\\)\*/).map((r) => r.replaceAll('\\*', '*'))
   const regex = (parts: readonly string[]): RegExp =>
@@ -127,67 +125,49 @@ function explicitEnv(
   // A name listed twice (assistant-ui's "ASSISTANT_*") is one entry, so one todo.
   for (const e of new Set(entries)) {
     if (e.startsWith('!') && e.length > 1) {
-      excluded.push(regex(runs(e.slice(1))))
+      excluded.push([e, regex(runs(e.slice(1)))])
       continue
     }
     const parts = runs(e.startsWith('\\!') ? e.slice(1) : e)
     if (parts.length === 1) {
       const name = parts[0]!
       if (keyable(name)) out.push(name)
-      else if (live === undefined || live.includes(name)) gap(e, name)
-    } else if (live !== undefined) {
-      // Turbo matches a `*` name against the environment it runs in; so
-      // does a live mapping, and the names it finds are keyed and passed.
-      const re = regex(parts)
-      const hits = live.filter((n) => re.test(n) && keyable(n)).sort()
-      out.push(...hits)
-      matches.push([e, hits])
-    } else if (spelled !== undefined) {
-      // A written config cannot ask the run's environment: the names the
-      // package's files spell stand in for it (clerk's root `E2E_*`), the
-      // bare prefix no name.
-      const re = regex(parts)
-      const bare = parts.join('')
-      const hits = spelled.names.filter((n) => n !== bare && re.test(n) && keyable(n))
-      if (hits.length === 0) gap(e, null)
-      else {
-        out.push(...hits)
-        spelled.used(e)
-      }
-    } else gap(e, null)
+      else gap(e, name)
+    } else if (!e.includes('\\') && VX_PATTERN.test(e)) out.push(e)
+    else gap(e, null)
   }
-  const kept = (n: string): boolean => !excluded.some((re) => re.test(n))
-  for (const [e, hits] of matches) matched?.(e, hits.filter(kept))
-  return out.filter(kept)
+  const kept = out.filter((n) => n.includes('*') || !excluded.some(([, re]) => re.test(n)))
+  for (const [e] of excluded) {
+    const wide = kept.find((n) => n.includes('*') && mayOverlap(n, e.slice(1)))
+    if (wide !== undefined) gap(e, null, wide)
+  }
+  return kept
 }
 
 /**
- * A `*` env name a live mapping (`turbo()`) matched where `vx lock` ran:
- * Turbo matches each run's environment, and a variable set after the lock
- * was neither passed nor keyed, unsaid. Reported once, with its tasks.
+ * Turbo's builtin pass-through list, its `*` names as written: core matches
+ * them each run. A name that is no shell variable name (`ProgramFiles(x86)`)
+ * is left out: core refuses it there.
  */
-const lockMatched = (field: string, entry: string, names: readonly string[]): string =>
-  `${field} ${JSON.stringify(entry)} matched ${names.length === 0 ? 'no variable' : names.join(', ')} ` +
-  'where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again'
-
-/**
- * The literal names of Turbo's builtin pass-through list, the same under
- * `turbo()` as in written configs: `exec.env.passThrough` is keyed by name,
- * so a list matched against the live environment keyed each machine apart
- * and missed the cache `turbo()` filled once the configs were written. A
- * wildcard family is a note. A name that is no shell variable name
- * (`ProgramFiles(x86)`) is left out: core refuses it there.
- */
-const BUILTIN_PASS_THROUGH = TURBO_BUILTIN_PASS_THROUGH.filter((e) =>
-  /^[A-Za-z_][A-Za-z0-9_]*$/.test(e),
+const BUILTIN_PASS_THROUGH = TURBO_BUILTIN_PASS_THROUGH.filter(
+  (e) => SHELL_NAME.test(e) || VX_PATTERN.test(e),
 )
 
-/** A gap's message: a wildcard, or a literal name core cannot key. */
-const envGap = (field: string, entry: string, literal: string | null, list: string): string =>
-  literal === null
-    ? `${field} ${JSON.stringify(entry)}: wildcards are not supported${list}`
-    : `${field} ${JSON.stringify(entry)}: Turbo reads this as the one variable ` +
-      `${JSON.stringify(literal)} (only \`*\` is a wildcard), a name vx cannot key — dropped`
+/** A gap's message: an exclusion core cannot make, a pattern it cannot take, or a literal it cannot key. */
+const envGap = (
+  field: string,
+  entry: string,
+  literal: string | null,
+  kept: string | undefined,
+): string =>
+  kept !== undefined
+    ? `${field} ${JSON.stringify(entry)}: vx has no exclusion, so ${JSON.stringify(kept)} still ` +
+      `takes ${entry.slice(1)} — narrow the pattern to leave it out`
+    : literal === null
+      ? `${field} ${JSON.stringify(entry)}: a vx env pattern is letters, digits, _ and * — list ` +
+        'the names instead'
+      : `${field} ${JSON.stringify(entry)}: Turbo reads this as the one variable ` +
+        `${JSON.stringify(literal)} (only \`*\` is a wildcard), a name vx cannot key — dropped`
 
 const KNOWN_TASK_KEYS = new Set([
   'dependsOn',
@@ -281,28 +261,10 @@ export interface MapTurboOptions {
    */
   manifestField?(key: 'name' | 'version'): unknown
   /**
-   * The environment's variable names, when the mapping runs where the tasks
-   * will (`turbo()`): an env wildcard (`NEXT_PUBLIC_*`) expands over them.
-   * Absent (`bunx @vzn/vx-migrate` writes files), a wildcard is a todo.
+   * The mapping runs where the tasks will (`turbo()`), writing no file.
+   * Absent, `bunx @vzn/vx-migrate` writes the configs.
    */
-  envNames?: readonly string[]
-  /**
-   * A variable's value where the tasks will run, read only for a framework
-   * conditional's key (Turbo's `envConditionals`). Absent (written configs),
-   * every conditional name is keyed: more misses, never a stale hit.
-   */
-  envValue?: (name: string) => string | undefined
-  /**
-   * Without `envNames` (written configs): the upper-case names the files
-   * under `dirs` spell, which a framework's `*` prefix is matched against.
-   */
-  sourceNames?: (dirs: readonly string[]) => Promise<readonly string[]>
-  /**
-   * `TURBO_CI_VENDOR_ENV_KEY`, which a platform sets (Vercel:
-   * `NEXT_PUBLIC_VERCEL_`): names with it are left out of framework
-   * inference, as Turbo leaves them, since they change on every deploy.
-   */
-  vendorEnvPrefix?: string
+  live?: boolean
   /** `TURBO_ENV_MODE`, when the mapping runs where the tasks will: above turbo.json's, as in Turbo. */
   envMode?: string
   /**
@@ -1006,18 +968,9 @@ export async function mapTurboWorkspace(
       )
     }
   }
-  // A wildcard names no one variable: core refuses it, and in a global list
-  // that refusal failed every task of the run. Reported once, as a task's own
-  // `env` wildcard is per task.
+  // A global list's gaps are said once, a task's own per task.
   const envNames = (field: string, names: readonly string[]): string[] =>
-    explicitEnv(
-      names,
-      (e, literal) =>
-        notes.push(envGap(field, e, literal, ' in vx env names — list explicit names')),
-      opts.envNames,
-      undefined,
-      (e, hits) => notes.push(lockMatched(field, e, hits)),
-    )
+    explicitEnv(names, (e, literal, kept) => notes.push(envGap(field, e, literal, kept)))
   // Turbo 1's `globalDotEnv` files are hashed as `globalDependencies` are. A
   // `.env`-shaped one is gitignored as a rule, and a glob over git's files
   // keyed nothing: the workspace probe keys them.
@@ -1309,24 +1262,12 @@ export async function mapTurboWorkspace(
     return m !== undefined && definitions(m).defined.has(task)
   }
 
-  // A live mapping infers as Turbo does: the prefix joins each task's env
-  // list, where the task's own `!` entries can take names back.
+  // Turbo's framework inference: the framework's names join each task's env
+  // list as written, where the task's own `!` entries can take names back. A
+  // conditional's names are keyed whatever the condition (Vercel's skew
+  // protection), so what is locked is the same on every machine: more
+  // misses, never a stale hit.
   const inferredOf = new Map<string, readonly string[]>()
-  // The names a package's files and its workspace dependencies' spell, once.
-  const spelledMemo = new Map<string, Promise<readonly string[]>>()
-  const spelledBy = (m: PackageMeta): Promise<readonly string[]> => {
-    let names = spelledMemo.get(m.name)
-    if (names === undefined) {
-      const closure = new Set<PackageMeta>([m])
-      for (const p of closure)
-        for (const d of metas) if (!closure.has(d) && declares(p, d.name)) closure.add(d)
-      names = opts.sourceNames!([...closure].map((p) => p.dir))
-      spelledMemo.set(m.name, names)
-    }
-    return names
-  }
-  const usersOf = new Map<(typeof FRAMEWORK_ENV)[number], string[]>()
-  const sourcedOf = new Map<(typeof FRAMEWORK_ENV)[number], string[]>()
   for (const m of metas) {
     if (emitted.get(m.name)!.size === 0) continue
     const fw = FRAMEWORK_ENV.find((f) =>
@@ -1335,80 +1276,8 @@ export async function mapTurboWorkspace(
         : f.dependencies.some((d) => declares(m, d)),
     )
     if (fw === undefined) continue
-    if (opts.envNames !== undefined) {
-      const live = opts.envNames
-      const vendor = opts.vendorEnvPrefix
-      const names = fw.env.flatMap((e) => {
-        if (!e.endsWith('*')) return [e]
-        const head = e.slice(0, -1)
-        return live.filter((n) => n.startsWith(head)).sort()
-      })
-      for (const c of fw.conditionals ?? [])
-        if (opts.envValue?.(c.key) === c.value) names.push(...c.include)
-      inferredOf.set(m.name, vendor ? names.filter((n) => !n.startsWith(vendor)) : names)
-    } else if (opts.sourceNames !== undefined) {
-      // A written config cannot ask the run's environment, and with the
-      // prefix only in a note, a migrated Next build inlined every
-      // NEXT_PUBLIC_ value empty. The names the package's own files spell
-      // are what its build reads, and so are its workspace dependencies':
-      // Next bundles their source (cal.com's web spells 23, with them 58).
-      const spelled = await spelledBy(m)
-      inferredOf.set(
-        m.name,
-        // The bare prefix is no name: formbricks' web spells `NEXT_PUBLIC_`
-        // in a `startsWith` test, and the configs keyed a variable of it.
-        [
-          ...fw.env.flatMap((e) => {
-            if (!e.endsWith('*')) return [e]
-            const head = e.slice(0, -1)
-            return spelled.filter((n) => n.startsWith(head) && n.length > head.length)
-          }),
-          // Written for another environment: keyed whatever the condition.
-          ...(fw.conditionals ?? []).flatMap((c) => c.include),
-        ],
-      )
-      sourcedOf.set(fw, [...(sourcedOf.get(fw) ?? []), m.name])
-    } else usersOf.set(fw, [...(usersOf.get(fw) ?? []), m.name])
+    inferredOf.set(m.name, [...fw.env, ...(fw.conditionals ?? []).flatMap((c) => c.include)])
   }
-  // One short line per framework: nitro's twelve names and a long package list
-  // ran past any terminal (Growth's first-run funnel F7).
-  const few = (list: readonly string[]): string =>
-    list.length <= 3
-      ? list.join(', ')
-      : `${list.slice(0, 3).join(', ')} and ${list.length - 3} more`
-  for (const [fw, users] of sourcedOf)
-    notes.push(
-      `${fw.slug} in ${few(users)}: Turbo passes ${few(fw.env)} implicitly; the configs list ` +
-        'the names the package and its workspace dependencies spell, so add any an installed ' +
-        'dependency reads to inputs.env and exec.env.passThrough',
-    )
-  for (const [fw, users] of usersOf)
-    notes.push(
-      `${fw.slug} in ${few(users)}: Turbo passes ${few(fw.env)} implicitly; list the ones ` +
-        'they read in inputs.env and exec.env.passThrough',
-    )
-
-  // A task's own `*` env name, in a written config: expanded over the
-  // names its package spells (`explicitEnv`), each entry noted once.
-  const wildcardUses = new Map<string, number>()
-  const spelledOf = new Map<
-    string,
-    { readonly names: readonly string[]; readonly used: (entry: string) => void }
-  >()
-  if (opts.envNames === undefined && opts.sourceNames !== undefined)
-    for (const meta of metas) {
-      const { defined, defFor } = definitions(meta)
-      const wild = [...defined].some((name) =>
-        [...(defFor(name)?.env ?? []), ...(defFor(name)?.passThroughEnv ?? [])].some(
-          (e) => !e.startsWith('!') && /(?<!\\)\*/.test(e),
-        ),
-      )
-      if (!wild) continue
-      spelledOf.set(meta.name, {
-        names: await spelledBy(meta),
-        used: (e) => wildcardUses.set(e, (wildcardUses.get(e) ?? 0) + 1),
-      })
-    }
 
   const projects: TurboMappedProject[] = []
   // Turbo 2.11's `global.inputs` joins each task's own inputs, where its
@@ -1432,7 +1301,7 @@ export async function mapTurboWorkspace(
       // where Turbo runs its dependencies' builds.
       const noopEdges = defFor(name)!.dependsOn ?? []
       if (
-        opts.envNames === undefined &&
+        opts.live !== true &&
         noop &&
         name === 'build' &&
         noopEdges.includes('^build') &&
@@ -1463,7 +1332,6 @@ export async function mapTurboWorkspace(
               rootMeta?.name,
               { name: meta.name, persistentAt, withOf },
               inferredOf.get(meta.name) ?? [],
-              spelledOf.get(meta.name),
             ),
           ),
         )
@@ -1497,7 +1365,6 @@ export async function mapTurboWorkspace(
           rootMeta?.name,
           { name: meta.name, persistentAt, withOf },
           inferredOf.get(meta.name) ?? [],
-          spelledOf.get(meta.name),
         )
         // Emitted even when its edges all drop: other packages' edges were
         // validated against it, and `dependsOn: []` is a group that waits
@@ -1559,7 +1426,6 @@ export async function mapTurboWorkspace(
         rootMeta?.name,
         { name: meta.name, persistentAt, withOf },
         inferredOf.get(meta.name) ?? [],
-        spelledOf.get(meta.name),
       )
       if (override === undefined && mapped.task !== null)
         npmScriptEnv(mapped.task, name, command === script, meta, opts)
@@ -1673,12 +1539,6 @@ export async function mapTurboWorkspace(
         inputs['workspaceRuntime'] = [...probes, ROOT_ENGINES_PROBE]
       }
   nestedInputs(root, projects)
-  for (const [entry, n] of wildcardUses)
-    notes.push(
-      `env ${JSON.stringify(entry)}: the configs list the names the files of each task's ` +
-        `package and its workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add ` +
-        'any other a task reads to inputs.env and exec.env.passThrough',
-    )
   if (opts.ownOnly && interruptible.length > 0)
     notes.push(
       `interruptible (${interruptible.join(', ')}): maps to nothing; \`vx watch\` keeps a ` +
@@ -1831,10 +1691,7 @@ function literalEnvGapsOnce(projects: readonly TurboMappedProject[], notes: stri
   for (const p of projects)
     for (const t of p.tasks)
       t.todos = t.todos.filter((todo) => {
-        if (
-          !/^(env|passThroughEnv) ".*": Turbo reads this as the one variable /s.test(todo) &&
-          !/^(env|passThroughEnv) ".*" matched .* where `vx lock` ran: /s.test(todo)
-        )
+        if (!/^(env|passThroughEnv) ".*": Turbo reads this as the one variable /s.test(todo))
           return true
         counts.set(todo, (counts.get(todo) ?? 0) + 1)
         return false
@@ -2029,7 +1886,6 @@ function buildTask(
     readonly withOf: ReadonlyMap<string, readonly string[]>
   },
   inferred: readonly string[],
-  spelled?: { readonly names: readonly string[]; readonly used: (entry: string) => void },
 ): TurboMappedTask {
   const todos: string[] = []
   // A glob that climbs out of the package (`../../packages/app-store/
@@ -2194,33 +2050,19 @@ function buildTask(
 
   const envNames: string[] = explicitEnv(
     [...inferred, ...envDeps, ...(def.env ?? [])],
-    (e, literal) =>
-      todos.push(
-        envGap(
-          'env',
-          e,
-          literal,
-          ' in vx env names — list explicit names in inputs.env + exec.env.passThrough',
-        ),
-      ),
-    opts.envNames,
-    spelled,
-    (e, hits) => todos.push(lockMatched('env', e, hits)),
+    (e, literal, kept) => todos.push(envGap('env', e, literal, kept)),
   )
-  const passNames: string[] = explicitEnv(
-    def.passThroughEnv ?? [],
-    (e, literal) => todos.push(envGap('passThroughEnv', e, literal, ' — list explicit names')),
-    opts.envNames,
-    spelled,
-    (e, hits) => todos.push(lockMatched('passThroughEnv', e, hits)),
+  const passNames: string[] = explicitEnv(def.passThroughEnv ?? [], (e, literal, kept) =>
+    todos.push(envGap('passThroughEnv', e, literal, kept)),
   )
 
-  // A name that is no shell identifier never reached a task (`sh` drops it)
-  // and core refuses it in passThrough.
-  const passThrough = uniq(
-    [...global('env'), ...global('pass'), ...envNames, ...passNames],
-    hidden('env', 'pass'),
-  ).filter((n) => typeof n !== 'string' || SHELL_NAME.test(n))
+  // Turbo's `env` is core's `inputs.env`, passed and keyed; its
+  // `passThroughEnv` is `exec.env.passThrough`, passed only. A name that is no
+  // shell identifier never reached a task (`sh` drops it) and core refuses it
+  // in passThrough.
+  const passThrough = uniq([...global('pass'), ...passNames], hidden('pass')).filter(
+    (n) => typeof n !== 'string' || SHELL_NAME.test(n) || VX_PATTERN.test(n),
+  )
 
   const exec: Record<string, unknown> = { command }
   if (passThrough.length > 0) exec['env'] = { passThrough }

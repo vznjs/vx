@@ -59,11 +59,9 @@ describe('migrateTurbo: a task env several configs share', () => {
       decls: p.projects.map((x) => x.importLines),
       extraFiles: p.extraFiles,
     }).toEqual({
-      a: [[{ raw: '...buildEnv' }], [{ raw: '...buildEnv' }, 'P']],
-      c: [
-        ['D', 'E', 'F'],
-        ['D', 'E', 'F', 'P'],
-      ],
+      // `env` is inputs.env alone, which passes what it keys.
+      a: [[{ raw: '...buildEnv' }], ['P']],
+      c: [['D', 'E', 'F'], ['P']],
       decls: [["const buildEnv = ['A', 'B', 'C']"], ["const buildEnv = ['A', 'B', 'C']"], []],
       extraFiles: [],
     })

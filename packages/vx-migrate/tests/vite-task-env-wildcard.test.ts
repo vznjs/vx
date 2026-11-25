@@ -1,6 +1,6 @@
 // A Vite Task `cache.env` wildcard (`VITE_*`) matches names in the run's
-// environment; a written config lists the names the package's tracked files
-// and its workspace dependencies' spell, `!` entries taken back.
+// environment; so does core's, so a written config keeps it as written. A
+// `!` entry core cannot make is a TODO.
 
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -61,11 +61,12 @@ describe('vx-migrate (vite-task): env wildcards', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('lists the spelled names a wildcard matches, minus a `!` entry', async () => {
+  it('keeps a wildcard as written, and names a `!` entry it cannot make', async () => {
     const app = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))).tasks!
-    expect(app['build']!.exec!.env).toEqual({ passThrough: ['VITE_API_URL', 'VITE_LIB_URL'] })
-    expect(app['build']!.inputs!.env).toEqual(['VITE_API_URL', 'VITE_LIB_URL'])
-    expect(out).toContain('env "VITE_*": the configs list the names')
-    expect(out).toContain('cache.untrackedEnv "NOPE_*": vx takes exact env names')
+    expect(app['build']!.exec!.env).toEqual({ passThrough: ['NOPE_*'] })
+    expect(app['build']!.inputs!.env).toEqual(['VITE_*'])
+    expect(out).toContain(
+      'cache.env "!VITE_SECRET": vx has no exclusion, so "VITE_*" still takes VITE_SECRET',
+    )
   })
 })

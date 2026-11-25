@@ -40,7 +40,6 @@ src/remote-cache.ts
 src/remote-http.ts
 src/script-command.ts
 src/shared-outputs.ts
-src/spelled-env.ts
 src/tracked-outputs.ts
 src/tsc-buildinfo.ts
 src/turbo-cache/index.ts

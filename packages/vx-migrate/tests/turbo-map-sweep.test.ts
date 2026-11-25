@@ -35,7 +35,8 @@ async function map(
       root?: true
     }
   >,
-  envNames?: readonly string[],
+  /** Map as turbo() does, where the tasks run. */
+  live?: true,
 ) {
   await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo))
   const metas: PackageMeta[] = []
@@ -47,7 +48,7 @@ async function map(
     const packageJson = { name, scripts: p.scripts, dependencies: p.dependencies }
     metas.push({ name, dir, packageJson: packageJson as never, configPath: null })
   }
-  return mapTurboWorkspace(root, metas, envNames === undefined ? opts : { ...opts, envNames })
+  return mapTurboWorkspace(root, metas, live === undefined ? opts : { ...opts, live })
 }
 
 const taskOf = async (...args: Parameters<typeof map>): Promise<TurboMappedTask> =>
@@ -134,129 +135,58 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(t.task!['inputs'] as unknown).toEqual({ files })
   })
 
-  // Item 937: a wildcard in a global env list reached core, whose refusal
-  // failed every task of the run; it is a note now, the rest still map.
-  it('a global env wildcard is a note, and the explicit names still key and pass', async () => {
+  // Item 937 refused a global env wildcard core could not take. Core takes
+  // `*` now, so it is kept as written, as a task's own is: core matches it
+  // each run, as Turbo does, and the lock is the same on every machine.
+  it('a `*` env name is kept as written; `env` keys and passes, `passThroughEnv` passes', async () => {
     const m = await map(
       {
-        globalEnv: ['NEXT_PUBLIC_*', 'API'],
+        globalEnv: ['APP_*', 'API'],
         globalPassThroughEnv: ['!SECRET', 'HOME_DIR', 'SECRET'],
-        tasks: { build: {} },
-      },
-      { a: { scripts: { build: 'b' } } },
-    )
-    const task = m.projects[0]!.tasks[0]!.task!
-    expect({
-      env: (task['inputs'] as { env?: unknown }).env,
-      pass: (task['exec'] as { env?: { passThrough?: unknown } }).env?.passThrough,
-      notes: m.notes,
-    }).toEqual({
-      env: ['API'],
-      pass: ['API', 'HOME_DIR'],
-      notes: [
-        'globalEnv "NEXT_PUBLIC_*": wildcards are not supported in vx env names — list explicit names',
-      ],
-    })
-  })
-
-  // A live mapping (turbo()) runs where the tasks will: Turbo matches a `*`
-  // name against that environment, and so does the mapper, so every
-  // Vercel template's `NEXT_PUBLIC_*` keys and passes what it names.
-  it('a `*` env name expands over the live environment; a literal no variable has is dropped', async () => {
-    const live = [
-      'OTHER',
-      'NEXT_PUBLIC_B',
-      'NEXT_PUBLIC_VERCEL_URL',
-      'NEXT_PUBLIC_A',
-      'VITE_X',
-      'TOKEN_1',
-      'FOO_?',
-    ]
-    const m = await map(
-      {
-        globalEnv: ['VITE_*'],
         tasks: {
           build: {
-            env: ['NEXT_PUBLIC_*', '!NEXT_PUBLIC_VERCEL_*', 'API', 'FOO_?', 'BAR_\\*'],
+            env: ['VITE_*', 'B-*', 'FOO_?', 'BAR_\\*'],
             passThroughEnv: ['TOKEN_*'],
           },
         },
       },
       { a: { scripts: { build: 'b' } } },
-      live,
+      true,
     )
     const t = m.projects[0]!.tasks[0]!
     expect({
       env: (t.task!['inputs'] as { env?: unknown }).env,
-      pass: (t.task!['exec'] as { env?: { passThrough?: unknown } }).env?.passThrough,
+      pass: notTurbos((t.task!['exec'] as { env: { passThrough: unknown[] } }).env.passThrough),
       todos: t.todos,
       notes: m.notes,
     }).toEqual({
-      env: ['VITE_X', 'NEXT_PUBLIC_A', 'NEXT_PUBLIC_B', 'API'],
-      pass: ['VITE_X', 'NEXT_PUBLIC_A', 'NEXT_PUBLIC_B', 'API', 'TOKEN_1'],
-      todos: [],
+      env: ['APP_*', 'API', 'VITE_*'],
+      pass: ['HOME_DIR', 'TOKEN_*'],
+      todos: ['env "B-*": a vx env pattern is letters, digits, _ and * — list the names instead'],
       notes: [
-        // Turbo matches each run's environment; vx the one `vx lock` ran in.
-        'globalEnv "VITE_*" matched VITE_X where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again',
         'env "FOO_?": Turbo reads this as the one variable "FOO_?" (only `*` is a wildcard), a name vx cannot key — dropped (1 task)',
-        'env "NEXT_PUBLIC_*" matched NEXT_PUBLIC_A, NEXT_PUBLIC_B where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again (1 task)',
-        'passThroughEnv "TOKEN_*" matched TOKEN_1 where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again (1 task)',
+        'env "BAR_\\\\*": Turbo reads this as the one variable "BAR_*" (only `*` is a wildcard), a name vx cannot key — dropped (1 task)',
       ],
     })
   })
 
-  // A wildcard nothing matched where `vx lock` ran keys nothing, as Turbo
-  // there; one set later was neither passed nor keyed, unsaid (probed).
-  it('says a `*` env name that matched nothing where `vx lock` ran', async () => {
-    const m = await map(
-      { tasks: { build: { env: ['API_*'] } } },
-      { a: { scripts: { build: 'b' } }, b: { scripts: { build: 'b' } } },
-      ['OTHER'],
-    )
-    expect(m.notes).toEqual([
-      'env "API_*" matched no variable where `vx lock` ran: a matching variable set later is neither passed nor keyed until `vx lock` runs again (2 tasks)',
-    ])
-  })
-
   // Turbo's `wildcard_to_regex_pattern`: `*` is the one wildcard, `\*` a
   // literal `*`, a leading `\!` a literal `!`. unkey's `NEXT_PUBLIC_\*`
-  // and `\!NEXT_PUBLIC_VERCEL_\*` name one variable each, which no
-  // environment sets, and were 50 "wildcards are not supported" todos.
+  // names one variable, which no environment sets.
   it('an escaped `*` or `!` is a literal, as Turbo reads it', async () => {
-    const turbo = {
-      tasks: {
-        build: { env: ['NEXT_PUBLIC_\\*', '\\!NEXT_PUBLIC_VERCEL_\\*', 'API', 'B_*', '!B_\\*'] },
-      },
-    }
-    const pkgs = { a: { scripts: { build: 'b' } } }
-    const read = async (live?: string[]) => {
-      const m = await map(turbo, pkgs, live)
-      const t = m.projects[0]!.tasks[0]!
-      return {
-        env: (t.task!['inputs'] as { env?: unknown }).env,
-        todos: [...t.todos, ...m.notes],
-      }
-    }
-    // Reported once for the workspace, with the count of tasks naming it.
+    const m = await map(
+      { tasks: { build: { env: ['NEXT_PUBLIC_\\*', '\\!NEXT_PUBLIC_VERCEL_\\*', 'API', 'B_*'] } } },
+      { a: { scripts: { build: 'b' } } },
+    )
+    const t = m.projects[0]!.tasks[0]!
     const literal = (entry: string, name: string): string =>
       `env ${JSON.stringify(entry)}: Turbo reads this as the one variable ${JSON.stringify(name)} (only \`*\` is a wildcard), a name vx cannot key — dropped (1 task)`
-    // Live: the escaped names are set nowhere, so Turbo hashes nothing for
-    // them; the exclusion's \* is no wildcard, so B_1 stays.
-    const lock = (names: string): string =>
-      `env "B_*" matched ${names} where \`vx lock\` ran: a matching variable set later is neither passed nor keyed until \`vx lock\` runs again (1 task)`
-    expect(await read(['B_1', 'NEXT_PUBLIC_A'])).toEqual({
-      env: ['API', 'B_1'],
-      todos: [lock('B_1')],
-    })
-    // One that is set is reported.
-    expect(await read(['NEXT_PUBLIC_*'])).toEqual({
-      env: ['API'],
-      todos: [literal('NEXT_PUBLIC_\\*', 'NEXT_PUBLIC_*'), lock('no variable')],
-    })
-    expect(await read()).toEqual({
-      env: ['API'],
+    expect({
+      env: (t.task!['inputs'] as { env?: unknown }).env,
+      todos: [...t.todos, ...m.notes],
+    }).toEqual({
+      env: ['API', 'B_*'],
       todos: [
-        'env "B_*": wildcards are not supported in vx env names — list explicit names in inputs.env + exec.env.passThrough',
         literal('NEXT_PUBLIC_\\*', 'NEXT_PUBLIC_*'),
         literal('\\!NEXT_PUBLIC_VERCEL_\\*', '!NEXT_PUBLIC_VERCEL_*'),
       ],
@@ -264,14 +194,14 @@ describe('turbo-map: what the sweep found unheld', () => {
   })
 
   // openstatus: `env: ["RESEND_API_KEY", "!NEXT_PUBLIC_VERCEL_URL",
-  // "!NEXT_PUBLIC_VERCEL_GIT_*", …]`. An exclusion removes what the list
-  // matched; vx matches nothing implicitly, so it is no wildcard todo.
-  it('a `!` env entry removes the names it matches, with no todo', async () => {
+  // "!NEXT_PUBLIC_VERCEL_GIT_*", …]`. An exclusion removes the list's own
+  // names; one a kept pattern still matches is a todo, as core has none.
+  it('a `!` env entry removes the names it matches; one a pattern keeps is a todo', async () => {
     const m = await map(
       {
         tasks: {
           build: {
-            env: ['API', '!GIT_*', 'GIT_SHA', '!URL', 'URL', 'URLS'],
+            env: ['API', '!GIT_*', 'GIT_SHA', '!URL', 'URL', 'URLS', 'NEXT_*', '!NEXT_SECRET'],
             passThroughEnv: ['TOKEN', '!TOKEN', 'HOME_DIR'],
           },
         },
@@ -283,7 +213,13 @@ describe('turbo-map: what the sweep found unheld', () => {
       env: (t.task!['inputs'] as { env?: unknown }).env,
       pass: (t.task!['exec'] as { env?: { passThrough?: unknown } }).env?.passThrough,
       todos: t.todos,
-    }).toEqual({ env: ['API', 'URLS'], pass: ['API', 'URLS', 'HOME_DIR'], todos: [] })
+    }).toEqual({
+      env: ['API', 'URLS', 'NEXT_*'],
+      pass: ['HOME_DIR'],
+      todos: [
+        'env "!NEXT_SECRET": vx has no exclusion, so "NEXT_*" still takes NEXT_SECRET — narrow the pattern to leave it out',
+      ],
+    })
   })
 
   // Item 937: Turbo 1 hashes `globalDotEnv` into every task and a task's
@@ -603,28 +539,29 @@ describe('turbo-map: what the sweep found unheld', () => {
   })
 
   // Item 940: Turbo 2 hashes and passes a framework's env prefix with
-  // nothing in turbo.json; vx stripped the variables in silence. A note
-  // names them. CONTROL: a package that runs no task is not named.
-  it('a framework Turbo infers is named with its env prefix', async () => {
+  // nothing in turbo.json; vx stripped the variables in silence. The prefix
+  // is keyed as written, with no note. CONTROL: a package that runs no task
+  // gets nothing.
+  it('a framework Turbo infers is keyed with its env prefix, with no note', async () => {
     await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { build: {} } }))
     const metas: PackageMeta[] = []
     for (const [name, deps, scripts] of [
       ['web', { dependencies: { next: '15' } }, { build: 'next build' }],
       ['site', { devDependencies: { vite: '6' } }, { build: 'vite build' }],
       ['idle', { dependencies: { next: '15' } }, {}],
-      ['api', { dependencies: { nitropack: '2' } }, { build: 'nitro build' }],
     ] as const) {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })
       metas.push({ name, dir, packageJson: { name, scripts, ...deps } as never, configPath: null })
     }
     const m = await mapTurboWorkspace(root, metas, opts)
-    expect(m.notes).toEqual([
-      'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; list the ones they read in inputs.env and exec.env.passThrough',
-      'vite in site: Turbo passes VITE_* implicitly; list the ones they read in inputs.env and exec.env.passThrough',
-      // Twelve names: three and a count keep the note one line.
-      expect.stringMatching(/^nitro in api: Turbo passes \S+, \S+, \S+ and \d+ more implicitly;/),
-    ])
+    const env = (p: number) => (m.projects[p]!.tasks[0]?.task?.['inputs'] as { env?: unknown })?.env
+    expect({ web: env(0), site: env(1), notes: m.notes }).toEqual({
+      web: ['NEXT_PUBLIC_*', 'NEXT_DEPLOYMENT_ID', 'VERCEL_DEPLOYMENT_ID'],
+      site: ['VITE_*'],
+      notes: [],
+    })
+    expect(env(2)).toBeUndefined()
   })
 
   // Turbo's whole table, first match per package: a Next app on vite is
@@ -646,14 +583,13 @@ describe('turbo-map: what the sweep found unheld', () => {
       const packageJson = { name, scripts: { build: 'b' }, ...deps }
       metas.push({ name, dir, packageJson: packageJson as never, configPath: null })
     }
-    const live = ['NEXT_PUBLIC_A', 'VITE_X', 'PUBLIC_Y', 'REACT_APP_Z', 'EXPO_PUBLIC_W']
-    const m = await mapTurboWorkspace(root, metas, { ...opts, envNames: live })
+    const m = await mapTurboWorkspace(root, metas, { ...opts, live: true })
     const env = (p: number) => (m.projects[p]!.tasks[0]!.task!['inputs'] as { env?: unknown }).env
     expect([0, 1, 2, 3, 4].map(env)).toEqual([
-      ['NEXT_PUBLIC_A', 'NEXT_DEPLOYMENT_ID'],
-      ['VITE_X', 'PUBLIC_Y'],
-      ['REACT_APP_Z'],
-      ['EXPO_PUBLIC_W'],
+      ['NEXT_PUBLIC_*', 'NEXT_DEPLOYMENT_ID', 'VERCEL_DEPLOYMENT_ID'],
+      ['VITE_*', 'PUBLIC_*'],
+      ['REACT_APP_*'],
+      ['EXPO_PUBLIC_*'],
       undefined,
     ])
   })
@@ -719,41 +655,10 @@ describe('turbo-map: what the sweep found unheld', () => {
     ])
   })
 
-  // A live mapping infers as Turbo does, and the task's own `!` entries
-  // take names back (openstatus' `!NEXT_PUBLIC_VERCEL_URL`). CONTROL: a
-  // package without the framework gets no prefix.
-  // Vercel sets TURBO_CI_VENDOR_ENV_KEY=NEXT_PUBLIC_VERCEL_ so a deploy's
-  // own variables (its commit SHA) stay out of the inferred set; kept in,
-  // every deploy re-keyed every Next build. A task's own `env` still keys one.
-  it('the CI vendor prefix is left out of framework inference only', async () => {
-    await writeFile(
-      path.join(root, 'turbo.json'),
-      JSON.stringify({ tasks: { build: { env: ['NEXT_PUBLIC_VERCEL_ENV'] } } }),
-    )
-    const dir = path.join(root, 'packages', 'web')
-    await mkdir(dir, { recursive: true })
-    const packageJson = { name: 'web', scripts: { build: 'b' }, dependencies: { next: '15' } }
-    const live = ['NEXT_PUBLIC_A', 'NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA', 'NEXT_PUBLIC_VERCEL_ENV']
-    const env = async (vendorEnvPrefix?: string) => {
-      const m = await mapTurboWorkspace(
-        root,
-        [{ name: 'web', dir, packageJson: packageJson as never, configPath: null }],
-        { ...opts, envNames: live, ...(vendorEnvPrefix ? { vendorEnvPrefix } : {}) },
-      )
-      return (m.projects[0]!.tasks[0]!.task!['inputs'] as { env?: unknown }).env
-    }
-    expect([await env('NEXT_PUBLIC_VERCEL_'), await env()]).toEqual([
-      ['NEXT_PUBLIC_A', 'NEXT_DEPLOYMENT_ID', 'NEXT_PUBLIC_VERCEL_ENV'],
-      [
-        'NEXT_PUBLIC_A',
-        'NEXT_PUBLIC_VERCEL_ENV',
-        'NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA',
-        'NEXT_DEPLOYMENT_ID',
-      ],
-    ])
-  })
-
-  it('a live mapping infers a framework env prefix, with no note', async () => {
+  // A task's own `!` entry against the inferred prefix is a todo: core has
+  // no exclusion (openstatus' `!NEXT_PUBLIC_VERCEL_URL`). CONTROL: a package
+  // without the framework gets no prefix.
+  it('a framework prefix joins the task env; a `!` against it is a todo', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({ tasks: { build: { env: ['!NEXT_PUBLIC_VERCEL_URL', 'API'] } } }),
@@ -768,11 +673,18 @@ describe('turbo-map: what the sweep found unheld', () => {
       const packageJson = { name, scripts: { build: 'b' }, ...deps }
       metas.push({ name, dir, packageJson: packageJson as never, configPath: null })
     }
-    const live = ['NEXT_PUBLIC_VERCEL_URL', 'NEXT_PUBLIC_A', 'VITE_X']
-    const m = await mapTurboWorkspace(root, metas, { ...opts, envNames: live })
-    const env = (p: number) => (m.projects[p]!.tasks[0]!.task!['inputs'] as { env?: unknown }).env
-    expect({ web: env(0), lib: env(1), notes: m.notes }).toEqual({
-      web: ['NEXT_PUBLIC_A', 'NEXT_DEPLOYMENT_ID', 'API'],
+    const m = await mapTurboWorkspace(root, metas, { ...opts, live: true })
+    const of = (p: number) => m.projects[p]!.tasks[0]!
+    expect({
+      web: (of(0).task!['inputs'] as { env?: unknown }).env,
+      webTodos: of(0).todos,
+      lib: (of(1).task!['inputs'] as { env?: unknown }).env,
+      notes: m.notes,
+    }).toEqual({
+      web: ['NEXT_PUBLIC_*', 'NEXT_DEPLOYMENT_ID', 'VERCEL_DEPLOYMENT_ID', 'API'],
+      webTodos: [
+        'env "!NEXT_PUBLIC_VERCEL_URL": vx has no exclusion, so "NEXT_PUBLIC_*" still takes NEXT_PUBLIC_VERCEL_URL — narrow the pattern to leave it out',
+      ],
       lib: ['API'],
       notes: [],
     })
@@ -994,13 +906,14 @@ describe('turbo-map: turbo 1 `$NAME` env dependencies', () => {
     )
     const task = t.task as {
       dependsOn: string[]
-      exec: { env: { passThrough: string[] } }
+      exec: { env?: { passThrough: string[] } }
       inputs: { env: string[]; workspaceFiles: string[] }
     }
     expect(task.dependsOn).toEqual(['^build'])
+    // inputs.env passes what it keys.
     expect(task.inputs.env).toEqual(['GLOBAL_TOKEN', 'API_URL'])
     expect(task.inputs.workspaceFiles).toEqual(['tsconfig.json'])
-    expect(task.exec.env.passThrough).toEqual(['GLOBAL_TOKEN', 'API_URL'])
+    expect(task.exec.env?.passThrough).toBeUndefined()
     expect(t.todos).toEqual([])
   })
 
@@ -2070,15 +1983,6 @@ describe('turbo-map: an uncached task keeps its key', () => {
 // production; unpassed, a task ran without TZ. Turbo 1 also keyed any
 // name holding THASH (vercel/turborepo#1461); Turbo 2 keys none.
 describe("turbo-map: Turbo's builtin env", () => {
-  const live = [
-    'GITHUB_SHA',
-    'SOMETHING_THASH_YES',
-    'TZ',
-    'VERCEL_ANALYTICS_ID',
-    'VERCEL_DEPLOYMENT_ID',
-    'VERCEL_TARGET_ENV',
-    'VERCEL_URL',
-  ]
   const web = async (
     turboJson: unknown,
     extra: Partial<Parameters<typeof mapTurboWorkspace>[2]>,
@@ -2103,54 +2007,30 @@ describe("turbo-map: Turbo's builtin env", () => {
     return { key: task.inputs.env ?? [], pass: task.exec.env?.passThrough ?? [] }
   }
 
-  it('keys the defaults and the skew rule, and passes the builtins unkeyed', async () => {
-    const skew = (v: string | undefined) => (n: string) =>
-      n === 'VERCEL_SKEW_PROTECTION_ENABLED' ? v : undefined
-    const on = await web({ tasks: { build: {} } }, { envNames: live, envValue: skew('1') })
-    expect(on.key.toSorted()).toEqual([
-      'NEXT_DEPLOYMENT_ID',
-      'VERCEL_ANALYTICS_ID',
-      'VERCEL_DEPLOYMENT_ID',
-      'VERCEL_TARGET_ENV',
-    ])
-    // Keyed names pass too, as Turbo passes what it hashes.
-    expect(on.pass).toEqual(expect.arrayContaining([...on.key, 'TZ']))
-    // CONTROL: skew protection off keys no deployment id; it is still passed.
-    const off = await web({ tasks: { build: {} } }, { envNames: live, envValue: skew('0') })
-    expect(off.key.toSorted()).toEqual([
-      'NEXT_DEPLOYMENT_ID',
-      'VERCEL_ANALYTICS_ID',
-      'VERCEL_TARGET_ENV',
-    ])
-    // The builtin list's literal names, whatever the run's environment
-    // holds: passThrough is keyed by name, so a list matched against the
-    // live names keyed each machine apart and missed the cache once the
-    // configs were written. A wildcard family is a note, as written.
-    const written = await web({ tasks: { build: {} } }, { sourceNames: async () => [] })
-    expect(off.pass.filter((n) => !written.key.includes(n))).toEqual(
-      written.pass.filter((n) => !written.key.includes(n)),
-    )
-    expect(off.pass).not.toContain('VERCEL_URL')
-    expect(off.pass).not.toContain('GITHUB_SHA')
+  // The same under turbo() and in written configs: what is locked never
+  // depends on the machine. The skew name is keyed whatever the condition.
+  it('keys the defaults and the skew name, and passes the builtins, patterns as written', async () => {
+    for (const extra of [{ live: true }, {}]) {
+      const r = await web({ tasks: { build: {} } }, extra)
+      expect(r.key).toEqual([
+        'VERCEL_ANALYTICS_ID',
+        'VERCEL_TARGET_ENV',
+        'NEXT_PUBLIC_*',
+        'NEXT_DEPLOYMENT_ID',
+        'VERCEL_DEPLOYMENT_ID',
+      ])
+      expect(r.pass).toEqual(
+        expect.arrayContaining(['TZ', 'VERCEL', 'VERCEL_*', 'GITHUB_*', 'COMSPEC', 'PNPM_HOME']),
+      )
+      // Not a shell name: core refuses it in exec.env.passThrough.
+      expect(r.pass).not.toContain('ProgramFiles(x86)')
+      expect(r.pass).not.toContain('VERCEL_URL')
+    }
   })
 
   it('a `!` in globalEnv takes the defaults back, as Turbo does', async () => {
-    const r = await web({ globalEnv: ['!VERCEL*'], tasks: { build: {} } }, { envNames: live })
-    expect(r.key).toEqual(['NEXT_DEPLOYMENT_ID'])
-  })
-
-  it('written configs key the defaults and the skew name, and pass the literal builtins', async () => {
-    const r = await web({ tasks: { build: {} } }, { sourceNames: async () => [] })
-    expect(r.key.toSorted()).toEqual([
-      'NEXT_DEPLOYMENT_ID',
-      'VERCEL_ANALYTICS_ID',
-      'VERCEL_DEPLOYMENT_ID',
-      'VERCEL_TARGET_ENV',
-    ])
-    expect(r.pass).toEqual(expect.arrayContaining(['TZ', 'VERCEL', 'COMSPEC', 'PNPM_HOME']))
-    // Not a shell name: core refuses it in exec.env.passThrough.
-    expect(r.pass).not.toContain('ProgramFiles(x86)')
-    expect(r.pass.some((n) => n.includes('*'))).toBe(false)
+    const r = await web({ globalEnv: ['!VERCEL*'], tasks: { build: {} } }, { live: true })
+    expect(r.key).toEqual(['NEXT_PUBLIC_*', 'NEXT_DEPLOYMENT_ID', 'VERCEL_DEPLOYMENT_ID'])
   })
 })
 

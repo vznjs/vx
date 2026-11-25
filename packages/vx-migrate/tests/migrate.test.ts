@@ -268,10 +268,10 @@ describe('vx migrate (turbo)', () => {
       // git's list the maps may be committed source.
       expect(build.inputs?.files).toEqual(['**/*', '!**/*.md', '!src/gen/**', '!coverage/**'])
       expect(build.inputs?.workspaceFiles).toEqual(['tsconfig.base.json'])
-      // env → BOTH inputs.env and passThrough; wildcard dropped. No
-      // globalEnv, globalPassThroughEnv or Turbo builtin.
-      expect(build.inputs!.env).toEqual(['NODE_ENV'])
-      expect(build.exec!.env!.passThrough).toEqual(['NODE_ENV'])
+      // env → inputs.env, which the task also sees; a wildcard kept as
+      // written. No globalEnv, globalPassThroughEnv or Turbo builtin.
+      expect(build.inputs!.env).toEqual(['NODE_ENV', 'VERCEL_*'])
+      expect(build.exec?.env?.passThrough).toBeUndefined()
       // output negation dropped (TODO).
       expect(build.outputs?.files).toEqual(['dist/**', '!dist/**/*.map'])
 
@@ -840,9 +840,9 @@ describe('vx migrate (nx)', () => {
       // {workspaceRoot}/<path> → inputs.workspaceFiles, not a TODO.
       expect(build.inputs?.files).toEqual(['**/*', '!**/*.spec.ts'])
       expect(build.inputs?.workspaceFiles).toEqual(['babel.config.json'])
-      // {env: X} → cache input AND passThrough (isolated child env).
+      // {env: X} → inputs.env, which the task also sees.
       expect(notTurbos(build.inputs!.env!)).toEqual(['NODE_ENV'])
-      expect(notTurbos(build.exec!.env!.passThrough!)).toEqual(['NODE_ENV'])
+      expect(build.exec?.env?.passThrough ?? []).not.toContain('NODE_ENV')
       // {runtime: "<cmd>"} → inputs.workspaceRuntime: Nx runs it at
       // the workspace root (item 913). It used to reach the fall-through
       // and be reported "not representable in vx" (2026-09-20).

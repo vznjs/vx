@@ -56,7 +56,7 @@ describe('migrateTurbo: no global block', () => {
       extraFiles: [],
       imports: [],
       build: {
-        exec: { command: 'tsc', env: { passThrough: ['A'] } },
+        exec: { command: 'tsc' },
         inputs: { files: ['**/*'], env: ['A'] },
         outputs: { files: ['dist/**'] },
         cache: true,

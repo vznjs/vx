@@ -85,6 +85,5 @@ it('a committed .env wraps the shell line; an executor line lists every candidat
     )
     expect(t['inputs'].runtime).toBeUndefined()
     expect(t['inputs'].env).toContain('NX_LOAD_DOT_ENV_FILES')
-    expect(t['exec'].env.passThrough).toContain('NX_LOAD_DOT_ENV_FILES')
   }
 })

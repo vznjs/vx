@@ -17,7 +17,6 @@
     "tests/migrate-turbo-env-named.test.ts": 7,
     "tests/migrate-turbo-env-wildcard.test.ts": 15,
     "tests/migrate-turbo-framework-env.test.ts": 26,
-    "tests/migrate-turbo-framework-prefix.test.ts": 12,
     "tests/migrate-turbo-lockfile-note.test.ts": 30,
     "tests/migrate-turbo-tracked-outputs.test.ts": 24,
     "tests/migrate-vite-task.test.ts": 283,

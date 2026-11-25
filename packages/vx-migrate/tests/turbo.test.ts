@@ -120,11 +120,8 @@ describe('turbo()', () => {
       expect(inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(notTurbos(inputs.env!)).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
       expect(outputs.files).toEqual(['dist/**'])
-      expect(notTurbos(app.config.exec!.env!.passThrough!)).toEqual([
-        'GLOBAL_MODE',
-        'AWS_PROFILE',
-        'NODE_ENV',
-      ])
+      // inputs.env passes too: passThrough holds only what is seen, not keyed.
+      expect(notTurbos(app.config.exec!.env!.passThrough!)).toEqual(['AWS_PROFILE'])
       expect(app.config.exec?.command).toBe('mkdir -p dist && cat src/gen/api.js > dist/app.js')
     },
     TIMEOUT,
@@ -1766,12 +1763,12 @@ describe("Turbo's builtin env under turbo()", () => {
           .outcomes[0]!.status
       expect(await go()).toBe('success')
       expect(await Bun.file(path.join(root, 'packages', 'lib', 'dist', 'e.txt')).text()).toBe(
-        // A builtin wildcard family (VERCEL_*, GITHUB_*) is not matched
-        // against the run's names: the list is keyed, and must key alike
-        // on every machine and in the written configs.
-        'Asia/Tokyo|||preview|\n',
+        // A builtin wildcard family (VERCEL_*, GITHUB_*) passes as a pattern,
+        // matched by the run: seen, never keyed.
+        'Asia/Tokyo|x.vercel.app|abc|preview|\n',
       )
       process.env['TZ'] = 'UTC'
+      process.env['VERCEL_URL'] = 'y.vercel.app'
       expect(await go()).toBe('cache-hit')
       process.env['VERCEL_TARGET_ENV'] = 'production'
       expect(await go()).toBe('success')
