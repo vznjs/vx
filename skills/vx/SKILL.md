@@ -156,6 +156,6 @@ matched no files`); a wildcard (`dist/**`) may match nothing beside one
 
 `bunx skills add vznjs/vx` installs this skill. To match the vx a workspace
 has installed, copy it from there instead:
-`cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/`.
+`mkdir -p .claude/skills/vx && cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/`.
 `vx upgrade` inside a workspace moves the project's `@vzn/vx` and the
 global vx that ran it to the same version, then runs `vx lock`.
