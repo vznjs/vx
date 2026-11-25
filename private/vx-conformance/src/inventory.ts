@@ -307,7 +307,6 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'config-import-specifiers',
     'config-missing-import',
     'config-module-leak',
-    'config-not-input',
     'config-pnp-import',
     'config-refusals-pinned',
     'config-schema-cache-keys',

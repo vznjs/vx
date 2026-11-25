@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { BranchFacts } from '@vzn/vx'
-import { git, gitInit } from '@vzn/vx/testing'
+import { git, gitInit } from '../../vx/tests/helpers/workspace.js'
 import { gitlab } from '../src/index.js'
 
 const GITLAB_KEYS = [

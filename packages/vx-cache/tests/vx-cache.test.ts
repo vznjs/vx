@@ -6,11 +6,13 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { UserError, Cache } from '@vzn/vx'
+import { UserError } from '@vzn/vx'
 import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createCacheServer } from '@vzn/vx-cache-server'
 import type { JWTPayload } from 'jose'
-import { indexDb, run, silentLogger } from '@vzn/vx/testing'
+import { Cache, indexDb } from '../../vx/src/cache/index.js'
+import { run } from '../../vx/tests/helpers/orchestrator.js'
+import { silentLogger } from '../../vx/tests/helpers/orchestrator-fixture.js'
 import {
   BRANCH_JOB,
   GITHUB,
@@ -20,8 +22,8 @@ import {
   REPO,
   ALLOW,
   MAIN_JOB,
-  memBlobs,
-} from '@vzn/vx-cache-server/testing'
+} from '../../vx-cache-server/tests/issuer.js'
+import { memBlobs } from '../../vx-cache-server/tests/mem-blobs.js'
 import { hasCiToken, resolveVxCacheConfig, vxCache, VxCacheLayer } from '../src/index.js'
 
 /** The repository the server's ALLOW names, as a workspace names it. */

@@ -6,7 +6,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { run } from '@vzn/vx/testing'
+import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 import type { PackageMeta } from '../src/packages.js'

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { TaskOutcome } from '@vzn/vx'
-import { runGraph } from '@vzn/vx/testing'
+import { runGraph } from '../../../packages/vx/src/graph/scheduler.js'
 import {
   instance,
   nodeMap,

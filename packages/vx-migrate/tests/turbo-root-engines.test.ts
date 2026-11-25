@@ -5,7 +5,7 @@
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { lock, planRun } from '@vzn/vx/testing'
+import { lock, planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 
 const ws = useTurboWorkspace({ tasks: { build: { outputs: ['dist/**'] } } })

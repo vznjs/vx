@@ -35,10 +35,6 @@
     "./config": {
       "types": "./src/config.ts",
       "import": "./src/config.ts"
-    },
-    "./testing": {
-      "types": "./tests/helpers/testing.ts",
-      "import": "./tests/helpers/testing.ts"
     }
   },
   "typesVersions": {

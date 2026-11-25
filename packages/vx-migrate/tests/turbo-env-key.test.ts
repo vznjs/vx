@@ -3,7 +3,7 @@
 // workspace (~330 ms a run on vercel/ai). A wildcard is kept as a pattern
 // each run matches (ae6d4dd46), so no name moves the mapping.
 import { describe, expect, it } from 'bun:test'
-import { planRun } from '@vzn/vx/testing'
+import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
 

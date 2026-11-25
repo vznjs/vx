@@ -32,9 +32,18 @@ export default defineProject({
         command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
-      dependsOn: ['install', '^testing'],
+      dependsOn: ['install'],
       inputs: {
         files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers and vx-cache-server's test issuer
+        // and blob store (with the conformance file the issuer imports);
+        // ^build keys only each package's src/**.
+        workspaceFiles: [
+          'packages/vx/tests/helpers/**',
+          'packages/vx-cache-server/tests/issuer.ts',
+          'packages/vx-cache-server/tests/mem-blobs.ts',
+          'packages/vx-cache-server/tests/conformance.ts',
+        ],
       },
       outputs: { files: [] },
       cache: true,
@@ -80,9 +89,18 @@ export default defineProject({
           },
         },
       },
-      dependsOn: ['install', '^testing'],
+      dependsOn: ['install'],
       inputs: {
         files: ['src/**', 'tests/**', 'schemas/**', 'package.json'],
+        // The tests import core's test helpers and vx-cache-server's test issuer
+        // and blob store (with the conformance file the issuer imports);
+        // ^build keys only each package's src/**.
+        workspaceFiles: [
+          'packages/vx/tests/helpers/**',
+          'packages/vx-cache-server/tests/issuer.ts',
+          'packages/vx-cache-server/tests/mem-blobs.ts',
+          'packages/vx-cache-server/tests/conformance.ts',
+        ],
       },
       outputs: { files: [] },
       cache: true,

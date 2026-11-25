@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { DiscoverContext, Logger, ProjectMeta, VxPlugin } from '@vzn/vx'
-import { planRun } from '@vzn/vx/testing'
+import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { bun, npm, pnpm, yarn } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 

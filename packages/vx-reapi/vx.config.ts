@@ -80,7 +80,7 @@ const SHARDS: readonly (readonly string[])[] = [
 // on Linux lives in its own network namespace with no route to it.
 const shard = (i: number, files: readonly string[]) => ({
   description: `bun test, shard ${i} of ${SHARDS.length}, one process per file (live suites need VX_REAPI_*_ENDPOINT)`,
-  dependsOn: ['install', '^testing'],
+  dependsOn: ['install'],
   exec: {
     command: `for f in ${files.map((f) => `tests/${f}.test.ts`).join(' ')}; do echo "== $f"; bun test --only-failures "$f" --timeout 90000 || exit 1; done`,
     env: {
@@ -101,6 +101,8 @@ const shard = (i: number, files: readonly string[]) => ({
   inputs: {
     // The tests load protos/ at run time and hold the README to the code.
     files: ['src/**', 'tests/**', 'protos/**', 'package.json', 'tsconfig.json', 'README.md'],
+    // The tests import core's test helpers; ^build keys only core's src/**.
+    workspaceFiles: ['packages/vx/tests/helpers/**'],
     env: [
       'VX_REAPI_TEST_ENDPOINT',
       'VX_REQUIRE_REAPI',
@@ -199,9 +201,11 @@ export default defineProject({
         command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
-      dependsOn: ['install', '^testing'],
+      dependsOn: ['install'],
       inputs: {
         files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,

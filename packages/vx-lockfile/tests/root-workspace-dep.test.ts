@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { Logger } from '@vzn/vx'
-import { planRun } from '@vzn/vx/testing'
+import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { affectedIds, commitAll } from './helpers/affected.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 

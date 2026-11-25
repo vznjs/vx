@@ -305,8 +305,7 @@
         }
       },
       "dependsOn": [
-        "install",
-        "^testing"
+        "install"
       ],
       "inputs": {
         "files": [
@@ -383,8 +382,7 @@
         }
       },
       "dependsOn": [
-        "install",
-        "^testing"
+        "install"
       ],
       "inputs": {
         "files": [

@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { type Logger, loadProjectConfig } from '@vzn/vx'
-import { planRun } from '@vzn/vx/testing'
+import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')

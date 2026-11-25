@@ -91,9 +91,11 @@ const shard = (i: number, files: readonly string[]) => ({
       },
     },
   },
-  dependsOn: ['install', '^testing'],
+  dependsOn: ['install'],
   inputs: {
     files: ['src/**', 'tests/**', 'package.json'],
+    // The tests import core's test helpers; ^build keys only core's src/**.
+    workspaceFiles: ['packages/vx/tests/helpers/**'],
   },
   outputs: { files: [] as string[] },
   cache: true,
@@ -131,9 +133,11 @@ export default defineProject({
         command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
-      dependsOn: ['install', '^testing'],
+      dependsOn: ['install'],
       inputs: {
         files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { lock, planRun } from '@vzn/vx/testing'
+import { lock, planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, ignoredFilesProbe } from '../src/dotenv-probe.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 

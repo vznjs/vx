@@ -26,10 +26,6 @@
     "./worker": {
       "types": "./src/worker.ts",
       "import": "./src/worker.ts"
-    },
-    "./testing": {
-      "types": "./tests/testing.ts",
-      "import": "./tests/testing.ts"
     }
   },
   "files": [

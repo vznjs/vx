@@ -19,21 +19,6 @@ export default defineProject({
       inputs: { files: ['README.md', 'package.json'] },
     },
 
-    // What @vzn/vx-cache's tests import from this package's through their
-    // node_modules (`@vzn/vx-cache-server/testing`): never run, its key
-    // reaches their test and lint tasks (`^testing`).
-    testing: {
-      description: "the test helpers this package's dependants import",
-      inputs: {
-        files: [
-          'tests/testing.ts',
-          'tests/issuer.ts',
-          'tests/mem-blobs.ts',
-          'tests/conformance.ts',
-        ],
-      },
-    },
-
     lint: {
       dependsOn: ['lint.*'],
     },

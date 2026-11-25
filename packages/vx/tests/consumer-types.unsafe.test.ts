@@ -24,9 +24,8 @@ function entries(): string[] {
   for (const dir of readdirSync(path.join(ROOT, 'packages'))) {
     const pkg = JSON.parse(readFileSync(path.join(ROOT, 'packages', dir, 'package.json'), 'utf8'))
     if (pkg.private === true) continue
-    // `./testing` serves the workspace's own tests and never ships.
-    for (const [sub, target] of Object.entries(pkg.exports as Record<string, { types: string }>))
-      if (sub !== './testing') out.push(path.join(ROOT, 'packages', dir, target.types))
+    for (const target of Object.values(pkg.exports as Record<string, { types: string }>))
+      out.push(path.join(ROOT, 'packages', dir, target.types))
   }
   return out
 }

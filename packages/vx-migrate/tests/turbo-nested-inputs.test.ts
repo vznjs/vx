@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
-import { planRun } from '@vzn/vx/testing'
+import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 

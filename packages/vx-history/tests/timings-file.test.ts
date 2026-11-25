@@ -7,7 +7,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { type Logger } from '@vzn/vx'
-import { planRun, run, LocalHistoryProvider } from '@vzn/vx/testing'
+import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
+import { LocalHistoryProvider } from '../../vx/src/history/index.js'
 import { readTimings, warnUnignored, writeTimings } from '../src/timings-file.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')

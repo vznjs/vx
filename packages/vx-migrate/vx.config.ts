@@ -43,10 +43,12 @@ const testShard = (i: number) => ({
     },
     sandbox: SUITE_SANDBOX,
   },
-  dependsOn: ['install', '^testing'],
+  dependsOn: ['install'],
   inputs: {
     // migrate.test.ts holds the README to the code.
     files: ['src/**', 'tests/**', 'package.json', 'README.md'],
+    // The tests import core's test helpers; ^build keys only core's src/**.
+    workspaceFiles: ['packages/vx/tests/helpers/**'],
     env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],
   },
   outputs: { files: [] },
@@ -85,9 +87,11 @@ export default defineProject({
         command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
-      dependsOn: ['install', '^testing'],
+      dependsOn: ['install'],
       inputs: {
         files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,

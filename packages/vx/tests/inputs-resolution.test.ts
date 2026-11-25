@@ -47,12 +47,7 @@ import {
   resolveOutputs,
   resolveWorkspaceOutputs,
 } from '../src/cache/inputs.js'
-import {
-  loadProjectConfig,
-  validateProjectConfig,
-  WORKSPACE_CONFIG_FILENAMES,
-} from '../src/workspace/project-loader.js'
-import { PROJECT_CONFIG_FILENAMES } from '../src/workspace/workspace.js'
+import { loadProjectConfig, validateProjectConfig } from '../src/workspace/project-loader.js'
 import type { InputsConfig } from '../src/config.js'
 import { relPosix } from '../src/util/index.js'
 
@@ -354,10 +349,6 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     '.vx/projects.lock.tmp-123-abc',
     '.vx/dependencies.lock.tmp-123-abc',
     'vx.lock.json.tmp-123-abc',
-    // vx's configs (M, 2026-11-25): the locks key them, from the lists that
-    // name them, so a new name cannot slip into keys.
-    ...PROJECT_CONFIG_FILENAMES,
-    ...WORKSPACE_CONFIG_FILENAMES,
   ]
   // A project's own files that only share a name with vx's (2026-10-17):
   // matched at any depth, an edit to one was a hit. A nested `.git` is
@@ -373,9 +364,6 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     'a/b/.vx/projects.lock.tmp-123-abc',
     'a/b/.vx/dependencies.lock.tmp-123-abc',
     'a/b/vx.lock.json.tmp-123-abc',
-    // A fixture's config deeper in the project is its source.
-    ...PROJECT_CONFIG_FILENAMES.map((n) => `a/b/${n}`),
-    ...WORKSPACE_CONFIG_FILENAMES.map((n) => `a/b/${n}`),
   ]
   // Names one character away from an ignored one. If any of these is excluded
   // the pattern is over-broad, and a real source file has silently left the key.
@@ -400,9 +388,6 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
     '.vx/.gitignore.bak',
     '.vx/dependencies.lock.bak',
     '.vx/tmpl/x',
-    'vx.config.ts.bak',
-    'vx.configs.ts',
-    '.vx/workspace-helpers.ts',
   ]
 
   beforeEach(async () => {

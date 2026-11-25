@@ -11,7 +11,8 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { oidcAuth } from '@vzn/vx-devtools'
 import { createCacheServer } from '@vzn/vx-cache-server'
-import { run, silentLogger } from '@vzn/vx/testing'
+import { run } from '../../vx/tests/helpers/orchestrator.js'
+import { silentLogger } from '../../vx/tests/helpers/orchestrator-fixture.js'
 import {
   ALLOW,
   GITHUB,
@@ -19,8 +20,8 @@ import {
   issuer,
   MAIN_JOB,
   REPO,
-  memBlobs,
-} from '@vzn/vx-cache-server/testing'
+} from '../../vx-cache-server/tests/issuer.js'
+import { memBlobs } from '../../vx-cache-server/tests/mem-blobs.js'
 
 const SEED = Number(Bun.env.VX_FUZZ_SEED ?? 1)
 const ROUNDS = Number(Bun.env.VX_FUZZ_ROUNDS ?? 8)

@@ -32,9 +32,11 @@ export default defineProject({
         command: 'oxlint --type-aware --type-check --ignore-pattern node_modules',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
-      dependsOn: ['install', '^testing'],
+      dependsOn: ['install'],
       inputs: {
         files: ['*.ts', 'src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,
@@ -80,10 +82,12 @@ export default defineProject({
           },
         },
       },
-      dependsOn: ['install', '^testing'],
+      dependsOn: ['install'],
       inputs: {
         // history-view.test.ts holds the README's sample to the code.
         files: ['src/**', 'tests/**', 'schemas/**', 'package.json', 'README.md'],
+        // The tests import core's test helpers; ^build keys only core's src/**.
+        workspaceFiles: ['packages/vx/tests/helpers/**'],
       },
       outputs: { files: [] },
       cache: true,

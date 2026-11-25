@@ -47,8 +47,7 @@
         }
       },
       "dependsOn": [
-        "install",
-        "^testing"
+        "install"
       ],
       "inputs": {
         "files": [
@@ -58,6 +57,9 @@
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {
@@ -125,8 +127,7 @@
         }
       },
       "dependsOn": [
-        "install",
-        "^testing"
+        "install"
       ],
       "inputs": {
         "files": [
@@ -135,6 +136,9 @@
           "schemas/**",
           "package.json",
           "README.md"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/helpers/**"
         ]
       },
       "outputs": {
