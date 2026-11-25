@@ -1921,7 +1921,7 @@ export async function materialiseOutputs(
         digestWith(client.digest, f.contents).hash === f.digest.hash
       const bytes = inline
         ? f.contents! // inlined by the server (`inline_output_files`): zero fetches
-        : Number(f.digest.size_bytes) === 0
+        : isEmptyBlob(client, f.digest)
           ? new Uint8Array()
           : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
       if (bytes === null) {
@@ -2348,10 +2348,9 @@ async function materialiseTree(
       window.filter((w) => isSmallBlob(w.f.digest)).map((w) => w.f.digest),
     )
     await mapBounded(window, WRITE_CONCURRENCY, async ({ abs, f }) => {
-      const bytes =
-        f.digest.size_bytes === 0
-          ? new Uint8Array()
-          : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
+      const bytes = isEmptyBlob(client, f.digest)
+        ? new Uint8Array()
+        : (batched.get(f.digest.hash) ?? (await client.readBlob(f.digest)))
       if (bytes === null) {
         missing(abs, f.digest.hash, abs)
         return
@@ -2366,6 +2365,14 @@ async function materialiseTree(
     })
   }
 }
+
+/**
+ * The empty blob, written without a read. Size 0 alone is not it: a server
+ * that leaves `size_bytes` unset restored every output empty, and the save
+ * cached them. Any other hash is read, and refused for its size there.
+ */
+const isEmptyBlob = (client: ReapiClient, d: Digest): boolean =>
+  Number(d.size_bytes) === 0 && d.hash === digestWith(client.digest, new Uint8Array()).hash
 
 /** A blob fetched in a batch read, and so held in memory with its window. */
 const isSmallBlob = (d: Digest): boolean =>

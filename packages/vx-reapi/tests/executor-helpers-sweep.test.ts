@@ -4,7 +4,7 @@
 // command line is RUN by a real shell, not compared as a string.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test'
 import { lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, writeFile } from 'node:fs/promises'
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import * as grpc from '@grpc/grpc-js'
@@ -641,6 +641,33 @@ describe.if(CHUNKING_SUPPORTED)('materialising outputs', () => {
       0o755, 0o640,
     ])
     expect((await lstat(at('link'))).isSymbolicLink()).toBe(true)
+  })
+
+  // Size 0 was read as "an empty file" whatever the hash: a server that
+  // leaves `size_bytes` unset restored every output empty, and the save
+  // cached them. Only the empty blob's own digest is written unread.
+  it('a size of 0 under a hash that is not the empty blob is read, never written empty', async () => {
+    const body = put('the real body')
+    const zero = { hash: body.hash, size_bytes: 0 }
+    const top: Directory = {
+      files: [{ name: 'in-tree.js', digest: zero, is_executable: false }],
+      directories: [],
+      symlinks: [],
+    }
+    const cases = [
+      { output_files: [{ path: 'out.js', digest: zero, is_executable: false }] },
+      { output_directories: [{ path: 'dist', tree_digest: fake.put(encodeTree(top, [])) }] },
+    ]
+    for (const result of cases) {
+      expect(await refusal(materialise(result, ['out.js', 'dist/**']))).toContain(
+        'blob integrity failure',
+      )
+    }
+    expect(existsSync(path.join(root, 'pkg', 'out.js'))).toBe(false)
+    expect(existsSync(path.join(root, 'pkg', 'dist', 'in-tree.js'))).toBe(false)
+    const empty = put('')
+    await materialise({ output_files: [{ path: 'out.js', digest: empty }] }, ['out.js'])
+    expect(await readFile(path.join(root, 'pkg', 'out.js'), 'utf8')).toBe('')
   })
 
   it('under a literal capture, a missing Tree, a rootless one, a missing child and a missing file each refuse', async () => {
