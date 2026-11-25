@@ -93,19 +93,41 @@ export function paced(raw: OutputWriter): Paced {
     clearStatus: () => raw.clearStatus(),
     hold: () => raw.hold(),
   }
+  // The region set waiting its turn: a later set replaces it, or a wait
+  // replayed every redraw of the status line it spanned.
+  let region: { draw: () => void; force: boolean } | undefined
+  const redraw = (draw: (force: boolean) => void, force = false): void => {
+    if (region !== undefined) {
+      region.force ||= force
+      const f = region.force
+      region.draw = () => draw(f)
+      return
+    }
+    const next = { draw: () => draw(force), force }
+    region = next
+    put(
+      once(() => {
+        if (region === next) region = undefined
+        next.draw()
+      }),
+    )
+  }
+  // A clear or settle after a waiting set: a set after it is drawn after it.
+  const fence = (fn: () => void): void => {
+    region = undefined
+    put(once(fn))
+  }
   const writer: OutputWriter = {
     enabled: raw.enabled,
     write: (chunk) => put(once(() => direct.write(chunk))),
     writeTo: (target, chunk) => put(once(() => direct.writeTo(target, chunk))),
-    setStatus: (line, o) => put(once(() => raw.setStatus(line, o))),
-    setRegion: (lines, o) => put(once(() => raw.setRegion(lines, o))),
-    settle: () => put(once(() => raw.settle())),
-    clearStatus: () => put(once(() => raw.clearStatus())),
-    hold() {
-      let release: (() => void) | undefined
-      put(once(() => (release = raw.hold())))
-      return () => put(once(() => release?.()))
-    },
+    setStatus: (line, o) => redraw((force) => raw.setStatus(line, { force }), o?.force),
+    setRegion: (lines, o) => redraw((force) => raw.setRegion(lines, { force }), o?.force),
+    settle: () => fence(() => raw.settle()),
+    clearStatus: () => fence(() => raw.clearStatus()),
+    // Now, not in turn: a prompt (a remote's `open`) asks with the region
+    // down, and a set still waiting would draw over it.
+    hold: () => raw.hold(),
   }
   return {
     writer,

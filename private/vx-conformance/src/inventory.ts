@@ -1207,6 +1207,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'orchestrator-remote',
     'orchestrator-run',
     'out-pace',
+    'paced-writer',
     'output-dirs-snapshot',
     'output-log',
     'output-memory.unsafe',
