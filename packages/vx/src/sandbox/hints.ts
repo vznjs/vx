@@ -372,8 +372,12 @@ function hiddenUnderGrantHint(
 /** An output line that may say a removal of a write grant was refused (`grantRemovalHint`). */
 export const READ_ONLY_FS = /Read-only file system|EROFS|EBUSY|resource busy/i
 
-/** git's word, on stderr, for a discovery that found no `.git`. */
-export const GIT_NO_REPO = /not a git repository/i
+/**
+ * git's word, on stderr, for a discovery that found no `.git`. A worktree's
+ * `.git` file naming walled data reads `gitfile does not point to a valid
+ * repository` on git 2.5x (CI 2026-11-25).
+ */
+export const GIT_NO_REPO = /not a git repository|gitfile does not point to a valid repository/i
 
 /**
  * The hint for git finding no repository because the sandbox hid `.git`.
