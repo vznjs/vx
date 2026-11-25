@@ -1204,7 +1204,7 @@ It is the one command a repo needs. `pnpm dlx @vzn/vx-migrate` in a pnpm repo wo
 **Flags and files.** Your `package.json` scripts are never edited.
 
 - `--dry` prints the files instead of writing them. It installs nothing, and says what it would install.
-- `--force` overwrites existing files.
+- `--force` overwrites existing `vx.config.*` files. A hand-written `.vx/workspace.*` stays; only `--keep --force` replaces it.
 - `--mjs` writes `vx.config.mjs` instead of `.ts`: the same objects with no type import and no `satisfies`.
 - Use `--mjs` for a package whose own `tsconfig` includes every `.ts` under it, and would compile the config into its dist (TanStack/query).
 

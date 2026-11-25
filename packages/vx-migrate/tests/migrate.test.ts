@@ -1528,7 +1528,7 @@ describe('the writer: what the sweep found unheld', () => {
     '  --no-install     Install nothing and skip vx lock.',
     '  --dry            Print the files instead of writing them.',
     '  --format json    With --dry: the plan as one JSON document.',
-    '  --force          Overwrite an existing .vx/workspace.* and vx.config.*.',
+    '  --force          Overwrite vx.config.*; with --keep, .vx/workspace.* too.',
     '  --mjs            Write .mjs files (no type import) instead of .ts.',
   ].join('\n')
 
@@ -1562,6 +1562,31 @@ describe('the writer: what the sweep found unheld', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  // The help said `--force` overwrote `.vx/workspace.*`; a native migration
+  // keeps a hand-written one, `--force` or not. Only `--keep --force` replaces it.
+  it(
+    '--force replaces a hand-written .vx/workspace.ts only with --keep, as --help says',
+    async () => {
+      const root = await makeTurboWorkspace()
+      const file = path.join(root, '.vx', 'workspace.ts')
+      const mine = 'export default { plugins: [] }\n'
+      try {
+        await mkdir(path.dirname(file), { recursive: true })
+        await writeFile(file, mine)
+        expect((await vx(root, ['--native', '--force'])).code).toBe(0)
+        expect(await Bun.file(file).text()).toBe(mine)
+        expect((await vx(root, ['--keep', '--force'])).code).toBe(0)
+        expect(await Bun.file(file).text()).toContain('turbo()')
+        expect((await vx(root, ['--help'])).out).toContain(
+          '  --force          Overwrite vx.config.*; with --keep, .vx/workspace.* too.',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 
   const detect = async (files: Record<string, string>, args: string[]) => {
     const root = await makeRoot('vx-migrate-det-sweep-')
