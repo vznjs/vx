@@ -351,8 +351,8 @@ key: where a task runs says nothing about what it makes.
 Every other field is in the key, so editing even `description` re-runs
 the task once. More in [Caching](../caching/).
 
-A task can read and write outside its project, named from the workspace
-root. Here a test reads the shared config and writes coverage at the root:
+A task can read a file at the workspace root, named from the root. Here a
+test reads the shared config and keeps its coverage in its own project:
 
 ```ts title="packages/web/vx.config.ts" mark={9,11}
 import { defineProject } from '@vzn/vx/config'
@@ -360,12 +360,12 @@ import { defineProject } from '@vzn/vx/config'
 export default defineProject({
   tasks: {
     test: {
-      exec: { command: 'vitest run --coverage --coverage.reportsDirectory=../../coverage/web' },
+      exec: { command: 'vitest run --coverage' },
       inputs: {
         files: ['src/**', 'vitest.config.ts'],
         workspaceFiles: ['tsconfig.base.json'],
       },
-      outputs: { files: [], workspaceFiles: ['coverage/web/**'] },
+      outputs: { files: ['coverage/**'] },
       cache: true,
     },
   },
