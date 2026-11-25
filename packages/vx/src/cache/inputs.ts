@@ -77,15 +77,9 @@ const ALWAYS_IGNORE = [
   // repository's object store out of a key only if an enumeration ever stops
   // going through git.
   '.git/**',
-  // vx's machine-local state.
+  // vx's machine-local state; the workspace config beside it is a source.
   '.vx/cache/**',
   '.vx/projects.lock',
-  // vx's configs only generate the locks (M, 2026-11-25): the resolved config
-  // keys a task, so a comment edit must not move it. `project-loader.ts` and
-  // `handoff.ts` own the names (tests/inputs-resolution.test.ts holds the lists
-  // equal).
-  'vx.config.{ts,mts,js,mjs,cts,cjs}',
-  '.vx/workspace.{ts,mts,js,mjs,cts,cjs}',
   // `vx lock`'s review copy: the config is keyed already.
   'vx.lock.json',
   // What `vx lock` and `vx init` write beside the lock: a re-lock must not

@@ -69,7 +69,6 @@ describe('a glob input that matches a git-ignored file', () => {
         excluded: ${task('excluded-out', ['src/**', '.env*', '!.env.local'])},
         deep: ${task('deep-out', ['src/**'])},
         own: ${task('own-out', ['src/**', '*.json', 'vx.lock.json*'])},
-        config: ${task('config-out', ['src/**', '*.mjs'])},
         envdir: ${task('envdir-out', ['src/**', 'env/**'])},
       } }\n`,
     )
@@ -131,11 +130,5 @@ describe('a glob input that matches a git-ignored file', () => {
     await writeFile(path.join(app, 'vx.lock.json'), '{}\n')
     await writeFile(path.join(app, 'vx.lock.json.tmp-12'), '{}\n')
     expect(await runTask('own')).toEqual([])
-  })
-
-  // Nor of its configs, which only generate the lock (M, 2026-11-25): `*.mjs`
-  // named the project's own vx.config.mjs "git-ignored" on every miss.
-  it('says nothing of the config vx itself leaves out', async () => {
-    expect(await runTask('config')).toEqual([])
   })
 })

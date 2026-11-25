@@ -21,7 +21,6 @@ import {
   outputMatcher,
   relPosix,
   secretNamed,
-  isVxConfigPath,
 } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { hashArgsOf } from './execute-args.js'
@@ -134,11 +133,7 @@ export async function describeMiss(
   // is a hit. Almost always a glob written against the wrong directory
   // (`lib/**` in a package that builds `src/`). Said once per miss; the
   // task itself succeeds.
-  // vx's configs are never inputs (M, 2026-11-25): naming one is no dead glob.
-  const declaredInputs = [
-    ...(cfg.inputs?.files ?? []),
-    ...(cfg.inputs?.workspaceFiles ?? []),
-  ].filter((g) => !isVxConfigPath(g))
+  const declaredInputs = [...(cfg.inputs?.files ?? []), ...(cfg.inputs?.workspaceFiles ?? [])]
   const unmatched =
     inputs === undefined || declaredInputs.length === 0
       ? []

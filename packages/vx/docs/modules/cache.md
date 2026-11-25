@@ -1609,8 +1609,7 @@ other walker: a project outside a git work tree is a `UserError`
    too) and any matched path is removed.
 4. **Always-ignored** — hard-coded
    (`.git/**`, `.vx/cache/**`,
-   `.vx/projects.lock`, `vx.config.{ts,mts,js,mjs,cts,cjs}`,
-   `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`, `vx.lock.json`, `.vx/.gitattributes`,
+   `.vx/projects.lock`, `vx.lock.json`, `.vx/.gitattributes`,
    `.vx/.gitignore`, `.vx/dependencies.lock`, `.vx/tmp/**`,
    `.vx/projects.lock.tmp-*`, `.vx/dependencies.lock.tmp-*`,
    `vx.lock.json.tmp-*`, relative to the project)

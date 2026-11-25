@@ -1416,7 +1416,6 @@ Paths start at the project folder. vx always leaves out what git ignores, its ow
 **Always left out**
 
 - `.git/**`, `.vx/cache/**`, `.vx/projects.lock`, `vx.lock.json` and `.vx/tmp/**` (where restores stage) at the project root.
-- The project's `vx.config.*` and the root's `.vx/workspace.*`: the lock keys what they resolve to, so a comment edit keeps the key.
 - `src/.vx/tmp/x` and `src/sub/vx.lock.json` are inputs: only the files where vx writes them are left out.
 - The run's cache folder (`cache.dir`, `--cache-dir`), wherever it sits, even when `tmp/**` names an ignored `tmp/vx-cache`.
 - Nothing else: a tool's temp files are the task's to exclude.
@@ -1476,7 +1475,7 @@ Default: `[]`, no files outside the project.
 - `packages/ui/src/**` may reach into another project: there is no project boundary here.
 - Prefer `files` plus `dependsOn` for links between projects. `workspaceFiles` is for inputs that truly live at the root.
 - `/etc/**`, `../x/**` and `C:/x/**` are refused, as in `files`.
-- Still left out: `.git/**`, `.vx/cache/**`, `.vx/projects.lock`, `.vx/tmp/**`, `.vx/workspace.*` and the root's `vx.config.*`, and `vx.lock.json` in every project.
+- Still left out: `.git/**`, `.vx/cache/**`, `.vx/projects.lock`, `.vx/tmp/**`, and `vx.lock.json` in every project.
 - Also left out: the `.tmp-*` files a killed lock write leaves, and untracked files under `node_modules/`.
 - The task's own outputs are left out: its `outputs.workspaceFiles`, and the `outputs.files` its globs reach in its own project.
 - `vx watch` watches the whole workspace root once any config declares `workspaceFiles`, so an edit in a root folder re-runs too.
