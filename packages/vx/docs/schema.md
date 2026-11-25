@@ -460,8 +460,8 @@ Default: no limit, unless the run sets one (`--timeout`, `run.timeout`).
   instead.
 - A persistent task: `timeout` bounds the readiness wait instead. If
   `readyWhen` has not matched in time, the child is SIGTERMed and the task
-  fails (see `persistent` below). Its `not ready` line names whose limit
-  it was too.
+  fails (see `persistent` below).
+- Its `not ready` line names whose limit it was too.
 - A persistent task with no `readyWhen` is ready on spawn, before the timer
   can fire, so its timeout does nothing.
 - A plugin executor: the timeout aborts the request's `signal`. Core
@@ -1145,9 +1145,9 @@ interface ExecEnv {
 - A value holding a `'` is also masked as a shell-quoted line spells it
   (`'\''`).
 - It is also masked URL-encoded (`ab%2Fcd` for `ab/cd`, a token in a
-  query string; the escapes' hex in any case, `%2f` too) and as a JSON
-  string spells it (`pa\"ss`, `\n`), also with non-ASCII escaped as
-  Python's `json.dumps` writes it (`p\u00e4ss`).
+  query string), with the escapes' hex in any case (`%2f` too).
+- It is also masked as a JSON string spells it (`pa\"ss`, `\n`), and
+  with non-ASCII escaped as Python's `json.dumps` writes it (`p\u00e4ss`).
 - URL-encoded as JavaScript, curl, Python's `quote()` and `quote_plus()`
   and `URLSearchParams` each spell it (`ab/cd%2B` from `quote()`, `+` for
   a space).
@@ -2128,8 +2128,8 @@ interface SandboxIgnore {
 
 **Baseline: `sandbox: {}`**
 
-- `sandbox: {}` reads nothing in the workspace and reaches no host. It
-  writes its own `TMPDIR`, and the runtime's own write paths: the
+- `sandbox: {}` reads nothing in the workspace and reaches no host.
+- It writes its own `TMPDIR` and the runtime's own write paths: the
   shared temp directory above it (`/tmp/claude`), `~/.npm/_logs` and
   `~/.claude/debug`. A write there is not reported.
 - `allow: { read: ['.'] }` is the first line of almost every block: the

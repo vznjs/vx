@@ -3532,10 +3532,11 @@ For review, it also writes each project's resolved config, pretty, to
 - `--check` names a project the plugins now map otherwise, a plugin added
   or dropped since included:
   `packages/ui: the plugins map it differently from the lock here`.
-- An edited `.vx/workspace.*` is evaluated: when its plugins now map,
-  discover or digest the dependencies otherwise (an option such as
-  `bun({ scope })`, a plugin added or dropped), a run refuses, naming the
-  file. An edit that changes none of them runs.
+- An edited `.vx/workspace.*` is evaluated. When its plugins now map,
+  discover or digest the dependencies otherwise, a run refuses, naming the
+  file.
+- That is an option such as `bun({ scope })`, or a plugin added or
+  dropped. An edit that changes none of them runs.
 - When a plugin fails before the stage ran (a `discover` refusal),
   `--check` names that failure alone: no config is compared with what
   the stage recorded.

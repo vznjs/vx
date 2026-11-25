@@ -414,7 +414,9 @@ A task that rewrites its own `package.json` with the same bytes (tsdown) keeps i
 
 `discover` gives vx each project's edges as the lockfile records them. If `app` depends on the workspace package `ui`, `app#build` runs after `ui#build` under `^build`.
 
-A member a committed `.gitignore` ignores, with a manifest git does not track, is no project. The manager installs it, but no clone has it, so the lock leaves it out. Track its manifest, or unignore it, to make it one.
+A member a committed `.gitignore` ignores, with a manifest git does not track, is no project.
+
+The manager installs it, but no clone has it, so the lock leaves it out. Track its manifest, or unignore it, to make it one.
 
 The edges are read from the same memo as the digests. There are these kinds:
 

@@ -404,8 +404,10 @@ All of watch mode: [`vx watch`](../../cli/watch/).
   set `exec.timeout` to stop waiting.
 - **`not ready: no line matched readyWhen /…/ within 3s; killed`.** The
   wait passed the timeout the line names: the task's `exec.timeout`, or
-  the run's (`--timeout`). Fix the pattern to match a line the server
-  prints, or raise that timeout.
+  the run's (`--timeout`).
+
+  Fix the pattern to match a line the server prints, or raise that
+  timeout.
 - **A server outlives a `kill -9` of vx.** Nothing runs after `kill -9`,
   except a server that exits when its stdin closes (esbuild `--watch`).
 - **A daemon outlives Ctrl-C.** A daemon a task starts with `setsid` and an empty environment
