@@ -5068,7 +5068,7 @@ vx show <pkg>#<task>             # a single task (`//#<task>`: the root project'
 vx show <task>                   # that task in every project declaring it
 vx show [<task>] --filter <p>    # only the projects `vx run --filter <p>` selects
 vx show <task> --affected        # only the projects whose <task> `vx run <task> --affected` runs
-vx show --affected               # the run's candidates: the changed projects and their dependents
+vx show --affected               # only the projects one of whose tasks the change reaches
 vx show ... --format json        # machine-readable (default: pretty)
 ```
 
@@ -5192,7 +5192,7 @@ Fields the task does not set are left out. An empty list prints `none`.
 projects, the way `vx run` selects them.
 
 ```sh
-vx show --affected               # changed projects and their dependents
+vx show --affected               # projects with a task the change reaches
 vx show test --affected          # projects whose test the run would run
 vx show --filter @demo/web
 ```
@@ -5206,9 +5206,10 @@ vx show --filter @demo/web
 - A dependent whose `test` has no `^test` is not listed.
 - `no affected project's test runs` (stderr): the selection left the list
   empty. `--format json` prints `[]`.
-- `vx show --affected`, no task: no edge to follow. The list is the run's
-  candidates, as `--filter "...[<base>]"` selects.
-- Those candidates are the changed projects and their package dependents.
+- `vx show --affected`, no task: a project is listed when the change
+  reaches one of its declared tasks, as `vx run <task> --affected` judges it.
+- A package dependent with no task edge to the change is not listed.
+- A workspace config edit that no plugin keys on lists nothing.
 - `vx show @demo/web --affected` and `vx show @demo/web#build --filter …`:
   refused beside one project or one task.
 - `vx show projects`, when nothing has that name: an unknown name, whose

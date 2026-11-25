@@ -86,11 +86,22 @@ describe('vx show <task> --affected', () => {
     ])
   })
 
-  it('with no task, lists the run candidates: the changed projects and their dependents', () => {
+  // A project is listed when one of its tasks is affected (M, 2026-11-25),
+  // never for being a package dependent of a changed one.
+  it('with no task, lists the projects one of whose tasks the run keeps', () => {
     expect([shown(noEdge, '--affected=HEAD'), shown(edge, '--affected=HEAD')]).toEqual([
-      ['x', 'y'],
+      ['x'],
       ['x', 'y'],
     ])
+  })
+
+  // A workspace config edit no plugin keys on reaches no task: the list
+  // named every project while `vx run <task> --affected` ran nothing.
+  it('with no task, lists nothing for a workspace config edit no plugin keys on', async () => {
+    const root = await fixture(`{ exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } }`)
+    await rm(path.join(root, 'pkgs/x/f.txt'))
+    await writeFile(path.join(root, '.vx/workspace.mjs'), '// edited\n', { flag: 'a' })
+    expect([shown(root, '--affected=HEAD'), planned(root, 'test')]).toEqual([[], []])
   })
 
   // Another runner's affected set depended on the directory it ran from.

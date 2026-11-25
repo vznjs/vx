@@ -68,9 +68,10 @@ describe('vx show --filter / --affected', () => {
     ])
   })
 
-  it('lists the changed projects and their dependents, and a task among them', () => {
+  // app declares no task: only the default build, which a run never selects.
+  it('lists the projects with an affected task, and a task among them', () => {
     expect([names('--affected=HEAD'), names('lint', '--affected=HEAD')]).toEqual([
-      { code: 0, names: ['app', 'lib'], err: '' },
+      { code: 0, names: ['lib'], err: '' },
       { code: 0, names: ['lib'], err: '' },
     ])
   })

@@ -318,12 +318,12 @@ export function keysTasks(plugins: readonly VxPlugin[]): boolean {
 }
 
 /**
- * The projects whose `task` a `vx run <task> --affected` over `candidates`
- * keeps (`vx show <task> --affected`): the run's graph, `graph` stage and
+ * The projects whose `tasks` a `vx run <tasks> --affected` over `candidates`
+ * keeps (`vx show [<task>] --affected`): the run's graph, `graph` stage and
  * selection, without opening a cache or keying a task.
  */
 export async function affectedTaskProjects(args: {
-  task: string
+  tasks: readonly string[]
   candidates: readonly string[]
   changes: AffectedChanges
   outright?: readonly string[] | undefined
@@ -336,7 +336,7 @@ export async function affectedTaskProjects(args: {
   rules?: WorkspaceRules | undefined
   warn: (message: string) => void
 }): Promise<string[]> {
-  const requested = expandRequested([args.task], args.candidates, args.projects, isDefaultBuild)
+  const requested = expandRequested(args.tasks, args.candidates, args.projects, isDefaultBuild)
   const nodes = buildTaskGraph({
     projects: args.projects,
     packageGraph: args.packageGraph,
@@ -356,5 +356,5 @@ export async function affectedTaskProjects(args: {
     undefined,
     keysTasks(args.plugins),
   )
-  return kept.map((r) => r.project)
+  return [...new Set(kept.map((r) => r.project))]
 }
