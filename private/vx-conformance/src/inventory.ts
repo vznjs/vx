@@ -1354,6 +1354,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'umask-read-race',
     'uncached-key-once',
     'unpassed-env',
+    'upstream-input-chain',
     'upstream-input-moved',
     'upstream-input-window-race',
     'upstream-output-moved',

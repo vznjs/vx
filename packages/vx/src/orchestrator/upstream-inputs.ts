@@ -78,6 +78,8 @@ export class KeyedTasks {
   private readonly closureBits = new Map<string, Uint32Array>()
   /** The entries this run saved here, for the end sweep (`sweep`). */
   private readonly savedHere: { args: ExecuteArgs; hash: string }[] = []
+  /** Windows opened so far: a `reachedSince` answer stands until another opens. */
+  private opens = 0
 
   constructor(
     private readonly nodes: ReadonlyMap<string, TaskNode>,
@@ -89,6 +91,7 @@ export class KeyedTasks {
     let i = 0
     for (const id of nodes.keys()) this.index.set(id, i++)
     windows?.onOpen((dir, reach) => {
+      this.opens++
       if (reach === 'workspace') {
         for (const id of this.keyed.keys()) this.dirty.add(id)
         return
@@ -176,6 +179,32 @@ export class KeyedTasks {
   ): Promise<{ task: string; file: string; sinceMs: number } | undefined> {
     const bits = this.bitsOf(args.node)
     const folded = (this.foldedAny ??= this.foldedByAny())
+    // Each file stat'd once per save, not once per task reading it: on a
+    // one-project chain every task is dirty again after each command, and
+    // their shared inputs were lstat'd N times a save, N² a run. A ctime
+    // read now stands for the whole sweep, so a task is dropped only when
+    // nothing that may write its project opened since the sweep began.
+    const from = Date.now()
+    const ctimes = new Map<string, number | undefined>()
+    const ctimeOf: CtimeOf = (file) => {
+      if (ctimes.has(file)) return ctimes.get(file)
+      const c = ctimeNow(file)
+      ctimes.set(file, c)
+      return c
+    }
+    // Per project for the sweep: from a fixed `from`, a window only ever
+    // adds to the answer, and only by opening, which `opens` counts.
+    const answers = new Map<string, boolean>()
+    let answersAt = this.opens
+    const reached = (windows: CommandWindows, dir: string): boolean => {
+      if (answersAt !== this.opens) {
+        answers.clear()
+        answersAt = this.opens
+      }
+      let r = answers.get(dir)
+      if (r === undefined) answers.set(dir, (r = windows.reachedSince(dir, from, Date.now())))
+      return r
+    }
     for (const id of this.dirty) {
       // No key folds it: no save ever asks.
       if (!folded.has(id)) {
@@ -191,14 +220,13 @@ export class KeyedTasks {
         this.dirty.delete(id)
         continue
       }
-      const at = Date.now()
-      const sweep = movedSince(k, args, ctimeNow)
+      const sweep = movedSince(k, args, ctimeOf)
       const file = typeof sweep === 'object' ? await sweep : sweep
       if (file !== undefined) return { task: id, file, sinceMs: k.atMs }
-      // Unmoved as of `at`, and nothing that may write there opened since,
-      // the await included (a window opening then marked it before this
+      // Unmoved as of `from`, and nothing that may write there opened since,
+      // the awaits included (a window opening then marked it before this
       // drop): the next write in contract opens a window, which marks it again.
-      if (this.windows !== undefined && !this.windows.reachedSince(node.projectDir, at, Date.now()))
+      if (this.windows !== undefined && !reached(this.windows, node.projectDir))
         this.dirty.delete(id)
     }
     return undefined
