@@ -120,12 +120,18 @@ export const SAY: Readonly<Record<string, string>> = {
     '`vx run --tag` is gone, and `@vzn/vx-otel` drops its `vx.tag.<key>` attributes.',
   // Native Windows support does not exist; the page never names it.
   'refactor!: drop native Windows code paths': '',
+  // The 2026-11-26 day branch marks its breaks on this commit; re-key it to
+  // the squash subject on merge.
+  "test(vx): exempt the day branch's pushed over-long subjects":
+    'A task with no `exec` and empty `inputs` is refused. Add `exec`, or drop `inputs` to make it a group.\n\nThe `cache`, `outputs` and `inputs.stability` refusals of such a task name `exec`.',
   'refactor(cli)!: drop the lock merge driver, name it .vx/projects.lock':
     '`vx lock` writes `.vx/projects.lock`, not `.vx/projects.lock.jsonl`, and `vx lock --merge` is gone.',
 }
 
 /** A heading for a commit whose subject uses a word readers do not know. */
 export const TITLE: Readonly<Record<string, string>> = {
+  "test(vx): exempt the day branch's pushed over-long subjects":
+    'A task with empty inputs needs exec',
   'feat!: land 2026-11-25 alpha hardening, locks and docs':
     'Both locks have new versions, and vx lock refuses more',
   'feat(vx-dte)!: plan a distributed run with one engine':
@@ -234,6 +240,8 @@ export const AUTHORS: ReadonlySet<string> = new Set([
  * list puts it under the same heading, in the block for plugin authors.
  */
 export const API: Readonly<Record<string, string>> = {
+  "test(vx): exempt the day branch's pushed over-long subjects":
+    "`defineProject` types require `exec` beside a literal empty `inputs` list. `Cache.orphanStats()` also returns `missing` and `missingBytes`. `AffectedReason.kind` gains `'always'`.",
   'feat(cache)!: make the artifact ceiling a setting, 1 GiB by default':
     '`RunOptions.artifactCeiling` is removed.',
   'feat(orchestrator)!: replace --continue with --fail-fast':
