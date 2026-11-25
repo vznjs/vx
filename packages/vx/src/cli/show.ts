@@ -196,7 +196,17 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       affected = f
       raw.unshift(f.filter)
     }
-    const r = await resolveFilters(process.cwd(), raw, {}, affected, 'show', metas)
+    // The list, with no task, is the changed projects and their dependents,
+    // as `--filter "...[<base>]"` selects: a run widens its candidates to
+    // every project only for the tasks it then narrows.
+    const r = await resolveFilters(
+      process.cwd(),
+      raw,
+      {},
+      parsed.target === undefined ? undefined : affected,
+      'show',
+      metas,
+    )
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
     if ('empty' in r) sayNotice('info', 'vx show', r.empty)
     selected = new Set('empty' in r ? [] : r.names)

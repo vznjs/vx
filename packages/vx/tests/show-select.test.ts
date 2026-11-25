@@ -36,7 +36,8 @@ function names(...args: string[]): { code: number | null; names: string[]; err: 
   }
 }
 
-const LINT = `export default { tasks: { lint: { exec: { command: 'true' } } } }\n`
+// lint reads its own files: one with no `inputs` is marked by any change.
+const LINT = `export default { tasks: { lint: { exec: { command: 'true' }, inputs: { files: ['**'] } } } }\n`
 
 // app depends on lib; tool stands alone; lib and tool declare lint.
 beforeAll(async () => {
