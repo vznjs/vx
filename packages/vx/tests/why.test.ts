@@ -986,11 +986,18 @@ describe('vx why after a run of only a group (X-50)', () => {
       await mkdir(lib, { recursive: true })
       await writeFile(path.join(lib, 'package.json'), JSON.stringify({ name: 'lib' }))
       expect((await vx(root, ['run', 'lib#build'])).code).toBe(0)
-      const r = await vx(root, ['why', 'lib#build'])
+      // The default build is a no-op task: it read "no recorded runs", as
+      // if a run of it would record one (M 2026-11-25: task kinds).
+      const own = await vx(root, ['why', 'lib#build'])
+      expect({ code: own.code, err: own.err }).toEqual({
+        code: 1,
+        err: '› vx why  lib#build is a no-op task, which records no run\n\n  fix  vx show lib#build\n',
+      })
+      const r = await vx(root, ['why', 'lib#test'])
       expect({ code: r.code, err: r.err }).toEqual({
         code: 1,
         err: noticed(
-          'vx why: no recorded runs for "lib#build"; no recorded run executed a task (a group records none: ask about a task it depends on)\n',
+          'vx why: no recorded runs for "lib#test"; no recorded run executed a task (a group or no-op task records none)\n',
         ),
       })
     } finally {
@@ -1262,6 +1269,50 @@ describe('vx why — an upstream that is a group', () => {
         const r = await vx(root, ['why', 'app#test'])
         expect(r.out).toContain('app#test ← app#prep ← lib#build ← file packages/lib/a.txt')
         expect(r.out).not.toContain('vx why app#prep')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
+// A no-op task's key folds its own inputs: "`vx why` on the one whose key
+// moved" sent the user to its members, which moved nothing.
+describe('vx why — an upstream that is a no-op task', () => {
+  it(
+    'says its own inputs moved its key, and names its vx show',
+    async () => {
+      const root = await makeWorkspaceRoot({ prefix: 'vx-why-noop-', git: false })
+      try {
+        await writeEdges(root, { app: ['lib'] })
+        const configs: Array<[string, string]> = [
+          [
+            'app',
+            `export default { tasks: {
+              test: { dependsOn: ['^build'], exec: { command: 'true' }, inputs: { files: ['a.txt'] }, outputs: { files: [] }, cache: true },
+            } }`,
+          ],
+          ['lib', `export default { tasks: {} }`],
+        ]
+        for (const [name, config] of configs) {
+          const dir = path.join(root, 'packages', name)
+          await mkdir(dir, { recursive: true })
+          await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+          await writeFile(path.join(dir, 'a.txt'), name)
+          await writeFile(path.join(dir, 'vx.config.mjs'), config)
+        }
+        const git = gitIn(root)
+        git('init', '-q')
+        git('add', '-A')
+        expect((await vx(root, ['run', 'app#test'])).code).toBe(0)
+        await writeFile(path.join(root, 'packages', 'lib', 'a.txt'), 'changed')
+        expect((await vx(root, ['run', 'app#test'])).code).toBe(0)
+        const r = await vx(root, ['why', 'app#test'])
+        expect(r.out).toContain(
+          'lib#build is a no-op task and records no run; its own inputs or a dependency moved its key, `vx show lib#build` names them',
+        )
+        expect(r.out).not.toContain('lib#build is a group')
       } finally {
         await rm(root, { recursive: true, force: true })
       }

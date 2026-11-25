@@ -154,7 +154,7 @@ function suggest(query: string, ids: readonly string[], invoked: boolean): strin
   // false there, and its advice re-ran the group to the same answer.
   if (ids.length > 0) return '; `vx last --stats` lists the tasks that ran'
   return invoked
-    ? '; no recorded run executed a task (a group records none: ask about a task it depends on)'
+    ? '; no recorded run executed a task (a group or no-op task records none)'
     : `; nothing has run here yet (vx run ${query}, then vx why)`
 }
 
@@ -198,8 +198,10 @@ async function resolveTarget(
       .query('SELECT 1 FROM main.runs WHERE project = ? AND task = ? ORDER BY id DESC LIMIT 1')
       .get(project, task)
     if (hit !== null) return target
-    const kind = await declaresId(target)
-    if (kind === 'group') throw groupRefusal(target)
+    // Named whole, the default build is the task asked about: no bare
+    // `vx run` skipped it.
+    const kind = await declared()
+    if (kind === 'group' || kind === 'no-op task') throw groupRefusal(target, kind)
     const gone = prunedRefusal(cache, target, target)
     if (gone !== undefined) throw gone
     // Declared and never run, while others ran: it read "no recorded runs
@@ -229,7 +231,7 @@ async function resolveTarget(
       // `vx run build` here runs this project's own: another project's
       // runs were explained in its place, unsaid.
       const kind = await declaresId(own)
-      if (kind === 'group') throw groupRefusal(own)
+      if (kind === 'group' || kind === 'no-op task') throw groupRefusal(own, kind)
       if (kind !== false) {
         throw (
           prunedRefusal(cache, own, target) ??
@@ -363,7 +365,10 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     const unrecorded = diff.entries.filter(
       (e) => e.kind === 'upstream' && e.change === 'changed' && !recorded.has(upstreamTask(e.name)),
     )
-    const groups = unrecorded.length > 0 ? await groupMembers(at, taskId) : new Map()
+    const { groups, noops } =
+      unrecorded.length > 0
+        ? await groupMembers(at, taskId)
+        : { groups: new Map<string, string[]>(), noops: new Set<string>() }
     const roots = rootCauses(db, runId, taskId, diff.entries, groups)
     const writers = inputWriters(db, runId, root, taskId, diff.entries, roots)
 
@@ -385,7 +390,7 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         (e) => e.kind === 'plugin',
       )
       const claims = pluginMoved ? await fingerprintFiles(at) : new Map<string, string[]>()
-      const todo = whatToDoRows(taskId, diff, roots, writers, unrecorded, claims)
+      const todo = whatToDoRows(taskId, diff, roots, writers, unrecorded, noops, claims)
       if (todo.length > 0) blocks.push(ui.section('What to do', ui.fields(todo)))
     }
     ui.print('out', ...blocks)
@@ -571,6 +576,7 @@ function whatToDoRows(
   roots: readonly RootCause[],
   writers: readonly InputWriter[],
   unrecorded: readonly DiffEntry[],
+  noops: ReadonlySet<string>,
   claims: ReadonlyMap<string, readonly string[]> = new Map(),
 ): ui.FieldRow[] {
   const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
@@ -580,6 +586,7 @@ function whatToDoRows(
   const upstream = upstreamTodo(
     diff.entries.filter((e) => e.kind === 'upstream'),
     unrecorded,
+    noops,
   )
   const kinds = [...new Set([...diff.entries.map((e) => e.kind), ...rootKinds])].filter(
     (k) => k in WHAT_TO_DO && !(k === 'upstream' && (roots.length > 0 || upstream.length === 0)),
@@ -713,7 +720,11 @@ type DiffEntry = ReturnType<typeof cacheKeyDiff>['entries'][number]
  * (no run of its own) the verb that names what it gathers, and an edge
  * added or removed says the graph changed, since no key moved.
  */
-function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffEntry[]): string[] {
+function upstreamTodo(
+  upstream: readonly DiffEntry[],
+  unrecorded: readonly DiffEntry[],
+  noops: ReadonlySet<string>,
+): string[] {
   const out: string[] = []
   const groups = new Set(unrecorded.map((e) => e.name))
   const moved = [
@@ -732,7 +743,10 @@ function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffE
     )
   for (const g of groups)
     out.push(
-      `${g} is a group and records no run; \`vx show ${g}\` names what it gathers, \`vx why\` on the one whose key moved says why`,
+      // A no-op task's key folds its own inputs: no member may have moved.
+      noops.has(upstreamTask(g))
+        ? `${g} is a no-op task and records no run; its own inputs or a dependency moved its key, \`vx show ${g}\` names them`
+        : `${g} is a group and records no run; \`vx show ${g}\` names what it gathers, \`vx why\` on the one whose key moved says why`,
     )
   const edges = upstream.filter((e) => e.change !== 'changed')
   if (edges.length > 0)
@@ -742,13 +756,14 @@ function upstreamTodo(upstream: readonly DiffEntry[], unrecorded: readonly DiffE
   return out
 }
 
-/** A declared group (no `exec`) records no run: `group` when every declaration is one. */
-type Declared = false | 'task' | 'group'
+/** A declared group or no-op task (no `exec`) records no run: so named when every declaration is one. */
+type Declared = false | 'task' | 'group' | 'no-op task'
 
 /** Whether a project declares `target` (`pkg#task`, or a bare task); `task` when no config loads. */
 async function declares(at: VerbWorkspace, target: string, own = false): Promise<Declared> {
   try {
-    const projects = await loadCliProjects(at.root, await at.projects(), 'all')
+    // The closure: a dependency's default build is a task the run has.
+    const projects = await loadCliProjects(at.root, await at.projects(), 'all', { closure: true })
     const [project, task] = target.includes('#') ? splitTaskId(target) : [undefined, target]
     const found = [...projects.values()].flatMap((p) => {
       const t = p.config.tasks?.[task]
@@ -759,20 +774,22 @@ async function declares(at: VerbWorkspace, target: string, own = false): Promise
         : []
     })
     if (found.length === 0) return false
-    // The default build is a group too, but no one declared it.
-    return found.every((t) => t?.exec === undefined && !isDefaultBuild(t)) ? 'group' : 'task'
+    if (found.every((t) => t?.exec === undefined && t?.inputs === undefined)) return 'group'
+    // The default build is a no-op task: it has `inputs`.
+    return found.every((t) => t?.exec === undefined) ? 'no-op task' : 'task'
   } catch {
     // quiet: with no lock or a broken config, the run says why itself
     return 'task'
   }
 }
 
-function groupRefusal(id: string): UserError {
+function groupRefusal(id: string, kind: 'group' | 'no-op task'): UserError {
+  const what = kind === 'group' ? 'a group' : 'a no-op task'
   return refusal(
-    { tone: 'info', headline: `${id} is a group, which records no run`, fix: `vx show ${id}` },
+    { tone: 'info', headline: `${id} is ${what}, which records no run`, fix: `vx show ${id}` },
     {
       code: 'VX_E_NO_HISTORY',
-      message: `vx why: ${id} is a group, which records no run (vx show ${id} names what it gathers)`,
+      message: `vx why: ${id} is ${what}, which records no run (vx show ${id} names what it ${kind === 'group' ? 'gathers' : 'reads'})`,
     },
   )
 }
@@ -781,7 +798,10 @@ function groupRefusal(id: string): UserError {
  * Each group in `taskId`'s graph with the tasks it gathers. Empty when a
  * config no longer loads: the advice then names the group to `vx show`.
  */
-async function groupMembers(at: VerbWorkspace, taskId: string): Promise<Map<string, string[]>> {
+async function groupMembers(
+  at: VerbWorkspace,
+  taskId: string,
+): Promise<{ groups: Map<string, string[]>; noops: Set<string> }> {
   try {
     const { root } = at
     const metas = await at.projects()
@@ -794,9 +814,13 @@ async function groupMembers(at: VerbWorkspace, taskId: string): Promise<Map<stri
       workspaceRoot: root,
       rules: runRules((await at.workspace()).workspaceConfig),
     })
-    return new Map([...nodes.values()].filter(isGroupTask).map((n) => [n.id, n.deps]))
+    const kept = [...nodes.values()].filter(isGroupTask)
+    return {
+      groups: new Map(kept.map((n) => [n.id, n.deps])),
+      noops: new Set(kept.filter((n) => n.config.inputs !== undefined).map((n) => n.id)),
+    }
   } catch {
-    return new Map()
+    return { groups: new Map(), noops: new Set() }
   }
 }
 

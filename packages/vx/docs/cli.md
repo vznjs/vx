@@ -5562,8 +5562,8 @@ It reads the local `cache.db` and hashes nothing again.
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- Configs are evaluated only when a dependency that moved is a group,
-  which records no run of its own.
+- Configs are evaluated only when a dependency that moved is a group or
+  a no-op task, which records no run of its own.
 
 </div>
 </details>
@@ -5612,7 +5612,8 @@ output and `--format json` keep them whole.
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- A group (`{ dependsOn }`, no `exec`) records no run, so it is refused,
+- A group (`{ dependsOn }`, no `exec`) or a no-op task (`inputs`, no
+  `exec`, like the default `build`) records no run, so it is refused,
   with fix `vx show PKG#TASK`.
 - `TASK` inside a project that declares it is that project's, as
   `vx run` picks.
@@ -5788,6 +5789,8 @@ tasks whose own inputs moved, and prints each chain under `Root cause`:
   line, naming the `vx why` to run next.
 - That line never names a group's `vx why`, which refuses. For a group it
   names the `vx show` that lists what it gathers.
+- For a no-op task it says its own inputs or a dependency moved its key,
+  and names its `vx show`.
 - A dependency added or removed moved no key. Its line says the graph
   changed (`dependsOn` or a project edge).
 - A `config` line names the `vx show` that prints the task's config now.
