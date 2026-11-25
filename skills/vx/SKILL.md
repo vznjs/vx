@@ -65,8 +65,8 @@ against; name one, `--affected=origin/main`, rather than trust the guess)
 and each task you asked for carries `affected` (a dependency it pulls in
 does not):
 `{ kind, file?, project?, via? }`, where `kind` is `input` (a changed file
-is one of its inputs, or its definition), `always` (it has `exec` and no
-`inputs`), `project`, `workspace`, `package`, `named` or `selected`, and
+is one of its inputs, or its definition), `always` (a command with no
+inputs), `project`, `workspace`, `package`, `named` or `selected`, and
 `via` is the `dependsOn` chain that carried the change. A change no input
 declares reaches no task; declare `inputs` on a task so it runs only when
 they change.
