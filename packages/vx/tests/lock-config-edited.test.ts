@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
+import { xxh3hex } from '../src/util/index.js'
 import { addProject, git, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -664,5 +665,67 @@ describe('a config that evaluates otherwise on this machine', () => {
         'packages/core/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
       ),
     ])
+  })
+})
+
+// Beside stamps a run stat'ed the config alone: a helper it imports, edited
+// and committed with no `vx lock`, ran the locked command, green, where a
+// fresh clone refused it. Each config's local imports are stamped with it.
+describe('a file a config imports, edited since vx lock', () => {
+  let root: string
+  let words: string
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-lock-import-' })
+    const dir = await addProject(
+      root,
+      'core',
+      `import { word } from './words.mjs'\nexport default { tasks: { say: { exec: { command: 'echo ' + word } } } }\n`,
+    )
+    words = path.join(dir, 'words.mjs')
+    await writeFile(words, "export const word = 'before'\n")
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'lock')
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('refuses the run, naming the imported file', async () => {
+    await writeFile(words, "export const word = 'after'\n")
+    git(root, 'commit', '-qam', 'edit')
+    const { code, out } = await vx(root, ['run', 'core#say'])
+    expect([code, out]).toEqual([
+      1,
+      expect.stringContaining(
+        'packages/core/words.mjs changed since the last `vx lock` — run `vx lock`',
+      ),
+    ])
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    expect(await vx(root, ['run', 'core#say'])).toEqual({
+      code: 0,
+      out: expect.stringContaining('after'),
+    })
+  })
+
+  it('runs an edit that evaluates as the lock holds, and stamps it', async () => {
+    await writeFile(words, "// a comment\nexport const word = 'before'\n")
+    expect((await vx(root, ['run', 'core#say'])).code).toBe(0)
+    const stamps = await readFile(path.join(root, '.vx', 'cache', 'config-stamps.json'), 'utf8')
+    expect(stamps).toContain(xxh3hex(await readFile(words)))
+  })
+
+  // Stamps an older vx took hold no imports: they are evaluated once, as none.
+  it('refuses beside stamps that recorded no imports', async () => {
+    const at = path.join(root, '.vx', 'cache', 'config-stamps.json')
+    const memo = JSON.parse(await readFile(at, 'utf8')) as { entries: Record<string, unknown>[] }
+    for (const e of memo.entries) {
+      delete e['imports']
+      delete e['reads']
+    }
+    await writeFile(at, JSON.stringify(memo))
+    await writeFile(words, "export const word = 'after'\n")
+    const { code, out } = await vx(root, ['run', 'core#say'])
+    expect([code, out.includes('run `vx lock`')]).toEqual([1, true])
   })
 })

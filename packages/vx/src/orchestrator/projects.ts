@@ -3,12 +3,13 @@
 // plugin `project` stage. `vx lock` runs that stage and records only what it
 // left (`LockedProject.config`); others read the record.
 
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import {
   checkProjectNames,
+  configImports,
   DEPENDENCIES_LOCK_NAME,
   frozenProjectConfigs,
   LOCK_INVALID,
@@ -1078,6 +1079,38 @@ async function workspaceDiscovers(
 }
 
 /**
+ * Each config's local imports (`configImports`), by its project directory,
+ * as files under `root`: the walk names real paths, and a root reached
+ * through a symlink (macOS's temp dir) read them as `../../private/…`.
+ * Stamped beside the configs, so a run notices a helper's edit by a stat.
+ */
+export async function importedBy(
+  root: string,
+  configs: readonly { dir: string; configPath: string | null }[],
+  sources?: ReadonlyMap<string, Uint8Array>,
+): Promise<Map<string, string[]>> {
+  let real: string
+  try {
+    real = realpathSync(root)
+  } catch {
+    real = root
+  }
+  const out = new Map<string, string[]>()
+  await Promise.all(
+    configs.map(async ({ dir, configPath }) => {
+      if (configPath === null) return
+      const read = sources?.get(configPath)
+      const source = read === undefined ? undefined : new TextDecoder().decode(read)
+      const files = (await configImports(configPath, source)).map((f) =>
+        path.join(root, path.relative(real, f)),
+      )
+      if (files.length > 0) out.set(dir, files)
+    }),
+  )
+  return out
+}
+
+/**
  * Of the projects `pick` names, the ones that do not evaluate to what the
  * lock holds, as `vx lock --check` compares them: the config, then the
  * `project` stage's mapping. Each by its config file, or its directory
@@ -1095,7 +1128,12 @@ async function asLockHolds(
   const metas = args.projectMetas.filter(pick)
   if (metas.length === 0) return []
   const files = metas.flatMap((m) => (m.configPath === null ? [] : [m.configPath]))
-  const taken = await takeConfigStamps(root, files)
+  // The configs' bytes as stamped are the ones scanned: read once.
+  const sources = new Map<string, Uint8Array>()
+  const taken = await takeConfigStamps(root, files, sources)
+  const imported = await importedBy(root, metas, sources)
+  const helpers = await takeConfigStamps(root, [...new Set([...imported.values()].flat())])
+  taken.configs = { ...taken.configs, ...helpers.configs }
   const named = (m: ProjectMeta): string =>
     m.configPath === null ? relPosix(root, m.dir) : path.relative(root, m.configPath)
   let fresh: Map<string, unknown>
@@ -1142,6 +1180,13 @@ async function asLockHolds(
     if (isUserError(err)) throw err
     return metas.map(named)
   }
+  // A config's imports are what it was made from, as a mapping's reads are.
+  for (const [dir, got] of imported) {
+    reads ??= new Map()
+    let set = reads.get(dir)
+    if (set === undefined) reads.set(dir, (set = new Set()))
+    for (const f of got) set.add(f)
+  }
   const same = metas.filter((m) => {
     const dir = lockKey(root, m.dir)
     const locked = Object.hasOwn(held.projects, dir) ? held.projects[dir] : undefined
@@ -1171,14 +1216,19 @@ async function asLockHolds(
   }
   if (same.length > 0 || Object.keys(byDir).length > 0) {
     const kept = new Set(same.flatMap((m) => (m.configPath === null ? [] : [named(m)])))
-    // Stamped after the stage read them, as `vx lock` stamps them.
+    // Stamped after the stage read them, as `vx lock` stamps them; an import
+    // as read before the evaluation, beside its config.
+    const imports = new Set([...imported.values()].flat().map((f) => path.relative(root, f)))
     const mapped = await takeConfigStamps(root, [
       ...new Set(
         Object.values(byDir).flatMap((rels) =>
-          rels.filter((r) => !failedReads.has(r)).map((r) => path.join(root, r)),
+          rels.filter((r) => !failedReads.has(r) && !imports.has(r)).map((r) => path.join(root, r)),
         ),
       ),
     ])
+    for (const rel of imports)
+      if (!failedReads.has(rel) && Object.hasOwn(taken.configs, rel))
+        mapped.configs[rel] = taken.configs[rel]!
     await restampConfigs(root, args.cacheDir, digest, {
       at: taken.at,
       configs: {

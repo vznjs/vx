@@ -3281,7 +3281,9 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 - A file a `project` plugin made a config from (turbo.json, a package.json) whose bytes moved is mapped again, in every project that read it. One that maps as the lock holds (a version bump) runs.
 - A file a `project` plugin made a config from is stamped then only when every mapping that read it holds: a refused one stays refused, in every project that read it.
 - A config edit committed without relocking is refused like an uncommitted one.
-- A file a config imports is not checked.
+- A file a config imports by a local path (not from `node_modules`) is stamped with it.
+- Once its bytes moved, every config importing it is evaluated: one that holds runs, else the run refuses, naming the file.
+- Stamps an older vx took hold no imports: they read as none, so the configs are evaluated once.
 - `.vx/workspace.*` is stamped too. Once it moved, its plugins discover and map every project again, as `vx lock --check` does.
 - An edited plugin option that maps otherwise refuses the run. A `run.concurrency` edit runs.
 - A file a `project` plugin made a config from is otherwise checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`.

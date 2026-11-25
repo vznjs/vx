@@ -3256,6 +3256,13 @@ export function ignoredConfigRefusal(
   meta: { readonly name: string; readonly dir: string },
   config?: string,
 ): string | undefined
+// Each config's local imports, by project dir, as files under `root`:
+// `vx lock` and a run that evaluates stamp them beside the configs.
+export function importedBy(
+  root: string,
+  configs: readonly { dir: string; configPath: string | null }[],
+  sources?: ReadonlyMap<string, Uint8Array>, // each config's bytes, already read
+): Promise<Map<string, string[]>>
 
 // The graph is read only for the closure, so only a closure load needs one.
 export type LoadProjectsArgs = LoadProjectsBase &

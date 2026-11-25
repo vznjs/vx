@@ -24,6 +24,7 @@ import {
   hasHook,
   holdLockFiles,
   ignoredConfigRefusal,
+  importedBy,
   loadProjects,
   networkPatternRefusal,
 } from '../orchestrator/index.js'
@@ -285,10 +286,28 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     out.shadowed = shadowed
     // The workspace file too: the plugins' options there map the projects.
     const workspace = await workspaceFile(root)
-    const taken = await takeConfigStamps(root, [
-      ...found.map((f) => f.configPath),
-      ...(workspace !== null && workspaceRootOf(workspace) === root ? [workspace] : []),
-    ])
+    // Each config's local imports, stamped beside it: a helper edited with no
+    // `vx lock` ran the locked config, green.
+    const sources = new Map<string, Uint8Array>()
+    const taken = await takeConfigStamps(
+      root,
+      [
+        ...found.map((f) => f.configPath),
+        ...(workspace !== null && workspaceRootOf(workspace) === root ? [workspace] : []),
+      ],
+      sources,
+    )
+    const imported = await importedBy(root, found, sources)
+    const helpers = await takeConfigStamps(root, [...new Set([...imported.values()].flat())])
+    taken.configs = { ...taken.configs, ...helpers.configs }
+    const byDir: Record<string, string[]> = {}
+    const readBy = (dir: string, files: Iterable<string>): void => {
+      const key = lockKey(root, dir)
+      const rels = [...files].map((f) => relPosix(root, f))
+      if (rels.length > 0) byDir[key] = [...new Set([...(byDir[key] ?? []), ...rels])].sort()
+    }
+    for (const [dir, files] of imported) readBy(dir, files)
+    taken.reads = byDir
     // Only the bytes the plugins came from: an edit since the load is
     // asked of the next run.
     const rel = workspace === null ? null : path.relative(root, workspace)
@@ -351,9 +370,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     // The files a `project` plugin made a config from, stamped as configs are
     // (after the stage read them: one edited in between reads as unchanged).
     if (reads !== undefined && reads.size > 0 && out.stamps !== undefined) {
-      const byDir: Record<string, string[]> = {}
-      for (const [dir, files] of reads)
-        byDir[lockKey(root, dir)] = [...files].map((f) => relPosix(root, f)).sort()
+      for (const [dir, files] of reads) readBy(dir, files)
       const read = await takeConfigStamps(root, [
         ...new Set([...reads.values()].flatMap((f) => [...f])),
       ])

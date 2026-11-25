@@ -326,7 +326,11 @@ evaluated before the refusal (`orchestrator/projects.ts`): one that evaluates as
 the lock holds runs, and `restampConfigs` stamps it again. The stamp held the
 last `vx lock`'s bytes, so a config restored with its lock (`git checkout`) was
 refused while `vx lock --check` passed. A refusal is decided by the file's
-bytes now, never by a memo (rule 9).
+bytes now, never by a memo (rule 9). Each config's local imports
+(`configImports`) are stamped beside it, in `reads` under its project, so a
+run notices a helper's edit by one stat: a stat on the config alone ran a
+helper edited and committed with no `vx lock`, green, where a clone
+refused it. An entry without `imports: true` (an older vx) reads as none.
 
 ### Public surface
 
@@ -334,10 +338,15 @@ bytes now, never by a memo (rule 9).
 export interface ConfigStamps {
   at: number // epoch ms before the first stat: the racy window runs from here
   configs: Record<string, [number, number, string, number?, number?]> // size, mtime, xxh3, ctime, inode
-  reads?: Record<string, string[]> // the files a `project` plugin made each project's config from, by dir
+  reads?: Record<string, string[]> // the files a `project` plugin made each project's config from, and its imports, by dir
+  imports?: true // `reads` holds the imports too
 }
 export const CONFIG_STAMPS_FILE = 'config-stamps.json' // a cache clear deletes it
-export function takeConfigStamps(root: string, files: readonly string[]): Promise<ConfigStamps>
+export function takeConfigStamps(
+  root: string,
+  files: readonly string[],
+  bytes?: Map<string, Uint8Array>, // gets each file's bytes as read, for a scan next
+): Promise<ConfigStamps>
 export function writeConfigStamps(
   root: string,
   cacheDir: string,
