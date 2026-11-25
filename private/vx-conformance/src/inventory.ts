@@ -210,6 +210,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/dependency-names',
     'vx-lockfile/extra-in-project',
     'vx-lockfile/file-dir-dep',
+    'vx-lockfile/ignored-member',
     'vx-lockfile/installed-layout',
     'vx-lockfile/installed-tree',
     'vx-lockfile/link-to-workspace',
