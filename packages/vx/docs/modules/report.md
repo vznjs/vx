@@ -192,9 +192,13 @@ Every logger write is paced by the stream it reaches (`paced.ts`): Bun
 queues what a pipe refuses, so a frame read back without a pause sat
 whole in that queue for a slow reader (+509 MiB for a failed task's 300
 MB under `errors-only`). Each write is a step of a job in one ordered
-queue; once a stream refuses a write (`outputPaced`), the next step
-waits for its drain, so a frame is read from its file only as the reader
-takes it (under 4 MiB queued, `tests/logger-paced-output.test.ts`). The
+queue; once a stream refuses a write (`outputPaced`) and 1 Mi more
+characters went out, the next step waits for its drain, so a frame is
+read from its file only as the reader takes it (under 4 MiB queued,
+`tests/logger-paced-output.test.ts`). Waiting at each refusal (64 KiB
+in Bun) cost a warm run of 200 100 KB hits piped to `cat` 25-50 ms. A
+short frame with nothing queued ahead of it is written at once, with no
+job. The
 logger's state moves when a line is logged, not when it is written, and
 later lines wait behind the frame: the bytes and their order are those a
 reader that never pauses gets. A stream that never refuses (a file, a

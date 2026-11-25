@@ -311,13 +311,14 @@ export function defaultLogger(
   // All stdout goes through the writer so the status line never interleaves
   // with content. Passthrough off a TTY and in CI. Every write is paced
   // (`paced.ts`): a frame read from its file waits for a slow reader.
-  const raw = createOutputWriter(out, {
-    enabled: view.ci !== true,
-    ...(opts.forceFloorMs !== undefined ? { forceFloorMs: opts.forceFloorMs } : {}),
-    ...(opts.coalesce === true ? { coalesce: true } : {}),
-  })
-  const pace = paced(raw)
-  const writer = pace.writer
+  const pace = paced(
+    createOutputWriter(out, {
+      enabled: view.ci !== true,
+      ...(opts.forceFloorMs !== undefined ? { forceFloorMs: opts.forceFloorMs } : {}),
+      ...(opts.coalesce === true ? { coalesce: true } : {}),
+    }),
+  )
+  const { writer, direct: raw } = pace
 
   // Status-display state, driven by the optional lifecycle hooks.
   let total = 0
@@ -751,6 +752,17 @@ export function defaultLogger(
     endsBlank = true
     lineEmitted = false
     streamedSinceBlock = false
+    // Nothing ahead of it: a short frame goes out now, with no job.
+    if (whole && pace.idle) {
+      const block = [...pieces()].join('')
+      if (block.length < PIECEWISE_CHARS) {
+        raw.write(`${open}${lead}${head}${block}${tail}\n`)
+        done?.()
+        return
+      }
+      pieces = () => [block]
+      whole = false
+    }
     pace.put(
       stepping(
         (function* () {
