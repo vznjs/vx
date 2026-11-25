@@ -205,6 +205,7 @@ src/report/plain-output.ts
 src/report/status-line.ts
 src/report/summary.ts
 src/report/tally.ts
+src/report/task-output.ts
 src/sandbox/binds.ts
 src/sandbox/bridges.ts
 src/sandbox/deny-scan.ts
