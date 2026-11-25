@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { type Logger } from '@vzn/vx'
 import type { PackageMeta } from '../src/packages.js'
-import { planRun } from '../../vx/tests/helpers/orchestrator.js'
+import { planRun } from '@vzn/vx/testing'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 

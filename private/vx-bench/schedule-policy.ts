@@ -30,8 +30,8 @@
 import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
 // Source files, not the packages' entry points: the sim must rank exactly
 // as core and the plugin rank, and either entry point loads all of core.
-import { computeReverseDepCount, mergePriorities } from '../../packages/vx/src/graph/priorities.js'
-import { criticalPath } from '../../packages/vx/src/graph/critical-path.js'
+import { computeReverseDepCount, mergePriorities } from '@vzn/vx/testing'
+import { criticalPath } from '@vzn/vx'
 import { prng } from './prng.js'
 
 export type Policy = 'count' | 'median' | 'unknown-first' | 'oracle'

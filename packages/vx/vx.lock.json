@@ -7143,6 +7143,15 @@
         ]
       }
     },
+    "testing": {
+      "description": "the test helpers core's dependants import",
+      "inputs": {
+        "files": [
+          "tests/helpers/**",
+          "package.json"
+        ]
+      }
+    },
     "lint": {
       "dependsOn": [
         "lint.*"

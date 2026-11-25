@@ -200,7 +200,7 @@ export default defineProject({
           },
         },
       },
-      dependsOn: ['install'],
+      dependsOn: ['install', '^testing'],
       inputs: {
         files: ['*.ts', 'real/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
@@ -240,7 +240,7 @@ export default defineProject({
           },
         },
       },
-      dependsOn: ['install'],
+      dependsOn: ['install', '^testing'],
       inputs: { files: ['*.ts', 'real/*.ts', 'real-repos.json', 'tests/**', 'package.json'] },
       outputs: { files: [] },
       cache: true,

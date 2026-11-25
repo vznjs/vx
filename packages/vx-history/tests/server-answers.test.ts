@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { run } from '../../vx/tests/helpers/orchestrator.js'
+import { run } from '@vzn/vx/testing'
 import { HistoryServer } from '../src/history-server.js'
 import { NAMED } from './issuer.js'
 
