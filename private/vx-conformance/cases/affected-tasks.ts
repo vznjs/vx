@@ -93,7 +93,8 @@ export default [
     id: 'affected/task-without-inputs-always-selected',
     category: 'affected',
     kind: 'correctness',
-    title: 'A task that declares no inputs is selected when its project or a project it depends on changes',
+    title:
+      'A task that declares no inputs is selected when its project or a project it depends on changes',
     why: 'A task that names no inputs has not said which of its project’s files it reads, so any edit in its project, or in a project it depends on, may change its result. An affected run must select it there. Leaving it out because nothing declared the edited file skips a check the edit can make fail; selecting it in a project the edit cannot reach reruns work for nothing.',
     from: ['affected-by-inputs'],
     needs: ['affected'],
