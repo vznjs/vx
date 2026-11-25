@@ -102,6 +102,7 @@ A run that starts no task writes no block. It says its one line in the
 step's log, which is where to look:
 
 - `nothing affected since <ref>` (exit 0).
+- `Nothing affected: the change reaches no <task> task.` (exit 0).
 - A refusal before the run: a lockfile changed since `vx lock`, or an
   `--affected` base the clone lacks.
 

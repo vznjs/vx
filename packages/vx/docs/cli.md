@@ -151,7 +151,7 @@ vx run test --affected
 | ------------------------------------- | ---- | ---------------------------------------------------- |
 | no changed project declares `test`    | 0    | `No affected project declares task(s): test.`        |
 | the change reaches no `test` task     | 0    | `Nothing affected: the change reaches no test task.` |
-| the diff touched no project           | 0    | `nothing affected since <ref>` (stderr)              |
+| the diff changed no file              | 0    | `nothing affected since <ref>` (stderr)              |
 | no project anywhere declares the name | 1    | the refusal above                                    |
 
 <details class="vx-deeper" data-level="3">
@@ -630,7 +630,8 @@ With `@demo/web#test` behind `^build`:
 - an edit to `ui/src/button.test.ts`, which only `ui#test` reads, runs
   `ui#test` alone;
 - `@demo/web#lint`, with `inputs` and no dependency, never runs for a change in `ui`.
-- a task with `exec` and no `inputs` runs on every `--affected` run.
+- a task with `exec` and no `inputs` runs on every `--affected` run whose diff
+  changed a file.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
