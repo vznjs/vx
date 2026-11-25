@@ -233,7 +233,7 @@ A merge request pipeline also names the base of a bare `--affected`:
   (`CI_MERGE_REQUEST_TARGET_BRANCH_SHA`). So changes the target took
   since are not run again.
 - In a merge train, the car ahead (`HEAD^1`), whose own pipeline runs
-  its changes.
+  its changes. A fast-forward car is no merge commit: the target head.
 
 </details>
 

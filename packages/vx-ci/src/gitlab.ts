@@ -37,7 +37,7 @@ export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined 
       if (options.cacheScope === false) return
       // GitLab sets each on every job; one that lacks them lost them.
       warnMissing(process.env, GITLAB_VARS, 'gitlab()', (m) => ctx.warn(m))
-      ctx.setBranch(gitlabBranch(process.env, workspace.baseBranch))
+      ctx.setBranch(gitlabBranch(process.env, workspace.baseBranch, ctx.workspaceRoot))
     },
   })
 }
@@ -56,7 +56,8 @@ const GITLAB_VARS = ['CI_PROJECT_PATH', 'CI_COMMIT_REF_NAME', 'CI_DEFAULT_BRANCH
  */
 function gitlabBranch(
   env: Readonly<Record<string, string | undefined>>,
-  baseBranch?: string,
+  baseBranch: string | undefined,
+  workspaceRoot: string,
 ): BranchFacts {
   const value = (key: string): string | undefined => env[key] || undefined
   const head = (b: string | undefined) => (b === undefined ? undefined : `refs/heads/${b}`)
@@ -80,7 +81,7 @@ function gitlabBranch(
       ).filter((r): r is string => r !== undefined),
     ),
   ]
-  const facts = scopeOf(value, baseBranch)
+  const facts = scopeOf(value, baseBranch, workspaceRoot)
   return refs.length === 0 ? facts : { ...facts, refs }
 }
 
@@ -88,23 +89,49 @@ function gitlabBranch(
  * The commit a bare `--affected` compares with. A merged results pipeline
  * runs the merge onto the target's head, so it is compared with that head:
  * the diff base took in every change the target got since the branch
- * forked. A train's car is merged onto the car ahead (its first parent,
- * GitLab's `first_parent_ref`), whose pipeline runs that car's changes.
- * Any other merge request pipeline runs its source branch: the diff base.
+ * forked. A train's car merged with a merge commit sits on the car ahead
+ * (its first parent, GitLab's `first_parent_ref`), whose pipeline runs that
+ * car's changes. Under fast-forward the car is the request's commits
+ * rebased onto the car ahead, so `HEAD^1` held only its last commit's
+ * changes: it is compared with the target head instead. Any other merge
+ * request pipeline runs its source branch: the diff base.
  */
-function baseOf(value: (key: string) => string | undefined): string | undefined {
+function baseOf(
+  value: (key: string) => string | undefined,
+  workspaceRoot: string,
+): string | undefined {
   const event = value('CI_MERGE_REQUEST_EVENT_TYPE')
-  if (event === 'merge_train') return 'HEAD^1'
+  if (event === 'merge_train' && isMerge(workspaceRoot)) return 'HEAD^1'
   const diffBase = value('CI_MERGE_REQUEST_DIFF_BASE_SHA')
-  if (event === 'merged_result') return value('CI_MERGE_REQUEST_TARGET_BRANCH_SHA') ?? diffBase
+  if (event === 'merged_result' || event === 'merge_train')
+    return value('CI_MERGE_REQUEST_TARGET_BRANCH_SHA') ?? diffBase
   return diffBase
+}
+
+/** Whether HEAD is a merge commit: its own parent lines, which a shallow clone keeps. */
+function isMerge(workspaceRoot: string): boolean {
+  let proc
+  try {
+    proc = Bun.spawnSync(['git', 'cat-file', 'commit', 'HEAD'], {
+      cwd: workspaceRoot,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+  } catch {
+    return false
+  }
+  if (proc.exitCode !== 0) return false
+  const header = proc.stdout.toString().split('\n\n', 1)[0]!
+  return header.split('\n').filter((l) => l.startsWith('parent ')).length > 1
 }
 
 function scopeOf(
   value: (key: string) => string | undefined,
   baseBranch: string | undefined,
+  workspaceRoot: string,
 ): BranchFacts {
-  const base = baseOf(value)
+  const base = baseOf(value, workspaceRoot)
   const withBase = (facts: BranchFacts): BranchFacts =>
     base === undefined ? facts : { ...facts, base }
   if (value('CI_MERGE_REQUEST_EVENT_TYPE') === 'merge_train') return withBase({ trusted: true })
