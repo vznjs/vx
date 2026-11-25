@@ -42,6 +42,13 @@ export interface ConfigStamps {
    * config imports, edited with no `vx lock`, ran the locked config, green.
    */
   imports?: true
+  /**
+   * The workspace file's local imports, workspace-relative; each one's stamp
+   * is in `configs`. Stamps without it read as none: a plugin option kept in
+   * a file `.vx/workspace.*` imports, edited with no `vx lock`, ran the
+   * locked commands, green.
+   */
+  workspace?: string[]
 }
 
 interface Stamps extends ConfigStamps {
@@ -92,7 +99,7 @@ export async function writeConfigStamps(
 ): Promise<void> {
   try {
     const lock = xxh3hex(await readFile(path.join(root, '.vx', 'projects.lock')))
-    await keep(cacheDir, { root, lock, ...stamps, imports: true }, true)
+    await keep(cacheDir, { root, lock, workspace: [], ...stamps, imports: true }, true)
   } catch {
     // No memo: the next run evaluates the configs.
   }
@@ -127,6 +134,7 @@ export async function restampConfigs(
             configs: { ...was.configs, ...taken.configs },
             reads: { ...was.reads, ...taken.reads },
             imports: true,
+            ...(taken.workspace === undefined ? {} : { workspace: taken.workspace }),
           },
       false,
     )
@@ -196,6 +204,8 @@ export interface LockStamps {
    * files its config imports, by project directory.
    */
   reads: Record<string, string[]>
+  /** The workspace file's local imports, workspace-relative. */
+  workspace: readonly string[]
   /** Whether `rel` was there (stamped) when `vx lock` ran. */
   present: (rel: string) => boolean
   /**
@@ -224,11 +234,13 @@ export async function stampsBesideLock(
   const stamps = (await readStamps(cacheDir))?.entries.find(
     (e) => e?.root === root && e.lock === lock,
   )
-  if (stamps === undefined || stamps.imports !== true) return undefined
-  const { reads, configs, at } = stamps
+  if (stamps === undefined || stamps.imports !== true || !Array.isArray(stamps.workspace))
+    return undefined
+  const { reads, configs, at, workspace } = stamps
   if (typeof configs !== 'object' || configs === null) return undefined
   return {
     reads: typeof reads === 'object' && reads !== null ? reads : {},
+    workspace,
     present: (rel) => Object.hasOwn(configs, rel),
     edited: async (files) => {
       const edited = await Promise.all(

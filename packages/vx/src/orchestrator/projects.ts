@@ -49,6 +49,7 @@ import {
   cacheScopeError,
   evaluatedWorkspace,
   isCacheScope,
+  loadedWorkspaceImport,
   loadWorkspaceConfig,
   discoveredProject,
   linkDiscoveredEdges,
@@ -59,7 +60,9 @@ import {
   restampConfigs,
   stampsBesideLock,
   takeConfigStamps,
+  type ConfigStamps,
   type ConfigStat,
+  type LockStamps,
 } from '../memo/index.js'
 import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { workspaceFile, workspaceRootOf } from '../handoff.js'
@@ -667,8 +670,16 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       const mapped = hasHook(plugins, 'project')
       const workspace = workspaceAsked ? null : await workspaceStat(workspaceRoot)
       workspaceAsked = true
+      const sources = new Map<string, Uint8Array>()
       const taken =
-        workspace === null ? null : await takeConfigStamps(workspaceRoot, [workspace.file])
+        workspace === null ? null : await takeConfigStamps(workspaceRoot, [workspace.file], sources)
+      if (taken !== null)
+        await stampWorkspaceImports(
+          workspaceRoot,
+          workspace!.file,
+          sources.get(workspace!.file),
+          taken,
+        )
       edited = await asLockHolds(args, digest, held, (m) => {
         if (args.staged?.get(m.name) !== undefined) return false
         if (m.configPath !== null) return true
@@ -679,10 +690,13 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       // workspace file moved since the lock's commit, and the configs too.
       if (edited.length > 0 && workspace !== null && mapped) {
         const rel = relPosix(workspaceRoot, workspace.file)
-        const since = changedSinceCommitOf(workspaceRoot, LOCKFILE_NAME, [rel, ...edited])
-        if (since?.has(rel) === true)
+        // Its imports too: a plugin option may live in one.
+        const own = [rel, ...(taken?.workspace ?? []).map((f) => f.split(path.sep).join('/'))]
+        const since = changedSinceCommitOf(workspaceRoot, LOCKFILE_NAME, [...own, ...edited])
+        const moved = own.filter((f) => since?.has(f) === true)
+        if (since !== null && moved.length > 0)
           edited = [
-            path.relative(workspaceRoot, workspace.file),
+            ...moved.map((f) => f.split('/').join(path.sep)),
             ...edited.filter((f) => {
               const p = f.split(path.sep).join('/')
               return since.has(p) || [...since].some((s) => s.startsWith(`${p}/`))
@@ -721,10 +735,15 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       const mappedFrom = await pluginReads(digest, unstaged)
       const workspace = workspaceAsked ? null : await workspaceStat(workspaceRoot)
       workspaceAsked = true
+      // The workspace file's imports: a plugin option may live in one.
+      const own =
+        workspace === null ? { moved: [], present: [] } : await importStats(workspaceRoot, got)
       edited = [
         ...mappedFrom.moved,
+        ...own.moved,
         ...(await got.edited([
           ...(workspace === null ? [] : [workspace]),
+          ...own.present,
           ...withFile.flatMap((m, i) =>
             recordedOf(m) === undefined
               ? [
@@ -789,10 +808,18 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         // An edit that maps and discovers as the lock holds (a concurrency,
         // a cache plugin) runs, as `vx lock --check` passes it, and is stamped.
         const rel = workspace === null ? null : path.relative(workspaceRoot, workspace.file)
-        if (rel !== null && edited.includes(rel)) {
-          const taken = await takeConfigStamps(workspaceRoot, [workspace!.file])
+        const mine = new Set(rel === null ? [] : [rel, ...got.workspace])
+        if (rel !== null && edited.some((f) => mine.has(f))) {
+          const sources = new Map<string, Uint8Array>()
+          const taken = await takeConfigStamps(workspaceRoot, [workspace!.file], sources)
+          await stampWorkspaceImports(
+            workspaceRoot,
+            workspace!.file,
+            sources.get(workspace!.file),
+            taken,
+          )
           if (await workspaceHolds(args, digest, await lock())) {
-            edited = edited.filter((f) => f !== rel)
+            edited = edited.filter((f) => !mine.has(f))
             // Only the bytes this run's plugins came from: an edit since
             // the load is asked of the next run.
             const read = taken.configs[rel]
@@ -1012,6 +1039,30 @@ async function workspaceStat(root: string): Promise<ConfigStat | null> {
  * `workspaceDiscovers`, then each config after the `project` stage. Asked
  * only once the file moved since its stamp.
  */
+/**
+ * The workspace file's stamped imports, one stat each: `moved` gone, or
+ * there when `vx lock` found it absent; `present` for `LockStamps.edited`.
+ */
+async function importStats(
+  root: string,
+  got: LockStamps,
+): Promise<{ moved: string[]; present: ConfigStat[] }> {
+  const moved: string[] = []
+  const present: ConfigStat[] = []
+  await Promise.all(
+    got.workspace.map(async (rel) => {
+      const file = path.join(root, rel)
+      const st = await stat(file).catch(() => null)
+      if (st === null || !got.present(rel)) {
+        if (st !== null || got.present(rel)) moved.push(rel)
+        return
+      }
+      present.push({ file, size: st.size, mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, ino: st.ino })
+    }),
+  )
+  return { moved: moved.sort(), present }
+}
+
 async function workspaceHolds(
   args: LoadProjectsArgs,
   digest: string,
@@ -1089,25 +1140,49 @@ export async function importedBy(
   configs: readonly { dir: string; configPath: string | null }[],
   sources?: ReadonlyMap<string, Uint8Array>,
 ): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>()
+  await Promise.all(
+    configs.map(async ({ dir, configPath }) => {
+      if (configPath === null) return
+      const files = await importsUnder(root, configPath, sources?.get(configPath))
+      if (files.length > 0) out.set(dir, files)
+    }),
+  )
+  return out
+}
+
+async function importsUnder(
+  root: string,
+  file: string,
+  read: Uint8Array | undefined,
+): Promise<string[]> {
   let real: string
   try {
     real = realpathSync(root)
   } catch {
     real = root
   }
-  const out = new Map<string, string[]>()
-  await Promise.all(
-    configs.map(async ({ dir, configPath }) => {
-      if (configPath === null) return
-      const read = sources?.get(configPath)
-      const source = read === undefined ? undefined : new TextDecoder().decode(read)
-      const files = (await configImports(configPath, source)).map((f) =>
-        path.join(root, path.relative(real, f)),
-      )
-      if (files.length > 0) out.set(dir, files)
-    }),
-  )
-  return out
+  const source = read === undefined ? undefined : new TextDecoder().decode(read)
+  return (await configImports(file, source)).map((f) => path.join(root, path.relative(real, f)))
+}
+
+/**
+ * The workspace file's local imports into `taken`: a plugin option kept in
+ * one, edited with no `vx lock`, ran the locked commands, green. One written
+ * since this process loaded the workspace is listed, not stamped, so the
+ * next run asks it again.
+ */
+export async function stampWorkspaceImports(
+  root: string,
+  file: string,
+  read: Uint8Array | undefined,
+  taken: ConfigStamps,
+): Promise<void> {
+  const files = await importsUnder(root, file, read)
+  const got = await takeConfigStamps(root, files)
+  for (const [rel, stamp] of Object.entries(got.configs))
+    if (loadedWorkspaceImport(file, stamp[1])) taken.configs[rel] = stamp
+  taken.workspace = files.map((f) => path.relative(root, f)).sort()
 }
 
 /**

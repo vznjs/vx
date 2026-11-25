@@ -27,6 +27,7 @@ import {
   importedBy,
   loadProjects,
   networkPatternRefusal,
+  stampWorkspaceImports,
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
@@ -308,6 +309,9 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     }
     for (const [dir, files] of imported) readBy(dir, files)
     taken.reads = byDir
+    // A plugin option may live in a file the workspace file imports.
+    if (workspace !== null && workspaceRootOf(workspace) === root)
+      await stampWorkspaceImports(root, workspace, sources.get(workspace), taken)
     // Only the bytes the plugins came from: an edit since the load is
     // asked of the next run.
     const rel = workspace === null ? null : path.relative(root, workspace)

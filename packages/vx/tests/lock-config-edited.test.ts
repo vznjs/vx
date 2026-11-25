@@ -729,3 +729,88 @@ describe('a file a config imports, edited since vx lock', () => {
     expect([code, out.includes('run `vx lock`')]).toEqual([1, true])
   })
 })
+
+// Stamps held `.vx/workspace.*` alone: a plugin option kept in a file it
+// imports, edited and committed with no `vx lock`, ran the locked commands,
+// green, where `vx lock --check` refused. Its local imports are stamped too.
+describe('a file the workspace file imports, edited since vx lock', () => {
+  const mapper = pluginSource(
+    'org/opts',
+    `{ project(config) {
+        config.tasks = { ...config.tasks, say: { exec: { command: 'echo ' + word } } }
+      } }`,
+  )
+  let root: string
+  const opts = () => path.join(root, '.vx', 'opts.mjs')
+  beforeEach(async () => {
+    root = await makeWorkspace({ prefix: 'vx-lock-workspace-import-' })
+    await addProject(root, 'core')
+    await writeFile(
+      path.join(root, '.vx', 'workspace.mjs'),
+      localWorkspaceSource([mapper], "import { word } from './opts.mjs'\n"),
+    )
+    await writeFile(opts(), "export const word = 'one'\n")
+    expect((await vx(root, ['lock'])).code).toBe(0)
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'lock')
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  for (const stamped of [true, false])
+    it(`refuses an option edited there, naming the file, ${stamped ? 'beside stamps' : 'with no stamps'}`, async () => {
+      expect((await vx(root, ['run', 'core#say'])).code).toBe(0)
+      if (!stamped) await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
+      await writeFile(opts(), "export const word = 'two'\n")
+      git(root, 'commit', '-qam', 'edit')
+      const { code, out } = await vx(root, ['run', 'core#say'])
+      expect([code, out]).toEqual([
+        1,
+        expect.stringContaining('.vx/opts.mjs changed since the last `vx lock` — run `vx lock`'),
+      ])
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      expect(await vx(root, ['run', 'core#say'])).toEqual({
+        code: 0,
+        out: expect.stringContaining('two'),
+      })
+    })
+
+  // Its `config` hook runs after the load and before the stamp: the edit, once.
+  for (const verb of [['run', 'core#say'], ['lock']])
+    it(`is not stamped by \`vx ${verb[0]}\` as edited after the load`, async () => {
+      const editor = pluginSource(
+        'org/editor',
+        `{ async config(_workspace, ctx) {
+            const marker = ctx.workspaceRoot + '/.edit-once'
+            if (await Bun.file(marker).exists()) {
+              await Bun.sleep(5)
+              await Bun.write(ctx.workspaceRoot + '/.vx/opts.mjs', "export const word = 'two'\\n")
+              await (await import('node:fs/promises')).rm(marker)
+            }
+          } }`,
+      )
+      await writeFile(
+        path.join(root, '.vx', 'workspace.mjs'),
+        localWorkspaceSource([mapper, editor], "import { word } from './opts.mjs'\n"),
+      )
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      // With no stamps the run evaluates and stamps the workspace.
+      await rm(path.join(root, '.vx', 'cache', 'config-stamps.json'), { force: true })
+      await writeFile(path.join(root, '.edit-once'), '')
+      expect((await vx(root, verb)).code).toBe(0)
+      expect(await readFile(opts(), 'utf8')).toContain('two')
+      const { code, out } = await vx(root, ['run', 'core#say'])
+      expect([code, out]).toEqual([
+        1,
+        expect.stringContaining('.vx/opts.mjs changed since the last `vx lock`'),
+      ])
+    })
+
+  it('runs an edit that maps as the lock holds, and stamps it', async () => {
+    await writeFile(opts(), "// a comment\nexport const word = 'one'\n")
+    expect((await vx(root, ['run', 'core#say'])).code).toBe(0)
+    const stamps = await readFile(path.join(root, '.vx', 'cache', 'config-stamps.json'), 'utf8')
+    expect(stamps).toContain(xxh3hex(await readFile(opts())))
+  })
+})

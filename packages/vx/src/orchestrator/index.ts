@@ -35,6 +35,7 @@ export {
   addedByPlugin,
   ignoredConfigRefusal,
   importedBy,
+  stampWorkspaceImports,
   loadProjects,
   loadResolvedProjects,
   loadWorkspacePlugins,

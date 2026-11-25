@@ -331,6 +331,11 @@ bytes now, never by a memo (rule 9). Each config's local imports
 run notices a helper's edit by one stat: a stat on the config alone ran a
 helper edited and committed with no `vx lock`, green, where a clone
 refused it. An entry without `imports: true` (an older vx) reads as none.
+The workspace file's local imports are stamped too, listed in `workspace`:
+a plugin option kept in one, edited with no `vx lock`, ran the locked
+commands, green. One written after the run loaded the workspace is listed,
+not stamped, so the next run asks it. An entry without `workspace` reads
+as none.
 
 ### Public surface
 
@@ -340,6 +345,7 @@ export interface ConfigStamps {
   configs: Record<string, [number, number, string, number?, number?]> // size, mtime, xxh3, ctime, inode
   reads?: Record<string, string[]> // the files a `project` plugin made each project's config from, and its imports, by dir
   imports?: true // `reads` holds the imports too
+  workspace?: string[] // the workspace file's local imports
 }
 export const CONFIG_STAMPS_FILE = 'config-stamps.json' // a cache clear deletes it
 export function takeConfigStamps(
@@ -355,6 +361,7 @@ export function writeConfigStamps(
 // The stamps beside the lock `lock`, one stat a load: undefined when none were taken here
 export interface LockStamps {
   reads: Record<string, string[]> // the files a `project` plugin made each project's config from, by dir
+  workspace: readonly string[] // the workspace file's local imports
   present: (rel: string) => boolean // whether `rel` was there when `vx lock` ran
   edited: (files: readonly ConfigStat[]) => Promise<string[]> // ConfigStat: { file, size, mtimeMs, ctimeMs, ino }
 }

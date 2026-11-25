@@ -3285,6 +3285,7 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 - Once its bytes moved, every config importing it is evaluated: one that holds runs, else the run refuses, naming the file.
 - Stamps an older vx took hold no imports: they read as none, so the configs are evaluated once.
 - `.vx/workspace.*` is stamped too. Once it moved, its plugins discover and map every project again, as `vx lock --check` does.
+- So is a file `.vx/workspace.*` imports by a local path, where a plugin option may live. Its edit is asked the same way, naming the file.
 - An edited plugin option that maps otherwise refuses the run. A `run.concurrency` edit runs.
 - A file a `project` plugin made a config from is otherwise checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`.
 - A named file that appears or goes counts as an edit. The plugin names it (`ProjectHookContext.read`).

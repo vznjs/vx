@@ -309,6 +309,9 @@ export async function loadWorkspaceConfig(workspaceRoot: string): Promise<Worksp
 // Whether `hash` is of the bytes this process last evaluated as that workspace
 // file: a stamp taken after a later edit holds plugins no run checked.
 export function evaluatedWorkspace(file: string, hash: string): boolean
+// Whether a file the workspace file imports, written at `mtimeMs`, is as
+// this process's load read it.
+export function loadedWorkspaceImport(file: string, mtimeMs: number): boolean
 export function stdoutToStderr(): () => void // JS routes to stdout → stderr until the release; ui.data still writes out (a core verb's --format json)
 
 // The batch form: one staged evaluation round for many configs. Every

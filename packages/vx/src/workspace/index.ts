@@ -49,6 +49,7 @@ export {
 } from './dependencies-lock.js'
 export {
   evaluatedWorkspace,
+  loadedWorkspaceImport,
   loadProjectConfig,
   loadProjectConfigs,
   loadWorkspaceConfig,

@@ -1355,6 +1355,16 @@ export function evaluatedWorkspace(file: string, hash: string): boolean {
 }
 
 /**
+ * Whether a file the workspace config `file` imports, last written at
+ * `mtimeMs`, was as this process's load read it: one written after the load
+ * began holds bytes whose plugins no run checked.
+ */
+export function loadedWorkspaceImport(file: string, mtimeMs: number): boolean {
+  const since = workspaceLoadedAt.get(file) ?? workspaceLoadedAt.get(path.resolve(file))
+  return since !== undefined && Math.floor(mtimeMs) <= since
+}
+
+/**
  * A repeat load (`vx watch`, a plugin verb) busts the workspace config's URL,
  * but Bun serves its imports from the registry: an edited local plugin silently
  * kept its first version. Bun cannot re-evaluate, so the load is refused,

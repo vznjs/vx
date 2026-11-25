@@ -3263,6 +3263,14 @@ export function importedBy(
   configs: readonly { dir: string; configPath: string | null }[],
   sources?: ReadonlyMap<string, Uint8Array>, // each config's bytes, already read
 ): Promise<Map<string, string[]>>
+// The workspace file's local imports into `taken` (`workspace` and their
+// stamps), one written since this process's load listed but not stamped.
+export function stampWorkspaceImports(
+  root: string,
+  file: string,
+  read: Uint8Array | undefined, // the workspace file's bytes, already read
+  taken: ConfigStamps,
+): Promise<void>
 
 // The graph is read only for the closure, so only a closure load needs one.
 export type LoadProjectsArgs = LoadProjectsBase &
