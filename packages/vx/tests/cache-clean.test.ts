@@ -299,6 +299,43 @@ describe('vx cache clean with no bound clears the cache', () => {
     },
     TIMEOUT,
   )
+  // The size a clear reports was read before it waited for the store: what a
+  // run in another checkout saved meanwhile was deleted but not counted.
+  it(
+    'a clear counts what a run in another checkout saved while it waited',
+    async () => {
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const st = store()
+      const held = new Database(path.join(st, 'store.db'))
+      held.query('SELECT count(*) FROM entries').get()
+      const proc = Bun.spawn([process.execPath, BIN, 'cache', 'clean', '--format', 'json'], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, NO_COLOR: '1', HOME: home, VX_CACHE_DIR: '' },
+      })
+      const out = new Response(proc.stdout).text()
+      let err = ''
+      const reader = proc.stderr.getReader()
+      const decoder = new TextDecoder()
+      const MiB = 1024 * 1024
+      try {
+        while (!err.includes('waiting for another vx process')) {
+          const { done, value } = await reader.read()
+          if (done) break
+          err += decoder.decode(value, { stream: true })
+        }
+        writeFileSync(path.join(st, '00000000000000b1.tar.zst'), new Uint8Array(4 * MiB).fill(7))
+      } finally {
+        held.close()
+      }
+      for (let c = await reader.read(); !c.done; c = await reader.read()) decoder.decode(c.value)
+      expect(await proc.exited).toBe(0)
+      const { bytesFreed } = JSON.parse(await out) as { bytesFreed: number }
+      expect(bytesFreed).toBeGreaterThanOrEqual(4 * MiB)
+    },
+    TIMEOUT,
+  )
   // Two checkouts' cleans waiting on one run: each failed try kept the lock
   // it had got, so once the run closed each still saw the other and both
   // waited forever (two worktrees' `vx cache clean` at once, a fuzz hang).
