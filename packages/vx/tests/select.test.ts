@@ -75,10 +75,9 @@ describe('findCwdProject', () => {
     expect(await findCwdProject(path.join(root, 'packages', 'app', 'src'))).toBe('app')
   })
 
-  it('a config added since the lock is said, never read as the project around it', async () => {
-    // The lock holds the projects, so a config written after it was no
-    // project: from its directory a run took the locked project above it
-    // (the root's `build` ran for a new member) or said "not inside a project".
+  it('a config added since the lock is not there: the locked project around it places the run', async () => {
+    // "Not in lock not there" (owner, 2026-11-25): a run never looks for a
+    // config, so one written after the lock is no project until `vx lock`.
     const config = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
     const nested = path.join(root, 'packages', 'app', 'tools')
     const fresh = path.join(root, 'packages', 'fresh')
@@ -86,46 +85,25 @@ describe('findCwdProject', () => {
     await Bun.write(path.join(fresh, 'vx.config.mjs'), config)
     await mkdir(path.join(fresh, 'src'), { recursive: true })
     try {
-      await expect(findCwdProject(nested)).rejects.toThrow(
-        'packages/app/tools/vx.config.mjs is not in the lock yet — run `vx lock`',
-      )
-      // The lock's code, as `fresh#build` and `--filter ./packages/fresh` give it.
-      await expect(findCwdProject(nested)).rejects.toMatchObject({ code: 'VX_E_LOCK' })
-      await expect(findCwdProject(path.join(fresh, 'src'))).rejects.toThrow(
-        'packages/fresh/vx.config.mjs is not in the lock yet — run `vx lock`',
-      )
-      // CONTROL: a config git ignores is no project `vx lock` would add.
-      await Bun.write(path.join(root, '.gitignore'), 'packages/app/tools/\n')
       expect(await findCwdProject(nested)).toBe('app')
+      expect(await findCwdProject(path.join(fresh, 'src'))).toBeNull()
     } finally {
       await rm(nested, { recursive: true, force: true })
       await rm(fresh, { recursive: true, force: true })
-      await rm(path.join(root, '.gitignore'), { force: true })
     }
   })
 })
 
 describe('resolveFilters', () => {
-  it('a filter naming a config the lock lacks is the lock refusal', async () => {
-    // "Projects: app, lib" read as a typo of a path that holds a config
-    // written after `vx lock`; by name it was that alone, a usage error
-    // where `fresh#build` and a run from its directory say VX_E_LOCK.
+  it('a filter naming a config the lock lacks matches no project', async () => {
     const fresh = path.join(root, 'packages', 'fresh')
     await Bun.write(path.join(fresh, 'vx.config.mjs'), 'export default {}\n')
     try {
       for (const filter of ['./packages/fresh', 'packages/fresh']) {
         const { value } = await quiet(() => resolveFilters(root, [filter]))
-        expect(value).toEqual({
-          error: `filter "${filter}": packages/fresh/vx.config.mjs is not in the lock yet — run \`vx lock\``,
-          code: 'VX_E_LOCK',
-        })
+        expect(value).toMatchObject({ error: expect.stringContaining('no projects matched') })
+        expect(value).not.toHaveProperty('code')
       }
-      // Beside a filter that matched, the same refusal.
-      const beside = await quiet(() => resolveFilters(root, ['app', './packages/fresh']))
-      expect(beside.value).toEqual({
-        error: `filter "./packages/fresh": packages/fresh/vx.config.mjs is not in the lock yet — run \`vx lock\``,
-        code: 'VX_E_LOCK',
-      })
     } finally {
       await rm(fresh, { recursive: true, force: true })
     }

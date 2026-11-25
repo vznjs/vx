@@ -14,15 +14,12 @@ import {
   applyFilters,
   buildPackageGraph,
   configuredBaseBranch,
-  configsOutsideLock,
   defaultAffectedBase,
-  findProjectConfigs,
   findWorkspaceRoot,
   type FingerprintClaims,
   lockKey,
   NO_LOCK,
   parseFilter,
-  PROJECT_CONFIG_FILENAMES,
   type PackageGraph,
   type ProjectMeta,
   readLockfile,
@@ -32,7 +29,6 @@ import type { ProjectEntry } from '../workspace/index.js'
 import { isDefaultBuild, parseDependencySpec } from '../graph/index.js'
 import { declaresInput, lazyGitEnumeration, workspaceFilesReachInto } from '../cache/index.js'
 import {
-  BUN_GLOB_WILDCARDS,
   isUserError,
   listed,
   maskedCommand,
@@ -50,8 +46,6 @@ import {
   discoveryOf,
   fingerprintClaims,
   hashExtra,
-  renamedSinceLock,
-  unlockedDir,
   withExtraHashes,
 } from '../orchestrator/index.js'
 import {
@@ -227,68 +221,16 @@ export async function findCwdSelection(
         return p.dir
       }
     })
-  await refuseUnlockedConfig(root, abs, found?.dir ?? null)
   return found === null ? null : { name: found.name, discovered: { root, projects } }
 }
 
-/**
- * The discovery an `--all` run takes every project from, refused while a
- * config is on disk that the lock holds no project for: the run left it
- * out, green. One git spawn, paid by `--all` alone.
- */
+/** The discovery an `--all` run takes every project from: the lock's, nothing else. */
 export async function findAllSelection(
   cwd: string,
   load: CliLoadOptions = {},
 ): Promise<{ root: string; projects: ProjectMeta[] }> {
   const root = await findWorkspaceRoot(cwd)
-  const projects = await discoverCliProjects(root, load)
-  const locked = new Set(
-    projects.flatMap((p) =>
-      typeof p.configPath === 'string' ? [relPosix(root, path.dirname(p.configPath))] : [],
-    ),
-  )
-  const unlocked = await configsOutsideLock(root, locked)
-  if (unlocked.length > 0)
-    throw new UserError(
-      `${listed(unlocked, 5)} ${unlocked.length === 1 ? 'is' : 'are'} not in the lock yet — run \`vx lock\``,
-      'VX_E_LOCK',
-    )
-  return { root, projects }
-}
-
-/**
- * A config `vx lock` would find between the cwd and its placing project:
- * written after the lock it is no project yet, and a run there ran the project
- * above or said "not inside a project". One readdir per directory between them.
- */
-async function refuseUnlockedConfig(
-  root: string,
-  abs: string,
-  placed: string | null,
-): Promise<void> {
-  const top = placed ?? root
-  if (abs !== top && !abs.startsWith(top + path.sep)) return
-  for (let dir = abs; ; dir = path.dirname(dir)) {
-    if (dir === placed) return
-    let names: string[]
-    try {
-      names = fs.readdirSync(dir)
-    } catch {
-      names = []
-    }
-    const file = PROJECT_CONFIG_FILENAMES.find((n) => names.includes(n))
-    if (file !== undefined) {
-      const { configs } = await findProjectConfigs(root)
-      const config = configs.find((c) => c.dir === dir)
-      if (config !== undefined) {
-        throw new UserError(
-          `${relPosix(root, config.configPath)} is not in the lock yet — run \`vx lock\``,
-          'VX_E_LOCK',
-        )
-      }
-    }
-    if (dir === root || dir === path.dirname(dir)) return
-  }
+  return { root, projects: await discoverCliProjects(root, load) }
 }
 
 export type FilterResolution =
@@ -666,13 +608,6 @@ export async function resolveFilters(
     // One line, not a warning per pattern then the same error: the patterns are
     // in it, with the nearest project name as hint. Only patterns that matched
     // nothing.
-    const unlocked = await unlockedFilter(root, parsed, unmatched, projects)
-    if (unlocked !== undefined) {
-      return {
-        error: `filter "${unlocked.filter}": ${unlocked.line}`,
-        code: 'VX_E_LOCK',
-      }
-    }
     const hint =
       bracedHint(root, parsed, unmatched, projects, graph) ??
       rootRelativeHint(root, cwd, parsed, unmatched, projects, graph) ??
@@ -861,39 +796,6 @@ export async function pickTask(
   } finally {
     rl.close()
   }
-}
-
-/**
- * The first unmatched include naming (by path, dir name or package name) a
- * config `vx lock` would make a project: written after the lock it is none yet.
- * Or a locked project's new package.json name, which it takes at `vx lock`.
- * No-match path only.
- */
-async function unlockedFilter(
-  root: string,
-  parsed: readonly ReturnType<typeof parseFilter>[],
-  unmatched: readonly string[],
-  projects: readonly ProjectMeta[],
-): Promise<{ filter: string; line: string } | undefined> {
-  for (const f of parsed) {
-    if (f.negate || f.tag === true || !unmatched.includes(f.raw)) continue
-    if (
-      f.isPath
-        ? f.pathGlob !== undefined
-        : BUN_GLOB_WILDCARDS.test(f.matcher) || f.matcher.includes('!')
-    )
-      continue
-    const config = await unlockedDir(f.matcher, projects, root)
-    if (config !== undefined)
-      return {
-        filter: f.raw,
-        line: `${relPosix(root, config)} is not in the lock yet — run \`vx lock\``,
-      }
-    if (f.isPath) continue
-    const renamed = await renamedSinceLock(f.matcher, projects, root)
-    if (renamed !== undefined) return { filter: f.raw, line: renamed }
-  }
-  return undefined
 }
 
 /**

@@ -111,10 +111,9 @@ describe('a workspace that declares no task yet', () => {
     ])
   })
 
-  // A `vx lock` that failed left a lock holding none of the configs that
-  // declare tasks: "no project declares a task yet" sent the user to add
-  // one, beside the config that declares it.
-  it('names a config the lock does not hold, not "declares a task yet"', async () => {
+  // Not in the lock, not there: a run never looks for the config `vx lock`
+  // has not read, so the lock's answer stands.
+  it('a config the lock does not hold is not there for the refusal', async () => {
     const ws = await makeWorkspace({ prefix: 'vx-unlocked-task-' })
     try {
       await addProject(ws, 'x', 'export default { tasks: {} }')
@@ -130,13 +129,7 @@ describe('a workspace that declares no task yet', () => {
         cwd: ws,
         stdin: 'ignore',
       })
-      expect([p.exitCode, p.stderr.toString()]).toEqual([
-        1,
-        noticed(
-          // An --all run checks every config against the lock first (05c43fc).
-          'vx run: packages/z/vx.config.mjs is not in the lock yet — run `vx lock`\n',
-        ),
-      ])
+      expect([p.exitCode, p.stderr.toString().includes('packages/z')]).toEqual([1, false])
     } finally {
       await rm(ws, { recursive: true, force: true })
     }

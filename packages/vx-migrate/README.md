@@ -109,11 +109,10 @@ vx lock --check  # name each package the mapping now says otherwise for
 - A package with no `vx.config` is included.
 - A run reads that record and maps nothing. It reads no `turbo.json`, manifest, git or environment for the mapping.
 - So an edit to `turbo.json` or a script runs only after the next `vx lock`.
-- Until then a run on this machine refuses: `turbo.json changed since the last \`vx lock\` — run \`vx lock\``, as for an edited `vx.config`.
-- An edit that maps the same (a version bump) runs.
-- A package `turbo.json` added since counts as an edit too.
+- Until then a run runs what the lock holds, unrefused, as for an edited `vx.config`, on a fresh clone too. `vx lock --check` names the drift.
+- So does a package `turbo.json` added since.
 - A package added since has no tasks until `vx lock`.
-- Adding or dropping `turbo()`, or editing its options, is refused the same way, naming `.vx/workspace.ts`.
+- Adding or dropping `turbo()`, or editing its options, changes nothing until `vx lock` either.
 
 ### What it does not do
 
@@ -123,7 +122,7 @@ vx lock --check  # name each package the mapping now says otherwise for
 - They are warnings instead of `TODO(vx-migrate)` comments. `bunx @vzn/vx-migrate --dry` lists the same set once.
 - The cost is `vx lock`'s: on a 1,000-package workspace with no `vx.config` files, the mapping takes about 42 ms.
 - A run pays none of it; it reads the lock.
-- Under `vx watch`, as on any run, a `package.json` script or `turbo.json` edit is refused until `vx lock`.
+- Under `vx watch`, as on any run, a `package.json` script or `turbo.json` edit runs the locked command until `vx lock`.
 
 <details><summary>Details</summary>
 
@@ -492,11 +491,12 @@ So the loader refuses two cached tasks whose outputs provably overlap. Example: 
 - That covers `envMode` at top level or in `global`, and `TURBO_ENV_MODE=loose`, which wins.
 - An unknown Turbo key is a todo naming it. `extends` is accepted and ignored: the overlay order above is what it means.
 
-**Workspace settings.** The workspace keys vx has a home for, top level or in `global`, fill what `.vx/workspace.ts` leaves unset.
+**Workspace settings.** A run reads no turbo.json, so its workspace keys reach vx through the `.vx/workspace.ts` a migration writes.
 
 - `concurrency` (`"10"`, or `"50%"` of the cores) is `run.concurrency`.
-- `TURBO_CONCURRENCY` wins over turbo.json, as under Turbo. A set one decides, its `0` included.
-- `boundaries.tags` is `run.rules.dependencies`. A tag's `dependencies.allow` / `deny` is its rule.
+- On a run `turbo()` takes `TURBO_CONCURRENCY` when `.vx/workspace.ts` sets none. A set one decides; `0` is none.
+- `boundaries.tags` is `run.rules.dependencies`, which `vx lock` checks; `turbo()` reads them there when `.vx/workspace.ts` sets none.
+- A tag's `dependencies.allow` / `deny` is its rule.
 - A `dependents.deny` is each named tag's deny of that tag.
 - `dependents.allow` (who may depend on the tag) has no vx form and is a note.
 - A migration writes the same fields into the `.vx/workspace.ts` it writes, or names each beside one already there.
@@ -520,6 +520,7 @@ So the loader refuses two cached tasks whose outputs provably overlap. Example: 
 - So a bare `vx run build --affected` compares with the same ref.
 - With it unset on GitHub Actions (`GITHUB_ACTIONS`), Turbo's own base applies.
 - That base is a pull request's `GITHUB_BASE_REF`, else the push event's `before` from `GITHUB_EVENT_PATH`.
+- turbo.json's `futureFlags.githubActionsRemoteBaseRefFallback` is not read: a run reads no turbo.json.
 - `TURBO_SCM_HEAD` is the commit Turbo compares up to. vx's is its checkout: `--affected` compares the base with HEAD and its working tree.
 - So a head at HEAD's commit (`$GITHUB_SHA` on a checkout of it) is honoured as is. Any other one is a warning to check that commit out.
 - Turbo hashes each package's `microfrontends.json` (or `.jsonc`) into every task. So does `turbo()`.
@@ -724,7 +725,7 @@ With this file, `vx run build --all` maps every project's `build` target the way
 
 The `depConstraints` of `@nx/enforce-module-boundaries` in the root ESLint config become `run.rules.dependencies`.
 
-`.vx/workspace.ts` can set its own instead. `vx lock` checks the rules over each project's workspace dependencies.
+`.vx/workspace.ts` can set its own instead. `vx lock` reads the ESLint config and checks the rules over each project's workspace dependencies; a run reads neither.
 
 - `sourceTag` is `from`.
 - `onlyDependOnLibsWithTags` is `allow`.
@@ -911,17 +912,15 @@ Two cached tasks on one workspace path cannot both keep their cache, and the fir
 
 ### nx.json `parallel`
 
-`parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) is the run's `run.concurrency` when `.vx/workspace.ts` sets none.
+A run reads no nx.json. A migration writes `parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) as `run.concurrency` in `.vx/workspace.ts`.
 
-`NX_PARALLEL` (a count or `50%`) wins over it, as in Nx. So a repo that sets `1` for a shared resource keeps one task at a time.
+On a run `nx()` takes `NX_PARALLEL` (a count or `50%`) when `.vx/workspace.ts` sets none, as Nx reads it.
 
 ### nx.json `defaultBase`
 
 `NX_BASE` is the run's base commit (`setBranch({ base })`).
 
-`defaultBase` is `baseBranch` when `.vx/workspace.ts` sets none. Nx 19 called it `affected.defaultBase`; an `origin/` prefix is dropped.
-
-So a bare `vx run test --affected` compares with the ref `nx affected` does.
+A migration writes `defaultBase` as `baseBranch`. Nx 19 called it `affected.defaultBase`; an `origin/` prefix is dropped. So a bare `vx run test --affected` compares with the ref `nx affected` does.
 
 ### nx.json `maxCacheSize`
 
@@ -979,10 +978,9 @@ A different key, or no snapshot, runs `node_modules/.bin/nx graph --file=<snapsh
 - A touch without an edit, or a stray file a task writes at the root, does not.
 - Outside a git worktree the plugin falls back to the manifests' mtimes.
 - A run never exports, maps or reads the graph. `vx lock` records the projects the `discover` stage names and the edges Nx derives (`implicitDependencies`, an `import`).
-- So a `project.json` edit, a new edge included, changes what runs only after the next `vx lock`. Until then a run on this machine refuses, naming the file.
-- So does a new `project.json`, or an edit to the file an inferred target came from (`vite.config.ts`).
-- Nx records that file in `.nx/workspace-data/source-maps.json` (or under `NX_WORKSPACE_DATA_DIRECTORY`, as in Nx).
-- With `graph:` set Nx may record none; then an inferred-config edit needs `vx lock` by hand.
+- So a `project.json` edit, a new edge included, changes what runs only after the next `vx lock`. Until then a run runs what the lock holds, unrefused, and spawns no `nx graph`, on a fresh clone too.
+- So does a new `project.json`, or an edit to the file an inferred target came from (`vite.config.ts`). Run `vx lock` every time the Nx graph changes.
+- Nx records that file in `.nx/workspace-data/source-maps.json` (or under `NX_WORKSPACE_DATA_DIRECTORY`, as in Nx); `vx lock` reads it.
 - A source `import` is not refused; `vx lock --check` names it.
 - That holds under `vx watch` as in a run: a re-lock is the next cycle's event.
 
@@ -1302,7 +1300,7 @@ The CLI reads the **resolved** project graph only, through the same mapper `nx()
 - A target with `configurations` writes one task per configuration (`build`, `build:ci`).
 - A project's Nx `tags` are written as its `tags`.
 - Named inputs expand from `nx.json` when readable.
-- nx.json's `parallel` and `defaultBase` and the ESLint module boundaries, which `nx()` applies live, are each a field of the written `.vx/workspace.ts`.
+- nx.json's `parallel` and `defaultBase` and the ESLint module boundaries are each a field of the written `.vx/workspace.ts`. A run reads none of those files.
 - The fields are `run.concurrency`, `baseBranch` and `run.rules`. They are read from nx.json alone, never the environment.
 - Beside a workspace file already there, each is a note naming the field to add.
 

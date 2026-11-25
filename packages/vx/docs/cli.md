@@ -658,7 +658,7 @@ What a change marks:
 - A `vx.config.*` or `.vx/workspace.*` edit, or one to a file they
   import, marks nothing by itself. Configs only generate the locks, and
   the locks' diff marks tasks.
-- A run still refuses a config edited since `vx lock`.
+- A run runs a config edited since `vx lock` as the lock holds it.
 - An untracked file under a task's `outputs`, `files` or
   `workspaceFiles` is none of its inputs: the key folds only a tracked one.
 - A group (no `exec`, no `inputs`) is marked only through its dependencies.
@@ -2761,11 +2761,10 @@ VX_WATCH_POLL=1 vx watch build   # poll from the start
 
 A root file a plugin claims starts a cycle: a lockfile under `@vzn/vx-lockfile` (`pnpm-lock.yaml`, `bun.lock`, `.npmrc`, …), or `turbo.json` under `@vzn/vx-migrate`'s `turbo()`. So does `.vx/projects.lock`.
 
-A config edit alone changes no command, since every cycle reads its configs from `.vx/projects.lock`. The watch says so, and each cycle refuses the edited config, as a run does, until `vx lock`:
+A config edit alone changes no command, since every cycle reads its configs from `.vx/projects.lock`. The watch says so, and each cycle runs the locked config, as a run does, until `vx lock`:
 
 ```ansi
 [38;2;234;179;8m![0m [1mvx watch[0m  [38;2;203;213;225mpackages/web/vx.config.ts changed; runs read the lock, so run [0m[1m`vx lock`[0m[38;2;203;213;225m to apply it[0m
-[38;2;239;68;68m✗[0m [1mvx watch[0m  [38;2;203;213;225mcycle failed: packages/web/vx.config.ts changed since the last [0m[1m`vx lock`[0m[38;2;203;213;225m — run [0m[1m`vx lock`[0m
 ```
 
 <details class="vx-deeper" data-level="3">
@@ -3274,31 +3273,16 @@ That holds for `vx run`, every `vx watch` cycle, `--affected` selection and the 
 **What a run never does**
 
 - It never walks for configs. An `--all` run asks git for the names alone, to refuse one the lock lacks.
-- It never checks the graph rules (`run.rules`) and never writes the lock. Only `vx lock` does. It evaluates a config only when the reminder below finds its bytes moved, or no stamp beside the lock.
+- It never checks the graph rules (`run.rules`) and never writes the lock. Only `vx lock` does.
+- It never evaluates a config, a file one imports, or `.vx/workspace.*`'s plugin options.
+- It never reads a file a `project` plugin made a config from: `turbo.json`, a `package.json` script, `project.json`, the Nx graph.
+- It never refuses an edit to one of them: it runs what the lock holds until `vx lock`, on a fresh clone too.
+- It loads `.vx/workspace.*` for its plugins and settings, and runs their `config` stage.
 
-**The local reminder**
+**What a run still refuses**
 
-- A config file edited since this machine's last `vx lock` (or a passing `vx lock --check`) refuses the run, `VX_E_LOCK`.
-- The message: `` <file> changed since the last `vx lock` — run `vx lock` ``.
-- It compares the file's size, mtime and bytes with those `vx lock` read, kept in the cache folder's `config-stamps.json`.
-- A file whose bytes moved is then evaluated, as `vx lock --check` does: one that evaluates as the lock holds (a comment, a config restored with its lock) runs, and is stamped again.
-- One that no longer evaluates (a throw, a syntax error) refuses the run with its error, as `vx lock --check` names it.
-- Stamps are kept per lock, the last 8, so a branch checked out again keeps its own.
-- A lock with none (a pull, a fresh clone, a branch another `vx lock` left) has the configs the run reads evaluated once, as `vx lock --check` does.
-- Then an edit is refused, and the rest are stamped once the cache folder exists (`--dry` makes none).
-- A config unchanged since the lock's commit that evaluates otherwise is named so.
-- That message: `` <file> evaluates differently from the lock here: a file it imports, or the environment it reads, changed — run `vx lock` ``.
-- A file a `project` plugin made a config from (turbo.json, a package.json) whose bytes moved is mapped again, in every project that read it. One that maps as the lock holds (a version bump) runs.
-- A file a `project` plugin made a config from is stamped then only when every mapping that read it holds: a refused one stays refused, in every project that read it.
-- A config edit committed without relocking is refused like an uncommitted one.
-- A file a config imports by a local path (not from `node_modules`) is stamped with it.
-- Once its bytes moved, every config importing it is evaluated: one that holds runs, else the run refuses, naming the file.
-- Stamps an older vx took hold no imports: they read as none, so the configs are evaluated once.
-- `.vx/workspace.*` is stamped too. Once it moved, its plugins discover and map every project again, as `vx lock --check` does.
-- So is a file `.vx/workspace.*` imports by a local path, where a plugin option may live. Its edit is asked the same way, naming the file.
-- An edited plugin option that maps otherwise refuses the run. A `run.concurrency` edit runs.
-- A file a `project` plugin made a config from is otherwise checked the same way: `turbo.json` or a `package.json` script under `turbo()`, `project.json` or an inferred target's `vite.config.ts` under `nx()`.
-- A named file that appears or goes counts as an edit. The plugin names it (`ProjectHookContext.read`).
+- A locked project whose directory is gone: `` .vx/projects.lock locks <dir>, but its directory is gone — run `vx lock` ``. A config deleted from a directory still there runs as locked.
+- One a sparse checkout left out, or in a submodule not checked out, names the git command that brings it back.
 - In a pipeline, `vx lock --check` first re-evaluates every config and checks the rules.
 
 </div>
@@ -3405,8 +3389,7 @@ Run `vx lock` and commit `.vx/projects.lock` after you:
 - update dependencies or plugins
 - change a file a config imports
 
-Until then, runs keep the old configs. A run refuses a config file edited
-since this machine's last `vx lock`.
+Until then, runs keep the old configs, unrefused.
 
 On CI, run `vx lock --check` first: it fails a stale lock. The full
 workflow is in the site's CI guide and `examples/ci`.
@@ -3548,15 +3531,13 @@ For review, it also writes each project's resolved config, pretty, to
   never the steps. A project with no `vx.config.*` is included.
 - A run reads that record and calls no hook, so a run never maps.
 - So an edited `turbo.json` or `package.json` script runs only after the
-  next `vx lock`. Until then a run on this machine refuses, naming the file.
+  next `vx lock`. Until then a run runs what the lock holds, unrefused.
 - `--check` names a project the plugins now map otherwise, a plugin added
   or dropped since included:
   `packages/ui: the plugins map it differently from the lock here`.
-- An edited `.vx/workspace.*` is evaluated. When its plugins now map,
-  discover or digest the dependencies otherwise, a run refuses, naming the
-  file.
-- That is an option such as `bun({ scope })`, or a plugin added or
-  dropped. An edit that changes none of them runs.
+- An edited `.vx/workspace.*` (an option such as `bun({ scope })`, a
+  plugin added or dropped) maps, discovers and digests nothing until
+  `vx lock`; a run keeps the lock's projects, edges and tasks.
 - When a plugin fails before the stage ran (a `discover` refusal),
   `--check` names that failure alone: no config is compared with what
   the stage recorded.
@@ -3680,24 +3661,12 @@ So a config that reads the environment keeps its lock-time values.
   lists all.
 - `vx lock` and `vx lock --check` refuse there too, naming the same
   command: the lock they wrote would drop those projects.
-- A config added since the lock is no project until `vx lock`. Naming
-  its task says so:
-  ``web#build: packages/web/vx.config.ts is not in the lock yet — run `vx lock` ``
-- A run from its directory says `packages/web/vx.config.ts is not in the
-lock yet`, where it ran the locked project around it.
-- So do `--filter ./packages/web`, `--filter web`, `vx show web` and
-  `vx show web#build`, `web` its directory or its `package.json` name.
-- A project keeps its locked name until `vx lock`. Naming it by the name
-  its `package.json` took since says so:
-  ``web2#build: packages/web/package.json names it "web2", the lock "web" — run `vx lock` ``
-- So do `--filter web2`, `vx show web2` and `vx show web2#build`. A
-  project named by its path is never hinted this way.
-- So does `--all`, for any config git lists (tracked or not) in a
-  directory the lock holds no config for.
-- `--all` leaves out ignored configs and ones under a nested workspace.
-  It costs one `git ls-files`, which a filtered run does not pay.
-- So does a bare `build` that the cwd's project or a `--filter` leaves
-  unresolved, while a selected project holds such a config.
+- A config added since the lock is no project until `vx lock`: a run
+  never looks for one.
+- `--all` runs the locked projects; a run from its directory runs the
+  locked project around it; naming it is an unknown project.
+- A project keeps its locked name until `vx lock`; a run reads no
+  `package.json`.
 - An entry edited by hand into a shape `vx lock` could not write fails the
   run: ``.vx/projects.lock is invalid, run `vx lock` ``.
 - So does a key `vx lock` never writes, in an entry or the first line:
@@ -5143,8 +5112,6 @@ A `tags` column appears when any project has tags.
   build.
 - `vx show bare`: a package nothing configured reaches lists no task, and
   `vx run bare#build` refuses it.
-- `vx.config.ts not locked — run vx lock`: a config written after the
-  lock. It shows in the list and in `vx show <project>`'s `config` row.
 - On a terminal too narrow for the list, `tags` goes, then `dir`.
 - `--format json`: an array of `{ name, dir, tags: string[], tasks: string[], defaultBuild: boolean }`. `defaultBuild` is true where the text says `default build`.
 

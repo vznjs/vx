@@ -200,19 +200,16 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
           const shown = await vx(['show'], null)
           expect(`${shown.code}\n${shown.err}`).toStartWith('0\n')
           expect(shown.out).toContain('app')
-          // A config edited since `vx lock` is refused by name, not a store
-          // crash. The edit changes what it evaluates to: one that evaluates
-          // as the lock holds (a comment) runs, as `vx lock --check` passes it.
-          // Bare vx, not the helper, which locks the edit first.
+          // A config edited since `vx lock` is no store crash either: show
+          // reads the lock, never the config. Bare vx, not the helper, which
+          // locks the edit first.
           const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
           await Bun.write(
             config,
             (await Bun.file(config).text()).replace("'echo built'", "'echo changed'"),
           )
           const edited = await vx(['show'], null, VX)
-          expect(`${edited.code}\n${edited.err}`).toBe(
-            '1\n✗ vx show  packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`\n',
-          )
+          expect(`${edited.code}\n${edited.err}`).toStartWith('0\n')
         } finally {
           await chmod(own, 0o755)
           // 0o755, not 0o644: the run leaves a directory there too (the
@@ -281,11 +278,11 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
 describe('the run’s --cache-dir reaches selection', () => {
   let root: string
   let elsewhere: string
-  // What the workspace's own cache dir holds besides `vx lock`'s config
-  // stamps and the config bundle, which live there whatever `cache.dir` says.
+  // What the workspace's own cache dir holds besides the config bundle,
+  // which lives there whatever `cache.dir` says.
   const defaultCache = (dir: string): string[] => {
     const cache = path.join(dir, '.vx', 'cache')
-    const own = new Set(['config-stamps.json', 'compiled'])
+    const own = new Set(['compiled'])
     return existsSync(cache) ? readdirSync(cache).filter((n) => !own.has(n)) : []
   }
   beforeEach(async () => {

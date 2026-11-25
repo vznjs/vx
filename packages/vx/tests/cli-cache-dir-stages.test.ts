@@ -3,10 +3,9 @@
 // the run resolves it. The CLI's selection pass runs the `discover` and
 // `project` stages before the run (which reuses them): `discover` was told
 // the workspace's cache dir and `project` the flag's raw relative text.
-// Since 2026-11-11 only `vx lock` runs the `discover` stage. A run with no
-// stamps beside its lock (here each fresh --cache-dir) runs the `discover`
-// and `project` stages once to check the lock, as `vx lock --check` does
-// (8465d91b6); they and `setup` are told.
+// Since 2026-11-11 only `vx lock` runs the `discover` stage, and since
+// 2026-11-25 a run never checks the lock with it or the `project` stage,
+// a fresh --cache-dir included: `setup` alone is told.
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -54,6 +53,6 @@ it('every stage of a --cache-dir run is told the one resolved directory', async 
     expect(vx(path.join(root, cwd), 'run', 'hello', ...args, '--cache-dir', 'here').code).toBe(0)
     const seen = new Set((await readFile(log, 'utf8')).trim().split('\n'))
     const dir = path.join(root, cwd, 'here')
-    expect([...seen].sort()).toEqual([`discover ${dir}`, `project ${dir}`, `setup ${dir}`])
+    expect([...seen].sort()).toEqual([`setup ${dir}`])
   }
 }, 30_000)

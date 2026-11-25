@@ -79,7 +79,6 @@ function callsByPath(trace: string, cwd: string): Map<string, string[]> {
 describe.skipIf(strace === null)('one run touches each project file once, Bun included', () => {
   let root: string
   let scratch: string
-  let stamps: string
 
   beforeAll(async () => {
     scratch = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-read-once-')))
@@ -104,9 +103,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
 `,
     )
     expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: root }).exitCode).toBe(0)
-    // `vx lock` makes the cache dir for its config stamps; the cold run is
-    // one with none, and the stamps come back with the dir.
-    stamps = await readFile(path.join(root, '.vx', 'cache', 'config-stamps.json'), 'utf8')
+    // The cold run is one with no cache dir, as a clone has.
     await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
     gitInitCommit(root)
   })
@@ -139,52 +136,30 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
   }
 
   it(
-    'a run opens the config only with no stamps beside the lock, and reads the lock once',
+    'a run never opens a config, and reads the lock once',
     async () => {
-      // The cold run has no stamps beside the lock, so it evaluates the
-      // config once as `vx lock --check` does (Bun's import, the stamp's
-      // hash) and, a plan making no cache dir, stamps nothing; with stamps,
-      // a run only stats it.
-      // The cold run loads the workspace config from source (vx's read,
-      // Bun's import); the next builds its bytecode bundle, which Bun.build
-      // reads again, once per config change; from then on only vx reads it
+      // A run reads the lock, never a config: one stat says the project is
+      // still there, clone or not (2026-11-25). The cold run loads the
+      // workspace config from source (vx's read, Bun's import); the next
+      // builds its bytecode bundle, which Bun.build reads again, once per
+      // config change; from then on only vx reads it
       // (workspace/config-bytecode.ts).
       for (const name of ['cold', 'build', 'warm']) {
         // A real run's cache dir: `--dry` makes none, and the bytecode
         // bundle is built only under one.
-        if (name === 'build') {
-          await mkdir(path.join(root, '.vx', 'cache'), { recursive: true })
-          await writeFile(path.join(root, '.vx', 'cache', 'config-stamps.json'), stamps)
-        }
+        if (name === 'build') await mkdir(path.join(root, '.vx', 'cache'), { recursive: true })
         const run = await tracedRun(name)
-        expect(run('packages/a/vx.config.mjs')).toEqual(
-          name === 'cold' ? ['openat', 'openat', 'statx', 'statx'] : ['statx'],
-        )
-        // The evaluation's import, as under `vx lock`: Bun resolves the
-        // module in its directory, beside its package.json.
-        expect(run('packages/a/package.json')).toEqual(name === 'cold' ? ['openat'] : [])
-        expect(run('packages/a')).toEqual(name === 'cold' ? ['openat', 'openat'] : [])
-        // With no stamps the run stamps the workspace file too (8465d91b6):
-        // its stat, then its bytes, which Bun's import cannot lend: a stamp
-        // holds bytes read after its stat, or a later edit reads as none.
+        expect(run('packages/a/vx.config.mjs')).toEqual(['statx'])
+        expect(run('packages/a/package.json')).toEqual([])
+        expect(run('packages/a')).toEqual([])
+        // Cold: the root lookup's stat, vx's read and Bun's import.
         if (name === 'cold')
-          expect(run('.vx/workspace.mjs')).toEqual([
-            'newfstatat',
-            'openat',
-            'openat',
-            'openat',
-            'statx',
-            'statx',
-          ])
-        // Warm: its stamp asked by one stat (0f67f63fe).
-        if (name === 'warm')
-          expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'statx'])
+          expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
+        // Warm: the root lookup's stat and vx's read.
+        if (name === 'warm') expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat'])
         expect(run('pnpm-workspace.yaml')).toEqual([])
         expect(run('package.json')).toEqual(['openat'])
         expect(run('.vx/projects.lock')).toEqual(['newfstatat', 'openat'])
-        // The stamps the config check reads: once a run, however many loads.
-        if (name !== 'cold')
-          expect(run('.vx/cache/config-stamps.json')).toEqual(['openat', 'statx'])
       }
     },
     TIMEOUT,

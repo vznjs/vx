@@ -122,8 +122,8 @@ describe('a run reads each root file once', () => {
         '.vx/projects.lock': ['exists', 'text'],
         // The edges, which live only there, read beside it.
         '.vx/dependencies.lock': ['exists', 'bytes'],
-        // A config is only stat'ed: still there (X-144) and unedited since
-        // `vx lock` (memo/config-stamps.ts). No package file: the plugin's `discover` answer is the lock's
+        // A config is only stat'ed: whether its project is still there
+        // (X-144). No package file: the plugin's `discover` answer is the lock's
         // (2026-11-11), and core probes none.
       })
     },

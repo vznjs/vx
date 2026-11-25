@@ -206,7 +206,7 @@ describe('`^task` needs an edge source', () => {
   )
 
   it(
-    'a run whose edge source was dropped since the lock refuses, and `--check` names it',
+    'a run whose edge source was dropped since the lock runs the locked edges, and `--check` names it',
     async () => {
       const root = await makeWorkspace({ prefix: 'vx-edge-source-gone-', edges: { app: ['lib'] } })
       try {
@@ -217,9 +217,9 @@ describe('`^task` needs an edge source', () => {
           'lib#build',
         ])
         await writeLocalWorkspace(root)
-        // The run itself, past the lock the helper would rewrite: the edited
-        // workspace file is refused (0f67f63fe), never run on the lock's
-        // edges, and `--check` names the drop.
+        // The run itself, past the lock the helper would rewrite: it reads
+        // no workspace file's discovery and runs on the lock's edges, and
+        // `--check` names the drop.
         const bin = path.join(import.meta.dir, '../src/bin.ts')
         const run = Bun.spawnSync([process.execPath, bin, 'run', 'build', '--all'], {
           cwd: root,
@@ -227,10 +227,7 @@ describe('`^task` needs an edge source', () => {
           stderr: 'pipe',
           env: { ...process.env, NO_COLOR: '1' },
         })
-        expect([run.exitCode, run.stderr.toString()]).toEqual([
-          1,
-          '✗ vx run  .vx/workspace.mjs changed since the last `vx lock` — run `vx lock`\n',
-        ])
+        expect([run.exitCode, run.stderr.toString()]).toEqual([0, ''])
         const check = Bun.spawnSync([process.execPath, bin, 'lock', '--check'], {
           cwd: root,
           stdout: 'pipe',

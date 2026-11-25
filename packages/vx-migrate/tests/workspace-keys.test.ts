@@ -1,6 +1,7 @@
-// The adopted tool's workspace keys vx has a home for (G-49's silent gaps):
-// turbo.json `concurrency`; nx.json `parallel`. Read by nothing,
-// nx-examples' `parallel: 1` did not reach the run.
+// The adopted tool's run-wide settings a `config` hook gives a run: its
+// environment only (TURBO_CONCURRENCY, NX_PARALLEL, TURBO_SCM_BASE, NX_BASE).
+// A run reads no turbo.json or nx.json (owner, 2026-11-25: a run reads only
+// the locks); `vx-migrate` writes their keys into `.vx/workspace.ts`.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { availableParallelism, tmpdir } from 'node:os'
 import path from 'node:path'
@@ -20,51 +21,72 @@ afterEach(async () => {
 const staged = async (
   plugin: ReturnType<typeof turbo | typeof nx>,
   ws: WorkspaceConfig = {},
+  lock = false,
 ): Promise<WorkspaceConfig & { base?: string }> => {
   let base: string | undefined
   await plugin.config!(ws, {
     workspaceRoot: root,
     warn: () => {},
     setBranch: (facts) => void (base = facts.base ?? base),
+    lock,
   })
   return base === undefined ? ws : { ...ws, base }
 }
 
-describe('turbo(): turbo.json workspace keys', () => {
-  it('concurrency, top level or under global', async () => {
-    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency: '3', tasks: {} }))
-    expect(await staged(turbo())).toEqual({ run: { concurrency: 3 } })
+const withEnv = async <T>(name: string, value: string | undefined, fn: () => Promise<T>) => {
+  const prev = process.env[name]
+  if (value === undefined) delete process.env[name]
+  else process.env[name] = value
+  try {
+    return await fn()
+  } finally {
+    if (prev === undefined) delete process.env[name]
+    else process.env[name] = prev
+  }
+}
+
+describe('a run reads no turbo.json or nx.json', () => {
+  it('turbo.json concurrency and futureFlags, nx.json parallel and defaultBase, under lock or not', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),
-      JSON.stringify({ global: { concurrency: '50%' }, tasks: {} }),
+      JSON.stringify({
+        concurrency: '3',
+        futureFlags: { githubActionsRemoteBaseRefFallback: true },
+        tasks: {},
+      }),
     )
-    expect(await staged(turbo())).toEqual({
-      run: { concurrency: Math.max(1, Math.floor(availableParallelism() / 2)) },
-    })
+    await writeFile(path.join(root, 'nx.json'), JSON.stringify({ parallel: 2, defaultBase: 'dev' }))
+    const quiet = async (fn: () => Promise<unknown>) =>
+      withEnv('TURBO_CONCURRENCY', undefined, () =>
+        withEnv('NX_PARALLEL', undefined, () => withEnv('NX_BASE', undefined, fn)),
+      )
+    expect(
+      await quiet(async () => [
+        await staged(turbo()),
+        await staged(nx()),
+        await staged(turbo(), {}, true),
+        await staged(nx(), {}, true),
+      ]),
+    ).toEqual([{}, {}, {}, {}])
   })
+})
 
-  it('a key the workspace sets is its own', async () => {
-    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency: '3', tasks: {} }))
-    expect(await staged(turbo(), { run: { concurrency: 8 } })).toEqual({ run: { concurrency: 8 } })
-  })
-
-  // Turbo's environment sits above turbo.json; a CI that sets
-  // TURBO_CONCURRENCY=1 for a small runner got turbo.json's 8 under vx.
-  it('TURBO_CONCURRENCY wins over turbo.json', async () => {
-    await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency: '8', tasks: {} }))
-    const saved = process.env['TURBO_CONCURRENCY']
-    try {
-      process.env['TURBO_CONCURRENCY'] = '1'
-      const one = await staged(turbo())
-      process.env['TURBO_CONCURRENCY'] = ''
-      expect([one, await staged(turbo())]).toEqual([
-        { run: { concurrency: 1 } },
-        { run: { concurrency: 8 } },
-      ])
-    } finally {
-      if (saved === undefined) delete process.env['TURBO_CONCURRENCY']
-      else process.env['TURBO_CONCURRENCY'] = saved
-    }
+describe('turbo(): its environment', () => {
+  it('TURBO_CONCURRENCY, a count or a share of the cores; a key the workspace sets is its own', async () => {
+    const at = (v: string, ws: WorkspaceConfig = {}) =>
+      withEnv('TURBO_CONCURRENCY', v, () => staged(turbo(), ws))
+    expect([
+      await at('3'),
+      await at('50%'),
+      await at(''),
+      await at('3', { run: { concurrency: 8 } }),
+    ]).toEqual([
+      { run: { concurrency: 3 } },
+      { run: { concurrency: Math.max(1, Math.floor(availableParallelism() / 2)) } },
+      {},
+      { run: { concurrency: 8 } },
+    ])
+    for (const v of ['abc', '1.5', '-2', '0']) expect(await at(v)).toEqual({})
   })
 
   // Turbo #9053: an empty TURBO_SCM_BASE is unset, not a base of ''.
@@ -111,7 +133,7 @@ describe('turbo(): turbo.json workspace keys', () => {
         const said: string[] = []
         await turbo().config!(
           {},
-          { workspaceRoot: root, warn: (m) => void said.push(m), setBranch: () => {} },
+          { workspaceRoot: root, warn: (m) => void said.push(m), setBranch: () => {}, lock: false },
         )
         warned[v] = said
       }
@@ -123,30 +145,24 @@ describe('turbo(): turbo.json workspace keys', () => {
       else process.env['TURBO_SCM_HEAD'] = saved
     }
   })
-
-  it('a concurrency that is no positive whole number is left to the default', async () => {
-    for (const concurrency of ['abc', '1.5', '-2']) {
-      await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ concurrency, tasks: {} }))
-      expect(await staged(turbo())).toEqual({})
-    }
-  })
 })
 
 // A relative root resolved against the cwd: `vx run` from a package dir
 // read that package's tools/, or nothing. vx reads every other path from
 // the workspace root.
 describe("a relative root is the workspace root's", () => {
-  it('turbo({ root }) and nx({ root })', async () => {
+  it('turbo({ root }): `vx lock` reads its boundaries there', async () => {
     await mkdir(path.join(root, 'tools'))
     await writeFile(
       path.join(root, 'tools', 'turbo.json'),
-      JSON.stringify({ concurrency: '3', tasks: {} }),
+      JSON.stringify({
+        boundaries: { tags: { web: { dependencies: { deny: ['internal'] } } } },
+        tasks: {},
+      }),
     )
-    await writeFile(path.join(root, 'tools', 'nx.json'), JSON.stringify({ parallel: 2 }))
-    expect([await staged(turbo({ root: 'tools' })), await staged(nx({ root: 'tools' }))]).toEqual([
-      { run: { concurrency: 3 } },
-      { run: { concurrency: 2 } },
-    ])
+    expect(await staged(turbo({ root: 'tools' }), {}, true)).toEqual({
+      run: { rules: { dependencies: [{ from: 'tag:web', deny: ['tag:internal'] }] } },
+    })
   })
 
   it('an empty root is refused, as it is no directory', () => {
@@ -160,38 +176,19 @@ describe("a relative root is the workspace root's", () => {
 // TURBO_SCM_BASE (pinned above) or GitHub Actions' base. A key the
 // workspace sets is its own.
 describe('the affected base', () => {
-  const withEnv = async <T>(name: string, value: string | undefined, fn: () => Promise<T>) => {
-    const prev = process.env[name]
-    if (value === undefined) delete process.env[name]
-    else process.env[name] = value
-    try {
-      return await fn()
-    } finally {
-      if (prev === undefined) delete process.env[name]
-      else process.env[name] = prev
-    }
-  }
-
-  it('nx(): NX_BASE is the base commit; defaultBase, then affected.defaultBase, the base branch', async () => {
-    const branch = () => withEnv('NX_BASE', undefined, async () => (await staged(nx())).baseBranch)
-    await writeFile(path.join(root, 'nx.json'), JSON.stringify({}))
-    expect(await branch()).toBeUndefined()
-    await writeFile(
-      path.join(root, 'nx.json'),
-      JSON.stringify({ affected: { defaultBase: 'origin/dev' } }),
-    )
-    expect(await branch()).toBe('dev')
-    await writeFile(
-      path.join(root, 'nx.json'),
-      JSON.stringify({ defaultBase: 'develop', affected: { defaultBase: 'dev' } }),
-    )
-    expect(await branch()).toBe('develop')
+  it("nx(): NX_BASE is the base commit; nx.json's defaultBase is not read", async () => {
+    await writeFile(path.join(root, 'nx.json'), JSON.stringify({ defaultBase: 'develop' }))
+    expect(await withEnv('NX_BASE', undefined, () => staged(nx()))).toEqual({})
     expect(await withEnv('NX_BASE', 'origin/next', async () => (await staged(nx())).base)).toBe(
       'origin/next',
     )
-    expect(await withEnv('NX_BASE', undefined, () => staged(nx(), { baseBranch: 'main' }))).toEqual(
-      { baseBranch: 'main' },
-    )
+  })
+
+  it('nx(): NX_PARALLEL, a count or a share of the cores', async () => {
+    expect([
+      await withEnv('NX_PARALLEL', '2', () => staged(nx())),
+      await withEnv('NX_PARALLEL', '2', () => staged(nx(), { run: { concurrency: 8 } })),
+    ]).toEqual([{ run: { concurrency: 2 } }, { run: { concurrency: 8 } }])
   })
 
   // Turbo's `get_github_base_ref`: with no TURBO_SCM_BASE, a pull request's
@@ -227,22 +224,5 @@ describe('the affected base', () => {
     expect(await gha({ TURBO_SCM_BASE: 'dev' }, { before: sha })).toBe('dev')
     // Off GitHub Actions, the event says nothing.
     expect(await gha({ GITHUB_ACTIONS: undefined }, { before: sha })).toBeUndefined()
-    // A base ref the checkout lacks is origin's only under Turbo's future flag.
-    await writeFile(
-      path.join(root, 'turbo.json'),
-      JSON.stringify({ futureFlags: { githubActionsRemoteBaseRefFallback: true }, tasks: {} }),
-    )
-    Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
-    const git = (...a: string[]) =>
-      Bun.spawnSync(
-        ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...a],
-        { cwd: root, stderr: 'pipe' },
-      )
-    const commit = git('commit', '-q', '--allow-empty', '-m', 'x')
-    expect({ code: commit.exitCode, err: commit.stderr.toString() }).toEqual({ code: 0, err: '' })
-    git('update-ref', 'refs/remotes/origin/release', 'HEAD')
-    expect(await gha({ GITHUB_BASE_REF: 'release' })).toBe('origin/release')
-    git('branch', 'release')
-    expect(await gha({ GITHUB_BASE_REF: 'release' })).toBe('release')
   })
 })

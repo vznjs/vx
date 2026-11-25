@@ -397,9 +397,7 @@ never branches on layering.
       `loadProjects`, the `project` stage as `vx lock` recorded it (only in-scope
       projects + their transitive dep closure, loaded from
       `.vx/projects.lock` with no evaluation; a config file edited since
-      this machine's `vx lock` refuses, by its stamp
-      (`memo/config-stamps.ts`), unless it evaluates as the lock holds;
-      `vx lock --check` is the audit) →
+      runs as locked until `vx lock`; `vx lock --check` is the audit) →
       cache layer resolved (an injected `RunOptions.remoteCache`, else
       each plugin's remote, layered over the local cache, else the
       bare local cache) → bulk `git ls-files` populate (started at the

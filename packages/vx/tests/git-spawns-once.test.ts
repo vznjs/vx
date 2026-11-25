@@ -100,8 +100,6 @@ describe('git spawns on a cold run', () => {
       expect(await coldRun(['build', '--all'])).toEqual(
         [
           ...ENUMERATION,
-          // `--all` alone: a config the lock lacks is refused, not left out.
-          'ls-files -z --cached --others --exclude-standard -- :(glob)**/vx.config.* :(glob)**/.vx/workspace.* :(exclude,glob)**/node_modules/** :(exclude,glob)**/.vx/*/** :(exclude,glob)**/.vx/vx.config.* :(exclude,glob)**/.vx/vx.lock.json',
           '--no-optional-locks ls-files -s -v -z -- .',
           '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- .',
         ].sort(),

@@ -64,8 +64,6 @@ export function findWorkspaceRoot(start: string, uid?: number): Promise<string>
 export function pathName(root: string, dir: string): string
 // Every directory holding a vx config, for `vx lock`; sorted by directory
 export function findProjectConfigs(root: string): Promise<ProjectConfigs>
-// The configs git lists in no locked directory, nested workspaces left out: an `--all` run refuses them
-export function configsOutsideLock(root: string, locked: ReadonlySet<string>): Promise<string[]>
 // The projects a lock records, named by the config's `name`, else by path
 export function lockedProjects(
   root: string,
@@ -157,7 +155,7 @@ checkout left it out (git asked only then)
 
 #### `findProjectConfigs(root)`
 
-`vx lock`'s walk; a run never walks (an `--all` run's `configsOutsideLock` is one `git ls-files` of the names). In git: `git ls-files` over the
+`vx lock`'s walk; a run never walks. In git: `git ls-files` over the
 config names, tracked and untracked, git's ignore rules applied, so a
 config git ignores is no project, and none under a `.vx` directory, at
 any depth, as the walk skips it (`.vx/workspace.*` still marks a nested
@@ -306,12 +304,6 @@ Two paths, chosen by whether this process has loaded that path before:
 ```ts
 export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 export async function loadWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig | null>
-// Whether `hash` is of the bytes this process last evaluated as that workspace
-// file: a stamp taken after a later edit holds plugins no run checked.
-export function evaluatedWorkspace(file: string, hash: string): boolean
-// Whether a file the workspace file imports, written at `mtimeMs`, is as
-// this process's load read it.
-export function loadedWorkspaceImport(file: string, mtimeMs: number): boolean
 export function stdoutToStderr(): () => void // JS routes to stdout → stderr until the release; ui.data still writes out (a core verb's --format json)
 
 // The batch form: one staged evaluation round for many configs. Every
@@ -1046,7 +1038,7 @@ and graph traversal.
 - transitiveDependents terminates on a 2-node cycle and includes the other node
 - reach from a plugin is in both closures and orders nothing
 - with no plugin supplying edges, `^build` fails naming the fix
-- a run whose edge source was dropped since the lock refuses, and `--check` names it
+- a run whose edge source was dropped since the lock runs the locked edges, and `--check` names it
 - with an edge source, a leaf resolves `^build` to nothing and a dependent waits on its dep
 - a workspace that writes no `^` runs with no edge source
 
@@ -1940,8 +1932,8 @@ unclaimed file is not watched). `tests/affected.test.ts` pins the
 directory, into `.vx/projects.lock`. Every run takes its project
 directories from the lock as well as their configs, so a config added
 since does not run until locked. Every run loads configs FROM the
-lock (zero eval, no schema validation; a config file edited since this
-machine's `vx lock` refuses, `memo/config-stamps.ts`);
+lock (zero eval, no schema validation; a config file edited since runs
+as locked until `vx lock`, 2026-11-25);
 `vx lock --check` re-evaluates every config and reports one drift
 message per project that differs. The lock holds the final graph only,
 never the steps that made it (2026-11-21): each project's config after

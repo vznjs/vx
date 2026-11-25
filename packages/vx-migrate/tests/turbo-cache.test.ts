@@ -976,7 +976,12 @@ describe('vx run with turboCache() layered over the local cache', () => {
     const policy = async (value: string | undefined, ws: WorkspaceConfig = {}) => {
       if (value === undefined) delete process.env['TURBO_FORCE']
       else process.env['TURBO_FORCE'] = value
-      await turbo().config!(ws, { workspaceRoot: root, warn: () => {}, setBranch: () => {} })
+      await turbo().config!(ws, {
+        workspaceRoot: root,
+        warn: () => {},
+        setBranch: () => {},
+        lock: false,
+      })
       return ws.cache?.policy ?? null
     }
     try {
@@ -1020,6 +1025,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
         workspaceRoot: root,
         warn: (m) => warned.push(m),
         setBranch: () => {},
+        lock: false,
       })
       return [ws.cache?.policy ?? null, warned.length]
     }

@@ -496,6 +496,7 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void
+  readonly lock: boolean
 }
 ```
 
@@ -2179,7 +2180,6 @@ export interface PreparedRun {
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
   taskless: (name: string) => boolean
-  unlockedConfig: () => string | undefined
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

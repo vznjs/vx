@@ -314,6 +314,7 @@ export function e2eLast(): VxPlugin {
 | --- | --- |
 | `workspaceRoot`, `warn` | as above |
 | `setBranch(facts)` | tell vx what CI knows of the branch. A later plugin's field wins |
+| `lock` | true under `vx lock` only. A run reads no file but the locks, so read a tool's config only then |
 
 | `facts` field | What it sets |
 | --- | --- |

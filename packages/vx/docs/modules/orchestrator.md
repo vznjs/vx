@@ -2999,7 +2999,6 @@ export interface PreparedRun {
   hintProjects: ReadonlyMap<string, ProjectEntry> // a typo's measure: every project when a `pkg#task` named none loaded
   anyProjectConfig: boolean // some package has a vx.config.* at all, whatever the scope
   taskless: (name: string) => boolean // a workspace project that declares no task
-  unlockedConfig: () => string | undefined // a config the lock lacks, so the fix is `vx lock`; asked only by a refusal
   fingerprintWatch: FingerprintWatch // the claimed root files: has a task rewritten one? (fingerprint-watch.md)
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache // per-run memo of `git ls-files`, by project dir
@@ -3032,18 +3031,6 @@ export function openRemotes(
   ci: boolean,
   secrets: SecretBroker,
 ): Promise<boolean>
-// The config `vx lock` would find at the directory `name` reads as, or in an unlocked directory whose package.json is named `name`, where no project is: a run and `vx show` refuse with "run `vx lock`"
-export function unlockedDir(
-  name: string,
-  metas: ReadonlyArray<{ dir: string }>,
-  workspaceRoot: string,
-): Promise<string | undefined>
-// The locked project whose package.json took `name` since the lock, asked only on a refusal
-export function renamedSinceLock(
-  name: string,
-  metas: ReadonlyArray<{ name: string; dir: string }>,
-  workspaceRoot: string,
-): Promise<string | undefined>
 ```
 
 ### Steps
@@ -3169,21 +3156,15 @@ a mapping reads (turbo.json, a manifest, git, the environment). It
 follows the record: a project loads its recorded config, or `{ tasks: {} }` when the lock
 holds none (2026-11-11: "we
 never relock during runs ... it should always follow the lock blindly").
-`vx lock --check` names the drift. Three exceptions: a file a hook named
-with `ctx.read` is stat'ed, and once it changed, appeared or went every
-mapping that read it runs again, as `vx lock --check` does: the run refuses
-when one maps otherwise, naming `vx lock`, as for an edited `vx.config`. The workspace file is stamped
-too: once it moved, `workspaceHolds` runs `discover` and the `project`
-stage with its plugins as `vx lock --check` does, and refuses it when a
-name, an edge, a mapping or a recorded dependency digest differs (a plugin's options edited ran the
-locked commands, green); one that holds is stamped. And a run with no stamps beside
-its lock (a fresh clone, CI, a new `--cache-dir`) evaluates every config
-and runs the stage once, as `vx lock --check` does, to verify the lock
-and stamp what matches; it still runs what the lock records. It runs
-`discover` again too: a project a plugin no longer adds refuses, naming the
-workspace file, and a workspace file that holds is stamped, so the next run
-does not evaluate it all again. A mapping that differs there names its
-project, or the workspace file when git says it moved since the lock's commit.
+`vx lock --check` names the drift. A run never evaluates a config, a file
+one imports, the workspace file's plugin options or a file a hook named
+with `ctx.read`, and never refuses an edit to one: it runs what the lock
+holds until `vx lock` (2026-11-25: "No vx lock, we run what's already
+locked"). It stats each config it reads from the lock, and that config's
+directory once the config is missing: a project whose directory is gone
+(or left out of a sparse checkout, or in a submodule not checked out) is
+refused, naming the fix; a config deleted from a directory still there
+runs as locked.
 
 `loadWorkspacePlugins` runs the `config` stage on a copy of the
 workspace file's export (its plugins kept as they are): the export is one
@@ -3202,6 +3183,7 @@ A project whose config and plugins declare no `build` gets one, after the
 export function loadWorkspacePlugins(
   workspaceRoot: string,
   warn: (m: string) => void,
+  lock?: boolean, // `vx lock`'s load: ConfigContext.lock
 ): Promise<{ workspaceConfig: WorkspaceConfig | null; plugins: readonly VxPlugin[] }>
 
 // The lock's directories (lockedProjects; a run never walks for configs),
@@ -3246,8 +3228,8 @@ export interface DiscoveryFacts {
   graph?: PackageGraph
 }
 export function discoveryOf(projects: readonly ProjectMeta[]): DiscoveryFacts
-// The refusal a task gets when it cannot spawn because its locked
-// project's directory is gone: run `vx lock`.
+// The refusal for a locked project whose directory is gone (the load's,
+// or a task's that cannot spawn there): run `vx lock`.
 export function lockedDirGone(root: string, name: string, dir: string): string
 // Why a project a `discover` plugin added has no config while its directory
 // holds one git ignores (`config`, looked for when not given), naming the
@@ -3258,22 +3240,6 @@ export function ignoredConfigRefusal(
   meta: { readonly name: string; readonly dir: string },
   config?: string,
 ): string | undefined
-// Each config's local imports, by project dir, as files under `root`:
-// `vx lock` and a run that evaluates stamp them beside the configs.
-export function importedBy(
-  root: string,
-  configs: readonly { dir: string; configPath: string | null }[],
-  sources?: ReadonlyMap<string, Uint8Array>, // each config's bytes, already read
-): Promise<Map<string, string[]>>
-// The workspace file's local imports into `taken` (`workspace` and their
-// stamps), one written since this process's load listed but not stamped.
-export function stampWorkspaceImports(
-  root: string,
-  file: string,
-  read: Uint8Array | undefined, // the workspace file's bytes, already read
-  taken: ConfigStamps,
-): Promise<void>
-
 // The graph is read only for the closure, so only a closure load needs one.
 export type LoadProjectsArgs = LoadProjectsBase &
   ({ closure: true; packageGraph: PackageGraph } | { closure: false; packageGraph?: PackageGraph })
@@ -3287,7 +3253,6 @@ interface LoadProjectsBase {
   warn: (m: string) => void
   lock?: boolean // `vx lock`'s audit: the one load that runs the `project` hooks
   staged?: ReadonlyMap<string, ProjectEntry> // entries a load in this process already produced
-  asLocked?: boolean // read the lock though a config was edited since (`vx watch`'s watched set)
 }
 export interface LoadedProjects {
   projects: Map<string, ProjectEntry>
@@ -3393,7 +3358,7 @@ names until 0.0.397; it is the kinds record since.
 | ---------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config(ws, ctx)`      | every verb, first                                          | edit the workspace config in place before anything is derived from it (`cache.dir` too); re-validated after EACH plugin; `ctx.setBranch` names the branch's cache scope and base (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `discover(ctx)`        | `vx lock`, after core's discovery                          | return `DiscoveredProject[]` (`{ dir, name?, deps?, reach? }`): a `name`d directory that is not a project becomes one; an existing one keeps its name (another is refused). `deps` (order: `^task`; reach: `--filter`, `--affected`) and `reach` (reach only) are directories, unioned over plugins after the stage, the only project edges core has (with none returning `deps`, a `^task` is refused); a target that is no project is refused; `ctx.projects` is core's and earlier plugins', `ctx.cacheDir` the run's, `ctx.worktreeChanges()` the paths the run's own `git status` lists (null outside git), so a plugin keyed on the worktree walks it once with core. The lock records the result (names and the adding plugin in `.vx/projects.lock`, edges in `.vx/dependencies.lock`); every other verb reads that and calls no hook. Refusals name the plugin |
-| `project(cfg, ctx)`    | per loaded config                                          | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name; `ctx.lock` is true in `vx lock`'s pass, the place to report what a mapping could not say (a run checks nothing); `ctx.read(file)` names a file the config was made from, so a run refuses once it maps otherwise, naming `vx lock`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `project(cfg, ctx)`    | per loaded config                                          | add/remove/edit a project's tasks in place; core re-validates after EACH plugin, by name; `ctx.lock` is true in `vx lock`'s pass, the place to report what a mapping could not say (a run checks nothing); `ctx.read(file)` names a file the config was made from, which `vx lock` scans as committed text; a run never reads it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `graph(nodes, ctx)`    | after graph build                                          | edit `deps`/`requested`/`config` in place; the builder's checks run again (item 981), each task config is re-validated after EACH plugin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `key(task, ctx)`       | per task, at hash                                          | a plain `{ name: value }` record folded into the key and named in `vx why`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `fingerprint`          | claim, static                                              | `{ files, affected(change, ctx) }`: the workspace-fingerprint files this plugin keys per project; one claimant each; `affected` answers names from `ctx.projects`, else it is refused                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -3567,6 +3532,7 @@ export interface BranchFacts {
 }
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void // a later plugin's field wins; a bad scope, base or ref is refused
+  readonly lock: boolean // `vx lock` (and `--check`) only: a run reads no file but the locks
 }
 ```
 

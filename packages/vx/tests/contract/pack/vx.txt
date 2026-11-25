@@ -110,7 +110,6 @@ src/history/run-notes.ts
 src/index-db/index.ts
 src/index-db/schema.ts
 src/index.ts
-src/memo/config-stamps.ts
 src/memo/file-hashes.ts
 src/memo/fold-memo.ts
 src/memo/fs-clock.ts

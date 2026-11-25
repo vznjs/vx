@@ -198,12 +198,12 @@ refusal points at: `vx watch` reads the same flags, M-58):
 
 After parsing, `resolveRunOptions` builds the orchestrator's `projects` field:
 
-| Condition                                  | `projects`                                                                                                                 |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| Every positional is anchored (`pkg#task`)  | `undefined` (no scope needed)                                                                                              |
-| Any bare positional + `filters.length > 0` | `resolveFilters(...)` result                                                                                               |
-| Any bare positional + `--all`              | `undefined` (every project); a config git lists that the lock lacks is refused (`findAllSelection`, "not in the lock yet") |
-| Any bare positional + default              | `[findCwdProject(cwd)]` or error; a config between cwd and that project the lock lacks is refused ("not in the lock yet")  |
+| Condition                                  | `projects`                                                           |
+| ------------------------------------------ | -------------------------------------------------------------------- |
+| Every positional is anchored (`pkg#task`)  | `undefined` (no scope needed)                                        |
+| Any bare positional + `filters.length > 0` | `resolveFilters(...)` result                                         |
+| Any bare positional + `--all`              | `undefined` (every locked project, `findAllSelection`)               |
+| Any bare positional + default              | `[findCwdProject(cwd)]` (the locked project around the cwd) or error |
 
 `--affected[=<base>]` adds a `...[<base>]` filter — the changed
 projects and their dependents, the candidates (#446) — put first in

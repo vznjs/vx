@@ -14,7 +14,7 @@ const BUILD = `export default { tasks: { build: { exec: { command: 'echo built' 
 const vx = (root: string, args: string[]) => spawnVx(root, args, { bin: BIN })
 
 const REFUSAL =
-  '✗ vx run  packages/lib ("lib") is outside this sparse checkout, but this run needs its vx.config.mjs — run `git sparse-checkout add packages/lib`'
+  '✗ vx run  packages/lib ("lib") is outside this sparse checkout, but this run needs it — run `git sparse-checkout add packages/lib`'
 
 let root: string
 beforeEach(async () => {
@@ -67,7 +67,7 @@ it('every left-out project is named in one command, by a run and by vx lock', as
   const run = await vx(root, ['run', 'build', '--all'])
   expect([run.code, run.err.trim()]).toEqual([
     1,
-    '✗ vx run  packages/lib ("lib"), packages/other ("other") are outside this sparse checkout, but this run needs their configs — run `git sparse-checkout add packages/lib packages/other`',
+    '✗ vx run  packages/lib ("lib"), packages/other ("other") are outside this sparse checkout, but this run needs them — run `git sparse-checkout add packages/lib packages/other`',
   ])
   const lock = await vx(root, ['lock'])
   expect([lock.code, lock.err]).toEqual([

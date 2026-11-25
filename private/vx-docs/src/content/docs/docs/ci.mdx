@@ -395,11 +395,7 @@ A pipeline name that does not exist names the closest one:
   [2mfix[0m  [1mvx pipeline pr[0m
 ```
 
-A config changed without `vx lock`:
-
-```ansi title="vx pipeline main"
-[38;2;239;68;68m✗[0m [1mvx pipeline[0m  [38;2;203;213;225mpackages/web/vx.config.ts changed since the last [0m[1m`vx lock`[0m[38;2;203;213;225m — run [0m[1m`vx lock`[0m
-```
+A config changed without `vx lock` runs as the lock holds it, unrefused: only `vx lock --check` catches it ([Keep the lock fresh](#keep-the-lock-fresh)).
 
 - **`--affected has no base here`.** The clone has no base branch and no `origin` to fetch it from. Set `baseBranch` in `.vx/workspace.ts`, or `affected: '<ref>'`.
 - **`fetching it from origin failed`.** The checkout left no credentials (`persist-credentials: false`). Fetch the base in an earlier step.

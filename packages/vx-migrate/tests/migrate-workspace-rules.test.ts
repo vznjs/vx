@@ -1,7 +1,7 @@
 // The adopted tool's run-wide settings in the `.vx/workspace.ts` a migration
 // writes. Native Turbo migration wrote neither turbo.json's `concurrency`
 // nor its `boundaries`, nor named `cacheDir`, and native Nx migration none of the ESLint
-// module boundaries `nx()` checks live: once migrated, a repo ran on every
+// module boundaries `nx()` checks at `vx lock`: once migrated, a repo ran on every
 // core and checked no boundary, with no word said.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -84,16 +84,18 @@ describe('turbo.json boundaries', () => {
   })
 })
 
-describe('turbo(): live', () => {
+describe('turbo(): under vx lock', () => {
   it('applies boundaries, unless the workspace sets them; leaves the cache dir to vx', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({ boundaries: BOUNDARIES, cacheDir: '.cache/turbo', tasks: {} }),
     )
-    const staged = async (ws: WorkspaceConfig) => {
-      await turbo().config!(ws, { workspaceRoot: root, warn: () => {}, setBranch: () => {} })
+    const staged = async (ws: WorkspaceConfig, lock = true) => {
+      await turbo().config!(ws, { workspaceRoot: root, warn: () => {}, setBranch: () => {}, lock })
       return ws
     }
+    // A run reads no turbo.json: only `vx lock` checks the rules.
+    expect(await staged({}, false)).toEqual({})
     expect(await staged({})).toEqual({
       run: {
         rules: {

@@ -32,7 +32,7 @@
   {
     "key": "turbo.json concurrency",
     "status": "mapped",
-    "reason": "turbo() fills the workspace's `run.concurrency` when `.vx/workspace.ts` sets none (`\"50%\"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo."
+    "reason": "`bunx @vzn/vx-migrate` writes it as `run.concurrency` (`\"50%\"` of the cores too). A run reads no turbo.json; `turbo()` takes `TURBO_CONCURRENCY` when `.vx/workspace.ts` sets none."
   },
   {
     "key": "turbo.json daemon",
@@ -266,8 +266,8 @@
   },
   {
     "key": "turbo.json futureFlags.githubActionsRemoteBaseRefFallback",
-    "status": "supported",
-    "reason": "`turbo()` follows it on GitHub Actions: a pull request's base ref the checkout lacks is compared as `origin/<ref>`, as in Turbo."
+    "status": "not-supported",
+    "reason": "A run reads no turbo.json: on GitHub Actions a pull request's base ref is compared as the event names it."
   },
   {
     "key": "turbo.json futureFlags.globalConfiguration",
@@ -322,7 +322,7 @@
   {
     "key": "nx.json affected",
     "status": "mapped",
-    "reason": "Its `defaultBase` (before Nx 20) is `baseBranch` when the top-level key is absent; nothing else in it is read."
+    "reason": "`bunx @vzn/vx-migrate` writes its `defaultBase` (before Nx 20) as `baseBranch` when the top-level key is absent; nothing else in it is read."
   },
   {
     "key": "nx.json extends",
@@ -332,7 +332,7 @@
   {
     "key": "nx.json defaultBase",
     "status": "mapped",
-    "reason": "`nx()` sets `baseBranch`, the branch a bare `--affected` compares with; `NX_BASE` wins over it as the base commit, as in Nx."
+    "reason": "`bunx @vzn/vx-migrate` writes it as `baseBranch`, the branch a bare `--affected` compares with. A run reads no nx.json; `nx()` takes `NX_BASE` as the base commit, as in Nx."
   },
   {
     "key": "nx.json tasksRunnerOptions",
@@ -402,7 +402,7 @@
   {
     "key": "nx.json parallel",
     "status": "mapped",
-    "reason": "nx() fills the workspace's `run.concurrency` when `.vx/workspace.ts` sets none; `NX_PARALLEL` wins over it, as in Nx."
+    "reason": "`bunx @vzn/vx-migrate` writes it as `run.concurrency`. A run reads no nx.json; `nx()` takes `NX_PARALLEL` when `.vx/workspace.ts` sets none."
   },
   {
     "key": "nx.json cacheDirectory",

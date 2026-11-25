@@ -44,7 +44,7 @@ export async function watchedProjects(
     edges =
       staged !== null
         ? taskEdgesFrom(staged)
-        : (await taskEdges(workspaceRoot, allProjects, { ...load, asLocked: true })).edges
+        : (await taskEdges(workspaceRoot, allProjects, load)).edges
   } catch {
     return [...allProjects]
   }
@@ -186,7 +186,7 @@ export async function sweepConfigs(
   ])
   let staged: Map<string, ProjectEntry> | null = null
   try {
-    staged = await loadCliProjects(workspaceRoot, projects, 'all', { ...load, asLocked: true })
+    staged = await loadCliProjects(workspaceRoot, projects, 'all', load)
   } catch {
     staged = null
   }

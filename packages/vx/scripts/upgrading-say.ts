@@ -4,6 +4,8 @@
 // history and cannot be edited. tests/site-upgrading.unsafe.test.ts holds every
 // paragraph of the release list to the site's readability rules.
 export const SAY: Readonly<Record<string, string>> = {
+  'feat(orchestrator)!: a config not in the lock is not there for a run':
+    "A run reads only the lock. A vx.config, or a package.json name, added since `vx lock` is not refused: the run ignores it until you run `vx lock`.\n\n`turbo()` and `nx()` read no turbo.json or nx.json on a run. turbo.json `concurrency` and nx.json `parallel` and `defaultBase` reach a run only through the `.vx/workspace.ts` that `bunx @vzn/vx-migrate` writes.\n\nTurbo's `futureFlags.githubActionsRemoteBaseRefFallback` is not read.\n\n`PreparedRun.unlockedConfig` is gone.",
   'fix(plugins)!: refuse a plugin option value of the wrong kind':
     '`refuseUnknownOptions(factory, options, known)` takes a `PluginOptionKinds<Options>` record in place of a list of option names (released in 0.0.397).\n\nPass each option with its kind. The type checker derives the kinds from your options interface.',
   'refactor(vx-otel)!: stop exporting the OTLP builders':

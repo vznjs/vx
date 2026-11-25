@@ -179,10 +179,10 @@ describe('a project is a directory with a vx.config', () => {
   )
 
   // The lock held no config for a discovered `gen` whose config git
-  // ignores: `--check` passed, `gen#build` said "run `vx lock`", which
-  // changed nothing, and `build --all` dropped its tasks.
+  // ignores: `--check` passed. A run never looks at the file (it reads the
+  // lock alone); `vx lock` and `--check` refuse it.
   it(
-    'a discovered directory whose config git ignores is refused, not sent to `vx lock`',
+    'a discovered directory whose config git ignores is refused by `vx lock`, unseen by a run',
     async () => {
       await write(path.join(root, '.gitignore'), 'gen/\n')
       await write(path.join(root, 'gen/notes.txt'), 'gen\n')
@@ -199,7 +199,8 @@ describe('a project is a directory with a vx.config', () => {
       await write(path.join(root, 'gen/vx.config.mjs'), config())
       const ignored =
         "plugin 'vx-test-gen' adds project gen, but git ignores gen/vx.config.mjs, so `vx lock` cannot read it — unignore it or delete it"
-      expect(planned(root, 'gen#hello')).toBe(`exit 1: ✗ vx run  gen#hello: ${ignored}`)
+      const run = String(planned(root, 'gen#hello'))
+      expect([run.startsWith('exit 1'), run.includes('gen/vx.config.mjs')]).toEqual([true, false])
       for (const args of [['lock'], ['lock', '--check']]) {
         const r = vx(root, ...args)
         expect([r.code, r.err.includes(ignored)]).toEqual([1, true])
@@ -275,10 +276,8 @@ describe('a project is a directory with a vx.config', () => {
       await write(path.join(root, 'a/vx.config.mjs'), config())
       expect(vx(root, 'lock').code).toBe(0)
       await write(path.join(root, 'b/vx.config.mjs'), config())
-      // Ran a alone, green: b was left out without a word.
-      expect(planned(root, 'hello', '--all')).toBe(
-        'exit 1: ✗ vx run  b/vx.config.mjs is not in the lock yet — run `vx lock`',
-      )
+      // Not in the lock, not there: a run reads only the lock.
+      expect(planned(root, 'hello', '--all')).toEqual(['a#hello'])
       const check = vx(root, 'lock', '--check')
       expect([check.code, check.err.trim()]).toEqual([
         1,

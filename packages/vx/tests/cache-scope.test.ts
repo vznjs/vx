@@ -254,7 +254,7 @@ describe('cache.scope', () => {
     }
     try {
       await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: BUILD_CONFIG })
-      // An --all run refuses a config the lock lacks.
+      // A run reads only the lock.
       await lock(fixture.root)
       expect(await scopeOf(['build', '--all'], undefined)).toBe(true)
       expect(await scopeOf(['build', '--all'], 'false')).toBe(true)

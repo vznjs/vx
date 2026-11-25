@@ -85,7 +85,7 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
       // run `vx lock`", and re-locking could not help.
       expect(await run('packages/b')).toEqual({
         code: 1,
-        err: '✗ vx run  .vx/projects.lock locks packages/b, but its vx.config.mjs is not readable by this user (EACCES) — give this user read access to it, then re-run',
+        err: '✗ vx run  .vx/projects.lock locks packages/b, but this user cannot reach its directory (EACCES) — give this user access to it and the directories above it, then re-run',
         planned: [],
       })
     })

@@ -42,8 +42,8 @@ vx lock   # after any edit to a vx.config.ts or .vx/workspace.ts
 ```
 
 A run reads every config from `.vx/projects.lock`, never the files:
-a task you add, or an edit to one, does nothing until `vx lock`, and a
-run after an edit refuses with `<file> changed since the last vx lock`.
+a task you add, or an edit to one, does nothing until `vx lock`. A run
+after an edit runs the old config, green, so lock before you trust it.
 Commit the lock with the config. After a merge conflict in
 `.vx/projects.lock`, resolve the configs and run `vx lock`; never edit a
 lock by hand. A new package needs `bun install` (or your package

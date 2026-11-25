@@ -15,8 +15,6 @@ export {
   namesRemote,
   openRemotes,
   prepareRun,
-  renamedSinceLock,
-  unlockedDir,
   workspaceCachePolicy,
   type PreparedRun,
 } from './prepare.js'
@@ -34,8 +32,6 @@ export {
   lockDiscovery,
   addedByPlugin,
   ignoredConfigRefusal,
-  importedBy,
-  stampWorkspaceImports,
   loadProjects,
   loadResolvedProjects,
   loadWorkspacePlugins,

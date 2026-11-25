@@ -229,13 +229,13 @@ describe('a new user, end to end', () => {
     ])
   })
 
-  it('a new package needs vx lock, then builds', async () => {
+  it('a new package is not there until vx lock, then builds', async () => {
     await pkg('web', ['lib'])
     await config('web')
     const unlocked = await vx(['run', 'build', '--filter', '@acme/web'])
     expect([unlocked.code, unlocked.out]).toEqual([
       1,
-      expect.stringContaining('packages/web/vx.config.ts is not in the lock yet — run `vx lock`'),
+      expect.stringContaining('no projects matched filter(s): "@acme/web"'),
     ])
     await install()
     expect((await vx(['lock'])).code).toBe(0)
@@ -268,7 +268,7 @@ describe('a new user, end to end', () => {
     const r = await vx(['run', 'build', '--all'])
     expect([r.code, r.out]).toEqual([
       1,
-      expect.stringContaining('its vx.config.ts is gone — run `vx lock`'),
+      expect.stringContaining('its directory is gone — run `vx lock`'),
     ])
     await rename(away, path.join(root, 'packages', 'web'))
     expect((await vx(['run', 'build', '--all'])).code).toBe(0)

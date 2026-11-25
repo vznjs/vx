@@ -110,9 +110,8 @@ async function vx(f: Fixture, shimmed: boolean): Promise<number> {
 
 async function lsFilesCount(f: Fixture): Promise<number> {
   const text = await readFile(f.gitLog, 'utf8').catch(() => '')
-  // The enumeration's listings: an `--all` run's one listing of config
-  // names (a config the lock lacks is refused) is no input read.
-  return text.split('\n').filter((l) => l.includes('ls-files') && !l.includes('vx.config')).length
+  // The enumeration's listings: a run lists no config names.
+  return text.split('\n').filter((l) => l.includes('ls-files')).length
 }
 
 async function stampLines(f: Fixture, name: string): Promise<number> {

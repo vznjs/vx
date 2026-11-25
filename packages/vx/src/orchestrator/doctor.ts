@@ -348,9 +348,9 @@ async function collectWorkspaceInfo(
       }
     } catch (err) {
       if (!isUserError(err)) throw err
-      // A refusal the load meets (a config edited since `vx lock`, gone, or
-      // one that no longer evaluates): every run refuses with it, so it is
-      // the lock's error.
+      // A refusal the load meets (a locked project's directory gone, a lock
+      // entry that does not decode): every run refuses with it, so it is the
+      // lock's error.
       if (refused === null) refused = err.message
       taskCount = 0
       defaultBuilds = 0

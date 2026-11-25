@@ -209,43 +209,24 @@ describe('a refusal under --format json', () => {
   // A config written or removed after the lock is the lock's drift, and
   // its fix is `vx lock`: it read VX_E_USAGE from the project's directory
   // and VX_E_REFUSED by name, where a missing lock reads VX_E_LOCK.
-  it('a config the lock has not seen, or one it locks that is gone, is VX_E_LOCK', async () => {
+  // A config the lock has not seen is no project (a run never looks for one).
+  it('a project the lock holds whose directory is gone is VX_E_LOCK', async () => {
     const ws = await makeWorkspace({ prefix: 'vx-error-codes-drift-', edges: {} })
     try {
-      const c = await addProject(ws, 'c', {})
+      await addProject(ws, 'c', {})
       const d = await addProject(ws, 'd', {
         config: "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
       })
       expect(Bun.spawnSync([process.execPath, REAL_BIN, 'lock'], { cwd: ws }).exitCode).toBe(0)
-      await Bun.write(
-        path.join(c, 'vx.config.mjs'),
-        "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
+      await rm(d, { recursive: true })
+      const p = Bun.spawnSync(
+        [process.execPath, REAL_BIN, 'run', 'build', '--all', '--dry', '--format', 'json'],
+        { cwd: ws, stdout: 'pipe', stderr: 'pipe' },
       )
-      const code = (args: string[], cwd = ws): string => {
-        const p = Bun.spawnSync([process.execPath, REAL_BIN, ...args], {
-          cwd,
-          stdout: 'pipe',
-          stderr: 'pipe',
-        })
-        expect(p.exitCode).toBe(1)
-        return (JSON.parse(p.stdout.toString()) as { error: { code: string } }).error.code
-      }
-      const unlocked = {
-        named: code(['run', 'c#build', '--dry', '--format', 'json']),
-        cwd: code(['run', 'build', '--dry', '--format', 'json'], c),
-        filter: code(['run', 'build', '--filter', 'c', '--dry', '--format', 'json']),
-      }
-      await rm(path.join(c, 'vx.config.mjs'))
-      await rm(path.join(d, 'vx.config.mjs'))
-      expect({
-        ...unlocked,
-        gone: code(['run', 'build', '--all', '--dry', '--format', 'json']),
-      }).toEqual({
-        named: 'VX_E_LOCK',
-        cwd: 'VX_E_LOCK',
-        filter: 'VX_E_LOCK',
-        gone: 'VX_E_LOCK',
-      })
+      expect(p.exitCode).toBe(1)
+      expect((JSON.parse(p.stdout.toString()) as { error: { code: string } }).error.code).toBe(
+        'VX_E_LOCK',
+      )
     } finally {
       await rm(ws, { recursive: true, force: true })
     }

@@ -72,23 +72,28 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
     options.root === undefined ? ['turbo.json', 'turbo.jsonc'] : [],
     {
       async config(workspace, ctx) {
-        const keys = await workspaceKeys(rootOf(ctx.workspaceRoot))
-        if (workspace.run?.concurrency === undefined && keys.concurrency !== undefined)
-          workspace.run = { ...workspace.run, concurrency: keys.concurrency }
-        if (workspace.run?.rules?.dependencies === undefined && keys.rules !== undefined)
-          workspace.run = {
-            ...workspace.run,
-            rules: { ...workspace.run?.rules, dependencies: keys.rules },
-          }
+        // A run reads no turbo.json (it reads only the locks); `vx lock`
+        // reads `boundaries`, the rules it checks.
+        if (ctx.lock && workspace.run?.rules?.dependencies === undefined) {
+          const rules = await boundaryRules(rootOf(ctx.workspaceRoot))
+          if (rules !== undefined)
+            workspace.run = {
+              ...workspace.run,
+              rules: { ...workspace.run?.rules, dependencies: rules },
+            }
+        }
+        // `TURBO_CONCURRENCY` (`10`, `50%` of the cores): Turbo's environment.
+        // turbo.json's `concurrency` is not read.
+        const concurrency = envConcurrency(Bun.env['TURBO_CONCURRENCY'])
+        if (workspace.run?.concurrency === undefined && concurrency !== undefined)
+          workspace.run = { ...workspace.run, concurrency }
         // `TURBO_FORCE` (`true` or `1`, as Turbo reads it) is `turbo run --force`.
         const force = Bun.env['TURBO_FORCE']?.trim()
         if (force === 'true' || force === '1')
           workspace.cache = { ...workspace.cache, policy: forcedPolicy(workspace.cache?.policy) }
         // `turbo run --affected` compares with TURBO_SCM_BASE when set, and
         // on GitHub Actions with what the event names.
-        const base =
-          Bun.env['TURBO_SCM_BASE']?.trim() ||
-          githubActionsBase(rootOf(ctx.workspaceRoot), keys.remoteBaseFallback === true)
+        const base = Bun.env['TURBO_SCM_BASE']?.trim() || githubActionsBase()
         if (base) ctx.setBranch({ base })
         // ...up to TURBO_SCM_HEAD. vx's head is the checkout (HEAD and its
         // working tree): a head at HEAD's commit is that, any other is said.
@@ -139,23 +144,14 @@ function atHead(root: string, ref: string): boolean {
  * the push event's `before`, or the parent of its first commit when the
  * push is new or forced. vx guessed `origin/HEAD`, which on a push to the
  * default branch is the commit itself: nothing was affected where Turbo
- * ran the pushed commits' packages. `origin/<ref>` stands in for a base
- * ref the checkout lacks only under Turbo's
- * `futureFlags.githubActionsRemoteBaseRefFallback`, as in Turbo.
+ * ran the pushed commits' packages. Turbo's
+ * `futureFlags.githubActionsRemoteBaseRefFallback` is turbo.json's, which a
+ * run does not read.
  */
-function githubActionsBase(root: string, remoteFallback: boolean): string | undefined {
+function githubActionsBase(): string | undefined {
   if (!Bun.env['GITHUB_ACTIONS']) return undefined
   const ref = Bun.env['GITHUB_BASE_REF']
-  if (ref) {
-    if (!remoteFallback) return ref
-    const has = (r: string) =>
-      Bun.spawnSync(['git', 'rev-parse', '--verify', '--quiet', '--end-of-options', r], {
-        cwd: root,
-        stdout: 'ignore',
-        stderr: 'ignore',
-      }).exitCode === 0
-    return has(ref) || !has(`origin/${ref}`) ? ref : `origin/${ref}`
-  }
+  if (ref) return ref
   const eventPath = Bun.env['GITHUB_EVENT_PATH']
   if (!eventPath) return undefined
   let event: { before?: unknown; forced?: unknown; commits?: unknown }
@@ -175,53 +171,28 @@ function githubActionsBase(root: string, remoteFallback: boolean): string | unde
   return before === '' ? undefined : before
 }
 
-/**
- * turbo.json's workspace keys vx has a home for, top level or under
- * `global`: `concurrency` (`"10"`, `"50%"` of the cores) and
- * `boundaries` as `run.rules.dependencies`.
- */
-async function workspaceKeys(root: string): Promise<{
-  concurrency?: number
-  remoteBaseFallback?: boolean
-  rules?: DependencyRule[]
-}> {
+function envConcurrency(value: string | undefined): number | undefined {
+  const c = value?.trim()
+  if (c === undefined || c === '' || c === '0') return undefined
+  const pct = /^(\d+)%$/.exec(c)
+  const n = pct
+    ? Math.max(1, Math.floor((availableParallelism() * Number(pct[1])) / 100))
+    : Number(c)
+  return Number.isInteger(n) && n > 0 ? n : undefined
+}
+
+/** turbo.json's `boundaries` as vx dependency rules; none without the file or a rule. */
+async function boundaryRules(root: string): Promise<DependencyRule[] | undefined> {
   const file = await turboConfigFile(root)
-  if (file === null) return {}
+  if (file === null) return undefined
   let raw: Record<string, unknown>
   try {
     raw = (Bun.JSONC.parse(await Bun.file(file).text()) ?? {}) as Record<string, unknown>
   } catch {
-    return {} // the mapping refuses the file, naming it
+    return undefined // the mapping refuses the file, naming it
   }
-  const global = (typeof raw['global'] === 'object' ? raw['global'] : null) as Record<
-    string,
-    unknown
-  > | null
-  // Turbo's environment sits above turbo.json (`TURBO_CONCURRENCY`, …);
-  // a set variable decides, its `0` included.
-  const read = (key: string, envName: string): string | undefined => {
-    const e = process.env[envName]?.trim()
-    const v = e !== undefined && e !== '' ? e : (global?.[key] ?? raw[key])
-    return typeof v === 'string' && v.trim() !== '' && v.trim() !== '0' ? v.trim() : undefined
-  }
-  const out: {
-    concurrency?: number
-    remoteBaseFallback?: boolean
-    rules?: DependencyRule[]
-  } = {}
   const { rules } = turboBoundaryRules(raw)
-  if (rules.length > 0) out.rules = rules
-  const flags = raw['futureFlags'] as { githubActionsRemoteBaseRefFallback?: unknown } | undefined
-  if (flags?.githubActionsRemoteBaseRefFallback === true) out.remoteBaseFallback = true
-  const c = read('concurrency', 'TURBO_CONCURRENCY')
-  if (c !== undefined) {
-    const pct = /^(\d+)%$/.exec(c)
-    const n = pct
-      ? Math.max(1, Math.floor((availableParallelism() * Number(pct[1])) / 100))
-      : Number(c)
-    if (Number.isInteger(n) && n > 0) out.concurrency = n
-  }
-  return out
+  return rules.length > 0 ? rules : undefined
 }
 
 /**

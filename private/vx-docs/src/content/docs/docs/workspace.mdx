@@ -216,8 +216,8 @@ Resolve the `vx.config.ts` files, then run `vx lock`. It writes both locks from 
 </Aside>
 
 <Quiz q="You edit packages/web/vx.config.ts and run vx run build. Which config does the run use?">
-  Neither: the run refuses, `packages/web/vx.config.ts changed since the last vx lock`. Runs read
-  only the lock, so run `vx lock` first.
+  The old one, from the lock, with no warning: runs read only the lock and never the config. Run
+  `vx lock` first.
 </Quiz>
 
 <Takeaway>keep the lock in step with your configs, and fix a conflicted one in one command.</Takeaway>
@@ -606,9 +606,9 @@ Look at the second line: the old command, then the new one. Run `vx lock` to tak
 - **`two projects are named "…": …`.** Two folders have the same name: set another `name` in one's `vx.config.ts`, then run `vx lock`.
 - **`plugin '…' adds project …, but … makes … a workspace of its own`.** A glob reaches a folder with its own `.vx/workspace.ts`. Drop it from the glob or delete its `.vx`, then run `vx lock`.
 - **`plugin '…' named project … at …: outside the workspace root`.** A package-manager glob such as `../shared/*` names a folder above the root. Move it under the root, or take it out of the glob.
-- **`… locks …, but its … is gone`.** A `vx.config.ts` was deleted or renamed: run `vx lock`.
+- **`… locks …, but its directory is gone`.** A project folder was deleted or moved: run `vx lock`.
 - **`… holds a line … never writes`.** A merge left a conflict in the lock: see [Fix a merge conflict in the lock](../ci/#fix-a-merge-conflict-in-the-lock).
-- **`… evaluates differently from the lock here`.** A config changed without `vx lock`: run `vx lock` and commit the lock.
+- **`… evaluates differently from the lock here`.** `vx lock --check` found a config changed without `vx lock`: run `vx lock` and commit the lock.
 - **`vx requires git: … is not inside a git work tree`.** vx needs git: run `git init` at the workspace root.
 - **`vx requires git: failed to spawn 'git'`.** Install git.
 

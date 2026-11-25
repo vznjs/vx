@@ -21,7 +21,7 @@ A key a new upstream release adds fails vx's tests until it has a row here.
 | `cacheDir` | not supported | Ignored without a warning; vx uses its own `cache.dir` in `.vx/workspace.ts`. |
 | `cacheMaxAge` | not supported | Ignored without a warning, as is `TURBO_CACHE_MAX_AGE`; no vx run evicts, `vx cache clean --older-than` does. |
 | `cacheMaxSize` | not supported | Ignored without a warning, as is `TURBO_CACHE_MAX_SIZE`; no vx run evicts, `vx cache clean --max-size` does. |
-| `concurrency` | mapped, with a note | turbo() fills the workspace's `run.concurrency` when `.vx/workspace.ts` sets none (`"50%"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo. |
+| `concurrency` | mapped, with a note | `bunx @vzn/vx-migrate` writes it as `run.concurrency` (`"50%"` of the cores too). A run reads no turbo.json; `turbo()` takes `TURBO_CONCURRENCY` when `.vx/workspace.ts` sets none. |
 | `daemon` | not applicable | vx has no daemon by design. |
 | `dangerouslyDisablePackageManagerCheck` | not applicable | Turbo's package-manager check; vx has none. |
 | `envMode` | mapped, with a note | Strict is vx's behaviour; `loose` gets a note, since vx passes only declared variables, and so do the tasks a Turbo 1 `pipeline` config's inferred mode ran loose (no pass-through list); under `turbo()` `TURBO_ENV_MODE` wins over it. |
@@ -68,7 +68,7 @@ A key a new upstream release adds fails vx's tests until it has a row here.
 | `futureFlags.experimentalObservability` | not applicable | Turbo telemetry export; vx's is a telemetry plugin. |
 | `futureFlags.experimentalPythonWorkspaces` | not supported | Ignored; vx discovers projects from `package.json` workspaces only. |
 | `futureFlags.filterUsingTasks` | not supported | Ignored; `--filter` keeps vx's semantics. |
-| `futureFlags.githubActionsRemoteBaseRefFallback` | supported | `turbo()` follows it on GitHub Actions: a pull request's base ref the checkout lacks is compared as `origin/<ref>`, as in Turbo. |
+| `futureFlags.githubActionsRemoteBaseRefFallback` | not supported | A run reads no turbo.json: on GitHub Actions a pull request's base ref is compared as the event names it. |
 | `futureFlags.globalConfiguration` | supported | The `global` block is read whenever present, flag or not. |
 | `futureFlags.longerSignatureKey` | supported | `turboCache()` refuses a `TURBO_REMOTE_CACHE_SIGNATURE_KEY` under 32 bytes, as Turbo does; without it a short key warns and signs. The `signatureKey` option needs 32 bytes either way. |
 | `futureFlags.pruneIncludesGlobalFiles` | not applicable | Affects only `turbo prune`; vx has none. |
@@ -87,9 +87,9 @@ A key a new upstream release adds fails vx's tests until it has a row here.
 | Key | vx | Note |
 | --- | --- | --- |
 | `implicitDependencies` | not supported | The top-level map is not read. |
-| `affected` | mapped, with a note | Its `defaultBase` (before Nx 20) is `baseBranch` when the top-level key is absent; nothing else in it is read. |
+| `affected` | mapped, with a note | `bunx @vzn/vx-migrate` writes its `defaultBase` (before Nx 20) as `baseBranch` when the top-level key is absent; nothing else in it is read. |
 | `extends` | supported | Each parent is followed and merged as Nx does, before named inputs are read. |
-| `defaultBase` | mapped, with a note | `nx()` sets `baseBranch`, the branch a bare `--affected` compares with; `NX_BASE` wins over it as the base commit, as in Nx. |
+| `defaultBase` | mapped, with a note | `bunx @vzn/vx-migrate` writes it as `baseBranch`, the branch a bare `--affected` compares with. A run reads no nx.json; `nx()` takes `NX_BASE` as the base commit, as in Nx. |
 | `tasksRunnerOptions` | mapped, with a note | Only `default.options.cacheableOperations` is read, as the legacy cached-targets list. |
 | `namedInputs` | mapped, with a note | Expanded per project (project entries win) into each task's `inputs`; vx has no named inputs. |
 | `targetDefaults` | mapped, with a note | Applied by Nx while it builds the graph vx reads; vx sees the merged targets. |
@@ -103,7 +103,7 @@ A key a new upstream release adds fails vx's tests until it has a row here.
 | `nxCloudUrl` | not applicable | Nx Cloud endpoint; `nxCache()` talks to self-hosted `/v1/cache` servers. |
 | `nxCloudEncryptionKey` | not applicable | Nx Cloud artifact encryption. |
 | `neverConnectToCloud` | not applicable | Nx Cloud opt-out; vx never connects to Nx Cloud. |
-| `parallel` | mapped, with a note | nx() fills the workspace's `run.concurrency` when `.vx/workspace.ts` sets none; `NX_PARALLEL` wins over it, as in Nx. |
+| `parallel` | mapped, with a note | `bunx @vzn/vx-migrate` writes it as `run.concurrency`. A run reads no nx.json; `nx()` takes `NX_PARALLEL` when `.vx/workspace.ts` sets none. |
 | `cacheDirectory` | not supported | Ignored; vx uses its own `cache.dir`. |
 | `useDaemonProcess` | not applicable | vx has no daemon; Nx's setting still applies when vx asks Nx for the graph. |
 | `useInferencePlugins` | mapped, with a note | Applied by Nx when it builds the graph; vx sees the targets that result. |

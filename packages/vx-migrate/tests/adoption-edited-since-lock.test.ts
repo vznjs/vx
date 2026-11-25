@@ -1,9 +1,8 @@
-// A run reads the lock, never turbo.json, a script or project.json: an edit
-// to one with no `vx lock` after it ran the old command, green (a script
-// edit even missed the cache, the old command saved under the new key). As
-// for an edited vx.config, the run maps the file again and refuses a mapping
-// that moved, naming the file and `vx lock`.
-import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from 'node:fs/promises'
+// A run reads the lock, never turbo.json, a script, project.json or the Nx
+// graph, and calls no `project` hook (owner, 2026-11-25: "You need to run vx
+// lock every time the Nx graph changes. No vx lock, we run what's already
+// locked."). An edit runs the locked command, unrefused, until `vx lock`.
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -15,85 +14,37 @@ import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const TIMEOUT = 30_000
-const said = (file: string) => `${file} changed since the last \`vx lock\` — run \`vx lock\``
+
+/** Each planned task's command, by id. */
+async function commands(root: string, tasks: string[]): Promise<Record<string, string>> {
+  const plan = await planRun({ cwd: root, tasks, log: silent() })
+  return Object.fromEntries(plan.tasks.map((t) => [t.node.id, t.command ?? '']))
+}
 
 describe('turbo(): a file the lock was mapped from, edited since', () => {
   const ws = useTurboWorkspace({ tasks: { build: { outputs: ['dist/**'] } } })
-  const plan = () => planRun({ cwd: ws.root, tasks: ['build'], log: silent() })
+  const lib = () => path.join(ws.root, 'packages', 'lib', 'package.json')
+  const script = (build: string) =>
+    writeFile(lib(), JSON.stringify({ name: 'lib', version: '1.0.0', scripts: { build } }))
 
-  it(
-    'refuses the run for a script edit, then runs once `vx lock` read it',
-    async () => {
-      await lock(ws.root)
-      expect((await plan()).tasks.length).toBe(2)
-      const manifest = path.join(ws.root, 'packages', 'lib', 'package.json')
-      await writeFile(
-        manifest,
-        JSON.stringify({ name: 'lib', version: '1.0.0', scripts: { build: 'echo edited' } }),
-      )
-      await expect(plan()).rejects.toThrow(said('packages/lib/package.json'))
-      await lock(ws.root)
-      expect((await plan()).tasks.length).toBe(2)
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'refuses the run for a turbo.json edit',
-    async () => {
-      await lock(ws.root)
-      await writeFile(
-        path.join(ws.root, 'turbo.json'),
-        JSON.stringify({ tasks: { build: { outputs: ['dist/**'], env: ['MODE'] } } }),
-      )
-      await expect(plan()).rejects.toThrow(said('turbo.json'))
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'refuses the run for a package turbo.json that appeared since',
-    async () => {
-      await lock(ws.root)
-      await writeFile(
-        path.join(ws.root, 'packages', 'lib', 'turbo.json'),
-        JSON.stringify({ extends: ['//'], tasks: { build: { env: ['MODE'] } } }),
-      )
-      await expect(plan()).rejects.toThrow(said('packages/lib/turbo.json'))
-    },
-    TIMEOUT,
-  )
-
-  // The stamp is held to ctime and the inode, as a vx.config's is: a
-  // same-length edit with its mtime set back skipped the byte check.
-  it(
-    'refuses a same-length turbo.json edit whose mtime was set back',
-    async () => {
-      const turbo = path.join(ws.root, 'turbo.json')
-      const text = await Bun.file(turbo).text()
-      const old = new Date(Date.now() - 3_600_000)
-      await utimes(turbo, old, old)
-      await lock(ws.root)
-      const before = await stat(turbo)
-      await writeFile(turbo, text.replace('dist/**', 'dust/**'))
-      await utimes(turbo, before.atime, before.mtime)
-      const now = await stat(turbo)
-      expect([now.size, now.mtimeMs]).toEqual([before.size, before.mtimeMs])
-      await expect(plan()).rejects.toThrow(said('turbo.json'))
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'runs when a file was rewritten with the same bytes',
-    async () => {
-      await lock(ws.root)
-      const turbo = path.join(ws.root, 'turbo.json')
-      await writeFile(turbo, await Bun.file(turbo).text())
-      expect((await plan()).tasks.length).toBe(2)
-    },
-    TIMEOUT,
-  )
+  for (const clone of [false, true]) {
+    it(
+      `runs the locked script${clone ? ' in a fresh clone' : ''}, the edited one once \`vx lock\` mapped it`,
+      async () => {
+        await lock(ws.root)
+        if (clone) await rm(path.join(ws.root, '.vx', 'cache'), { recursive: true, force: true })
+        await script('echo edited')
+        await writeFile(
+          path.join(ws.root, 'turbo.json'),
+          JSON.stringify({ tasks: { build: { outputs: ['dist/**'], env: ['MODE'] } } }),
+        )
+        expect((await commands(ws.root, ['lib#build']))['lib#build']).toContain('echo lib')
+        await lock(ws.root)
+        expect((await commands(ws.root, ['lib#build']))['lib#build']).toContain('echo edited')
+      },
+      TIMEOUT,
+    )
+  }
 })
 
 describe('nx(): a file the lock was mapped from, edited since', () => {
@@ -143,57 +94,35 @@ describe('nx(): a file the lock was mapped from, edited since', () => {
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
   })
-  // A run maps an edited file again and refuses only a mapping that moved
-  // (63c8d1b8f): the graph Nx would build from the edit.
-  const graphMoves = async (): Promise<void> => {
-    const file = path.join(root, 'graph.json')
-    await writeFile(file, (await Bun.file(file).text()).replace('echo lint', 'echo edited'))
+  // `nx graph` is a spawn of the fake bin, counted in `nx-calls`.
+  for (const clone of [false, true]) {
+    it(
+      `runs the locked target and spawns no \`nx graph\`${clone ? ' in a fresh clone' : ''}`,
+      async () => {
+        await lock(root)
+        const calls = path.join(root, 'nx-calls')
+        expect(await Bun.file(calls).exists()).toBe(true)
+        await rm(calls)
+        if (clone) await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
+        await writeFile(
+          path.join(root, 'packages', 'lib', 'project.json'),
+          JSON.stringify({ name: 'lib', targets: { lint: { command: 'echo edited' } } }),
+        )
+        await writeFile(
+          path.join(root, 'packages', 'lib', 'vite.config.ts'),
+          'export default { build: {} }\n',
+        )
+        const graph = path.join(root, 'graph.json')
+        await writeFile(graph, (await Bun.file(graph).text()).replace('echo lint', 'echo edited'))
+        const lint = (await commands(root, ['lint']))['lib#lint']
+        expect([lint?.includes('echo lint'), lint?.includes('edited')]).toEqual([true, false])
+        expect(await Bun.file(calls).exists()).toBe(false)
+        // CONTROL: `vx lock` maps through the graph, and the run follows it.
+        await lock(root)
+        expect(await Bun.file(calls).exists()).toBe(true)
+        expect((await commands(root, ['lint']))['lib#lint']).toContain('echo edited')
+      },
+      TIMEOUT,
+    )
   }
-
-  it(
-    'refuses the run, naming project.json and `vx lock`',
-    async () => {
-      await lock(root)
-      const plan = () => planRun({ cwd: root, tasks: ['lint'], log: silent() })
-      expect((await plan()).tasks.length).toBe(1)
-      await writeFile(
-        path.join(root, 'packages', 'lib', 'project.json'),
-        JSON.stringify({ name: 'lib', targets: { lint: { command: 'echo edited' } } }),
-      )
-      await graphMoves()
-      await expect(plan()).rejects.toThrow(said('packages/lib/project.json'))
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'refuses the run for a project.json that appeared since',
-    async () => {
-      const project = path.join(root, 'packages', 'lib', 'project.json')
-      await rm(project)
-      await lock(root)
-      const plan = () => planRun({ cwd: root, tasks: ['lint'], log: silent() })
-      expect((await plan()).tasks.length).toBe(1)
-      await writeFile(project, JSON.stringify({ name: 'lib' }))
-      await graphMoves()
-      await expect(plan()).rejects.toThrow(said('packages/lib/project.json'))
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'refuses the run for an edit to the file a target was inferred from',
-    async () => {
-      await lock(root)
-      const plan = () => planRun({ cwd: root, tasks: ['lint'], log: silent() })
-      expect((await plan()).tasks.length).toBe(1)
-      await writeFile(
-        path.join(root, 'packages', 'lib', 'vite.config.ts'),
-        'export default { build: {} }\n',
-      )
-      await graphMoves()
-      await expect(plan()).rejects.toThrow(said('packages/lib/vite.config.ts'))
-    },
-    TIMEOUT,
-  )
 })

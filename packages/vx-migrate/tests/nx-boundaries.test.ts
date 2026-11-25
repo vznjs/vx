@@ -93,17 +93,19 @@ describe('nxDependencyRules', () => {
   })
 })
 
-describe('nx() config stage', () => {
-  const stage = async (workspace: WorkspaceConfig) => {
+describe('nx() config stage, under vx lock', () => {
+  const stage = async (workspace: WorkspaceConfig, lock = true) => {
     const plugin = nx() as unknown as {
-      config(w: WorkspaceConfig, ctx: { workspaceRoot: string }): Promise<void>
+      config(w: WorkspaceConfig, ctx: { workspaceRoot: string; lock: boolean }): Promise<void>
     }
-    await plugin.config(workspace, { workspaceRoot: root })
+    await plugin.config(workspace, { workspaceRoot: root, lock })
     return workspace.run?.rules
   }
 
   it('fills run.rules.dependencies when the workspace sets none, and keeps its own', async () => {
     await writeFile(path.join(root, 'eslint.config.mjs'), FLAT)
+    // A run reads no lint config: only `vx lock` checks the rules.
+    expect(await stage({}, false)).toBeUndefined()
     expect(await stage({ run: { rules: { exclusiveOutputs: false } } })).toEqual({
       exclusiveOutputs: false,
       dependencies: MAPPED,

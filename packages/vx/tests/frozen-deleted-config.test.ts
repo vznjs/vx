@@ -1,8 +1,10 @@
-// A run runs what the lock records: an EDITED config is refused (it ran as
-// locked, green, until 2026-11-23), and a RENAMED one is refused (D-88). A DELETED config is neither:
-// the project loads live as config-less, its locked tasks vanish, and the
-// run exited 0 having run only the other project's build (X-144).
-import { rename, rm, unlink } from 'node:fs/promises'
+// A run runs what the lock records and reads no config (2026-11-25): an
+// EDITED or DELETED config runs as locked until `vx lock`. A project whose
+// DIRECTORY is gone is refused, naming `vx lock`: its locked tasks have
+// nowhere to run, and a hit would restore outputs into a directory made for
+// them.
+import { existsSync } from 'node:fs'
+import { rm, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
@@ -34,26 +36,38 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
 })
 
-it('an edited config is refused, not run as locked', async () => {
+it('an edited config runs as locked', async () => {
   await Bun.write(
     config,
     `export default { tasks: { build: { exec: { command: 'echo EDITED' } } } }\n`,
   )
   const r = await vx(root, ['run', 'build', '--all', '--output-logs=full'])
-  expect([r.code, r.out.includes('LOCKED-BUILD'), r.err.trim()]).toEqual([
-    1,
+  expect([r.code, r.out.includes('LOCKED-BUILD'), r.out.includes('EDITED'), r.err]).toEqual([
+    0,
+    true,
     false,
-    '✗ vx run  packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
+    '',
   ])
 }, 30_000)
 
-it('a deleted config the lock holds is refused, not silently dropped', async () => {
+it('a deleted config the lock holds runs its locked tasks', async () => {
   await unlink(config)
+  const r = await vx(root, ['run', 'build', '--all', '--output-logs=full'])
+  expect([r.code, r.out.includes('LOCKED-BUILD'), r.out.includes('LIB'), r.err]).toEqual([
+    0,
+    true,
+    true,
+    '',
+  ])
+}, 30_000)
+
+it('a locked project whose directory is gone is refused, not silently dropped', async () => {
+  await rm(path.dirname(config), { recursive: true })
   const r = await vx(root, ['run', 'build', '--all'])
   expect([r.code, r.out.includes('LIB'), r.err.trim()]).toEqual([
     1,
     false,
-    '✗ vx run  .vx/projects.lock locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`',
+    '✗ vx run  .vx/projects.lock locks packages/app ("app"), but its directory is gone — run `vx lock`',
   ])
 }, 30_000)
 
@@ -65,11 +79,6 @@ it('the root project is named as the root, not as `.`', async () => {
   )
   expect((await vx(root, ['lock'])).code).toBe(0)
   await unlink(rootConfig)
-  const run = await vx(root, ['run', 'build', '--all'])
-  expect([run.code, run.err.trim()]).toEqual([
-    1,
-    '✗ vx run  .vx/projects.lock locks the workspace root project ("fixture-root"), but its vx.config.mjs is gone — run `vx lock`',
-  ])
   const check = await vx(root, ['lock', '--check'])
   expect(check.code).toBe(1)
   expect(check.err).toContain(
@@ -79,8 +88,8 @@ it('the root project is named as the root, not as `.`', async () => {
 
 it('a locked config-less project whose directory is gone is refused with the same way out', async () => {
   // A `project` plugin's tasks (turbo()'s) for a package with no config
-  // file: moved away after `vx lock`, its build said only that the spawn's
-  // working directory does not exist.
+  // file. Removed after a run saved its output, the next run hit and
+  // restored that output into a directory made for it, exit 0.
   await addProject(root, 'svc', {})
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
@@ -88,16 +97,22 @@ it('a locked config-less project whose directory is gone is refused with the sam
       pluginSource(
         'gen',
         `{ project(config, ctx) {
-          if (ctx.name === 'svc') config.tasks.build = { exec: { command: 'echo SVC' } }
+          if (ctx.name === 'svc') config.tasks.build = {
+            exec: { command: 'mkdir -p dist && echo SVC > dist/out.txt' },
+            inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true,
+          }
         } }`,
       ),
     ]),
   )
   expect((await vx(root, ['lock'])).code).toBe(0)
-  await rename(path.join(root, 'packages', 'svc'), path.join(root, 'packages', 'moved'))
-  const r = await vx(root, ['run', 'build', '--filter', 'svc', '--output-logs=full'])
-  expect(r.code).toBe(1)
-  expect(r.out + r.err).toContain(
-    '[vx] svc#build: .vx/projects.lock locks packages/svc ("svc"), but its directory is gone — run `vx lock`',
-  )
+  const svc = path.join(root, 'packages', 'svc')
+  expect((await vx(root, ['run', 'build', '--filter', 'svc'])).code).toBe(0)
+  await rm(svc, { recursive: true })
+  const r = await vx(root, ['run', 'build', '--filter', 'svc'])
+  expect([r.code, r.err.trim(), existsSync(svc)]).toEqual([
+    1,
+    '✗ vx run  .vx/projects.lock locks packages/svc ("svc"), but its directory is gone — run `vx lock`',
+    false,
+  ])
 }, 30_000)

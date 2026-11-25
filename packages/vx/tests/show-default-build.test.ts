@@ -136,10 +136,9 @@ describe('vx show and the default build of a dependency', () => {
     TIMEOUT,
   )
 
-  // A config written after the lock read "no vx config": a user who had
-  // just written one went looking for a typo.
+  // Not in the lock, not there: `vx show` reads the lock alone.
   it(
-    'a config the lock does not hold yet says so, not "no vx config"',
+    'a config the lock does not hold is not there for `vx show`',
     async () => {
       const file = path.join(root, 'packages', 'lone', 'vx.config.mjs')
       await writeFile(file, "export default { tasks: { t: { exec: { command: 'true' } } } }\n")
@@ -147,10 +146,8 @@ describe('vx show and the default build of a dependency', () => {
         const plain = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
         const show = (...args: string[]) =>
           Bun.spawnSync([process.execPath, plain, 'show', ...args], { cwd: root }).stdout.toString()
-        expect(show()).toContain(
-          '  lone     packages/lone  vx.config.mjs not locked — run vx lock\n',
-        )
-        expect(show('lone')).toContain('config    vx.config.mjs not locked — run vx lock')
+        expect(show()).not.toContain('not locked')
+        expect(show('lone')).toContain('config    none')
       } finally {
         await rm(file)
       }

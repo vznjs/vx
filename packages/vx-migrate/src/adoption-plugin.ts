@@ -71,8 +71,8 @@ export function adoptionPlugin(
   // `discover`: a project the tool has that no member glob lists.
   stages: Pick<VxPlugin, 'config' | 'discover'> = {},
   // Each package's own files the mapping reads (`package.json`'s scripts,
-  // `project.json`), named to core with `reads` so a run refuses once one
-  // changes, naming `vx lock` (`ProjectHookContext.read`).
+  // `project.json`), named to core (`ProjectHookContext.read`) so `vx lock`
+  // scans them as committed text.
   own: readonly string[] = [],
 ): VxPlugin {
   // One mapping per pass (`vx lock`, `--check`), not per process: the workspace
@@ -86,8 +86,8 @@ export function adoptionPlugin(
   let warned = false
   const plugin = definePlugin(meta, {
     async project(config, ctx) {
-      // A run reads the lock, never these: an edit with no `vx lock` ran the
-      // old command, green. Named present or not: one appearing is an edit.
+      // A run reads the lock, never these, and runs no hook: an edit runs
+      // the locked command until `vx lock` maps it.
       for (const f of reads) ctx.read(path.join(ctx.workspaceRoot, f))
       for (const f of own) ctx.read(path.join(ctx.dir, f))
       if (mappedFor !== ctx.projects) {

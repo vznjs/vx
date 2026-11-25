@@ -749,6 +749,7 @@ export interface CommandContext extends BaseContext {
 == type ConfigContext (src/orchestrator/plugin.ts)
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void
+  readonly lock: boolean
 }
 == type DeclaredOutputs (src/cache/layer.ts)
 export interface DeclaredOutputs {
@@ -1619,7 +1620,6 @@ export interface PreparedRun {
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
   taskless: (name: string) => boolean
-  unlockedConfig: () => string | undefined
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

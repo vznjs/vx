@@ -197,7 +197,8 @@ describe('vx cache clean with no bound clears the cache', () => {
       expect((await vx(['run', 'build', '--all'], env)).code).toBe(0)
       await Bun.write(path.join(shared, 'release.tar.zst'), 'mine')
       await Bun.write(path.join(shared, 'notes', 'keep.txt'), 'mine')
-      // A config-stamps write a crash left before its rename is vx's too.
+      // An old `vx lock`'s config stamps, and a temp a crash left, are vx's too.
+      await Bun.write(path.join(shared, 'config-stamps.json'), '{}')
       await Bun.write(path.join(shared, 'config-stamps.json.4242.tmp'), '{}')
       expect(existsSync(path.join(shared, 'cache.db'))).toBe(true)
 

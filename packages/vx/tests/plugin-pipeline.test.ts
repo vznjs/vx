@@ -1870,7 +1870,7 @@ describe('plugin-host, called directly', () => {
   })
 
   it('the config stage hands each plugin the context it was given', async () => {
-    const ctx = { workspaceRoot: '/ws', warn: () => {}, setBranch: () => {} }
+    const ctx = { workspaceRoot: '/ws', warn: () => {}, setBranch: () => {}, lock: false }
     let got: unknown
     await applyConfigHooks(
       [testPlugin('org/cfg', { config: (_ws, c) => void (got = c) })],
