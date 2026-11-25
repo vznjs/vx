@@ -1140,11 +1140,17 @@ local concerns.
   (e.g. `@vzn/vx-reapi`'s CAS client).
 - No write-batching or retry on transient errors. Fire-and-forget. The
   one retry is `getSaved`'s: an entry another machine of the run saved
-  must come home, so a failed download of it (a stall, an error) is asked
-  again, backing off, for ten `run.pluginTimeout` bounds (30 s by
-  default); a remote that answers it holds none, sends bytes that do not
-  read back, or turned itself off is not asked again (2026-11-25: two stalled downloads failed a green DTE
-  run).
+  must come home, so a download of it that stalled (`Stalled`: no answer,
+  or no bytes, within `run.pluginTimeout`) is asked again, backing off,
+  while ten of those bounds have not passed (30 s by default; an ask that
+  goes quiet ends one bound later, one that streams is never cut), and a
+  remote that holds none is asked once more, since a CDN may serve a 404
+  from before the upload. A refusal, a malformed answer or bad bytes
+  would come back the same and are not asked again. A key asked again is
+  one request in "N more requests failed", and one that lands drops its
+  download failures from the task's row. A `getSaved` pull stays out of
+  `downloads`, so a `get` beside it that gives up its slow body gives up
+  only its own (2026-11-25: two stalled downloads failed a green DTE run).
 - One bound, on waiting, never on working: a `get` that has not
   answered within `run.pluginTimeout` (3 s), or a body that sends no
   bytes for as long (`endsOnStop`), is a miss, warned by plugin, and the

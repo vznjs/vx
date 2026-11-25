@@ -74,11 +74,12 @@ export function teardownTimeoutMs(): number {
 }
 
 /**
- * How long a download that must land is asked again: an entry another
- * machine of the run saved is the run's own work, and its miss fails a run
- * whose every task passed. Ten stall bounds (`run.pluginTimeout`), ten of
- * the default when that bound is off, so a remote that never answers still
- * ends the wait.
+ * How long a download that must land is asked again after a stall: an
+ * entry another machine of the run saved is the run's own work, and its
+ * miss fails a run whose every task passed. Ten stall bounds
+ * (`run.pluginTimeout`); no ask starts past it, and an ask that goes quiet
+ * ends one bound later (one that keeps streaming is never cut). With the bound off nothing stalls, so this paces only the one
+ * ask again after a "none" (a hundredth of ten default bounds).
  */
 export function savedDownloadBudgetMs(): number {
   return 10 * (teardownTimeoutMs() || DEFAULT_TIMEOUT_MS)

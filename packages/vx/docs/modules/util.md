@@ -1461,7 +1461,7 @@ setWorkspaceTimers(values): void                  // .vx/workspace's timers, by 
 limitSetting(variable, defaultValue): number      // run.logs.*, run.secrets.minLength, watch.*, history.retention as the workspace load resolved them
 setWorkspaceLimits(values): void                  // set once per workspace load (settings.ts applyWorkspaceLimits)
 teardownTimeoutMs(): number                       // default 3000, run.pluginTimeout
-savedDownloadBudgetMs(): number                   // 10 × run.pluginTimeout (10 × 3000 when 0): getSaved's retries
+savedDownloadBudgetMs(): number                   // 10 × run.pluginTimeout (10 × 3000 when 0): getSaved's asks again
 settleWithin(p: Promise<unknown>, ms): Promise<boolean>
 killGraceMs(defaultMs: number): number            // run.killGrace, else defaultMs
 POST_EXIT_DRAIN_MS                                // 250: the drain after a shell exits
@@ -1484,7 +1484,7 @@ dieOf(signal: 'SIGINT' | 'SIGTERM' | 'SIGHUP'): void // die of it, waiting (1 s 
   window): `VX_TEST_<name>`, a duration, read per call; undocumented and
   in no settings table.
 - `teardownTimeoutMs` is 3 s (`run.pluginTimeout`, `VX_RUN_PLUGIN_TIMEOUT`): it bounds a flush, a teardown, and a remote download's wait for its answer (`RemoteLane`) and between its bytes (`endsOnStop`); 0 bounds no download.
-- `savedDownloadBudgetMs` is how long `LayeredCache.getSaved` asks again past a failed download: ten of those bounds, ten of the default when they are off, so a must-come-home entry survives a stall and a dead remote still ends the wait.
+- `savedDownloadBudgetMs` is how long `LayeredCache.getSaved` asks again past a stall: ten of those bounds. No ask starts past it, and a quiet one ends one bound later. With the bound off nothing stalls, and it paces only the one ask again after a `none`.
 - `settleWithin` returns true when `p` fulfilled before the deadline,
   false when the deadline won; the caller decides whether a lost result
   is worth a warning. A rejection before the deadline is not a timeout:

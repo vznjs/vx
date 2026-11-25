@@ -462,7 +462,7 @@ Each field, its default, and what it does. "Also" lists its variable and flag.
 | `run.retries` | `0` | Re-runs of a failed task, for tasks without their own `exec.retries`. Also: `VX_RUN_RETRIES`, `--retries`. |
 | `run.failFast` | `false` | `true` stops the run at the first failure and kills running tasks. Off, a failure skips only its dependents. Also: `VX_RUN_FAIL_FAST`, `--fail-fast`. |
 | `run.killGrace` | `'2s'` | Time between SIGTERM and SIGKILL when vx stops a process. Also: `VX_RUN_KILL_GRACE`. |
-| `run.pluginTimeout` | `'3s'` | How long one plugin's end-of-run work may take. `'0ms'` waits for nothing. Also: `VX_RUN_PLUGIN_TIMEOUT`. |
+| `run.pluginTimeout` | `'3s'` | How long one plugin's end-of-run work may take, and how long a remote cache download may go quiet before it is a miss. A download of a task a [DTE](../distributed-task-execution/) worker ran is asked again for ten of these. `'0ms'` waits for nothing. Also: `VX_RUN_PLUGIN_TIMEOUT`. |
 | `run.logs.captureHead` | `'8MiB'` | The start of a task's output kept with its cache entry. The live stream is never cut. Also: `VX_RUN_LOGS_CAPTURE_HEAD`. |
 | `run.logs.captureTail` | `'8MiB'` | The end of a task's output kept with its cache entry. Also: `VX_RUN_LOGS_CAPTURE_TAIL`. |
 | `run.logs.failedHead` | `'8KiB'` | The start of a failed attempt's output kept. Also: `VX_RUN_LOGS_FAILED_HEAD`. |
