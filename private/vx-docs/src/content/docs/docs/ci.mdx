@@ -12,10 +12,11 @@ import AffectedPicker from '../../../components/docs/ci/AffectedPicker.astro'
 import { Aside, Steps } from '@astrojs/starlight/components'
 import { Levels, Deeper, Concept, Quiz, Walkthrough, Frame, Takeaway, NextStep } from '../../../components/learn'
 
-On CI, a pull request runs only the projects it changed. A push to `main` runs every project. One command does both:
+On CI, a pull request runs only the projects it changed. A push to `main` runs every project. Each is one command:
 
 ```sh
-vx pipeline pr
+vx pipeline pr     # a pull request
+vx pipeline main   # a push to main
 ```
 
 <Levels />
