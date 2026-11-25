@@ -37,7 +37,11 @@ const changes: AffectedChanges = {
 const projects = new Map([
   ['app', { name: 'app', dir: '/w/app', config: { tasks: { zero: cached('zero.txt') } } }],
 ]) as unknown as ReadonlyMap<string, ProjectEntry>
-const packageGraph = { edgeSource: true, directDeps: () => [] } as unknown as PackageGraph
+const packageGraph = {
+  edgeSource: true,
+  directDeps: () => [],
+  dependentsOf: () => new Set(),
+} as unknown as PackageGraph
 
 describe('affectedRoots', () => {
   it('a 50,000-deep chain seeded at its bottom reaches its top', () => {
@@ -96,6 +100,7 @@ describe('affectedRoots', () => {
     const graph = {
       edgeSource: true,
       directDeps: (p: string) => (p === 'top' ? ['mid'] : []),
+      dependentsOf: (names: Iterable<string>) => new Set([...names].includes('mid') ? ['top'] : []),
     } as unknown as PackageGraph
     const loaded = (withMid: boolean) =>
       new Map([
@@ -115,6 +120,63 @@ describe('affectedRoots', () => {
 // An untracked file no task declares reaches the project whole, but a
 // declared input that also changed is the precise reason: `--dry` named the
 // stray output (`kind: project`) and sent the user looking at the wrong file.
+// M, 2026-11-25: the affected projects are the changed ones and their package
+// dependants, and only their tasks are scanned. There a task with inputs runs
+// when they match or through its deps, and one with `exec` and no `inputs`
+// runs; in a project outside that set nothing is scanned.
+describe('affectedRoots: the affected projects', () => {
+  const at = (id: string, config: Record<string, unknown>, deps: string[] = []): TaskNode => {
+    const projectName = id.split('#')[0]!
+    return {
+      ...node(id, 'x', deps),
+      projectName,
+      projectDir: `/w/${projectName}`,
+      config,
+    } as TaskNode
+  }
+  const bare = { exec: { command: 'true' } }
+  const nodes = new Map<string, TaskNode>([
+    ['a#build', at('a#build', cached('src/**'))],
+    ['b#check', at('b#check', cached('nope/**'))],
+    ['b#lint', at('b#lint', bare)],
+    ['b#test', at('b#test', cached('nope/**'), ['a#build'])],
+    ['c#lint', at('c#lint', bare)],
+  ])
+  const aChanged: AffectedChanges = {
+    projects: new Set(['a']),
+    changed: ['a/src/x.ts'],
+    paths: new Map([['a', ['src/x.ts']]]),
+    whole: new Set(),
+  }
+  const graph = {
+    edgeSource: true,
+    directDeps: (p: string) => (p === 'b' ? ['a'] : []),
+    dependentsOf: (names: Iterable<string>) => new Set([...names].includes('a') ? ['b'] : []),
+  } as unknown as PackageGraph
+  const loaded = new Map(
+    ['a', 'b', 'c'].map((n) => [n, { name: n, dir: `/w/${n}`, config: { tasks: {} } }]),
+  ) as unknown as ReadonlyMap<string, ProjectEntry>
+
+  it('B depends on A: its no-input task and its task on A#build run, its unmatched one does not', () => {
+    expect(affectedRoots(nodes, [...nodes.keys()], aChanged, loaded, graph, '/w')).toEqual([
+      'a#build',
+      'b#lint',
+      'b#test',
+    ])
+  })
+
+  it('a config edit alone makes no project affected', () => {
+    const configOnly: AffectedChanges = {
+      projects: new Set(['a']),
+      changed: ['a/vx.config.ts', '.vx/workspace.ts'],
+      paths: new Map([['a', ['vx.config.ts']]]),
+      whole: new Set(),
+    }
+    const all = new Map([...nodes, ['a#all', at('a#all', cached('**'))]])
+    expect(affectedRoots(all, [...all.keys()], configOnly, loaded, graph, '/w')).toEqual([])
+  })
+})
+
 describe('affectedRoots reasons', () => {
   it('a changed declared input is the reason, not an unclaimed path beside it', () => {
     const both: AffectedChanges = {

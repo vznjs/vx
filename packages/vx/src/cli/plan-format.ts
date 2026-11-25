@@ -183,7 +183,7 @@ function describeReason(r: AffectedReason): string {
           : r.kind === 'input'
             ? `${r.file} changed (an input)`
             : r.kind === 'always'
-              ? 'it declares no inputs, so every change may reach it'
+              ? 'it declares no inputs, and its project changed or depends on one that did'
               : r.kind === 'workspace'
                 ? `${r.file} changed (${r.wide === true ? 'workspace-wide' : 'in its key'})`
                 : r.file !== undefined

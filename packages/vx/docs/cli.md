@@ -631,8 +631,8 @@ With `@demo/web#test` behind `^build`:
 - an edit to `ui/src/button.test.ts`, which only `ui#test` reads, runs
   `ui#test` alone;
 - `@demo/web#lint`, with `inputs` and no dependency, never runs for a change in `ui`.
-- a task with `exec` and no `inputs` runs on every `--affected` run whose diff
-  changed a file.
+- a task with `exec` and no `inputs` runs when its project changed, or
+  depends as a package on one that did.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -640,8 +640,11 @@ With `@demo/web#test` behind `^build`:
 
 What a change marks:
 
-- A task with `exec` and no `inputs`: always. Nothing it declares rules a
-  change out.
+- A task with `exec` and no `inputs`: when its project is affected, that
+  is, it changed or depends as a package on one that did. Nothing it
+  declares rules a change there out.
+- Only the affected projects' tasks are scanned. Another project's task
+  is marked only through a dependency.
 - A task with `inputs` (a no-op task too), when a changed path is one of
   them (`files`, `workspaceFiles`), or a submodule or embedded repository
   its `workspaceFiles` may reach into.
@@ -652,6 +655,10 @@ What a change marks:
   lockfile claim, a deleted dependency, a changed nested repository.
 - An install that added or removed a dependency shows as the lockfile's change.
 - A changed path no input declares marks nothing: it is in no key.
+- A `vx.config.*` or `.vx/workspace.*` edit, or one to a file they
+  import, marks nothing by itself. Configs only generate the locks, and
+  the locks' diff marks tasks.
+- A run still refuses a config edited since `vx lock`.
 - An untracked file under a task's `outputs`, `files` or
   `workspaceFiles` is none of its inputs: the key folds only a tracked one.
 - A group (no `exec`, no `inputs`) is marked only through its dependencies.
@@ -723,16 +730,19 @@ What `vx lock` writes:
 - A project whose name, edges, project-level fields or set of tasks
   changed is selected whole, with the lock as the reason shown.
 - `vx lock` rewriting the same entries selects nothing.
-- When only some tasks' locked configs moved, a config edit selects
-  those tasks alone, with the config as the `input` shown. A group's
-  definition counts: a new `description` marks it and its dependants.
-- An edit to a file the config imports does the same, with
-  `.vx/projects.lock` as the `input` shown.
+- When only some tasks' locked configs moved, those tasks alone are
+  selected, with `.vx/projects.lock` as the `input` shown.
+- That holds whether or not the diff holds the config edit.
+- A group's definition counts: a new `description` marks it and its
+  dependants.
+- An edit to a file the config imports does the same.
 - Each project that imports it counts on its own: one whose locked
   tasks stayed the same is selected for none of them.
 - So changing `build`'s command does not re-run `test`.
 - An edit that moves no locked task (a comment) selects none of its
-  tasks with `inputs`.
+  tasks.
+- `.vx/dependencies.lock` counts project by project: one whose edges or
+  recorded dependency closure moved is selected whole, and no other.
 
 </div>
 </details>
@@ -2227,7 +2237,7 @@ vx run build lint --affected=main --dry
 | `kind`      | Why the task is kept                                                   |
 | ----------- | ---------------------------------------------------------------------- |
 | `input`     | a changed `file` is one of its inputs, or its definition               |
-| `always`    | it has `exec` and no `inputs`                                          |
+| `always`    | it has `exec` and no `inputs`, and its project is affected             |
 | `project`   | its key's material moved for its whole project (a lockfile claim)      |
 | `workspace` | a `file` no project owns changed and reached every task of the project |
 | `package`   | a `^` edge passes a changed `project` that has no such task            |

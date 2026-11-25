@@ -47,7 +47,11 @@ const projectsOf = (nodes: ReadonlyMap<string, TaskNode>) => {
   }
   return out as unknown as ReadonlyMap<string, ProjectEntry>
 }
-const packageGraph = { edgeSource: true, directDeps: () => [] } as unknown as PackageGraph
+const packageGraph = {
+  edgeSource: true,
+  directDeps: () => [],
+  dependentsOf: () => new Set(),
+} as unknown as PackageGraph
 
 function changed(
   paths: Record<string, string[]>,
@@ -62,21 +66,8 @@ function changed(
   }
 }
 
-function kept(
-  nodes: ReadonlyMap<string, TaskNode>,
-  changes: AffectedChanges,
-  opts: { keyPlugins?: boolean } = {},
-): string[] {
-  return affectedRoots(
-    nodes,
-    [...nodes.keys()],
-    changes,
-    projectsOf(nodes),
-    packageGraph,
-    '/w',
-    undefined,
-    opts.keyPlugins === true,
-  )
+function kept(nodes: ReadonlyMap<string, TaskNode>, changes: AffectedChanges): string[] {
+  return affectedRoots(nodes, [...nodes.keys()], changes, projectsOf(nodes), packageGraph, '/w')
 }
 
 describe('--affected by inputs', () => {
@@ -86,15 +77,16 @@ describe('--affected by inputs', () => {
     expect(kept(nodes, changed({ app: ['src/a.ts'] }))).toEqual(['app#build'])
   })
 
-  it('a task with exec and no inputs is always affected, and so is what depends on it', () => {
+  it('a task with exec and no inputs is affected in a changed project, and so is what depends on it', () => {
     const nodes = graphOf(
       node('app#gen', NO_INPUTS),
       node('app#build', { ...keyed('src/**'), dependsOn: ['gen'] }, ['app#gen']),
       node('lib#test', keyed('test/**')),
     )
-    // No change at all, and a change in another project.
-    expect(kept(nodes, changed({}))).toEqual(['app#gen', 'app#build'])
-    expect(kept(nodes, changed({ lib: ['README.md'] }))).toEqual(['app#gen', 'app#build'])
+    // No change at all, and a change in another project (M, 2026-11-25).
+    expect(kept(nodes, changed({}))).toEqual([])
+    expect(kept(nodes, changed({ lib: ['README.md'] }))).toEqual([])
+    expect(kept(nodes, changed({ app: ['README.md'] }))).toEqual(['app#gen', 'app#build'])
   })
 
   it('a task with inputs.files [] is reached only through its dependencies', () => {
@@ -150,13 +142,12 @@ describe('--affected by inputs', () => {
     expect(kept(nodes, claim)).toEqual(['app#build', 'app#g'])
   })
 
-  it('a workspace config edit reaches only what it moves', () => {
-    const nodes = graphOf(node('app#build', keyed('src/**')), node('lib#lint', NO_INPUTS))
-    const edit = changed({ '.': ['.vx/workspace.ts'] }, { workspace: '.vx/workspace.ts' })
-    // A comment: no locked config moved, and no plugin keys tasks.
-    expect(kept(nodes, edit)).toEqual(['lib#lint'])
-    // A plugin's `key` material may move with it.
-    expect(kept(nodes, edit, { keyPlugins: true })).toEqual(['app#build', 'lib#lint'])
+  // vx's configs only generate the locks (M, 2026-11-25): a config edit
+  // reaches what the locks' diff moved, nothing by itself.
+  it('a config or workspace config edit alone reaches no task', () => {
+    const nodes = graphOf(node('app#build', keyed('**')), node('app#lint', NO_INPUTS))
+    expect(kept(nodes, changed({ '.': ['.vx/workspace.ts'] }))).toEqual([])
+    expect(kept(nodes, changed({ app: ['vx.config.ts'] }))).toEqual([])
   })
 
   it('a dependency input reaches its dependants in other projects', () => {

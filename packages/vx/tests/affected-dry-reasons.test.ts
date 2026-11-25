@@ -70,10 +70,10 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     expect(plan.affectedBase).toBe('HEAD')
     expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
       'lib#build': { kind: 'input', file: 'packages/lib/src/a.js' },
-      // No inputs: always affected, in every project (M, 2026-11-25).
+      // No inputs: affected in a changed project (lib) and in a package
+      // dependant of one (app), never elsewhere (other) (M, 2026-11-25).
       'lib#lint': { kind: 'always' },
       'app#lint': { kind: 'always' },
-      'other#lint': { kind: 'always' },
       'app#build': { kind: 'input', file: 'packages/lib/src/a.js', via: ['lib#build'] },
     })
   })
@@ -85,7 +85,6 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
     expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
       'lib#lint': { kind: 'always' },
       'app#lint': { kind: 'always' },
-      'other#lint': { kind: 'always' },
       'other#build': { kind: 'named' },
     })
   })
@@ -115,10 +114,9 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
       .map((l) => l.slice(l.lastIndexOf(' ', l.indexOf('  affected:') - 1) + 1))
     expect(lines.sort()).toEqual([
       'app#build  affected: packages/lib/src/a.js changed (an input), via lib#build',
-      'app#lint  affected: it declares no inputs, so every change may reach it',
+      'app#lint  affected: it declares no inputs, and its project changed or depends on one that did',
       'lib#build  affected: packages/lib/src/a.js changed (an input)',
-      'lib#lint  affected: it declares no inputs, so every change may reach it',
-      'other#lint  affected: it declares no inputs, so every change may reach it',
+      'lib#lint  affected: it declares no inputs, and its project changed or depends on one that did',
     ])
   })
 
@@ -319,4 +317,51 @@ describe("vx run --affected: a path under a task's own outputs, by its workspace
     withFile('shared/b.txt', 'b\n', () => {
       expect(kept()['cg#gen']).toEqual({ kind: 'input', file: 'shared/b.txt' })
     }))
+})
+
+// Only the locks mark tasks (M, 2026-11-25): a project's closure digest
+// that moved in `.vx/dependencies.lock` marks its tasks, and no other
+// project's, though the claimant answers no project from the file.
+it('a dependencies.lock closure change marks only the tasks of the projects it moved', async () => {
+  const ws = await makeWorkspace({ prefix: 'vx-affected-closure-', git: false })
+  try {
+    const claim = `{ fingerprint: {
+      files: ['deps.txt'],
+      affected: () => [],
+      digests(file, ctx) {
+        const text = require('node:fs').readFileSync(require('node:path').join(ctx.workspaceRoot, file), 'utf8')
+        const projects = Object.fromEntries(text.trim().split('\\n').map((l) => l.split('=')))
+        return { hash: String(Bun.hash.xxHash3(text)), projects }
+      },
+    }, key() { return undefined } }`
+    await Bun.write(
+      path.join(ws, '.vx/workspace.mjs'),
+      localWorkspaceSource([edgesSource(), pluginSource('org/closure', claim)]),
+    )
+    await addProject(ws, 'a', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+    await addProject(ws, 'b', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
+    const lock = (): void => {
+      const r = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: ws })
+      expect([r.exitCode, r.stderr.toString()]).toEqual([0, ''])
+    }
+    await writeFile(path.join(ws, 'deps.txt'), 'a=00aa\nb=00bb\n')
+    lock()
+    gitInitCommit(ws)
+    await writeFile(path.join(ws, 'deps.txt'), 'a=00aa\nb=11bb\n')
+    lock()
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'run', 'build', '--affected=HEAD', '--dry', '--format', 'json'],
+      cwd: ws,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    expect([p.exitCode, p.stderr.toString()]).toEqual([0, ''])
+    const plan = JSON.parse(p.stdout.toString()) as {
+      tasks: Array<{ id: string; affected?: unknown }>
+    }
+    expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
+      'b#build': { kind: 'workspace', file: '.vx/dependencies.lock' },
+    })
+  } finally {
+    await rm(ws, { recursive: true, force: true })
+  }
 })

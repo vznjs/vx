@@ -219,11 +219,6 @@ export interface AffectedChanges {
   /** `wholeBy`'s file reached every project, not only those a claim named. */
   wide?: boolean
   /**
-   * The workspace config (or a file it imports) that changed. Its edit moves a
-   * task only through the lock (`configTasks`) or a plugin's `key` material.
-   */
-  workspace?: string
-  /**
    * Changed paths that are nested repositories: each stands for every file in
    * it.
    */
@@ -244,8 +239,9 @@ export interface AffectedChanges {
   untracked?: ReadonlySet<string>
   /**
    * Per project, the tasks whose locked config moved (`.vx/projects.lock` at
-   * the base against now) when nothing else in its entry did: its config
-   * file's edit reaches these tasks alone, none when the set is empty.
+   * the base against now) when nothing else in its entry did: a definition
+   * change of these tasks alone. A config file is no reason itself (M,
+   * 2026-11-25): only the lock it generates is.
    */
   configTasks?: ReadonlyMap<string, ReadonlySet<string>>
 }
@@ -265,11 +261,10 @@ export async function affectedChanges(
     const wholeBy = new Map([...all].map((n) => [n, file]))
     return { projects: all, changed, paths: new Map(), whole: all, wholeBy, wide: true }
   }
-  // The workspace config's plugins shape every project's config. Per task, its
-  // edit moves what the lock shows moved (`configTasks`) and a plugin's `key`
-  // material (affected-tasks.ts), no more (M, 2026-11-25); per project it
-  // still selects everything.
-  let workspace = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
+  // The workspace config's plugins shape every project's config. Per task its
+  // edit is nothing itself: the locks say what it moved (M, 2026-11-25). Per
+  // project it still selects everything.
+  const workspace = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
   if (workspace !== undefined && !perTask) return everything(workspace)
   // A line-ending rule changes the bytes a checkout writes for every file
   // under it while git's blobs stay the same, so no input path moves
@@ -299,36 +294,30 @@ export async function affectedChanges(
   }
   const owners = await pathOwners(args, diff, claimedOwned, perTask)
   if (typeof owners === 'string') return everything(owners)
-  const { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks, lockKept } =
-    owners
+  const { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks } = owners
 
-  // A project whose config imports a changed file: resolved-config hashing
-  // folds it, so selection must too. Asked of every changed path, since a
-  // config often imports from another project (`../../src/index.ts`). That
-  // re-keys every task of the project. A file the workspace config imports
-  // widens as the config does.
-  const imports = await configImportOwners({
-    workspaceRoot: args.workspaceRoot,
-    projects: diff.projects,
-    changed,
-    skip: perTask ? new Set() : owned,
-    workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(diff.rootDir, n)),
-  })
-  if (imports.workspace !== undefined) {
-    if (!perTask) return everything(imports.workspace)
-    workspace ??= imports.workspace
-  }
-  if (imports.outside !== undefined) {
-    const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
-    if (moved !== undefined) return everything(moved)
-  }
-  for (const name of imports.owners) {
-    owned.add(name)
-    // A run reads the config from the lock: its diff said which tasks moved,
-    // none when its entry stayed the same.
-    if (configTasks.has(name)) continue
-    if (perTask && lockKept.has(name)) configTasks.set(name, new Set())
-    else whole.add(name)
+  // Per project, a project whose config imports a changed file: resolved-config
+  // hashing folds it, so selection must too. Asked of every changed path, since
+  // a config often imports from another project (`../../src/index.ts`). A file
+  // the workspace config imports widens as the config does. Per task the locks
+  // already say what any import moved (M, 2026-11-25).
+  if (!perTask) {
+    const imports = await configImportOwners({
+      workspaceRoot: args.workspaceRoot,
+      projects: diff.projects,
+      changed,
+      skip: owned,
+      workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(diff.rootDir, n)),
+    })
+    if (imports.workspace !== undefined) return everything(imports.workspace)
+    if (imports.outside !== undefined) {
+      const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
+      if (moved !== undefined) return everything(moved)
+    }
+    for (const name of imports.owners) {
+      owned.add(name)
+      whole.add(name)
+    }
   }
 
   const { dirLinks } = diff
@@ -344,7 +333,6 @@ export async function affectedChanges(
     ...(untrackedIn.size > 0 ? { untrackedIn } : {}),
     ...(untrackedSet.size > 0 ? { untracked: untrackedSet } : {}),
     ...(configTasks.size > 0 ? { configTasks } : {}),
-    ...(workspace !== undefined ? { workspace } : {}),
   })
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
   const globOwners = await args.workspaceGlobOwners(changed, nestedDirs, dirLinks, untrackedSet)
@@ -792,23 +780,14 @@ async function pathOwners(
   // is.
   const lockMoved: string[] = []
   // Per project, the tasks whose locked config moved when nothing else in its
-  // entry did: a config edit then reaches those tasks, not the whole project
-  // (one task's command edited re-ran every sibling).
+  // entry did: those tasks moved, not the whole project (one task's command
+  // edited re-ran every sibling).
   const configTasks = new Map<string, Set<string>>()
-  // The projects whose lock entry is the same at the base and now.
-  const lockKept = new Set<string>()
-  const configEdited = (name: string): boolean =>
-    perTask && (paths.get(name) ?? []).some((rel) => CONFIG_NAMES.has(rel))
   const lockChanged = diffed.paths.includes(LOCKFILE_NAME) || untracked.includes(LOCKFILE_NAME)
-  if (!lockChanged) {
-    // The lock is what a run reads: an edit it did not move re-keys nothing.
-    for (const p of projects) {
-      lockKept.add(p.name)
-      if (configEdited(p.name)) configTasks.set(p.name, new Set())
-    }
-  } else {
-    // A side with no lock (or one that will not parse) ran nothing from
-    // it: the paths of the configs say what changed, as before the lock.
+  // The lock is what a run reads: an edit it did not move re-keys nothing.
+  if (lockChanged) {
+    // A side with no lock (or one that will not parse) ran nothing from it:
+    // there is no entry to compare (a first lock moves no key a run used).
     const before = lockEntries(await gitBytesAt(args.workspaceRoot, base, LOCKFILE_NAME))
     const after = lockEntries(await bytesOrNull(path.join(args.workspaceRoot, LOCKFILE_NAME)))
     const same = (dir: string): boolean =>
@@ -818,12 +797,7 @@ async function pathOwners(
         JSON.stringify(before[dir]) === JSON.stringify(after[dir]))
     for (const p of projects) {
       const key = lockKey(rootDir, p.dir)
-      if (same(key)) {
-        if (before === null || after === null) continue
-        lockKept.add(p.name)
-        if (configEdited(p.name)) configTasks.set(p.name, new Set())
-        continue
-      }
+      if (same(key)) continue
       const moved = perTask ? movedTasks(before![key], after![key]) : undefined
       owned.add(p.name)
       if (moved !== undefined) {
@@ -834,14 +808,20 @@ async function pathOwners(
       lockMoved.push(p.name)
     }
   }
-  // Edges live in the dependencies lock: a project whose edges moved (a
-  // `discover` edge added, or its upstream gone) moved its keys. With no
-  // record on either side, the configs' paths say what changed.
+  // Edges and each project's closure digests live in the dependencies lock:
+  // a project whose edges moved (a `discover` edge added, or its upstream
+  // gone) or whose recorded closure moved moved its keys, and no other.
+  // With no record on either side, nothing is marked from it.
   const edgesMoved: string[] = []
   if (diffed.paths.includes(DEPENDENCIES_LOCK_NAME) || untracked.includes(DEPENDENCIES_LOCK_NAME)) {
     const edgesBy = (lock: DependenciesLock | null): Map<string, string> | null => {
       if (lock === null) return null
-      return new Map(lock.names.map((n) => [n, JSON.stringify(lock.edges(n))]))
+      return new Map(
+        lock.names.map((n) => [
+          n,
+          JSON.stringify([lock.edges(n), lock.files.map((f, i) => [f, lock.digest(n, i)])]),
+        ]),
+      )
     }
     const before = edgesBy(await diff.baseDependencies())
     const after = edgesBy(
@@ -896,7 +876,7 @@ async function pathOwners(
   for (const name of lockMoved) if (!claimedOwned.has(name)) claimedOwned.set(name, LOCKFILE_NAME)
   for (const name of edgesMoved)
     if (!claimedOwned.has(name)) claimedOwned.set(name, DEPENDENCIES_LOCK_NAME)
-  return { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks, lockKept }
+  return { owned, whole, paths, dirLinksIn, untrackedIn, untrackedSet, configTasks }
 }
 
 /**

@@ -2690,11 +2690,11 @@ pack: {
 
 A task is one of three kinds:
 
-| Has                     | Kind       | Runs             | `--affected` when                          |
-| ----------------------- | ---------- | ---------------- | ------------------------------------------ |
-| `exec`                  | task       | its command      | an input changed; with no `inputs`, always |
-| `inputs`, no `exec`     | no-op task | nothing          | an input changed                           |
-| neither (a `dependsOn`) | group      | its dependencies | only through its dependencies              |
+| Has                     | Kind       | Runs             | `--affected` when                                           |
+| ----------------------- | ---------- | ---------------- | ----------------------------------------------------------- |
+| `exec`                  | task       | its command      | an input changed; with no `inputs`, its project is affected |
+| `inputs`, no `exec`     | no-op task | nothing          | an input changed                                            |
+| neither (a `dependsOn`) | group      | its dependencies | only through its dependencies                               |
 
 Each kind is also affected when its own definition changes, or a task it
 depends on is affected. A task with no `exec` and a `dependsOn` is a

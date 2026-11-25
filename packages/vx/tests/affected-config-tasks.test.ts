@@ -49,11 +49,21 @@ const edit = async (source: string): Promise<void> => {
   vx('lock')
 }
 
+// The lock is the input: the config only generates it (M, 2026-11-25).
 it('one task’s command edited selects that task alone', async () => {
   await edit(config('echo built'))
-  expect(kept()).toEqual({
-    'app#build': { kind: 'input', file: 'packages/app/vx.config.mjs' },
-  })
+  expect(kept()).toEqual({ 'app#build': { kind: 'input', file: '.vx/projects.lock' } })
+})
+
+// What a run reads is the lock: a moved entry selects its task whether or
+// not the diff holds the config edit that made it.
+it('a lock entry moved with no config change in the diff still selects its task', async () => {
+  await writeFile(path.join(root, 'packages/app/vx.config.mjs'), config('echo built'))
+  const git = gitIn(root)
+  git('add', 'packages/app/vx.config.mjs')
+  git('commit', '-qm', 'config, not locked')
+  vx('lock')
+  expect(kept()).toEqual({ 'app#build': { kind: 'input', file: '.vx/projects.lock' } })
 })
 
 it('an edit that leaves every locked task the same selects none', async () => {

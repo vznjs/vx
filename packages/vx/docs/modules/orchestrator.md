@@ -1992,23 +1992,27 @@ and sixteen stacked diamonds reading each group's members once.
 
 `--affected` selects tasks, not projects (2026-10-04), by their inputs
 (M, 2026-11-25). The diff (`affectedChanges`, affected.md) names the
-projects it touched; only their tasks are matched against inputs
-(`declaresInput`). A task seeds when:
+projects it touched. The affected projects are those with a change of
+their own (a path other than a config, a moved lock entry, key material
+moved whole) and their package dependants (`dependentsOf`); only their
+tasks are matched against inputs (`declaresInput`). A `vx.config.*` or
+`.vx/workspace.*` path is no change itself: the locks' diff says what
+moved. A task seeds when:
 
-- it has `exec` and no `inputs`: always, in any project;
+- it has `exec` and no `inputs`: in an affected project;
 - a changed path is one of its inputs (an untracked path under its own
   outputs is none, as the key says), or its `workspaceFiles` may reach
   into a changed nested repository (`workspaceFilesReachInto`);
-- its own definition moved (`configTasks`, or a config edit the lock
-  cannot split), a group too;
+- its own definition moved in `.vx/projects.lock` (`configTasks`), a
+  group too;
 - it has `inputs` and its key's material moved for its project (a
-  lockfile claim, `whole`), or a workspace config edit under a plugin
-  with `key` and no `fingerprint` (`keysTasks`).
+  lockfile claim, a moved lock entry or `.vx/dependencies.lock` closure,
+  `whole`).
 
 A path no input declares seeds nothing. A group otherwise seeds nothing.
-Outside the touched projects a task is read once, for what it declares
-(no `inputs`; `workspaceFiles`, which a `graph` hook may have given), and
-no path is tried against it (`tests/affected-by-inputs.test.ts` spies).
+Outside the affected projects a task is read once, for its
+`workspaceFiles` (which a `graph` hook may have given), and no path is
+tried against it (`tests/affected-by-inputs.test.ts` spies).
 
 From the seeds the walk goes forward, over the edges keys fold
 (`foldedDeps`, so `inputs.tasks` and order-only edges count as a run's
@@ -2052,10 +2056,9 @@ export function affectedRoots(
   ids: readonly string[], // requested task ids, in order
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
-  packageGraph: PackageGraph, // the `^name` walk, for the packages it passes through
+  packageGraph: PackageGraph, // the `^name` walk, and the affected projects' package dependants
   workspaceRoot: string, // a reason's project-relative file, an untracked path's own outputs
   explain?: AffectedExplain, // `--dry` only: fills each kept id's reason
-  keyPlugins?: boolean, // a plugin keys tasks past a claim: a workspace config edit seeds each task with inputs
 ): string[] // the ids the walk from the seeds reaches
 
 export interface AffectedReason {
@@ -2079,10 +2082,7 @@ export function keptByAffected<R extends { project: string; task: string }>(
   workspaceRoot: string,
   keep?: { named?: ReadonlySet<string>; outright?: ReadonlySet<string> },
   explain?: AffectedExplain,
-  keyPlugins?: boolean, // as affectedRoots'
 ): R[] // the requests `--affected` keeps, in order
-
-export function keysTasks(plugins: readonly VxPlugin[]): boolean // a plugin has `key` and no `fingerprint`
 
 export async function affectedTaskProjects(args: {
   task: string
