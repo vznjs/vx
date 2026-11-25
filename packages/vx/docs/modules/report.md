@@ -169,7 +169,7 @@ be opened or written keeps the rest in
 memory: a log is never dropped for want of disk. `none` and `hash-only` drop a chunk on arrival, not even
 written. Held in memory, 300 MB of output peaked vx at 1.93 GB under
 `errors-only` when the task failed and 786 MB when it passed; from its
-file, +67 MiB (read by a fast reader) and +23 over an idle run. A frame a view defers to the
+file, +62 MiB (read by a slow reader) and +23 over an idle run. A frame a view defers to the
 run's end (`errors-only`, `broad`, `focused`) is rendered when its task
 ends, exactly as it was, into one file of deferred frames
 (`DeferredFrames`) read back in order at `runEnd`.
@@ -186,9 +186,21 @@ off meanwhile, so each piece goes out as it comes. The bytes are the
 ones a frame held whole printed (`tests/logger-output-file.test.ts`). A
 frame of 1 Mi characters or more is never copied into one string: a
 100 MB log's frame took vx from 408 MB to 1.19 GB, and 577 MB with
-this and the writer's slicing (`report.md`). What a slow reader of
-vx's stdout refuses, Bun still queues in memory: a frame is written at
-once, not paced (`out-pace.ts` paces task readers only).
+this and the writer's slicing (`report.md`).
+
+Every logger write is paced by the stream it reaches (`paced.ts`): Bun
+queues what a pipe refuses, so a frame read back without a pause sat
+whole in that queue for a slow reader (+509 MiB for a failed task's 300
+MB under `errors-only`). Each write is a step of a job in one ordered
+queue; once a stream refuses a write (`outputPaced`), the next step
+waits for its drain, so a frame is read from its file only as the reader
+takes it (under 4 MiB queued, `tests/logger-paced-output.test.ts`). The
+logger's state moves when a line is logged, not when it is written, and
+later lines wait behind the frame: the bytes and their order are those a
+reader that never pauses gets. A stream that never refuses (a file, a
+test's sink) is written at once, as before. `run()` awaits
+`DefaultLogger.drained()` before it returns, so the CLI's own lines come
+after.
 
 `status()` lines (header, summary) always print. Group tasks never
 print in any mode. A ready persistent task the run keeps (`vx run dev`)
@@ -471,18 +483,18 @@ export function formatTaskBlock(
   links?: boolean, // the terminal opens OSC 8: a failed task's file paths link to the file
 ): string
 
-// The same frame handed to `write` in pieces as it renders: the logger
-// writes a long log's frame as it reads the log back, never one string
-export function writeTaskBlock(
+// The same frame in pieces as it renders: the logger writes a long log's
+// frame as it reads the log back, never one string, and only as fast as
+// stdout's reader takes it
+export function* taskBlockPieces(
   node,
   outcome,
   body,
-  write: (piece: string) => void,
   colors?,
   forceCommand?,
   forwardArgs?,
   links?,
-): void
+): Generator<string>
 
 // The `$` line's command: a requested task's gets the args after `--`, as
 // the run appends them, secrets masked (the frame and the `--dry` plan)

@@ -104,37 +104,31 @@ export function formatTaskBlock(
   // The terminal opens OSC 8 links: a failed task's paths become links.
   links = false,
 ): string {
-  const pieces: string[] = []
-  writeTaskBlock(
-    node,
-    outcome,
-    body,
-    (p) => pieces.push(p),
-    colors,
-    forceCommand,
-    forwardArgs,
-    links,
-  )
   // Not `+ '\n'`: a rope over a 100 MB frame was flattened into a copy.
-  return pieces.join('')
+  return [...taskBlockPieces(node, outcome, body, colors, forceCommand, forwardArgs, links)].join(
+    '',
+  )
 }
 
-/** `formatTaskBlock`, handed to `write` in pieces as it renders. */
-export function writeTaskBlock(
+/**
+ * `formatTaskBlock` in pieces, rendered as they are taken: a frame read back
+ * from its file is written as the reader takes it, never held.
+ */
+export function* taskBlockPieces(
   node: TaskNode,
   outcome: TaskOutcome,
   body: TaskBlockBody,
-  write: (piece: string) => void,
   colors: ColorSupport = NO_COLOR,
   forceCommand = false,
   forwardArgs: readonly string[] = [],
   links = false,
-): void {
+): Generator<string> {
   // Groups do no work and have no body: an empty box is noise. The summary and
   // analytics exclude them too.
   if (isGroupTask(node)) return
 
-  const lines = lineWriter(write)
+  const out: string[] = []
+  const lines = lineWriter((p) => out.push(p))
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('muted', s, colors)
@@ -160,8 +154,10 @@ export function writeTaskBlock(
   const isFile = links && outcome.status === 'failed' ? fileMemo() : undefined
   const link =
     isFile === undefined ? undefined : (t: string) => linkPaths(t, node.projectDir, isFile)
-  pushOutputSection(
+  yield* taken(out)
+  yield* pushOutputSection(
     lines,
+    out,
     body.source ?? arraySource(body.output ?? []),
     (body.droppedStdout ?? 0) + (body.droppedStderr ?? 0),
     colors,
@@ -171,6 +167,12 @@ export function writeTaskBlock(
   lines.push(...violationSection(outcome, colors))
 
   lines.push(`${corner('└─')} ${mark}${edgeId}${close}`, '')
+  yield* taken(out)
+}
+
+/** What `out` holds, emptied. */
+function* taken(out: string[]): Generator<string> {
+  if (out.length > 0) yield* out.splice(0)
 }
 
 /**
@@ -236,13 +238,14 @@ function pushStreamSection(
  * line the task coloured keeps its colours (a reset would end ours mid-line). A
  * line takes the stream that began it.
  */
-function pushOutputSection(
+function* pushOutputSection(
   lines: LineWriter,
+  out: string[],
   output: OutputSource,
   lost: number,
   colors: ColorSupport,
   link?: (line: string) => string,
-): void {
+): Generator<string> {
   if (!output.content) return
   lines.push(sectionLine('OUTPUT', 'strong', colors), '')
   if (lost > 0) {
@@ -262,6 +265,8 @@ function pushOutputSection(
   let open: { parts: string[]; err: boolean } | null = null
   let rawOpen = false
   for (const c of output.chunks) {
+    // What the last chunk rendered leaves before the next is read.
+    yield* taken(out)
     const text = c.text
     let at = 0
     if (rawOpen || open !== null) {

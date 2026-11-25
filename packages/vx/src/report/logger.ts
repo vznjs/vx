@@ -8,7 +8,6 @@ import {
   formatListHeader,
   usualCell,
   formatTaskAbortedLine,
-  formatTaskBlock,
   executedCells,
   formatTaskExecutedLine,
   flakyNote,
@@ -18,8 +17,9 @@ import {
   type OutputChunk,
   type OutputSource,
   type TaskBlockBody,
-  writeTaskBlock,
+  taskBlockPieces,
 } from './framed-output.js'
+import { once, paced, stepping } from './paced.js'
 import { DeferredFrames, OutputSpool, TaskOutput } from './task-output.js'
 import {
   formatFailureLine,
@@ -144,6 +144,8 @@ export interface DefaultLogger extends Logger {
   serverStopped(id: string): void
   /** Where task output waits for its frame: the run's cache directory, once known. */
   spoolIn(dir: string): void
+  /** Resolves once everything written is with its stream: a slow reader paces frames. */
+  drained(): Promise<void>
 }
 
 /**
@@ -307,12 +309,15 @@ export function defaultLogger(
     view.gha === true && block.length > 0 ? ghaFence(block, ghaToken) : block
 
   // All stdout goes through the writer so the status line never interleaves
-  // with content. Passthrough off a TTY and in CI.
-  const writer = createOutputWriter(out, {
+  // with content. Passthrough off a TTY and in CI. Every write is paced
+  // (`paced.ts`): a frame read from its file waits for a slow reader.
+  const raw = createOutputWriter(out, {
     enabled: view.ci !== true,
     ...(opts.forceFloorMs !== undefined ? { forceFloorMs: opts.forceFloorMs } : {}),
     ...(opts.coalesce === true ? { coalesce: true } : {}),
   })
+  const pace = paced(raw)
+  const writer = pace.writer
 
   // Status-display state, driven by the optional lifecycle hooks.
   let total = 0
@@ -714,32 +719,65 @@ export function defaultLogger(
   // whole again.
   const emitBlock = (block: string, head = '', tail = ''): void => {
     if (block.length === 0) return
-    if (block.length >= PIECEWISE_CHARS) return emitPieces((write) => write(block), head, tail)
+    if (block.length >= PIECEWISE_CHARS) return emitLater(() => [block], head, tail, false)
     endStreamLine()
     const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
     taskWrite(`${lead}${head}${block}${tail}\n`)
     lineEmitted = false
     streamedSinceBlock = false
   }
-  // A block too big for one string, `render` writing it in pieces as it reads
-  // the log back: the bytes `emitBlock` writes. A live region is held off
-  // meanwhile, so each piece goes out as it comes rather than wait for a frame.
-  const emitPieces = (
-    render: (write: (piece: string) => void) => void,
-    head = '',
-    tail = '',
+  // A frame read back from its file when its turn to be written comes, in
+  // pieces as the reader takes them: the bytes `emitBlock` writes. The state
+  // they leave is set now, so what is printed after lines up as if it had been
+  // written at once. `whole`: a short frame, written in one write as it always
+  // was. `done` once it is written (its log may go).
+  const emitLater = (
+    pieces: () => Iterable<string>,
+    head: string,
+    tail: string,
+    whole: boolean,
+    done?: () => void,
   ): void => {
     endStreamLine()
     const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
-    const release = writer.hold()
+    // The log's first write opens it with a blank line, as `logWrite` does.
+    const open = logOpened ? '' : '\n'
+    logOpened = true
+    if (!inPanel) panelOpen = undefined
+    // A frame ends on its own blank line.
+    endsBlank = true
+    lineEmitted = false
+    streamedSinceBlock = false
+    pace.put(
+      stepping(
+        (function* () {
+          try {
+            if (whole) {
+              const block = [...pieces()].join('')
+              if (block.length < PIECEWISE_CHARS) {
+                raw.write(`${open}${lead}${head}${block}${tail}\n`)
+                return
+              }
+              yield* written([block], `${open}${lead}${head}`, tail)
+            } else yield* written(pieces(), `${open}${lead}${head}`, tail)
+          } finally {
+            done?.()
+          }
+        })(),
+      ),
+    )
+  }
+  // `pieces` between `head` and `tail`, a step each, a live region held off
+  // meanwhile so each piece goes out as it comes rather than wait for a frame.
+  function* written(pieces: Iterable<string>, head: string, tail: string): Generator<void> {
+    const release = raw.hold()
     // A piece's last high surrogate waits for the low one that follows: written
     // alone, each half printed as U+FFFD.
     let held = ''
-    let last = ''
     try {
-      logWrite(lead + head)
-      render((piece) => {
-        if (piece.length === 0) return
+      raw.write(head)
+      for (const piece of pieces) {
+        if (piece.length === 0) continue
         let text = held === '' ? piece : held + piece
         held = ''
         const c = text.charCodeAt(text.length - 1)
@@ -747,17 +785,16 @@ export function defaultLogger(
           held = text.slice(-1)
           text = text.slice(0, -1)
         }
-        if (text.length > 0) logWrite(text)
-        last = piece
-      })
-      if (held.length > 0) logWrite(held)
-      logWrite(`${tail}\n`)
+        if (text.length > 0) {
+          raw.write(text)
+          yield
+        }
+      }
+      if (held.length > 0) raw.write(held)
+      raw.write(`${tail}\n`)
     } finally {
       release()
     }
-    endsBlank = (tail || last).endsWith('\n')
-    lineEmitted = false
-    streamedSinceBlock = false
   }
   // Live-frame close lines end a frame the same way emitBlock does:
   // with a trailing blank line, resetting the separator state.
@@ -925,7 +962,8 @@ export function defaultLogger(
       // Nothing more prints: what no task completed is dropped, and the files close.
       for (const out of outputs.values()) out.release()
       outputs.clear()
-      deferredFailures.close()
+      // After any frame still waiting to be written.
+      pace.put(once(() => deferredFailures.close()))
       spool.end()
     },
     taskStart(node) {
@@ -964,6 +1002,7 @@ export function defaultLogger(
     serverKept: (id) => void keptServers.add(id),
     serverStopped: (id) => void stoppedServers.add(id),
     spoolIn: (dir) => spool.in(dir),
+    drained: () => pace.drained(),
     forecast(graph, load) {
       if (statusDead || forecastTimer !== null) return
       graphForecast = graph
@@ -1039,25 +1078,17 @@ export function defaultLogger(
       // where eyes land. Guarded for repeat runEnd calls.
       if (!flushedFailures && deferredFailures.size > 0) {
         flushedFailures = true
-        deferredFailures.drain(({ note, chars, pieces }) => {
+        for (const { note, chars, pieces } of deferredFailures.frames()) {
           // A frame with nothing in it still names its failure.
           if (chars === 0) {
             if (note !== '') logWrite(note)
-            return
+            continue
           }
           const [open, close] = note === '' && view.gha !== true ? ['', ''] : ghaFenceEnds(ghaToken)
-          const head = `${note}${open}`
-          // A short frame is read back whole and written as it always was.
-          if (chars < PIECEWISE_CHARS) emitBlock([...pieces].join(''), head, close)
-          else
-            emitPieces(
-              (write) => {
-                for (const p of pieces) write(p)
-              },
-              head,
-              close,
-            )
-        })
+          emitLater(pieces, `${note}${open}`, close, chars < PIECEWISE_CHARS)
+        }
+        // Once the last frame is written.
+        pace.put(once(() => deferredFailures.close()))
       }
       panelOpen = undefined
       // The summary and the CLI's own lines follow on the stream directly:
@@ -1119,14 +1150,18 @@ export function defaultLogger(
       ...dropped,
       ...where(node),
     })
-    const frame = (forceCommand: boolean): string =>
-      formatTaskBlock(node, outcome, body(), colors, forceCommand, forwardArgs, links)
-    const writeFrame = (forceCommand: boolean, write: (piece: string) => void): void =>
-      writeTaskBlock(node, outcome, body(), write, colors, forceCommand, forwardArgs, links)
-    // The frame now, between `head` and `tail`.
+    const pieces = (forceCommand: boolean): Iterable<string> =>
+      taskBlockPieces(node, outcome, body(), colors, forceCommand, forwardArgs, links)
+    // The frame in its turn, between `head` and `tail`; its log kept until then.
     const printFrame = (forceCommand: boolean, head = '', tail = ''): void => {
-      if (whole) emitBlock(frame(forceCommand), head, tail)
-      else emitPieces((write) => writeFrame(forceCommand, write), head, tail)
+      output.keep()
+      emitLater(
+        () => pieces(forceCommand),
+        head,
+        tail,
+        whole,
+        () => output.release(),
+      )
     }
     // The frame fenced on GitHub Actions.
     const printFenced = (forceCommand: boolean): void => {
@@ -1135,7 +1170,7 @@ export function defaultLogger(
     }
     // Kept for runEnd; after it, never printed.
     const keepFrame = (forceCommand: boolean, note: string): void => {
-      if (!flushedFailures) deferredFailures.add(note, (write) => writeFrame(forceCommand, write))
+      if (!flushedFailures) deferredFailures.add(note, pieces(forceCommand))
     }
     // The failed row now; its frame replays with the others at runEnd.
     const deferFailure = (): void => {

@@ -327,6 +327,8 @@ export class TaskOutput {
   private pending: OutputChunk[] = []
   private pendingChars = 0
   private holding = false
+  // Releases still owed: a frame waiting its turn to be written keeps one.
+  private kept = 1
   // What memory holds after the file: what a file that could not be opened
   // or written refused. A log is never dropped for want of disk.
   private after: OutputChunk[] | null = null
@@ -399,8 +401,14 @@ export class TaskOutput {
     return mask === null ? all : maskStreams(all, mask)
   }
 
-  /** Its records released; what its buffer holds was never read, and is dropped unwritten. */
+  /** One more `release` before its records go: a frame still to read them. */
+  keep(): void {
+    this.kept++
+  }
+
+  /** Its records released at the last `release` owed; what its buffer holds was never read, and is dropped unwritten. */
   release(): void {
+    if (--this.kept > 0) return
     this.pending = []
     this.pendingChars = 0
     if (this.holding) this.spool.free(this)
@@ -525,8 +533,8 @@ export class DeferredFrames {
     return this.entries.length
   }
 
-  /** A frame `render` writes, and the annotation that heads it. */
-  add(note: string, render: (write: (piece: string) => void) => void): void {
+  /** A frame's `pieces`, and the annotation that heads it. */
+  add(note: string, pieces: Iterable<string>): void {
     if (this.file === undefined) this.file = RecordFile.open(this.spool.where)
     const file = this.file
     const entry: (typeof this.entries)[number] = {
@@ -545,28 +553,28 @@ export class DeferredFrames {
       pending = []
       pendingChars = 0
     }
-    render((piece) => {
-      if (piece.length === 0) return
+    for (const piece of pieces) {
+      if (piece.length === 0) continue
       entry.chars += piece.length
       pending.push({ text: piece, err: false })
       pendingChars += piece.length
       if (pendingChars >= WRITE_CHARS) flush()
-    })
+    }
     flush()
     this.entries.push(entry)
   }
 
-  /** Each frame in order: its note, length and text, read back in pieces. Then the file goes. */
-  drain(each: (frame: { note: string; chars: number; pieces: Iterable<string> }) => void): void {
+  /** Each frame in order: its note, length, and its text read back in pieces when asked, until `close`. */
+  frames(): { note: string; chars: number; pieces: () => Iterable<string> }[] {
     const file = this.file
-    for (const e of this.entries) {
-      const pieces = (function* () {
+    return this.entries.map((e) => ({
+      note: e.note,
+      chars: e.chars,
+      *pieces() {
         if (file != null) for (const c of file.read(e.from, e.to)) yield c.text
         if (e.after !== undefined) yield* e.after
-      })()
-      each({ note: e.note, chars: e.chars, pieces })
-    }
-    this.close()
+      },
+    }))
   }
 
   /** Its file closed, frames never printed dropped. */

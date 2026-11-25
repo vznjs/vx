@@ -1182,6 +1182,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'logger-concurrency-slots',
     'logger-output-file',
     'logger-output-spool',
+    'logger-paced-output',
     'measure-helper',
     'memo-parts',
     'memory-ceiling-cache.unsafe',
