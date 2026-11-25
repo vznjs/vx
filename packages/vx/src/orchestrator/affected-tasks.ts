@@ -208,16 +208,20 @@ export function affectedRoots(
       if (hit) seeds?.set(n.id, inProject(n.projectName, rels[0]))
       return hit
     }
+    // A declared input first: it is the precise reason when an unclaimed
+    // path (an untracked output) also reached the project whole.
+    const links = changes.dirLinksIn?.get(n.projectName)
+    const loose = changes.untrackedIn?.get(n.projectName)
+    const rel = rels.find((r) => declaresInput(task, r, null, links?.has(r), loose?.has(r)))
+    if (rel !== undefined) {
+      if (seeds !== null) seeds.set(n.id, { ...inProject(n.projectName, rel), kind: 'input' })
+      return true
+    }
     if (whole.has(n.projectName)) {
       seeds?.set(n.id, inProject(n.projectName, whole.get(n.projectName)))
       return true
     }
-    const links = changes.dirLinksIn?.get(n.projectName)
-    const loose = changes.untrackedIn?.get(n.projectName)
-    const rel = rels.find((r) => declaresInput(task, r, null, links?.has(r), loose?.has(r)))
-    if (rel === undefined) return false
-    if (seeds !== null) seeds.set(n.id, { ...inProject(n.projectName, rel), kind: 'input' })
-    return true
+    return false
   }
   // The deps a key folds (`inputs.tasks`, less order-only edges): one whose
   // hash the key leaves out cannot move it, so a change there reaches the

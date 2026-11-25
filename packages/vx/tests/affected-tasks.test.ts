@@ -111,3 +111,25 @@ describe('affectedRoots', () => {
     ]).toEqual([[], ['top#lint']])
   })
 })
+
+// An untracked file no task declares reaches the project whole, but a
+// declared input that also changed is the precise reason: `--dry` named the
+// stray output (`kind: project`) and sent the user looking at the wrong file.
+describe('affectedRoots reasons', () => {
+  it('a changed declared input is the reason, not an unclaimed path beside it', () => {
+    const both: AffectedChanges = {
+      projects: new Set(['app']),
+      changed: ['app/dist/out.js', 'app/zero.txt'],
+      paths: new Map([['app', ['dist/out.js', 'zero.txt']]]),
+      untracked: new Set(['app/dist/out.js']),
+      untrackedIn: new Map([['app', new Set(['dist/out.js'])]]),
+      whole: new Set(),
+    }
+    const nodes = new Map<string, TaskNode>([['app#zero', node('app#zero', 'zero.txt')]])
+    const explain = { reasons: new Map() }
+    expect(affectedRoots(nodes, ['app#zero'], both, projects, packageGraph, '/w', explain)).toEqual(
+      ['app#zero'],
+    )
+    expect(explain.reasons.get('app#zero')).toEqual({ kind: 'input', file: 'app/zero.txt' })
+  })
+})

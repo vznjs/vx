@@ -2236,6 +2236,7 @@ vx run build lint --affected=main --dry
 
 - On a terminal too narrow for the reason beside its row, the reason goes on its own line under the row.
 - `project` covers a task with no `inputs`, and a changed `file` no task of the project declares, often an output git does not ignore.
+- When one of its inputs changed too, the reason is `input`, the most precise one.
 - A `project` reason for a config import has no `file`.
 - `workspace` from the workspace config reaches every project, shown as `changed (workspace-wide)`.
 - `workspace` from a root file a plugin claims (a lockfile) or a folder it names reaches only the projects whose digest moved.
