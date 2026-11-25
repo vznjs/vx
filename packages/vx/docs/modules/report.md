@@ -135,7 +135,7 @@ the mode; `ci: true` whenever `CI` is truthy.
 - **`broad`** — executed tasks print one
   `success miss … <id>` row (`no-cache` for a task no cache
   answered for, `ranNoCache`); failures get full frames;
-  hits / up-to-date / skipped are silent (buffers dropped).
+  hits / up-to-date / skipped are silent (their kept output dropped).
 - **`errors-only`** — only failed tasks print.
 - **`hash-only`** — one line per task with its key, no output.
 - **`none`** — no per-task output.
@@ -147,13 +147,71 @@ and settles the coalesced writes; in `full`, `focused` and `broad` a
 live frame opens before it and closes after, and what vx says about it
 (a timeout, a shell verdict) streams inside.
 
-A buffered frame masks the task's secrets in each stream's whole text
+A task's output waits for its frame in a file, never in memory (M,
+2026-11-25; `src/report/task-output.ts`): a task's chunks gather in a
+write buffer of at most 64 Ki characters, written in one write to one
+file the run's tasks share (`OutputSpool`); a buffer released unread
+(a success `errors-only` drops) is never written. The file is in the
+run's cache directory (`DefaultLogger.spoolIn`; `os.tmpdir()` is RAM on
+many CI images, and only an embedder's logger falls back to it),
+unlinked as soon as it is open so a crash leaves nothing behind; each
+task (`TaskOutput`) keeps only where its records lie, read back head and
+body in one read. Past 64 MiB, a file at least half released is
+compacted into a new one, so a task that runs long keeps only its own
+output on disk, not the run's. The new file opens only where the old
+one is (never `os.tmpdir()`, RAM on many CI images), and a compaction
+the disk refused waits until the file doubles; a batch the disk refused
+is cut from the file, not left in it unread. With no task holding it the file is
+written from its start again, and it closes when the run is done (a
+logger per `vx watch` cycle kept one open). A read that fails (EIO, a
+file cut short) ends the frame's output with a line saying so; the
+frame still closes. A file per task cost a warm run of 200 hits 18-43
+ms; the shared one costs nothing measurable at 1 KB a hit and 15-28 ms
+at 100 KB in `full` (20 MB written and read back). A file that cannot
+be opened or written keeps the rest in
+memory: a log is never dropped for want of disk. `none` and `hash-only` drop a chunk on arrival, not even
+written. Held in memory, 300 MB of output peaked vx at 1.93 GB under
+`errors-only` when the task failed and 786 MB when it passed; from its
+file, +62 MiB (read by a slow reader) and +23 over an idle run. A frame a view defers to the
+run's end (`errors-only`, `broad`, `focused`) is rendered when its task
+ends, exactly as it was, into one file of deferred frames
+(`DeferredFrames`) read back in order at `runEnd`.
+
+A frame masks the task's secrets in each stream's whole text
 (`maskStreams`), as the stored log does: the live mask let a value the
 task wrote in two pieces through as two clean chunks. A hit's replay
-was masked whole already. A frame of 1 Mi characters or more is written
-in pieces (`head`, the block, `tail`), never copied into one string: a
+was masked whole already. A log under 1 Mi characters is read back
+whole and framed as before; a longer one is framed as it is read, in
+pieces of at most 4 MiB, masked in two passes over its file (where each
+stream's values lie, `SecretMask.spanStream`, then the text), and
+written in pieces (`head`, the block, `tail`) with any live region held
+off meanwhile, so each piece goes out as it comes. The bytes are the
+ones a frame held whole printed (`tests/logger-output-file.test.ts`). A
+frame of 1 Mi characters or more is never copied into one string: a
 100 MB log's frame took vx from 408 MB to 1.19 GB, and 577 MB with
 this and the writer's slicing (`report.md`).
+
+Every logger write is paced by the stream it reaches (`paced.ts`): Bun
+queues what a pipe refuses, so a frame read back without a pause sat
+whole in that queue for a slow reader (+509 MiB for a failed task's 300
+MB under `errors-only`). Each write is a step of a job in one ordered
+queue; once a stream refuses a write (`outputPaced`) and 1 Mi more
+characters went out, the next step waits for its drain, so a frame is
+read from its file only as the reader takes it (under 4 MiB queued,
+`tests/logger-paced-output.test.ts`). Waiting at each refusal (64 KiB
+in Bun) cost a warm run of 200 100 KB hits piped to `cat` 25-50 ms. A
+short frame with nothing queued ahead of it is written at once, with no
+job. The
+logger's state moves when a line is logged, not when it is written, and
+later lines wait behind the frame: the bytes and their order are those a
+reader that never pauses gets. A stream that never refuses (a file, a
+test's sink) is written at once, as before. A frame is read while the
+run writes on, so no compaction runs while a read is in flight (it would
+close the file under it); the progress and notify escapes wait their
+turn too, or one could land inside a task's own escape cut between two
+pieces. `run()` awaits
+`DefaultLogger.drained()` before it returns, so the CLI's own lines come
+after.
 
 `status()` lines (header, summary) always print. Group tasks never
 print in any mode. A ready persistent task the run keeps (`vx run dev`)
@@ -230,6 +288,11 @@ CLI. `tests/status-line.test.ts` — writer serialization, throttling,
 permanent clear, and the logger's lifecycle integration.
 `tests/framed-output.test.ts` tests the format functions directly;
 `tests/orchestrator.test.ts` covers the custom-logger path.
+`tests/logger-output-file.test.ts` holds a long log's frame, read back
+from its file, to the bytes of the frame held whole, in every view;
+`tests/output-memory.unsafe.test.ts` holds every mode's retained heap
+flat with the volume of output, and
+`tests/memory-ceiling-output.unsafe.test.ts` a whole run's peak.
 
 ### Replacing this module
 
@@ -270,7 +333,10 @@ when disabled (CI). When active:
   content since the last frame, then redraws, as ONE write. The region
   can never interleave with task output. A frame whose region bytes
   match what is shown writes nothing. 2,000 tasks on a terminal:
-  866 → 290 ms CPU, 8.6 → 1.1 MB, 6,057 → 165 writes. A timer holding
+  866 → 290 ms CPU, 8.6 → 1.1 MB, 6,057 → 165 writes. Content past
+  64 KiB draws at once: a warm run's hits frame without a turn of the
+  event loop, and every frame waited unwritten, out of stdout's pacing
+  (each terminal write is noted, `out-pace.ts`). A timer holding
   content keeps the process open until it lands; `clearStatus`,
   `hold` and `writeTo` hand pending content over first. The erase always uses the height of the **previous** draw;
   the new draw establishes the new height, so the region may grow and
@@ -404,8 +470,18 @@ export interface OutputChunk {
   err: boolean // stderr: its lines render red when colour is on
 }
 
+// A task's output as a frame reads it, once, in order: what the frame must
+// know before the chunks (`content`: any non-whitespace, else no OUTPUT
+// section) and after them (`leaves`: the last escape leaves a style on)
+export interface OutputSource {
+  readonly chunks: Iterable<OutputChunk>
+  readonly content: boolean
+  leaves(): boolean
+}
+
 export interface TaskBlockBody {
   output?: readonly OutputChunk[] // in the order written, under `├─ OUTPUT ──…`
+  source?: OutputSource // the same, read as it renders (a log read back from its file); wins over `output`
   droppedStdout?: number // chars a bounded (persistent) capture dropped from the head
   droppedStderr?: number
   dir?: string // the task's directory from the workspace root, before its `$` (none: the root)
@@ -420,6 +496,19 @@ export function formatTaskBlock(
   forwardArgs?: readonly string[], // the args after `--`, on a requested task's `$` line
   links?: boolean, // the terminal opens OSC 8: a failed task's file paths link to the file
 ): string
+
+// The same frame in pieces as it renders: the logger writes a long log's
+// frame as it reads the log back, never one string, and only as fast as
+// stdout's reader takes it
+export function* taskBlockPieces(
+  node,
+  outcome,
+  body,
+  colors?,
+  forceCommand?,
+  forwardArgs?,
+  links?,
+): Generator<string>
 
 // The `$` line's command: a requested task's gets the args after `--`, as
 // the run appends them, secrets masked (the frame and the `--dry` plan)

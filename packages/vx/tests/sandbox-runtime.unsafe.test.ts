@@ -1027,16 +1027,16 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     async () => {
       // Bun reads `bunfig.toml` first: that refused read was reported, the
       // note held back, and the fix line named the read alone (2026-11-24).
-      // opt.cfg exists: a read of a missing file is reported on one runner
-      // and not on another (CI 2026-11-25), a refused one on each.
+      // The denial is a write: macOS allows reads of the project outside a
+      // read grant, so a refused read held on Linux alone (CI 2026-11-25).
       await addProject(fixture.root, 'dirgrant2', {
-        files: { 'src/x.txt': 'hi', 'opt.cfg': 'x' },
+        files: { 'src/x.txt': 'hi' },
         config: `
           export default {
             tasks: {
               build: {
                 exec: {
-                  command: 'cat opt.cfg 2>/dev/null; mkdir -p dist && cp src/x.txt dist/out.txt',
+                  command: 'echo x > stray.txt 2>/dev/null; mkdir -p dist && cp src/x.txt dist/out.txt',
                   sandbox: { allow: { read: ['src/'], write: ['dist'] } },
                 },
                 inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
@@ -1049,7 +1049,10 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       const outcome = r.outcomes.find((o) => o.node.id === 'dirgrant2#build')
       const lines = outcome?.sandbox?.lines ?? []
       expect(outcome?.status).toBe('failed')
-      expect(lines.some((l) => l.includes('opt.cfg'))).toBe(true)
+      // macOS reports violations lossily by design (runtime.ts attemptDenials):
+      // the unified log may drop the record, so the path is Linux's to assert.
+      if (process.platform === 'linux')
+        expect(lines.some((l) => l.includes('stray.txt'))).toBe(true)
       expect(lines.some((l) => l.includes('spell the grant `dist/`'))).toBe(true)
     },
     TIMEOUT,

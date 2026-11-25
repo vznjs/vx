@@ -171,7 +171,7 @@ Turbo-aware cache server can transit our blobs unchanged.
 | ---------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- |
 | Framed per-task blocks (`┌─ … └─`)                   | Turbo                                            | `src/report/framed-output.ts`                                    |
 | End-of-run summary footer (task/cache meters + time) | Turbo-adjacent (vx renders meters, not a banner) | `src/report/summary.ts`                                          |
-| Per-task output buffered until task finishes         | Turbo                                            | `src/report/framed-output.ts` ("no live progress within a task") |
+| Per-task output kept until task finishes (in a file) | Turbo                                            | `src/report/framed-output.ts` ("no live progress within a task") |
 
 (There is no `>>> FULL TURBO`-style all-cached banner — a fully-green
 cache meter carries the message.)

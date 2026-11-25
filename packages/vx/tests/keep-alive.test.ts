@@ -894,6 +894,7 @@ describe('a persistent server that dies before the run stops it', () => {
   const interrupted = async (
     srv: string,
     tasks = ['e2e'],
+    seen?: string,
   ): Promise<{ code: number; said: string[]; tally: string | undefined }> => {
     const dir = await addProject(root, 'app', {
       config: `export default { tasks: {
@@ -912,16 +913,27 @@ describe('a persistent server that dies before the run stops it', () => {
         env: { ...process.env, VX_RUN_KILL_GRACE: '400ms' },
       }),
     )
-    const text = Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+    let said = ''
+    const drain = async (s: ReadableStream<Uint8Array>): Promise<void> => {
+      const d = new TextDecoder()
+      for await (const c of s) said += d.decode(c, { stream: true })
+    }
+    const text = Promise.all([drain(proc.stdout), drain(proc.stderr)])
     const up = path.join(dir, 'e2e.up')
     const deadline = Date.now() + 10_000
-    while (!(existsSync(up) && readFileSync(up, 'utf8') === 'up\n')) {
+    // `seen`: vx learns of a server's exit on its own turn, which a loaded
+    // runner can push past the Ctrl-C (CI 2026-11-25).
+    while (
+      !(existsSync(up) && readFileSync(up, 'utf8') === 'up\n') ||
+      (seen !== undefined && !said.includes(seen))
+    ) {
       if (Date.now() > deadline) throw new Error('the dependant never started')
       await Bun.sleep(20)
     }
     proc.kill('SIGINT')
     const code = await proc.exited
-    const lines = (await text).join('').split('\n')
+    await text
+    const lines = said.split('\n')
     return {
       code,
       said: lines.filter((l) => l.startsWith('vx: ')),
@@ -944,6 +956,8 @@ describe('a persistent server that dies before the run stops it', () => {
     expect(
       await interrupted(
         'echo $$ > srv.pid; echo READY; until [ -f go ]; do sleep 0.02; done; touch gone; sleep 0.3; exit 3',
+        ['e2e'],
+        'while the run went on',
       ),
     ).toEqual({
       code: 130,

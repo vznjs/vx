@@ -24,6 +24,11 @@ import {
 // 5,000 projects' files take minutes to remove on a loaded disk.
 afterEach(removeScratch, TIMEOUT * 3)
 
+// vx's stdout read from 2 s in, 1 MiB per 20 ms at most. Braced: unbraced,
+// vx was piped into `sleep 2` alone, and the loop read nothing of it.
+const SLOW =
+  '{ sleep 2; while c=$(dd bs=64k count=16 iflag=fullblock status=none | wc -c); [ "$c" -gt 0 ]; do sleep 0.02; done; }'
+
 let base = 0
 beforeAll(async () => {
   if (linux) base = await floor()
@@ -45,14 +50,10 @@ describe.skipIf(!linux)('vx peak memory under task output', () => {
   it(
     'a reader slower than the task holds vx back, not its memory',
     async () => {
-      // vx's stdout read from 2 s in, 1 MiB per 20 ms at most. Bun queues what
-      // a full pipe refuses: 128 MiB measured +260 MiB before out-pace.ts.
+      // Bun queues what a full pipe refuses: 128 MiB measured +260 MiB
+      // before out-pace.ts.
       const root = await workspace({ a: task(text(128 * MIB)) })
-      const s = spawnVx(
-        root,
-        ['run', 'a#out', '--no-cache'],
-        'sleep 2; while c=$(dd bs=64k count=16 iflag=fullblock status=none | wc -c); [ "$c" -gt 0 ]; do sleep 0.02; done',
-      )
+      const s = spawnVx(root, ['run', 'a#out', '--no-cache'], SLOW)
       expect((await peakMib(s)) - base).toBeLessThan(96)
     },
     TIMEOUT,
@@ -76,15 +77,28 @@ describe.skipIf(!linux)('vx peak memory under task output', () => {
   )
 
   it(
-    'a run of several tasks holds what it prints, and no more',
+    'a run of several tasks keeps what it prints in a file, not memory',
     async () => {
-      // Several requested tasks each print as one block at the end, so `full`
-      // holds each task's output until then (docs/cli.md): 256 MiB measured
-      // +582 MiB, 2.3 bytes per byte. The line holds it there.
+      // Several requested tasks each print as one block when they end, read
+      // back from the file their output waited in. Held in memory, 256 MiB
+      // measured +582 MiB, 2.3 bytes per byte. Read by a slow reader: a
+      // frame written without waiting for it sat in Bun's queue whole.
       const root = await workspace({ a: task(text(256 * MIB)), b: task('true') })
-      const { peak, out } = await run(root, ['out', '--all', '--no-cache'])
-      expect(out).toContain('success')
-      expect(peak - base).toBeLessThan(256 * 3)
+      const s = spawnVx(root, ['run', 'out', '--all', '--no-cache'], SLOW)
+      expect((await peakMib(s)) - base).toBeLessThan(128)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "errors-only keeps a failed task's output in a file until the run's end",
+    async () => {
+      // 300 MiB of a failed task's output: the logger held it, and its frame
+      // until the summary; then, read back from its file, written whole into
+      // Bun's queue for a slow reader (+299 MiB on CI).
+      const root = await workspace({ a: task(`${text(300 * MIB)}; exit 1`) })
+      const s = spawnVx(root, ['run', 'a#out', '--no-cache', '--output-logs=errors-only'], SLOW)
+      expect((await peakMib(s, 1)) - base).toBeLessThan(128)
     },
     TIMEOUT,
   )

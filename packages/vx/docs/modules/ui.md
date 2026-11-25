@@ -36,7 +36,8 @@ colour, the bytes a test or `grep` reads.
   live region).
 - `live-region.ts`: the run's bottom region (`createOutputWriter`).
 - `ansi.ts`: reading a task's own escapes (`hasEscape`, `leavesStyle`,
-  `endStyle`, `STYLE_END`, `lastRedraw`).
+  `styleWatch` for a log read back in pieces, `endStyle`, `STYLE_END`,
+  `lastRedraw`).
 - `terminal-signals.ts`, `links.ts`: tab progress, notifications and file
   links (`terminalSignals`, `terminalLinks`, `notifyEscape`,
   `progressEscape`, `PROGRESS_CLEAR`, `fileLocations`, `fileMemo`,

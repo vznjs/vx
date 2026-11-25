@@ -31,6 +31,8 @@ it("the PR's title is a Conventional Commits header", () => {
 // subject cannot change without rewriting the branch every landed PR
 // shares (2026-10-28).
 const KNOWN = new Set([
+  // #5631's spool fix, pushed before its subject was cut: 73 chars.
+  '843816d378e709f41a44e7666033ea214466d473',
   // Pushed straight to the 2026-11-25 day branch, typed `style:`.
   'b7ff3eac0d87d1c7d734d511023e96f0a9a6f39f',
   // #5625's formatting commit, typed `style:`.

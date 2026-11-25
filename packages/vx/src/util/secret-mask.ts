@@ -78,6 +78,15 @@ export interface SecretMask {
    */
   stream(): { push(chunk: string): string; end(): string }
   /**
+   * `spans` over a text given in chunks: each call returns the spans it
+   * settled, as offsets into the whole text, the same spans `spans` finds in
+   * the text joined.
+   */
+  spanStream(): {
+    push(chunk: string): Array<[start: number, end: number]>
+    end(): Array<[start: number, end: number]>
+  }
+  /**
    * `mask` for the two sides of a cut, where the text between them is
    * gone: a value the cut split leaves a piece at the end of `head` or the
    * start of `tail` that no whole-value match sees, so each piece is
@@ -363,12 +372,13 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     }
     return longest
   }
-  /** `text` cut where nothing after the cut could begin a value, and no masked span runs across it. */
-  const safeCut = (text: string): number => {
+  /** Where `text` may be cut: nothing after it could begin a value, and no span in `found` runs across it. */
+  const cutOf = (text: string, found: ReadonlyArray<[number, number]>): number => {
     let cut = text.length - partialTail(text)
-    for (const [s, e] of spans(text)) if (s < cut && e > cut) cut = s
+    for (const [s, e] of found) if (s < cut && e > cut) cut = s
     return cut
   }
+  const safeCut = (text: string): number => cutOf(text, spans(text))
   return {
     mask,
     spans,
@@ -381,6 +391,43 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
         mask(head.slice(0, h)) + (h < head.length ? MASKED : ''),
         (t > 0 ? MASKED : '') + mask(tail.slice(t)),
       ]
+    },
+    spanStream() {
+      let carry = ''
+      // Where `carry` starts in the whole text.
+      let base = 0
+      // The last span found: one starting where it ends joins it, as in `spans`.
+      let last: [number, number] | undefined
+      const settle = (found: ReadonlyArray<[number, number]>, upTo: number) => {
+        const out: Array<[number, number]> = []
+        for (const [s, e] of found) {
+          if (e > upTo) break
+          if (last !== undefined && base + s <= last[1]) last[1] = Math.max(last[1], base + e)
+          else {
+            if (last !== undefined) out.push(last)
+            last = [base + s, base + e]
+          }
+        }
+        return out
+      }
+      return {
+        push(chunk) {
+          const text = carry + chunk
+          const found = spans(text)
+          const cut = cutOf(text, found)
+          const out = settle(found, cut)
+          carry = text.slice(cut)
+          base += cut
+          return out
+        },
+        end() {
+          const out = settle(spans(carry), carry.length)
+          if (last !== undefined) out.push(last)
+          carry = ''
+          last = undefined
+          return out
+        },
+      }
     },
     stream() {
       let carry = ''

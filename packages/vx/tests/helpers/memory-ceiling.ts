@@ -27,6 +27,10 @@ export const text = (bytes: number): string =>
 
 const roots: string[] = []
 const live = new Set<ReturnType<typeof Bun.spawn>>()
+// Builds a test left running: removing their directory under them let the
+// next addProject's mkdir make it again (CI 2026-11-25, `vx-mem-*` left).
+const building = new Set<Promise<unknown>>()
+let removing = false
 /**
  * Each suite's afterEach: kills the vx a failed or timed-out test left
  * running, then removes its directories (ENOTEMPTY retries: a timed-out
@@ -37,6 +41,12 @@ export async function removeScratch(): Promise<void> {
   for (const p of live) p.kill('SIGKILL')
   await Promise.all([...live].map((p) => p.exited))
   live.clear()
+  removing = true
+  try {
+    await Promise.allSettled([...building])
+  } finally {
+    removing = false
+  }
   const dirs = roots.splice(0)
   await Promise.all(dirs.map((r) => rm(r, { recursive: true, force: true, maxRetries: 5 })))
 }
@@ -58,6 +68,18 @@ export async function workspace(
     files?: number
   } = {},
 ): Promise<string> {
+  const p = build(projects, opts)
+  building.add(p)
+  return p.finally(() => building.delete(p))
+}
+
+async function build(
+  projects: Record<string, string>,
+  opts: Parameters<typeof workspace>[1] = {},
+): Promise<string> {
+  const halt = (): void => {
+    if (removing) throw new Error('the test ended while its workspace was built')
+  }
   // Registered before the first await: a test that times out inside
   // makeWorkspace never gets its path back to register.
   const dir = scratch(mkdtempSync(path.join(os.tmpdir(), 'vx-mem-')))
@@ -72,7 +94,8 @@ export async function workspace(
       path.join(root, '.vx', 'workspace.mjs'),
       localWorkspaceSource(opts.plugins, '', undefined, opts.fields),
     )
-  for (const [name, config] of Object.entries(projects))
+  for (const [name, config] of Object.entries(projects)) {
+    halt()
     await addProject(root, name, {
       config,
       files: Object.fromEntries([
@@ -83,6 +106,8 @@ export async function workspace(
         ]),
       ]),
     })
+  }
+  halt()
   gitInitCommit(root)
   const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {
     cwd: root,

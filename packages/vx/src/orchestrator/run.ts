@@ -447,6 +447,9 @@ export async function runCore(options: CoreRunOptions): Promise<RunSummary> {
     return { ...summary, persistent: detachOnStop(summary.persistent, detach) }
   } finally {
     if (!held) detach()
+    // A frame paced by a slow reader is still being written: what the caller
+    // prints next comes after it.
+    await terminal?.drained()
     // A signal heard before the run's stop took over: the run left before
     // its tasks (a refusal, a setup that threw), its plugins torn down and
     // its lock released, and vx leaves as that signal says.
@@ -549,6 +552,7 @@ async function runOnBus(
     await heldLock?.()
     throw err
   }
+  terminal?.spoolIn(prepared.cacheDir)
   const releaseRunLock: RunLockRelease =
     heldLock ?? Object.assign(async () => {}, { path: runLockPath(prepared.workspaceRoot) })
   mark('plugin stages')
@@ -799,6 +803,7 @@ async function runOnBus(
     handleSignals: options.handleSignals ?? true,
     handsTerminal: holders.size > 0,
     held: signals.held,
+    ...(terminal !== null ? { drained: () => terminal.drained() } : {}),
     teardowns: prepared.plugins.filter((p) => p.teardown).length,
     onStop: () => {
       log.runStop?.()

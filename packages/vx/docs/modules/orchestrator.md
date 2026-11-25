@@ -280,7 +280,9 @@ never stack listeners. A signal before the run's stop takes over (a
 slow plugin setup) is held and replayed (`orchestrator.md`). On
 signal: forward it (a SIGHUP as SIGTERM) to everything in
 `liveChildren` + `persistentRegistry`, close the cache, and die of the
-signal once the exit hooks have run (130 / 143 / 129 to the parent; a
+signal once the run has left, the renderer has written what it queued
+for a slow reader (2 s at most) and stdout has ended (2 s at most), and
+the exit hooks have run (130 / 143 / 129 to the parent; a
 run that handed a task the terminal exits with that code instead, so
 Bun restores the terminal).
 Children killed this way classify as `aborted`: counted in the task

@@ -201,10 +201,12 @@ src/report/framed-output.ts
 src/report/index.ts
 src/report/logger.ts
 src/report/migration.ts
+src/report/paced.ts
 src/report/plain-output.ts
 src/report/status-line.ts
 src/report/summary.ts
 src/report/tally.ts
+src/report/task-output.ts
 src/sandbox/binds.ts
 src/sandbox/bridges.ts
 src/sandbox/deny-scan.ts
