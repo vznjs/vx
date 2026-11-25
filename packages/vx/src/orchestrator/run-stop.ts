@@ -81,6 +81,8 @@ export function runStop(args: {
   held: HeldSignals | undefined
   /** How many plugins have a teardown: each gets its own bound before a signal exits. */
   teardowns: number
+  /** Resolves once the renderer has written all it holds (a frame paced by a slow reader). */
+  drained?: () => Promise<void>
   /** Called first when the run is stopped. */
   onStop: () => void
 }): RunStop {
@@ -127,6 +129,7 @@ export function runStop(args: {
       controller.abort(signal)
     },
     done: runLeft,
+    ...(args.drained !== undefined ? { drained: args.drained } : {}),
     handsTerminal: args.handsTerminal,
     held: args.held,
     // The grace, then one flush and each teardown at their own bound, and

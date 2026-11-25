@@ -230,6 +230,8 @@ export function forwardSignals(args: {
    * skipped both.
    */
   done: Promise<void>
+  /** Resolves once the renderer has written all it holds: frames wait on a slow reader. */
+  drained?: () => Promise<void>
   /** How long a signal waits for `done` before it exits anyway. */
   boundMs: number
   /**
@@ -285,6 +287,10 @@ export function forwardSignals(args: {
     // once, it left a blank screen for as long as the stop took (M).
     args.stop(signal)
     void settleWithin(args.done, args.boundMs)
+      // What the renderer still holds goes to the pipe first (paced frames,
+      // the summary after them), bounded as the pipe is, for a reader that
+      // never takes it.
+      .then(() => settleWithin(args.drained?.() ?? Promise.resolve(), 2_000))
       // The run's output may still be in the pipe: `process.exit` drops what a
       // reader has not taken (CLAUDE.md). An empty `write`'s callback fired
       // early, and a CI-mode run lost 0.8 of 2 MiB; `end`'s waits for the pipe

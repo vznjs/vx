@@ -803,6 +803,7 @@ async function runOnBus(
     handleSignals: options.handleSignals ?? true,
     handsTerminal: holders.size > 0,
     held: signals.held,
+    ...(terminal !== null ? { drained: () => terminal.drained() } : {}),
     teardowns: prepared.plugins.filter((p) => p.teardown).length,
     onStop: () => {
       log.runStop?.()
