@@ -7,7 +7,6 @@ import {
   postPath,
   releaseNotes,
 } from '../scripts/release-notes.js'
-import { stale } from '../scripts/release-sync.js'
 
 const c = (subject: string, body = ''): { subject: string; body: string } => ({ subject, body })
 
@@ -124,23 +123,5 @@ describe('postNotes', () => {
 
   it('finds the post by version', () => {
     expect(postPath('0.0.637')).toBe('private/vx-docs/src/content/docs/releases/vx-0-0-637.md')
-  })
-})
-
-describe('stale', () => {
-  const post = "---\ntitle: 'T'\n---\nBody.\n"
-  const want = postNotes(post, '0.0.3')
-
-  it('rewrites only a release whose post says something else', () => {
-    expect(
-      stale(
-        [
-          { id: 1, tag_name: 'v0.0.1', body: 'changelog' },
-          { id: 2, tag_name: 'v0.0.2', body: 'changelog' },
-          { id: 3, tag_name: 'v0.0.3', body: want.replaceAll('\n', '\r\n') },
-        ],
-        (v) => (v === '0.0.1' ? undefined : post),
-      ).map((r) => r.id),
-    ).toEqual([2])
   })
 })

@@ -650,24 +650,6 @@ export default defineProject({
     deploy: {
       dependsOn: ['deploy.*'],
     },
-    // main's: npm.yml publishes a release before its post lands.
-    'deploy.github': {
-      description: 'give each GitHub release the body of its release post on the site',
-      exec: {
-        command: 'bun scripts/release-sync.ts',
-        env: {
-          passThrough: ['GITHUB_REPOSITORY', 'GH_TOKEN'],
-          secret: ['GH_TOKEN'],
-        },
-        sandbox: {
-          allow: {
-            read: ['.', '../../private/vx-docs/src/content/docs/releases'],
-            network: ['api.github.com'],
-          },
-        },
-      },
-    },
-
     // What only main runs: each launches a release binary on its own
     // platform's worker or drives this machine's sandbox, uncached.
     canary: {

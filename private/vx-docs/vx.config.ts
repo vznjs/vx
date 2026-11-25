@@ -447,6 +447,25 @@ export default defineProject({
       dependsOn: ['deploy.*'],
     },
 
+    // main's: npm.yml publishes a release before its post lands. The posts
+    // are this project's; core's release helpers come through node_modules.
+    'deploy.github': {
+      description: 'give each GitHub release the body of its release post on the site',
+      exec: {
+        command: 'bun scripts/release-sync.ts',
+        env: {
+          passThrough: ['GITHUB_REPOSITORY', 'GH_TOKEN'],
+          secret: ['GH_TOKEN'],
+        },
+        sandbox: {
+          allow: {
+            read: ['.'],
+            network: ['api.github.com'],
+          },
+        },
+      },
+    },
+
     'deploy.pages': {
       description:
         'deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)',

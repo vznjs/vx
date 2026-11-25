@@ -1566,6 +1566,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-docs/redirects',
     'vx-docs/reference-pages',
     'vx-docs/release-search',
+    'vx-docs/release-sync',
     'vx-docs/run-picker',
     'vx-docs/search',
     'vx-docs/servers-env',
