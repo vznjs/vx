@@ -15,8 +15,11 @@ import {
   formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
-  type OutputChunk,
+  type OutputSource,
+  type TaskBlockBody,
+  writeTaskBlock,
 } from './framed-output.js'
+import { DeferredFrames, TaskOutput } from './task-output.js'
 import {
   formatFailureLine,
   formatStatusRegion,
@@ -36,7 +39,6 @@ import {
   appendTail,
   createTail,
   formatElapsed,
-  maskStreams,
   resetTail,
   secretMask,
   tailText,
@@ -73,12 +75,12 @@ export interface Logger {
    * warnings through `status`.
    */
   warn?(line: string): void
-  /** Streamed stdout chunk for a task. Buffered until `taskComplete`. */
+  /** Streamed stdout chunk for a task. Kept until `taskComplete`. */
   taskStdout(node: TaskNode, chunk: string): void
-  /** Streamed stderr chunk for a task. Buffered until `taskComplete`. */
+  /** Streamed stderr chunk for a task. Kept until `taskComplete`. */
   taskStderr(node: TaskNode, chunk: string): void
   /**
-   * Flush a task's buffered output as one framed block. Called once
+   * Flush a task's kept output as one framed block. Called once
    * per task on completion (success, failure, cache hit, or skip).
    */
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
@@ -262,10 +264,9 @@ export function defaultLogger(
   // stderr decides its own colour: `vx run 2> warn.log` on a terminal wrote
   // escapes into the file. A given stream is the caller's and takes `colors`.
   const errColors = opts.err === undefined && colors.enabled ? detectColors(process.stderr) : colors
-  // Per-task buffers, split by stream so the frame can show stdout and stderr
-  // apart; interleaved chunks are reordered. Held as string[] joined on flush:
-  // `+=` is O(N²).
-  const outputBuffers = new Map<string, OutputChunk[]>()
+  // Each task's output until it ends, in order, both streams: a file past a
+  // small head (`TaskOutput`), never memory.
+  const outputs = new Map<string, TaskOutput>()
   const keptServers = new Set<string>()
   const stoppedServers = new Set<string>()
   // Blocks are blank-line-delimited on both sides, so raw frame content never
@@ -277,22 +278,20 @@ export function defaultLogger(
   // newline) — the frame close must not glue onto partial output.
   let streamMidLine = false
   const pushChunk = (id: string, text: string, err: boolean): void => {
-    const arr = outputBuffers.get(id)
-    if (arr) arr.push({ text, err })
-    else outputBuffers.set(id, [{ text, err }])
+    let out = outputs.get(id)
+    if (out === undefined) outputs.set(id, (out = new TaskOutput()))
+    out.push(text, err)
   }
-  const takeChunks = (id: string): OutputChunk[] => {
-    const arr = outputBuffers.get(id)
-    if (!arr) return []
-    outputBuffers.delete(id)
-    return arr
+  const takeOutput = (id: string): TaskOutput => {
+    const out = outputs.get(id)
+    if (out === undefined) return new TaskOutput()
+    outputs.delete(id)
+    return out
   }
 
   // `none` and `hash-only` promise never to print task output, so chunks are
-  // dropped on arrival: buffered, 400 MB of stdout drove vx to 852 MiB RSS, on
-  // every warm hit too. The other modes print this output (errors-only's
-  // failure log is the point), so they stay unbounded by decision: silently
-  // truncating a build log is worse.
+  // dropped on arrival: not even written to a file. The other modes print the
+  // whole of it (errors-only's failure log is the point), never truncated.
   const discardsOutput = view.mode === 'none' || view.mode === 'hash-only'
 
   // One per run, and only in GHA mode: the fence token must be something the
@@ -392,7 +391,8 @@ export function defaultLogger(
   // once, its frame deferred to runEnd. 'full'/CI keeps frames inline.
   // `note`: a failure's `::error` annotation on GitHub Actions, as `full`
   // writes one: CI's default view wrote none, and a failed check named no task.
-  const deferredFailures: { block: string; note: string }[] = []
+  // Each frame is rendered as its task ends and waits in a file.
+  const deferredFailures = new DeferredFrames()
   // Each ready server's outcome: one whose child has exited (`serverExit`) is no longer pinned.
   const pinnedPersistent: TaskOutcome[] = []
   let flushedFailures = false
@@ -710,15 +710,48 @@ export function defaultLogger(
   // whole again.
   const emitBlock = (block: string, head = '', tail = ''): void => {
     if (block.length === 0) return
+    if (block.length >= PIECEWISE_CHARS) return emitPieces((write) => write(block), head, tail)
     endStreamLine()
     const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
-    if (block.length < PIECEWISE_CHARS) taskWrite(`${lead}${head}${block}${tail}\n`)
-    else {
+    taskWrite(`${lead}${head}${block}${tail}\n`)
+    lineEmitted = false
+    streamedSinceBlock = false
+  }
+  // A block too big for one string, `render` writing it in pieces as it reads
+  // the log back: the bytes `emitBlock` writes. A live region is held off
+  // meanwhile, so each piece goes out as it comes rather than wait for a frame.
+  const emitPieces = (
+    render: (write: (piece: string) => void) => void,
+    head = '',
+    tail = '',
+  ): void => {
+    endStreamLine()
+    const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
+    const release = writer.hold()
+    // A piece's last high surrogate waits for the low one that follows: written
+    // alone, each half printed as U+FFFD.
+    let held = ''
+    let last = ''
+    try {
       logWrite(lead + head)
-      logWrite(block)
+      render((piece) => {
+        if (piece.length === 0) return
+        let text = held === '' ? piece : held + piece
+        held = ''
+        const c = text.charCodeAt(text.length - 1)
+        if (c >= 0xd800 && c <= 0xdbff) {
+          held = text.slice(-1)
+          text = text.slice(0, -1)
+        }
+        if (text.length > 0) logWrite(text)
+        last = piece
+      })
+      if (held.length > 0) logWrite(held)
       logWrite(`${tail}\n`)
-      endsBlank = (tail || block).endsWith('\n')
+    } finally {
+      release()
     }
+    endsBlank = (tail || last).endsWith('\n')
     lineEmitted = false
     streamedSinceBlock = false
   }
@@ -992,17 +1025,27 @@ export function defaultLogger(
       }
       // Failures end the log: each deferred frame replays above the summary,
       // where eyes land. Guarded for repeat runEnd calls.
-      if (!flushedFailures && deferredFailures.length > 0) {
+      if (!flushedFailures && deferredFailures.size > 0) {
         flushedFailures = true
-        for (const { block, note } of deferredFailures) {
-          if (note === '') emitBlock(fenced(block))
+        deferredFailures.drain(({ note, chars, pieces }) => {
           // A frame with nothing in it still names its failure.
-          else if (block.length === 0) logWrite(note)
-          else {
-            const [open, close] = ghaFenceEnds(ghaToken)
-            emitBlock(block, `${note}${open}`, close)
+          if (chars === 0) {
+            if (note !== '') logWrite(note)
+            return
           }
-        }
+          const [open, close] = note === '' && view.gha !== true ? ['', ''] : ghaFenceEnds(ghaToken)
+          const head = `${note}${open}`
+          // A short frame is read back whole and written as it always was.
+          if (chars < PIECEWISE_CHARS) emitBlock([...pieces].join(''), head, close)
+          else
+            emitPieces(
+              (write) => {
+                for (const p of pieces) write(p)
+              },
+              head,
+              close,
+            )
+        })
       }
       panelOpen = undefined
       // The summary and the CLI's own lines follow on the stream directly:
@@ -1018,286 +1061,310 @@ export function defaultLogger(
       const preReady = persistentTails.get(node.id)
       // In the order the task wrote it; a bounded tail kept its streams
       // apart, so its stdout reads first.
-      let output: OutputChunk[] = preReady
-        ? [
-            { text: tailText(preReady.out), err: false },
-            { text: tailText(preReady.err), err: true },
-          ]
-        : takeChunks(node.id)
-      // The live mask releases a held piece after a pause, so a value written
-      // in two pieces arrived as two clean chunks: the frame masks each stream
-      // whole, as the stored log is.
-      if (!isCacheHit(outcome.status) && output.some((c) => c.text.length > 0)) {
-        const mask = secretMask(
-          [process.env, node.config.exec?.env?.define],
-          node.config.exec?.env?.secret,
-        )
-        if (mask !== null) output = maskStreams(output, mask)
-      }
-      const dropped =
-        preReady && (preReady.out.dropped > 0 || preReady.err.dropped > 0)
-          ? { droppedStdout: preReady.out.dropped, droppedStderr: preReady.err.dropped }
-          : {}
-      // The pre-ready window closed either way: a failed task is over, and
-      // a ready one starts a fresh post-ready tail below.
-      persistentTails.delete(node.id)
-      const frame = (forceCommand: boolean): string =>
-        formatTaskBlock(
-          node,
-          outcome,
-          { output, ...dropped, ...where(node) },
-          colors,
-          forceCommand,
-          forwardArgs,
-          links,
-        )
-      // The failed row now; its frame replays with the others at runEnd.
-      const deferFailure = (): void => {
-        emitRow(failureRow(node, outcome))
-        deferredFailures.push({
-          block: frame(false),
-          // The message is ours; only the title carries user input.
-          note:
-            view.gha === true
-              ? `::error title=${ghaProperty(node.id)}::${outcomeLabel(outcome)}\n`
-              : '',
-        })
-      }
-      // An aborted task frees its slot and counts as the footer will: `aborted`
-      // or `not run`.
-      if (outcome.status === 'aborted') {
-        if (!isGroupTask(node)) {
-          if (neverStarted(outcome)) notRun++
-          else stopped++
-        }
-        freeSlot(node.id)
-        refresh(true)
-        if (isGroupTask(node)) return
-        // A stop that reached it before its command (a slow key) still
-        // closes the frame its start opened.
-        if (neverStarted(outcome) && opened.has(node.id)) {
-          emitFrameClose(formatFrameClose(node, outcome, colors))
-          return
-        }
-        // What it printed while stopping (a trap's cleanup) still reaches the
-        // terminal: a task trapping Ctrl-C and exiting 0 is aborted, and its
-        // frame is dropped. A list view prints a killed task's partial output
-        // too: it tells where a run hung.
-        const framed =
-          !neverStarted(outcome) &&
-          (view.mode === 'full' ||
-            view.mode === 'broad' ||
-            view.mode === 'errors-only' ||
-            (view.mode === 'focused' && isPrimary(node)) ||
-            (framesTerminal && holdsTerminal(node)))
-        if (framed && streamsLive(node)) {
-          emitFrameClose(formatFrameClose(node, outcome, colors))
-          return
-        }
-        if (framed && output.some((c) => c.text.length > 0)) {
-          // A list view treats it as a failure: the row now, the frame
-          // with the deferred failures above the summary.
-          if (view.mode === 'broad' || view.mode === 'errors-only') {
-            emitRow(formatTaskAbortedLine(node, outcome, colors, blocksOf(node.id)))
-            deferredFailures.push({ block: frame(true), note: '' })
-            return
-          }
-          emitBlock(fenced(frame(true)))
-          return
-        }
-        // Otherwise a row in the task list, in every view that lists a
-        // failure: the run exits red, and the row names why.
-        if (view.mode !== 'none' && view.mode !== 'hash-only') {
-          emitRow(formatTaskAbortedLine(node, outcome, colors, blocksOf(node.id)))
-        }
-        return
-      }
-      // Group tasks (no exec) do no work — no surface prints them.
-      if (!isGroupTask(node)) {
-        done++
-        if (outcome.status === 'failed') {
-          failed++
-          if (outcome.restoreFailed === true) restoreFailed++
-          else if (isKeyFailed(outcome)) keyFailed++
-          else if (ranNoCache(outcome)) noCache++
-        } else if (node.config.exec?.persistent !== undefined && outcome.status === 'success') {
-          // A persistent task's outcome arrives at ready while it keeps
-          // running: pin it so its liveness stays visible.
-          pinnedPersistent.push(outcome)
-          // …and capture what it writes from here. A live-streaming node
-          // already owns the terminal; buffering would print twice.
-          if (!streamsLive(node)) {
-            persistentTails.set(node.id, { node, outcome, out: createTail(), err: createTail() })
-          }
-        }
-        if (!statusDead) freeSlot(node.id)
-        // Only a remote's traffic moves a bucket: without one, an entry per
-        // task was held for the run and never read.
-        const bucket = runContext?.cache?.remote === true ? cacheBucketOf(outcome) : undefined
-        if (bucket !== undefined) {
-          const entry = { task: node.id, bucket }
-          if (outcome.hash !== undefined) buckets.set(outcome.hash, entry)
-          buckets.set(node.id, entry)
-        }
-        switch (outcome.status) {
-          case 'success':
-            succeeded++
-            if (ranNoCache(outcome)) noCache++
-            if (outcome.cache?.saved === true) saved++
-            else if (ranUnsaved(outcome)) notSaved++
-            break
-          case 'cache-hit':
-            if (outcome.cache?.restored === false) upToDate++
-            else restoredLocal++
-            break
-          case 'cache-hit-remote':
-            if (outcome.cache?.restored === false) upToDate++
-            else restoredRemote++
-            break
-          case 'skipped':
-            skippedCount++
-            break
-        }
-        if (
-          outcome.status === 'success' ||
-          (outcome.status === 'failed' && outcome.restoreFailed !== true)
-        ) {
-          spreadMax = Math.max(spreadMax, outcome.durationMs)
-          spreadMin = Math.min(spreadMin, outcome.durationMs)
-          spreadSum += outcome.durationMs
-          spreadCount++
-        }
-        refresh(true)
-      }
-      if (isGroupTask(node)) return
-      if (holdsTerminal(node) && streamsLive(node) && outcome.status !== 'skipped') {
-        emitFrameClose(formatFrameClose(node, outcome, colors, keptServers.delete(node.id)))
-        return
-      }
-      const isHit = isCacheHit(outcome.status)
-      switch (view.mode) {
-        case 'none':
-          return
-        case 'hash-only': {
-          // The word carries the outcome; the key is what this mode shows,
-          // absent when never computed.
-          emitLine(formatTaskHashLine(node, outcome, colors))
-          return
-        }
-        case 'errors-only':
-          if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
-            return
-          }
-          if (outcome.status !== 'failed') return
-          deferFailure()
-          return
-        case 'broad':
-          // News only: executed work and skips get a line, failures the frame;
-          // hits are silent, counted in the summary.
-          if (outcome.status === 'failed') {
-            deferFailure()
-          } else if (outcome.status === 'success') {
-            emitRow(
-              formatTaskExecutedLine(
-                node,
-                outcome,
-                colors,
-                onPath.has(node.id),
-                blocksOf(node.id),
-                usualMsOf(node.id),
-              ),
-            )
-            // A ready server's address is news: `vx run dev --all` dropped
-            // each server's pre-ready lines, `Local: http://…` among them.
-            if (
-              node.config.exec?.persistent !== undefined &&
-              output.some((c) => c.text.trim().length > 0)
-            ) {
-              emitBlock(fenced(frame(true)))
-            }
-          } else if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
-          }
-          return
-        case 'focused':
-          if (isPrimary(node)) {
-            // Skipped tasks never started, so no frame opened, and a skip has
-            // no output: a line says it all.
-            if (outcome.status === 'skipped') {
-              emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
-              return
-            }
-            if (streamsLive(node)) {
-              // Single requested task: output streamed live between the
-              // frame-open and this close, for every outcome, hits included.
-              emitFrameClose(formatFrameClose(node, outcome, colors, keptServers.delete(node.id)))
-              return
-            }
-            // Several requested tasks: no live frame (it would interleave).
-            // Failures defer to runEnd; the rest emit one block.
-            if (outcome.status === 'failed') {
-              deferFailure()
-              return
-            }
-            // forceCommand: a requested task's frame shows `$ cmd`
-            // whether it ran or was cached — same frame every run.
-            emitBlock(fenced(frame(true)))
-            return
-          }
-          // Dependency-pulled nodes: silent on success; a skip gets its
-          // row, failures the failed row now and their frame replayed at runEnd.
-          if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
-          } else if (outcome.status === 'failed') {
-            deferFailure()
-          }
-          return
-        case 'full': {
-          // Hits with nothing to replay are one line, or at 2,000+ tasks frames
-          // drown what happened. Hits with output keep their frame; misses and
-          // failures always framed. One-liners stay outside `::group::`.
-          if (isHit && output.every((c) => c.text.trim().length === 0)) {
-            emitRow(
-              formatTaskHitLine(node, outcome, colors, onPath.has(node.id), blocksOf(node.id)),
-            )
-            return
-          }
-          if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
-            return
-          }
-          const block = frame(false)
-          if (block.length === 0) return
-          if (view.gha) {
-            // Fenced, so a task printing `::endgroup::` cannot close vx's
-            // group, nor `::error` become an annotation.
-            const [open, close] = ghaFenceEnds(ghaToken)
-            // Failed tasks stay pre-expanded in the Actions viewer: an::error
-            // annotation instead of a collapsed group.
-            if (outcome.status === 'failed') {
-              // The message is ours (a literal, an integer and a signal
-              // name); only the title carries user input.
-              emitBlock(
-                block,
-                `::error title=${ghaProperty(node.id)}::${outcomeLabel(outcome)}\n${open}`,
-                close,
-              )
-            } else {
-              emitBlock(
-                block,
-                `::group::${ghaData(
-                  `${node.id} (${outcomeWord(outcome)} ${formatElapsed(outcome.durationMs)})`,
-                )}\n${open}`,
-                `${close}::endgroup::\n`,
-              )
-            }
-            return
-          }
-          emitBlock(block)
-          return
-        }
+      let output: TaskOutput
+      if (preReady) {
+        output = new TaskOutput()
+        output.push(tailText(preReady.out), false)
+        output.push(tailText(preReady.err), true)
+      } else output = takeOutput(node.id)
+      try {
+        completeTask(node, outcome, output, preReady)
+      } finally {
+        output.release()
       }
     },
+  }
+
+  function completeTask(
+    node: TaskNode,
+    outcome: TaskOutcome,
+    output: TaskOutput,
+    preReady: { out: Tail; err: Tail } | undefined,
+  ): void {
+    // The live mask releases a held piece after a pause, so a value written
+    // in two pieces arrived as two clean chunks: the frame masks each stream
+    // whole, as the stored log is.
+    const mask =
+      !isCacheHit(outcome.status) && output.any
+        ? secretMask([process.env, node.config.exec?.env?.define], node.config.exec?.env?.secret)
+        : null
+    const dropped =
+      preReady && (preReady.out.dropped > 0 || preReady.err.dropped > 0)
+        ? { droppedStdout: preReady.out.dropped, droppedStderr: preReady.err.dropped }
+        : {}
+    // The pre-ready window closed either way: a failed task is over, and
+    // a ready one starts a fresh post-ready tail below.
+    persistentTails.delete(node.id)
+    // A short log is read back whole and framed as it always was; a long one
+    // is framed as it is read, in pieces, and never held.
+    const whole = output.chars < PIECEWISE_CHARS
+    let source: OutputSource | undefined
+    const body = (): TaskBlockBody => ({
+      ...(whole ? { output: output.held(mask) } : { source: (source ??= output.source(mask)) }),
+      ...dropped,
+      ...where(node),
+    })
+    const frame = (forceCommand: boolean): string =>
+      formatTaskBlock(node, outcome, body(), colors, forceCommand, forwardArgs, links)
+    const writeFrame = (forceCommand: boolean, write: (piece: string) => void): void =>
+      writeTaskBlock(node, outcome, body(), write, colors, forceCommand, forwardArgs, links)
+    // The frame now, between `head` and `tail`.
+    const printFrame = (forceCommand: boolean, head = '', tail = ''): void => {
+      if (whole) emitBlock(frame(forceCommand), head, tail)
+      else emitPieces((write) => writeFrame(forceCommand, write), head, tail)
+    }
+    // The frame fenced on GitHub Actions.
+    const printFenced = (forceCommand: boolean): void => {
+      const [open, close] = view.gha === true ? ghaFenceEnds(ghaToken) : ['', '']
+      printFrame(forceCommand, open, close)
+    }
+    // Kept for runEnd; after it, never printed.
+    const keepFrame = (forceCommand: boolean, note: string): void => {
+      if (!flushedFailures) deferredFailures.add(note, (write) => writeFrame(forceCommand, write))
+    }
+    // The failed row now; its frame replays with the others at runEnd.
+    const deferFailure = (): void => {
+      emitRow(failureRow(node, outcome))
+      keepFrame(
+        false,
+        // The message is ours; only the title carries user input.
+        view.gha === true
+          ? `::error title=${ghaProperty(node.id)}::${outcomeLabel(outcome)}\n`
+          : '',
+      )
+    }
+    // An aborted task frees its slot and counts as the footer will: `aborted`
+    // or `not run`.
+    if (outcome.status === 'aborted') {
+      if (!isGroupTask(node)) {
+        if (neverStarted(outcome)) notRun++
+        else stopped++
+      }
+      freeSlot(node.id)
+      refresh(true)
+      if (isGroupTask(node)) return
+      // A stop that reached it before its command (a slow key) still
+      // closes the frame its start opened.
+      if (neverStarted(outcome) && opened.has(node.id)) {
+        emitFrameClose(formatFrameClose(node, outcome, colors))
+        return
+      }
+      // What it printed while stopping (a trap's cleanup) still reaches the
+      // terminal: a task trapping Ctrl-C and exiting 0 is aborted, and its
+      // frame is dropped. A list view prints a killed task's partial output
+      // too: it tells where a run hung.
+      const framed =
+        !neverStarted(outcome) &&
+        (view.mode === 'full' ||
+          view.mode === 'broad' ||
+          view.mode === 'errors-only' ||
+          (view.mode === 'focused' && isPrimary(node)) ||
+          (framesTerminal && holdsTerminal(node)))
+      if (framed && streamsLive(node)) {
+        emitFrameClose(formatFrameClose(node, outcome, colors))
+        return
+      }
+      if (framed && output.any) {
+        // A list view treats it as a failure: the row now, the frame
+        // with the deferred failures above the summary.
+        if (view.mode === 'broad' || view.mode === 'errors-only') {
+          emitRow(formatTaskAbortedLine(node, outcome, colors, blocksOf(node.id)))
+          keepFrame(true, '')
+          return
+        }
+        printFenced(true)
+        return
+      }
+      // Otherwise a row in the task list, in every view that lists a
+      // failure: the run exits red, and the row names why.
+      if (view.mode !== 'none' && view.mode !== 'hash-only') {
+        emitRow(formatTaskAbortedLine(node, outcome, colors, blocksOf(node.id)))
+      }
+      return
+    }
+    // Group tasks (no exec) do no work — no surface prints them.
+    if (!isGroupTask(node)) {
+      done++
+      if (outcome.status === 'failed') {
+        failed++
+        if (outcome.restoreFailed === true) restoreFailed++
+        else if (isKeyFailed(outcome)) keyFailed++
+        else if (ranNoCache(outcome)) noCache++
+      } else if (node.config.exec?.persistent !== undefined && outcome.status === 'success') {
+        // A persistent task's outcome arrives at ready while it keeps
+        // running: pin it so its liveness stays visible.
+        pinnedPersistent.push(outcome)
+        // …and capture what it writes from here. A live-streaming node
+        // already owns the terminal; buffering would print twice.
+        if (!streamsLive(node)) {
+          persistentTails.set(node.id, { node, outcome, out: createTail(), err: createTail() })
+        }
+      }
+      if (!statusDead) freeSlot(node.id)
+      // Only a remote's traffic moves a bucket: without one, an entry per
+      // task was held for the run and never read.
+      const bucket = runContext?.cache?.remote === true ? cacheBucketOf(outcome) : undefined
+      if (bucket !== undefined) {
+        const entry = { task: node.id, bucket }
+        if (outcome.hash !== undefined) buckets.set(outcome.hash, entry)
+        buckets.set(node.id, entry)
+      }
+      switch (outcome.status) {
+        case 'success':
+          succeeded++
+          if (ranNoCache(outcome)) noCache++
+          if (outcome.cache?.saved === true) saved++
+          else if (ranUnsaved(outcome)) notSaved++
+          break
+        case 'cache-hit':
+          if (outcome.cache?.restored === false) upToDate++
+          else restoredLocal++
+          break
+        case 'cache-hit-remote':
+          if (outcome.cache?.restored === false) upToDate++
+          else restoredRemote++
+          break
+        case 'skipped':
+          skippedCount++
+          break
+      }
+      if (
+        outcome.status === 'success' ||
+        (outcome.status === 'failed' && outcome.restoreFailed !== true)
+      ) {
+        spreadMax = Math.max(spreadMax, outcome.durationMs)
+        spreadMin = Math.min(spreadMin, outcome.durationMs)
+        spreadSum += outcome.durationMs
+        spreadCount++
+      }
+      refresh(true)
+    }
+    if (isGroupTask(node)) return
+    if (holdsTerminal(node) && streamsLive(node) && outcome.status !== 'skipped') {
+      emitFrameClose(formatFrameClose(node, outcome, colors, keptServers.delete(node.id)))
+      return
+    }
+    const isHit = isCacheHit(outcome.status)
+    switch (view.mode) {
+      case 'none':
+        return
+      case 'hash-only': {
+        // The word carries the outcome; the key is what this mode shows,
+        // absent when never computed.
+        emitLine(formatTaskHashLine(node, outcome, colors))
+        return
+      }
+      case 'errors-only':
+        if (outcome.status === 'skipped') {
+          emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
+          return
+        }
+        if (outcome.status !== 'failed') return
+        deferFailure()
+        return
+      case 'broad':
+        // News only: executed work and skips get a line, failures the frame;
+        // hits are silent, counted in the summary.
+        if (outcome.status === 'failed') {
+          deferFailure()
+        } else if (outcome.status === 'success') {
+          emitRow(
+            formatTaskExecutedLine(
+              node,
+              outcome,
+              colors,
+              onPath.has(node.id),
+              blocksOf(node.id),
+              usualMsOf(node.id),
+            ),
+          )
+          // A ready server's address is news: `vx run dev --all` dropped
+          // each server's pre-ready lines, `Local: http://…` among them.
+          if (
+            node.config.exec?.persistent !== undefined &&
+            (whole
+              ? output.held(mask).some((c) => c.text.trim().length > 0)
+              : body().source!.content)
+          ) {
+            printFenced(true)
+          }
+        } else if (outcome.status === 'skipped') {
+          emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
+        }
+        return
+      case 'focused':
+        if (isPrimary(node)) {
+          // Skipped tasks never started, so no frame opened, and a skip has
+          // no output: a line says it all.
+          if (outcome.status === 'skipped') {
+            emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
+            return
+          }
+          if (streamsLive(node)) {
+            // Single requested task: output streamed live between the
+            // frame-open and this close, for every outcome, hits included.
+            emitFrameClose(formatFrameClose(node, outcome, colors, keptServers.delete(node.id)))
+            return
+          }
+          // Several requested tasks: no live frame (it would interleave).
+          // Failures defer to runEnd; the rest emit one block.
+          if (outcome.status === 'failed') {
+            deferFailure()
+            return
+          }
+          // forceCommand: a requested task's frame shows `$ cmd`
+          // whether it ran or was cached — same frame every run.
+          printFenced(true)
+          return
+        }
+        // Dependency-pulled nodes: silent on success; a skip gets its
+        // row, failures the failed row now and their frame replayed at runEnd.
+        if (outcome.status === 'skipped') {
+          emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
+        } else if (outcome.status === 'failed') {
+          deferFailure()
+        }
+        return
+      case 'full': {
+        // Hits with nothing to replay are one line, or at 2,000+ tasks frames
+        // drown what happened. Hits with output keep their frame; misses and
+        // failures always framed. One-liners stay outside `::group::`.
+        if (isHit && !output.content) {
+          emitRow(formatTaskHitLine(node, outcome, colors, onPath.has(node.id), blocksOf(node.id)))
+          return
+        }
+        if (outcome.status === 'skipped') {
+          emitRow(formatTaskSkippedLine(node, colors, outcome, blocksOf(node.id)))
+          return
+        }
+        if (view.gha) {
+          // Fenced, so a task printing `::endgroup::` cannot close vx's
+          // group, nor `::error` become an annotation.
+          const [open, close] = ghaFenceEnds(ghaToken)
+          // Failed tasks stay pre-expanded in the Actions viewer: an::error
+          // annotation instead of a collapsed group.
+          if (outcome.status === 'failed') {
+            // The message is ours (a literal, an integer and a signal
+            // name); only the title carries user input.
+            printFrame(
+              false,
+              `::error title=${ghaProperty(node.id)}::${outcomeLabel(outcome)}\n${open}`,
+              close,
+            )
+          } else {
+            printFrame(
+              false,
+              `::group::${ghaData(
+                `${node.id} (${outcomeWord(outcome)} ${formatElapsed(outcome.durationMs)})`,
+              )}\n${open}`,
+              `${close}::endgroup::\n`,
+            )
+          }
+          return
+        }
+        printFrame(false)
+        return
+      }
+    }
   }
 }

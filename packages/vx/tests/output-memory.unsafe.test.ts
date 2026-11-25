@@ -27,15 +27,20 @@ const CACHE = path.join(import.meta.dir, '..', 'src', 'cache', 'index.ts')
 
 /** Run a probe script, awaited, and read back the `heap_mib=<n>` it prints. */
 async function probeHeapMibAsync(script: string): Promise<number> {
+  return Number(/heap_mib=(\d+)/.exec(await probeOut(script))![1])
+}
+
+/** What a probe script printed, once it printed a measurement. */
+async function probeOut(script: string): Promise<string> {
   const p = Bun.spawn({ cmd: ['bun', '-e', script], stdout: 'pipe', stderr: 'pipe' })
   const [out, err, code] = await Promise.all([
     new Response(p.stdout).text(),
     new Response(p.stderr).text(),
     p.exited,
   ])
-  const m = /heap_mib=(\d+)/.exec(out)
-  if (m === null) throw new Error(`probe produced no measurement (exit ${code}): ${out}${err}`)
-  return Number(m[1])
+  if (!out.includes('heap_mib='))
+    throw new Error(`probe produced no measurement (exit ${code}): ${out}${err}`)
+  return out
 }
 
 const CHUNK_BYTES = 4 * 1024 * 1024
@@ -46,63 +51,64 @@ const EXTRA_MIB = ((MANY_CHUNKS - FEW_CHUNKS) * CHUNK_BYTES) / 1024 / 1024
 
 /**
  * Feed `chunks` distinct multi-MB chunks through `defaultLogger` in one view
- * mode and report the heap after a full collection while the task is still in
- * flight — what the logger's per-task buffers retain. The chunks are built
- * inline so the probe itself retains none of them.
+ * mode and report the heap after a full collection: while the task is still
+ * in flight (`at: 'running'`), or once it failed and its frame waits for the
+ * run's end (`at: 'deferred'`). The chunks are built inline so the probe
+ * itself retains none of them.
  */
-function loggerProbe(mode: string, chunks: number): string {
+function loggerProbe(mode: string, chunks: number, at: 'running' | 'deferred' = 'running'): string {
   return `
     import { defaultLogger } from ${JSON.stringify(LOGGER)}
     const log = defaultLogger({ enabled: false }, { mode: ${JSON.stringify(mode)} }, { write: () => true })
     const node = { id: 'p#t', projectName: 'p', taskName: 't', requested: false, surfaced: false, deps: [], config: { exec: { command: 'noop' } } }
     for (let i = 0; i < ${chunks}; i++) log.taskStdout(node, i + ':' + 'x'.repeat(${CHUNK_BYTES}))
+    if (${JSON.stringify(at)} === 'deferred') log.taskComplete(node, { node, status: 'failed', exitCode: 1, durationMs: 1 })
     Bun.gc(true)
     if (log === undefined) throw new Error('unreachable')
+    const { readdirSync } = await import('node:fs')
+    console.log('fds=' + readdirSync('/dev/fd').length)
     console.log('heap_mib=' + Math.round(process.memoryUsage().heapUsed / 1024 / 1024))
   `
 }
 
-describe('logger per-task buffering', () => {
+describe('logger per-task output', () => {
   it(
-    '`none` discards chunks on arrival; the printing modes still buffer them',
+    "no mode holds a task's output in memory: it waits in a file",
     async () => {
       // Assert on how the retained heap RESPONDS TO VOLUME, read after a full
       // collection. RSS was the allocator's high-water of the chunks the probe
-      // builds, which JSC does not hand back: it passed at 85 vs 201 MiB here,
-      // failed at 129 vs 206 on a CI runner, and reached 88 against an 80 MiB
-      // line under a full gate (2026-09-20) before a min-of-2 reading papered
-      // over it. The heap after `Bun.gc(true)` is exact: `full` 81 → 241 MiB,
-      // `none` and `hash-only` 1 → 1 (M-53).
-      //
-      // The control runs FIRST so a harness that measured nothing would show it
-      // here rather than passing vacuously on the bounded side.
-      const fullFew = await probeHeapMibAsync(loggerProbe('full', FEW_CHUNKS))
-      const fullMany = await probeHeapMibAsync(loggerProbe('full', MANY_CHUNKS))
-      const flatDelta = async (mode: string): Promise<number> =>
-        (await probeHeapMibAsync(loggerProbe(mode, MANY_CHUNKS))) -
-        (await probeHeapMibAsync(loggerProbe(mode, FEW_CHUNKS)))
+      // builds, which JSC does not hand back. The heap after `Bun.gc(true)` is
+      // exact: before the file (M, 2026-11-25) `full` and `errors-only` held
+      // every chunk, 81 → 241 MiB, and a failure's frame until the run's end.
+      const flatDelta = async (mode: string, at?: 'deferred'): Promise<number> =>
+        (await probeHeapMibAsync(loggerProbe(mode, MANY_CHUNKS, at))) -
+        (await probeHeapMibAsync(loggerProbe(mode, FEW_CHUNKS, at)))
 
-      // `full` prints this output, so it must still hold it — the deliberate
-      // boundary, not an oversight: silently truncating a build log is worse
-      // than the memory. Pinned so a future "bound everything" change has to
-      // argue with this line. It grows with the volume it is holding.
-      expect(fullMany - fullFew).toBeGreaterThan(EXTRA_MIB * 0.5)
+      // Retention costs the FULL 160 MiB, 4× each line. The printing modes
+      // keep the output in a file; a failed task's frame waits for the run's
+      // end in one too.
+      for (const [mode, at] of [
+        ['full'],
+        ['errors-only'],
+        ['none'],
+        ['hash-only'],
+        ['errors-only', 'deferred'],
+      ] as const)
+        expect([mode, at, await flatDelta(mode, at)]).toSatisfy(
+          ([, , delta]) => (delta as number) < EXTRA_MIB * 0.25,
+        )
 
-      // `none` guarantees "no per-task output at all", so it must not pay for
-      // output it will never print: tripling the volume must not move it.
-      // Retention costs the FULL 160 MiB, 4× this line.
-      expect(await flatDelta('none')).toBeLessThan(EXTRA_MIB * 0.25)
-
-      // `hash-only` is the OTHER half of the same boundary — the set is
-      // exactly {none, hash-only}, the two modes whose contract promises
-      // never to print task output — and only `none` was asserted, so
-      // dropping `hash-only` from `discardsOutput` left the whole repo
-      // green. It prints one audit line per task and no log bytes ever,
-      // so no behaviour row can see it retain them; this measurement is
-      // the only thing that can.
-      expect(await flatDelta('hash-only')).toBeLessThan(EXTRA_MIB * 0.25)
+      // `none` and `hash-only` promise never to print task output, so a chunk
+      // is dropped on arrival, not even written to a file: dropping
+      // `hash-only` from `discardsOutput` once left the whole repo green. The
+      // file is the one descriptor `full` holds that they do not.
+      const fds = async (mode: string): Promise<number> =>
+        Number(/fds=(\d+)/.exec(await probeOut(loggerProbe(mode, 2)))![1])
+      const none = await fds('none')
+      expect(await fds('full')).toBe(none + 1)
+      expect(await fds('hash-only')).toBe(none)
     },
-    TIMEOUT,
+    TIMEOUT * 2,
   )
 })
 

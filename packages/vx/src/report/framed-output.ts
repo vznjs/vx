@@ -48,9 +48,36 @@ export interface OutputChunk {
   err: boolean
 }
 
+/**
+ * A task's output as a frame reads it: the chunks once, in order, and what
+ * the frame must know before them (`content`) and after them (`leaves`),
+ * so a log read back from its file is never held whole.
+ */
+export interface OutputSource {
+  readonly chunks: Iterable<OutputChunk>
+  /** Whether a chunk holds more than whitespace: without one, no `OUTPUT` section. */
+  readonly content: boolean
+  /** Once the chunks are read: whether the last chunk with an escape leaves a style on. */
+  leaves(): boolean
+}
+
+/** `chunks` as a frame reads them. */
+function arraySource(chunks: readonly OutputChunk[]): OutputSource {
+  return {
+    chunks,
+    content: chunks.some((c) => c.text.trim().length > 0),
+    leaves: () => {
+      const styled = chunks.findLast((c) => hasEscape(c.text))
+      return styled !== undefined && leavesStyle(styled.text)
+    },
+  }
+}
+
 export interface TaskBlockBody {
   /** What the task wrote, in order. Renders under `├─ OUTPUT`, stderr lines marked. */
   output?: readonly OutputChunk[]
+  /** The same, read as it renders; wins over `output`. */
+  source?: OutputSource
   /**
    * Characters dropped from the head of each stream, for a bounded (persistent)
    * task's output, rendered so a capped log never reads as complete.
@@ -77,11 +104,37 @@ export function formatTaskBlock(
   // The terminal opens OSC 8 links: a failed task's paths become links.
   links = false,
 ): string {
+  const pieces: string[] = []
+  writeTaskBlock(
+    node,
+    outcome,
+    body,
+    (p) => pieces.push(p),
+    colors,
+    forceCommand,
+    forwardArgs,
+    links,
+  )
+  // Not `+ '\n'`: a rope over a 100 MB frame was flattened into a copy.
+  return pieces.join('')
+}
+
+/** `formatTaskBlock`, handed to `write` in pieces as it renders. */
+export function writeTaskBlock(
+  node: TaskNode,
+  outcome: TaskOutcome,
+  body: TaskBlockBody,
+  write: (piece: string) => void,
+  colors: ColorSupport = NO_COLOR,
+  forceCommand = false,
+  forwardArgs: readonly string[] = [],
+  links = false,
+): void {
   // Groups do no work and have no body: an empty box is noise. The summary and
   // analytics exclude them too.
-  if (isGroupTask(node)) return ''
+  if (isGroupTask(node)) return
 
-  const output = body.output ?? []
+  const lines = lineWriter(write)
 
   const idPainted = paintTaskId(node, colors, { bold: true })
   const corner = (s: string) => paint('muted', s, colors)
@@ -92,7 +145,7 @@ export function formatTaskBlock(
     : formatBlockHeader(outcome, colors)
   const close = `${whereNote(outcome, colors)} ${corner('──')}${closeTail(node, outcome, colors, false)}`
   const edgeId = cutTaskId(node, colors, [`${mark} ${corner('>')} ${header}`, `${mark}${close}`])
-  const lines: string[] = [`${corner('┌─')} ${mark}${edgeId} ${corner('>')} ${header}`]
+  lines.push(`${corner('┌─')} ${mark}${edgeId} ${corner('>')} ${header}`)
   // The edges cut the id: the body says it whole, once.
   if (edgeId !== idPainted) lines.push('', idPainted)
 
@@ -109,7 +162,7 @@ export function formatTaskBlock(
     isFile === undefined ? undefined : (t: string) => linkPaths(t, node.projectDir, isFile)
   pushOutputSection(
     lines,
-    output,
+    body.source ?? arraySource(body.output ?? []),
     (body.droppedStdout ?? 0) + (body.droppedStderr ?? 0),
     colors,
     link,
@@ -118,8 +171,36 @@ export function formatTaskBlock(
   lines.push(...violationSection(outcome, colors))
 
   lines.push(`${corner('└─')} ${mark}${edgeId}${close}`, '')
-  // Not `+ '\n'`: a rope over a 100 MB frame was flattened into a copy.
-  return lines.join('\n')
+}
+
+/**
+ * Lines written as `lines.join('\n')` would join them, each as it comes:
+ * `raw` continues the last line, `end` too (its style end).
+ */
+interface LineWriter {
+  push(...lines: string[]): void
+  raw(text: string): void
+}
+
+function lineWriter(write: (piece: string) => void): LineWriter {
+  let first = true
+  return {
+    push(...lines) {
+      for (const line of lines) {
+        if (first) first = false
+        // Apart when long: joined, a 1 Mi slice of a log was copied again.
+        else if (line.length > 4096) write('\n')
+        else {
+          write(`\n${line}`)
+          continue
+        }
+        if (line.length > 0) write(line)
+      }
+    },
+    raw(text) {
+      if (text.length > 0) write(text)
+    },
+  }
 }
 
 /** What a bounded capture dropped from its head, so a capped log never reads as whole. */
@@ -156,13 +237,13 @@ function pushStreamSection(
  * line takes the stream that began it.
  */
 function pushOutputSection(
-  lines: string[],
-  output: readonly OutputChunk[],
+  lines: LineWriter,
+  output: OutputSource,
   lost: number,
   colors: ColorSupport,
   link?: (line: string) => string,
 ): void {
-  if (output.every((c) => c.text.trim().length === 0)) return
+  if (!output.content) return
   lines.push(sectionLine('OUTPUT', 'strong', colors), '')
   if (lost > 0) {
     lines.push(droppedNote(lost, colors))
@@ -172,21 +253,29 @@ function pushOutputSection(
     if (!err || !colors.enabled) lines.push(text)
     else lines.push(hasEscape(line) ? text : paint('error', text, colors))
   }
+  // A line begun on a stream that leaves its bytes untouched is written as
+  // it comes. One that is painted or linked is held until its newline: the
+  // paint depends on the whole line.
+  const untouched = (err: boolean): boolean => link === undefined && (!err || !colors.enabled)
   // A run of untouched lines is pushed as one slice: an object and string per
   // line peaked a 50 MB log's frame at ~11x its size.
   let open: { parts: string[]; err: boolean } | null = null
-  for (const c of output) {
+  let rawOpen = false
+  for (const c of output.chunks) {
     const text = c.text
     let at = 0
-    if (open !== null) {
+    if (rawOpen || open !== null) {
       const nl = text.indexOf('\n')
-      open.parts.push(nl < 0 ? text : text.slice(0, nl))
+      const part = nl < 0 ? text : text.slice(0, nl)
+      if (rawOpen) lines.raw(part)
+      else open!.parts.push(part)
       if (nl < 0) continue
-      emit(open.parts.join(''), open.err)
+      if (open !== null) emit(open.parts.join(''), open.err)
       open = null
+      rawOpen = false
       at = nl + 1
     }
-    if (link === undefined && (!c.err || !colors.enabled)) {
+    if (untouched(c.err)) {
       const last = text.lastIndexOf('\n')
       if (last >= at) {
         lines.push(text.slice(at, last))
@@ -198,11 +287,15 @@ function pushOutputSection(
         at = nl + 1
       }
     }
-    if (at < text.length) open = { parts: [text.slice(at)], err: c.err }
+    if (at < text.length) {
+      if (untouched(c.err)) {
+        lines.push(text.slice(at))
+        rawOpen = true
+      } else open = { parts: [text.slice(at)], err: c.err }
+    }
   }
   if (open !== null) emit(open.parts.join(''), open.err)
-  const styled = output.findLast((c) => hasEscape(c.text))
-  if (styled !== undefined && leavesStyle(styled.text)) lines.push(`${lines.pop()}${STYLE_END}`)
+  if (output.leaves()) lines.raw(STYLE_END)
   lines.push('')
 }
 

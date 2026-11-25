@@ -1565,8 +1565,8 @@ group, shows the real tasks the group stands for, as if you had named them.
 </details>
 
 **Live streaming applies only when there is exactly one requested task.**
-`vx run build test` buffers each task's output into one block, shown
-when the task ends.
+`vx run build test` keeps each task's output in a file and prints it
+as one block when the task ends.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -1575,8 +1575,8 @@ when the task ends.
 - Live framing assumes a single task owns the terminal between its open
   (`┌─`) and close (`└─`) lines.
 - With two requested tasks running at once, their frames would interleave into garbage.
-- So when more than one task is requested, each requested task
-  **buffers** its output and renders as a single atomic block at completion.
+- So when more than one task is requested, each requested task's output
+  **waits in a file**, never in memory, and renders as a single atomic block at completion.
 - The shapes are the ones in the table above: anything that ran or was
   cached gets a full frame, `up-to-date` included; only `skipped` is a one-liner.
 - The blocks are blank-line separated and never interleave.

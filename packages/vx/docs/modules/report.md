@@ -135,7 +135,7 @@ the mode; `ci: true` whenever `CI` is truthy.
 - **`broad`** — executed tasks print one
   `success miss … <id>` row (`no-cache` for a task no cache
   answered for, `ranNoCache`); failures get full frames;
-  hits / up-to-date / skipped are silent (buffers dropped).
+  hits / up-to-date / skipped are silent (their kept output dropped).
 - **`errors-only`** — only failed tasks print.
 - **`hash-only`** — one line per task with its key, no output.
 - **`none`** — no per-task output.
@@ -147,13 +147,35 @@ and settles the coalesced writes; in `full`, `focused` and `broad` a
 live frame opens before it and closes after, and what vx says about it
 (a timeout, a shell verdict) streams inside.
 
-A buffered frame masks the task's secrets in each stream's whole text
+A task's output waits for its frame in a file, never in memory (M,
+2026-11-25; `src/report/task-output.ts`, `TaskOutput`): the first 64 Ki
+characters stay in memory, so a task that prints little costs no file;
+past them every chunk is appended to a temporary file, unlinked as soon
+as it is open so a crash leaves nothing behind. A file that cannot be
+opened or written keeps the rest in memory: a log is never dropped for
+want of disk. `none` and `hash-only` drop a chunk on arrival, not even
+written. Held in memory, 300 MB of output peaked vx at 1.93 GB under
+`errors-only` when the task failed and 786 MB when it passed; from its
+file, +67 MiB (read by a fast reader) and +23 over an idle run. A frame a view defers to the
+run's end (`errors-only`, `broad`, `focused`) is rendered when its task
+ends, exactly as it was, into one file of deferred frames
+(`DeferredFrames`) read back in order at `runEnd`.
+
+A frame masks the task's secrets in each stream's whole text
 (`maskStreams`), as the stored log does: the live mask let a value the
 task wrote in two pieces through as two clean chunks. A hit's replay
-was masked whole already. A frame of 1 Mi characters or more is written
-in pieces (`head`, the block, `tail`), never copied into one string: a
+was masked whole already. A log under 1 Mi characters is read back
+whole and framed as before; a longer one is framed as it is read, in
+pieces of at most 4 MiB, masked in two passes over its file (where each
+stream's values lie, `SecretMask.spanStream`, then the text), and
+written in pieces (`head`, the block, `tail`) with any live region held
+off meanwhile, so each piece goes out as it comes. The bytes are the
+ones a frame held whole printed (`tests/logger-output-file.test.ts`). A
+frame of 1 Mi characters or more is never copied into one string: a
 100 MB log's frame took vx from 408 MB to 1.19 GB, and 577 MB with
-this and the writer's slicing (`report.md`).
+this and the writer's slicing (`report.md`). What a slow reader of
+vx's stdout refuses, Bun still queues in memory: a frame is written at
+once, not paced (`out-pace.ts` paces task readers only).
 
 `status()` lines (header, summary) always print. Group tasks never
 print in any mode. A ready persistent task the run keeps (`vx run dev`)
@@ -230,6 +252,11 @@ CLI. `tests/status-line.test.ts` — writer serialization, throttling,
 permanent clear, and the logger's lifecycle integration.
 `tests/framed-output.test.ts` tests the format functions directly;
 `tests/orchestrator.test.ts` covers the custom-logger path.
+`tests/logger-output-file.test.ts` holds a long log's frame, read back
+from its file, to the bytes of the frame held whole, in every view;
+`tests/output-memory.unsafe.test.ts` holds every mode's retained heap
+flat with the volume of output, and
+`tests/memory-ceiling-output.unsafe.test.ts` a whole run's peak.
 
 ### Replacing this module
 
@@ -404,8 +431,18 @@ export interface OutputChunk {
   err: boolean // stderr: its lines render red when colour is on
 }
 
+// A task's output as a frame reads it, once, in order: what the frame must
+// know before the chunks (`content`: any non-whitespace, else no OUTPUT
+// section) and after them (`leaves`: the last escape leaves a style on)
+export interface OutputSource {
+  readonly chunks: Iterable<OutputChunk>
+  readonly content: boolean
+  leaves(): boolean
+}
+
 export interface TaskBlockBody {
   output?: readonly OutputChunk[] // in the order written, under `├─ OUTPUT ──…`
+  source?: OutputSource // the same, read as it renders (a log read back from its file); wins over `output`
   droppedStdout?: number // chars a bounded (persistent) capture dropped from the head
   droppedStderr?: number
   dir?: string // the task's directory from the workspace root, before its `$` (none: the root)
@@ -420,6 +457,19 @@ export function formatTaskBlock(
   forwardArgs?: readonly string[], // the args after `--`, on a requested task's `$` line
   links?: boolean, // the terminal opens OSC 8: a failed task's file paths link to the file
 ): string
+
+// The same frame handed to `write` in pieces as it renders: the logger
+// writes a long log's frame as it reads the log back, never one string
+export function writeTaskBlock(
+  node,
+  outcome,
+  body,
+  write: (piece: string) => void,
+  colors?,
+  forceCommand?,
+  forwardArgs?,
+  links?,
+): void
 
 // The `$` line's command: a requested task's gets the args after `--`, as
 // the run appends them, secrets masked (the frame and the `--dry` plan)

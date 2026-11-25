@@ -76,15 +76,31 @@ describe.skipIf(!linux)('vx peak memory under task output', () => {
   )
 
   it(
-    'a run of several tasks holds what it prints, and no more',
+    'a run of several tasks keeps what it prints in a file, not memory',
     async () => {
-      // Several requested tasks each print as one block at the end, so `full`
-      // holds each task's output until then (docs/cli.md): 256 MiB measured
-      // +582 MiB, 2.3 bytes per byte. The line holds it there.
+      // Several requested tasks each print as one block when they end, read
+      // back from the file their output waited in. Held in memory, 256 MiB
+      // measured +582 MiB, 2.3 bytes per byte. Read by a fast reader: what
+      // a full pipe refuses a frame, Bun queues in memory.
       const root = await workspace({ a: task(text(256 * MIB)), b: task('true') })
-      const { peak, out } = await run(root, ['out', '--all', '--no-cache'])
-      expect(out).toContain('success')
-      expect(peak - base).toBeLessThan(256 * 3)
+      const s = spawnVx(root, ['run', 'out', '--all', '--no-cache'], 'cat > /dev/null')
+      expect((await peakMib(s)) - base).toBeLessThan(128)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "errors-only keeps a failed task's output in a file until the run's end",
+    async () => {
+      // 300 MiB of a failed task's output: the logger held it, and its frame
+      // until the summary.
+      const root = await workspace({ a: task(`${text(300 * MIB)}; exit 1`) })
+      const s = spawnVx(
+        root,
+        ['run', 'a#out', '--no-cache', '--output-logs=errors-only'],
+        'cat > /dev/null',
+      )
+      expect((await peakMib(s, 1)) - base).toBeLessThan(128)
     },
     TIMEOUT,
   )
