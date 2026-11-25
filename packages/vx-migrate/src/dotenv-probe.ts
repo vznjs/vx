@@ -24,9 +24,8 @@ export const DOTENV_PROBE_TOP =
 
 /**
  * The named root-relative files, name and bytes, run at the workspace root:
- * the inputs a turbo.json names by path that git ignores
- * (`config.local.json`), which Turbo hashes and a glob over git's files
- * keys nothing of. Core trims a probe's output, so each file ends on a `.`:
+ * the files an uncached producer writes that a task reads
+ * (`dependencyOutputs`), read after it ran. Core trims a probe's output, so each file ends on a `.`:
  * a trailing newline added to the last one is still an edit.
  */
 export function ignoredFilesProbe(rels: readonly string[]): string {

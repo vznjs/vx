@@ -392,7 +392,7 @@ function covers(globs: readonly string[], rel: string): boolean {
 const turboGlobstar = (glob: string): string =>
   glob.replace(/\*\*([^*/]+)/g, '**/*$1').replace(/(?!^!)([^*/]+)\*\*/g, '$1*/**')
 
-/** No glob syntax: one path, which git may ignore. */
+/** No glob syntax: one path. */
 const isLiteral = (glob: string): boolean => !/[*?[\]{}()!]/.test(glob)
 
 async function readTurboJson(file: string, root: string): Promise<TurboJson> {
