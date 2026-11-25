@@ -182,6 +182,9 @@ Every successful remote execution writes an execution record under the
 task's vx key (`vx-reapi-exec-v2`). A later run whose key already has a
 record skips the work entirely.
 
+- The `platform` is part of the record's address. It is not in the vx key,
+  so a new image executes once instead of replaying the old one's outputs.
+
 - The record lists the task's outputs by digest, plus its stdout and stderr.
 - Each stream is inline up to 64 KiB, and a CAS blob past it.
 - The record is written while the outputs come down.
@@ -739,7 +742,8 @@ What happens, all verified live against a NativeLink scheduler and worker
   into `node_modules/.prisma`) is merged into it: the worker sees both.
 - A DECLARED input file under a grafted directory is replaced by the graft,
   with a warning.
-- The execution record lives under `sha256("vx-reapi-exec-v2\0" + key)`.
+- The execution record lives under `sha256("vx-reapi-exec-v2\0" + key)`,
+  with `"\0name=value"` per `platform` property after the key, by name.
 - That is a second AC namespace beside the artifact mapping. It lists
   outputs file by file, with workspace-relative paths.
 

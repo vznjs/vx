@@ -229,6 +229,23 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     expect(await readFile(path.join(root, 'pkg', 'empty.txt'), 'utf8')).toBe('')
   })
 
+  // `platform` is not in the vx key. The record was kept under the key
+  // alone, so moving `install` to an arm64 image replayed the amd64
+  // worker's binaries, "once per lockfile change, ever".
+  it('a record is kept per platform: another platform executes, the same one replays', async () => {
+    fake.actions.set(execDigestFor('k-plat').hash, { exit_code: 0, stdout_raw: bytes('amd64') })
+    const arm = { platform: { arch: 'arm64', OSFamily: 'Linux' } }
+    const before = executes()
+    const first = await withExecutor((run) => run(request({ cacheKey: 'k-plat' })), arm)
+    expect([executes() - before, first.stdout]).toEqual([1, ''])
+    await withExecutor((run) => run(request({ cacheKey: 'k-plat' })), arm)
+    expect(executes() - before).toBe(1)
+    await withExecutor((run) => run(request({ cacheKey: 'k-plat' })), {
+      platform: { arch: 'amd64', OSFamily: 'Linux' },
+    })
+    expect(executes() - before).toBe(2)
+  })
+
   // F-25: the record's stdout, which a server may keep in CAS, cost the
   // replay a Read of its own; asked inline, a server that honours it sends it.
   it('the record is read asking for its stdout inline', async () => {

@@ -663,6 +663,16 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
   // (as vx-dte's `runKey`), since the key's own would replay as its hit
   // (`unsaved`). Null: deferred outputs no record holds.
   const runNonce = crypto.randomUUID()
+  // The record's address folds what shapes the worker and is not in the vx
+  // key: under the key alone, an `install` moved to an arm64 image replayed
+  // the amd64 worker's binaries. Without either, the address is the key's.
+  const shape = [
+    ...Object.entries(opts.platform ?? {})
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${k}=${v}`),
+    ...(opts.salt === undefined ? [] : [`salt=${opts.salt}`]),
+  ].join('\0')
+  const recordFor = (key: string): Digest => execDigestFor(shape === '' ? key : `${key}\0${shape}`)
   const ranHere = new Map<string, Digest | null>()
   const executor: TaskExecutor = {
     name: 'vx/reapi',
@@ -708,7 +718,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         // and caches the result. Both streams asked inline: a server that moved
         // them into CAS otherwise costs the replay a Read each.
         const prior = await untilAborted(
-          client.getActionResult(execDigestFor(req.cacheKey), {
+          client.getActionResult(recordFor(req.cacheKey), {
             stdout: true,
             stderr: true,
             files: [],
@@ -916,9 +926,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
               }
               const known = ranHere.get(up.hash)
               const record =
-                known === null
-                  ? null
-                  : await client.getActionResult(known ?? execDigestFor(up.hash))
+                known === null ? null : await client.getActionResult(known ?? recordFor(up.hash))
               if (record === null) {
                 // An upstream with nothing to bring (no outputs, or one that
                 // ran here locally and wrote none) has no record either.
@@ -1304,9 +1312,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         req.cacheKey !== undefined && (result.exit_code ?? 0) === 0 && tree.moved.length === 0
           ? (async (cacheKey: string): Promise<void> => {
               const recordKey =
-                req.unsaved === true
-                  ? execDigestFor(`${cacheKey}\0${runNonce}`)
-                  : execDigestFor(cacheKey)
+                req.unsaved === true ? recordFor(`${cacheKey}\0${runNonce}`) : recordFor(cacheKey)
               // A whole-tree capture's path is '' — the working directory
               // itself, which `${wd}/` spelled `pkg/`: never matched by a
               // decomposition, and grafted as a directory with an empty name.
