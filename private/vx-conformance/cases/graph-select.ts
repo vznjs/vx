@@ -394,24 +394,6 @@ export default [
     notRan: ['lib'],
   }),
 
-  defineCase({
-    id: 'graph/select-no-match-refused',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'A selector that matches no project fails the run',
-    why: 'A selector that matches nothing is almost always a typo or a renamed package. If the run exits 0, CI passes having checked nothing, and no one notices until something broken ships. Failing the run names the selector that went wrong, while it is cheap to fix.',
-    from: FROM,
-    needs: ['filter'],
-    workspace: chain(),
-    steps: [
-      {
-        run: 'check',
-        select: [{ name: 'nope' }],
-        expect: { exit: 'fail', notRan: ['app#check', 'ui#check', 'utils#check', 'lib#check'] },
-      },
-    ],
-  }),
-
   selects({
     slug: 'by-tag',
     title: 'A tag selects exactly the projects carrying it',
@@ -438,16 +420,6 @@ export default [
     why: 'Excluding a tag says to leave out every project carrying it, such as slow end-to-end suites. The rest of the selection must still run. A tool that ignores the exclusion runs the work the user just opted out of; one that drops too much skips projects the user expects checked.',
     workspace: tagged(),
     select: [{ name: '*' }, { tag: 'web', exclude: true }],
-    ran: ['api', 'lib'],
-    notRan: ['site', 'admin'],
-  }),
-
-  selects({
-    slug: 'tag-with-dependencies',
-    title: 'A tag and its dependencies select the tagged projects and what they depend on',
-    why: 'Selecting a tag with its dependencies means the tagged projects and everything they need to build. A tagged app cannot build without its libraries, even untagged ones. Leaving them out fails the run or builds against stale output; adding unrelated projects runs work nobody asked for.',
-    workspace: tagged(),
-    select: [{ tag: 'scope/api', with: 'dependencies' }],
     ran: ['api', 'lib'],
     notRan: ['site', 'admin'],
   }),

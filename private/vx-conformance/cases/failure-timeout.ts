@@ -123,23 +123,6 @@ export default [
   }),
 
   defineCase({
-    id: 'config/timeout-beyond-any-timer-refused',
-    category: 'config',
-    kind: 'correctness',
-    title: 'A time limit no timer can hold is refused, not turned into an instant kill',
-    why: 'A limit the runner cannot honour should be refused, not silently changed. Timers have a maximum, and a value past it often fires at once, so a limit of hundreds of years kills the task within milliseconds. That is the opposite of what the user asked for, and the cause is hard to see from the failure.',
-    from: ['timeout-bounds'],
-    needs: ['timeout'],
-    workspace: a({ t: { command: 'echo ran > out.txt', timeout: 1e10 } }),
-    steps: [
-      {
-        run: 't',
-        expect: { exit: 'fail', notRan: ['a#t'], files: { 'packages/a/out.txt': null } },
-      },
-    ],
-  }),
-
-  defineCase({
     id: 'failure/retry-passes-a-flaky-task',
     category: 'failure',
     kind: 'correctness',

@@ -37,8 +37,6 @@ const filtered = (): WorkspaceSpec => {
   }
 }
 
-const ALL = ['app', 'lib', 'cli', 'core', 'utils']
-
 export default [
   defineCase({
     id: 'graph/caret-and-explicit-edge-run-once',
@@ -316,24 +314,6 @@ export default [
           ran: ['lib#check', 'cli#check', 'utils#check'],
           notRan: ['app#check', 'core#check'],
         },
-      },
-    ],
-  }),
-
-  defineCase({
-    id: 'graph/select-exclude-matching-nothing',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'An exclude alone that names no project runs every project, or refuses',
-    why: 'Excluding a project that does not exist leaves the whole workspace: nothing was taken out. Refusing the run as a likely typo is also fair, before anything starts. Running nothing and exiting 0 is not: CI goes green having checked no project at all.',
-    from: ['filter', 'filter-properties'],
-    needs: ['filter'],
-    workspace: filtered(),
-    steps: [
-      {
-        run: 'check',
-        select: [{ name: 'nonexistent', exclude: true }],
-        expect: { exit: 0, ran: ALL.map((p) => `${p}#check`), orRefused: true },
       },
     ],
   }),

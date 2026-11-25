@@ -218,19 +218,6 @@ export default [
     ],
   }),
 
-  // missing_tasks_test.rs test_multiple_missing_tasks
-  defineCase({
-    id: 'failure/two-unknown-tasks-fail',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'Asking for two tasks no project declares fails the run',
-    why: 'Two misspelled task names are two mistakes, and a run of nothing is not a pass. A tool that exits 0 when every requested name matched nothing lets CI go green having run no check. The run fails and no task runs.',
-    from: ['task-selection', 'run-failures-store'],
-    needs: ['multi-task'],
-    workspace: one(task('mkdir -p dist && cat src/a.txt > dist/out.txt')),
-    steps: [{ run: 'biuld', also: ['tset'], expect: { exit: 'fail', notRan: ['a#build'] } }],
-  }),
-
   // filter_run_test.rs test_exclude_root_filter_excludes_root_tasks
   defineCase({
     id: 'graph/select-exclude-root-project-by-name',

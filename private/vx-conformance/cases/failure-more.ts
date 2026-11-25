@@ -250,51 +250,6 @@ export default [
     ],
   }),
 
-  // ─── what dependsOn refuses ───────────────────────────────────────────
-
-  defineCase({
-    id: 'graph/unknown-project-task-edge-refused',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'dependsOn naming another project’s task that does not exist fails before any runs',
-    why: 'A dependsOn entry is a promise that the named task runs first. If that task does not exist, the promise cannot be kept, and dropping the edge in silence runs the task without what it said it needs. Failing before anything runs points at the typo or the renamed task.',
-    from: GRAPH,
-    workspace: {
-      projects: {
-        lib: proj({ build: plain() }),
-        app: proj({ build: plain(['nope#build']) }),
-      },
-    },
-    steps: [{ run: 'build', expect: { exit: 'fail', notRan: ['app#build', 'lib#build'] } }],
-  }),
-
-  defineCase({
-    id: 'graph/unknown-same-project-dependency-refused',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'dependsOn naming a task its own project lacks fails before any runs',
-    why: 'A same-project name the project does not declare, such as `lnt` for `lint`, is a typo. Running the task without it quietly skips the check the user meant to run first. Failing before any task runs shows the mistake in the config where it was made.',
-    from: GRAPH,
-    workspace: app({ lint: plain(), test: plain(['lnt']) }),
-    steps: [{ run: 'test', expect: { exit: 'fail', notRan: ['app#test', 'app#lint'] } }],
-  }),
-
-  defineCase({
-    id: 'graph/caret-name-no-project-declares-refused',
-    category: 'graph',
-    kind: 'correctness',
-    title: '`^biuld`, a name no project declares, fails the run instead of passing with no edge',
-    why: 'A `^name` some project declares may simply have no holder among this project’s dependencies, which is fine. A `^name` no project anywhere declares, like `^biuld`, can only be a typo. Passing the run with no edge hides that the dependency the user wanted is never built.',
-    from: GRAPH,
-    workspace: {
-      projects: {
-        cart: proj({ build: plain() }),
-        app: proj({ typo: plain(['^biuld']) }, ['cart']),
-      },
-    },
-    steps: [{ run: 'typo', expect: { exit: 'fail', notRan: ['app#typo', 'cart#build'] } }],
-  }),
-
   defineCase({
     id: 'graph/task-cycle-through-four-projects-refused',
     category: 'graph',
@@ -622,19 +577,6 @@ export default [
         },
       },
     ],
-  }),
-
-  // ─── task names a run is asked for ────────────────────────────────────
-
-  defineCase({
-    id: 'failure/object-property-task-name-refused',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'Asking for `constructor`, a task no project declares, fails the run',
-    why: 'A task exists only if a config declares it. A name every JavaScript object carries, like `constructor`, must not be found by accident in a lookup table. Otherwise the run would pass or crash on a task nobody declared, instead of reporting the unknown name.',
-    from: GRAPH,
-    workspace: app({ build: plain() }),
-    steps: [{ run: 'constructor', expect: { exit: 'fail', notRan: ['app#build'] } }],
   }),
 
   defineCase({

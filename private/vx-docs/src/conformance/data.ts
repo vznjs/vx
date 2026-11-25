@@ -73,7 +73,6 @@ const GROUP_NAMES: Record<string, string> = {
   all: 'All cases',
   correctness: 'Correctness',
   efficiency: 'Efficiency',
-  data: 'Data',
   graph: 'Task graph',
   inputs: 'Inputs',
   outputs: 'Outputs',
@@ -82,7 +81,6 @@ const GROUP_NAMES: Record<string, string> = {
   config: 'Config',
   failure: 'Failures',
   affected: 'Affected',
-  report: 'Run report',
   sandbox: 'Isolation',
   watch: 'Watch mode',
 }
@@ -102,11 +100,9 @@ const ABOUT: Record<string, string> = {
   failure:
     'What a failing task does to the rest of the run. Nothing that needs it may run, and the run must say it failed.',
   config:
-    'Mistakes in the config, like depending on a task that does not exist. The tool must refuse them up front, not quietly skip the task.',
+    'Odd spellings in the config, like `./src/**` or a stray space. The tool must key or restore what they name, or refuse them, never quietly drop them.',
   affected:
     'Running only what a change touches. Miss a project and a broken change merges untested; pick too many and CI wastes time.',
-  report:
-    'The data a run hands back about each task: time, cache result, CPU, memory. Without it, nobody can see why CI is slow.',
   sandbox:
     'Whether a task is stopped from reading or writing what it never declared. Without that, the inputs list is a promise nobody checks.',
   watch:

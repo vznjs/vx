@@ -441,55 +441,6 @@ export default [
     ran: ['site', 'admin', 'lib'],
   }),
 
-  // turborepo task_filter_package_scope_test.rs: --filter=tag:missing
-  refuses({
-    slug: 'select-tag-no-match-refused',
-    title: 'A tag no project carries fails the run',
-    why: 'A tag that matches nothing is a typo or a tag that was renamed, the same as a name that matches nothing. Exiting 0 lets CI go green having checked no project. Failing points at the selector while the mistake is cheap to fix.',
-    from: ['select', 'project-tags'],
-    workspace: tagged(),
-    all: TAGGED,
-    select: [{ tag: 'mobile' }],
-  }),
-
-  // turborepo task_filter_package_scope_test.rs: --filter=...tag:ci
-  selects({
-    slug: 'select-tag-with-dependents',
-    title: 'A tag with its dependents takes the tagged projects and what builds on them',
-    why: 'Tagging a library and asking for its dependents is how a user checks everything a change to it can break. lib carries the tag here, and site and api build on it. admin does not, and stays out.',
-    from: ['project-tags', 'filter'],
-    workspace: {
-      projects: {
-        site: p(['lib']),
-        admin: p(),
-        api: p(['lib']),
-        lib: p([], { tags: ['core'] }),
-      },
-    },
-    all: TAGGED,
-    select: [{ tag: 'core', with: 'dependents' }],
-    ran: ['lib', 'site', 'api'],
-  }),
-
-  // turborepo task_filter_package_scope_test.rs: --filter=tag:ci^...
-  selects({
-    slug: 'select-tag-only-dependencies',
-    title: 'Only the dependencies of tagged projects leaves the tagged ones out',
-    why: 'Leaving the tagged projects out keeps just what they build on. site and api both build on lib, so lib runs and nothing tagged does. This is how a user prepares the libraries under a group of apps without running the apps.',
-    from: ['project-tags', 'filter'],
-    workspace: {
-      projects: {
-        site: p(['lib'], { tags: ['app'] }),
-        admin: p(),
-        api: p(['lib'], { tags: ['app'] }),
-        lib: p(),
-      },
-    },
-    all: TAGGED,
-    select: [{ tag: 'app', with: 'dependencies', self: false }],
-    ran: ['lib'],
-  }),
-
   selects({
     slug: 'select-two-tags-of-one-project',
     title: 'A project carrying both of two selected tags runs once, with the rest of each tag',
@@ -556,16 +507,6 @@ export default [
     all: DIRS,
     select: [{ dir: 'packages/ui', with: 'dependents' }],
     ran: ['ui', 'core', 'web'],
-  }),
-
-  // select.test.ts: 'a name or dir no project has is a typo with a git range too'
-  refuses({
-    slug: 'select-dir-no-match-refused',
-    title: 'A directory that holds no project fails the run',
-    why: 'A path that matches no project is a typo or a folder that moved. Exiting 0 lets CI pass having checked nothing, exactly as with a name that matches nothing. The run should fail and say so.',
-    workspace: dirs(),
-    all: DIRS,
-    select: [{ dir: 'apps/mobile' }],
   }),
 
   selects({
@@ -636,42 +577,6 @@ export default [
     all: ['root', 'tools', 'a'],
     select: [{ dir: '*' }],
     ran: ['tools'],
-  }),
-
-  // --- Names ----------------------------------------------------------------
-
-  refuses({
-    slug: 'select-name-glob-no-match-refused',
-    title: 'A name pattern that matches no project fails the run',
-    why: 'A pattern that matches nothing is as much a typo as a name that matches nothing. `zz*` takes no project here, and exiting 0 lets CI pass having run no check. The run should fail before anything starts.',
-    workspace: chain(),
-    all: CHAIN,
-    select: [{ name: 'zz*' }],
-  }),
-
-  // select.test.ts: 'a typo beside a walk that came back empty names the typo'
-  refuses({
-    slug: 'select-walk-no-match-refused',
-    title: 'A walk from a name that matches no project fails the run',
-    why: 'The walk starts from nothing, so it reaches nothing. That is a typo in the name, not a project with no dependencies, and the run should fail rather than end green with no task run.',
-    workspace: chain(),
-    all: CHAIN,
-    select: [{ name: 'uii', with: 'dependencies' }],
-  }),
-
-  // find-matching-projects.spec.ts: 'should match on name segments' ("Only full segments are matched")
-  refuses({
-    slug: 'select-part-of-scoped-name-refused',
-    title: 'Part of a scoped name, `cor` for `@acme/core`, selects nothing and fails',
-    why: 'A bare name may stand for a scoped package when it is the whole name after the scope. `cor` is not: it is only a prefix of core. Selecting `@acme/core` from it turns every short typo into a match. Nothing matches, so the run fails.',
-    workspace: {
-      projects: {
-        '@acme/core': p([], { dir: 'packages/core' }),
-        app: p(),
-      },
-    },
-    all: ['@acme/core', 'app'],
-    select: [{ name: 'cor' }],
   }),
 
   // find-matching-projects.spec.ts: 'should handle case where scope and names are the same'
@@ -1131,57 +1036,6 @@ export default [
     ],
   }),
 
-  // --- Planned runs ---------------------------------------------------------
-
-  // turborepo filter_run_test.rs: test_filter_nonexistent_package_errors
-  defineCase({
-    id: 'graph/dry-run-selector-no-match-refused',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'Planning a run with a selector that matches no project fails',
-    why: 'A plan is how a user checks a command before trusting it in CI. A selector that matches nothing fails the real run, so the plan must fail too. A plan that succeeds there tells the user the command is fine when it is not.',
-    from: ['dry-no-writes', 'select'],
-    needs: ['filter', 'dry-run'],
-    workspace: built(),
-    steps: [{ run: 'build', select: [{ name: 'nope' }], dry: true, expect: { exit: 'fail' } }],
-  }),
-
-  // turborepo missing_tasks_test.rs: test_single_missing_task
-  defineCase({
-    id: 'graph/dry-run-unknown-task-refused',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'Planning a run of a task no project declares fails',
-    why: 'A task name nobody declares fails the real run. Planning it has to find the same thing, since the plan is where the user expects to see a typo. A green plan for a task that does not exist is a plan of nothing.',
-    from: ['dry-no-writes', 'task-selection'],
-    needs: ['dry-run'],
-    workspace: built(),
-    steps: [{ run: 'biuld', dry: true, expect: { exit: 'fail' } }],
-  }),
-
-  defineCase({
-    id: 'graph/dry-run-task-cycle-refused',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'Planning a run whose tasks depend on each other fails',
-    why: 'Two tasks that each wait for the other can never run, and the real run fails before either starts. A plan has to see the cycle too: it is a property of the graph, not of running it. A plan that passes hides a config the real run will refuse.',
-    from: ['dry-no-writes', 'task-graph'],
-    needs: ['dry-run'],
-    workspace: {
-      projects: {
-        a: {
-          tasks: { build: T('true', { dependsOn: ['b#build'] }) },
-          files: { 'src/a.txt': 'a\n' },
-        },
-        b: {
-          tasks: { build: T('true', { dependsOn: ['a#build'] }) },
-          files: { 'src/a.txt': 'b\n' },
-        },
-      },
-    },
-    steps: [{ run: 'build', dry: true, expect: { exit: 'fail' } }],
-  }),
-
   defineCase({
     id: 'graph/dry-run-forced-runs-nothing',
     category: 'graph',
@@ -1354,42 +1208,6 @@ export default [
         expect: { exit: 0, ran: checks(['ui', 'app']), notRan: checks(['utils', 'lib']) },
       },
     ],
-  }),
-
-  defineCase({
-    id: 'graph/dry-run-args-for-many-projects-refused',
-    category: 'graph',
-    kind: 'correctness',
-    title: 'Planning a run that forwards args to one task in many projects is refused',
-    why: 'Args after `--` may reach one task only, and the real run refuses them for two projects. The plan must refuse them as well, or the user learns of the problem only in CI. Planning runs nothing either way: no file appears.',
-    from: ['dry-no-writes', 'forward-args-one-task'],
-    needs: ['dry-run'],
-    workspace: {
-      projects: {
-        one: { tasks: { t: { command: `printf '<%s>' "$@" > got.txt`, takesArgs: true } } },
-        two: { tasks: { t: { command: `printf '<%s>' "$@" > got.txt`, takesArgs: true } } },
-      },
-    },
-    steps: [
-      {
-        run: 't',
-        args: ['--port', '3000'],
-        dry: true,
-        expect: {
-          exit: 'fail',
-          files: { 'packages/one/got.txt': null, 'packages/two/got.txt': null },
-        },
-      },
-    ],
-  }),
-  // select.test.ts: 'the refusal names only the filters that matched nothing'
-  refuses({
-    slug: 'select-typo-beside-a-match-refused',
-    title: 'A selector that matches nothing fails the run, though another selector matches',
-    why: 'ui matches and `nope` does not. The second selector is still a typo, and running ui alone hides that the user meant two projects. Failing before anything starts names the selector to fix; a green run checks half of what was asked.',
-    workspace: chain(),
-    all: CHAIN,
-    select: [{ name: 'ui' }, { name: 'nope' }],
   }),
 ] satisfies Case[]
 

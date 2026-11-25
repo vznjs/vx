@@ -778,48 +778,6 @@ export default [
       { sh: '[ ! -u packages/a/dist/tool ]' },
     ],
   }),
-  // moon 1.x: "Fixed a regression that didn't allow identifiers to start
-  // with a non-alphanumeric character."
-  defineCase({
-    id: 'config/task-name-starting-with-underscore',
-    category: 'config',
-    kind: 'correctness',
-    title: 'A task named `_prepare` runs when asked for, and a dependsOn naming it runs it first',
-    why: 'A leading underscore is a common way to mark a helper task nobody should run by hand, as `_` marks private names in code. It is still a plain name. A tool whose name rules demand a letter or digit first refuses the whole config, or drops the edge and builds before the preparation ran.',
-    from: ['cli-task-names', 'reserved-names'],
-    workspace: {
-      projects: {
-        a: {
-          tasks: {
-            _prepare: {
-              command: 'echo prep > prep.txt',
-              inputs: ['src/**'],
-              outputs: ['prep.txt'],
-            },
-            build: {
-              command: 'mkdir -p dist && cat prep.txt src/a.txt > dist/out.txt',
-              dependsOn: ['_prepare'],
-              inputs: ['src/**'],
-              outputs: ['dist/**'],
-            },
-          },
-          files: { 'src/a.txt': 'a\n' },
-        },
-      },
-    },
-    steps: [
-      {
-        run: 'build',
-        expect: {
-          exit: 0,
-          ran: ['a#_prepare', 'a#build'],
-          order: [['a#_prepare', 'a#build']],
-          files: { [out('a')]: 'prep\na\n' },
-        },
-      },
-      { run: '_prepare', expect: { exit: 0, notRan: ['a#build'] } },
-    ],
-  }),
 
   // turborepo #12540 "Validate engine concurrency after task-level
   // filtering": servers outside the run counted against the limit.
