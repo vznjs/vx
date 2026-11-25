@@ -6,8 +6,12 @@
 
 /** One task of one project. */
 export interface TaskSpec {
-  /** A `sh` command, run in the project's directory. */
-  command: string
+  /**
+   * A `sh` command, run in the project's directory. Omitted: the task runs
+   * nothing; with `inputs` its files still reach its dependants (a no-op
+   * task), without them it only groups its `dependsOn` (a group).
+   */
+  command?: string
   /** `^build`: build in every dependency first. `lint`: this project's lint. `lib#build`: one task. */
   dependsOn?: string[]
   /** Project-relative globs that key the task. Omitted: the tool's default. */

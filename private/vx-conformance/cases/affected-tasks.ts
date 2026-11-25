@@ -26,6 +26,16 @@ function libApp(extra: Record<string, TaskSpec> = {}): WorkspaceSpec {
   return { projects: { lib: project('lib'), app: project('app', ['lib']), docs: project('docs') } }
 }
 
+/** {@link libApp} with lib's tasks replaced: what app's `build` reaches through `^build`. */
+function libTasks(tasks: Record<string, TaskSpec>): WorkspaceSpec {
+  const ws = libApp()
+  ws.projects['lib']!.tasks = tasks
+  return ws
+}
+
+/** No command and inputs: a package whose build is its sources, as is. */
+const NO_OP: TaskSpec = { inputs: ['src/**'] }
+
 const editLib = (file = 'src/a.txt') => [
   { write: { [`packages/lib/${file}`]: 'lib2\n' } },
   { commit: 'edit lib' },
@@ -158,6 +168,86 @@ export default [
           notRan: ['lib#guide'],
           files: { 'packages/lib/dist/guide.txt': null },
         },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'affected/no-op-task-input-reaches-dependants',
+    category: 'affected',
+    kind: 'correctness',
+    title:
+      'A task with inputs and no command passes its files’ changes to the tasks that depend on it',
+    why: 'A package whose build has nothing to do, its sources used as they are, still has a build its dependants wait on. Its inputs say which files are its result. An edit there changes what the dependants build from, so they are affected; leaving them out because the task runs nothing ships a build of the old sources.',
+    from: ['affected-by-inputs'],
+    needs: ['affected'],
+    workspace: libTasks({ build: NO_OP }),
+    steps: [
+      ...editLib(),
+      {
+        affected: 'build',
+        base: 'HEAD~1',
+        expect: { exit: 0, ran: ['app#build'], notRan: ['docs#build'] },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'affected/no-op-task-unread-file-reaches-nobody',
+    category: 'affected',
+    kind: 'efficiency',
+    title: 'A task with inputs and no command passes on no change to a file it does not declare',
+    why: 'A task that runs nothing is still keyed by the inputs it declares, and no further. An edit to a file outside them changes nothing its dependants build from. Selecting them because the file sits in the same project reruns builds whose answer is already known.',
+    from: ['affected-by-inputs'],
+    needs: ['affected'],
+    workspace: libTasks({ build: NO_OP }),
+    steps: [
+      ...editLib('README.md'),
+      { affected: 'build', base: 'HEAD~1', expect: { exit: 0, notRan: ['app#build'] } },
+    ],
+  }),
+
+  defineCase({
+    id: 'affected/group-own-files-reach-nobody',
+    category: 'affected',
+    kind: 'efficiency',
+    title:
+      'A task with no command and no inputs is not affected by its own project’s files, only by the tasks it groups',
+    why: 'A task with neither a command nor inputs only groups others. It reads no file, so an edit in its project reaches it only through a task it groups. Here the grouped task reads the README alone, so a source edit leaves the group and its dependants with nothing new to build from; selecting them reruns work the edit cannot change.',
+    from: ['affected-by-inputs'],
+    needs: ['affected'],
+    workspace: libTasks({
+      check: { command: 'cat README.md', inputs: ['README.md'], outputs: [] },
+      build: { dependsOn: ['check'] },
+    }),
+    steps: [
+      ...editLib(),
+      {
+        affected: 'build',
+        base: 'HEAD~1',
+        expect: { exit: 0, notRan: ['lib#check', 'app#build'] },
+      },
+    ],
+  }),
+
+  defineCase({
+    id: 'affected/group-reached-through-its-dependency',
+    category: 'affected',
+    kind: 'correctness',
+    title: 'A task with no command and no inputs is affected when a task it groups is',
+    why: 'A group stands for the tasks it depends on. When one of them reads the edited file, the group is affected, and so is every task that waits on the group. Stopping at the group because it reads no files itself leaves the dependants building from the old result.',
+    from: ['affected-by-inputs'],
+    needs: ['affected'],
+    workspace: libTasks({
+      check: { command: 'cat src/a.txt', inputs: ['src/**'], outputs: [] },
+      build: { dependsOn: ['check'] },
+    }),
+    steps: [
+      ...editLib(),
+      {
+        affected: 'build',
+        base: 'HEAD~1',
+        expect: { exit: 0, ran: ['lib#check', 'app#build'], notRan: ['docs#build'] },
       },
     ],
   }),

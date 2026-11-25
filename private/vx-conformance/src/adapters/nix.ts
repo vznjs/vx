@@ -8,7 +8,7 @@
 // Every build runs in Nix's sandbox, so an undeclared file is out of reach.
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { optionalAsOutputs, type Adapter } from '../adapter.ts'
+import { optionalAsOutputs, type Adapter, type Command } from '../adapter.ts'
 import { MEET, projectDir, type TaskReport, type WorkspaceSpec } from '../spec.ts'
 
 const RUN = path.join(import.meta.dir, 'nix-run.ts')
@@ -342,11 +342,12 @@ const LIB = `
   selected = map (id: builtins.getAttr id tasks) requested;
 `
 
-function nixFile(ws: WorkspaceSpec, command: (project: string, task: string) => string): string {
+function nixFile(ws: WorkspaceSpec, command: Command): string {
   const s = specs(ws) as Record<string, { command: string }>
   for (const id of Object.keys(s)) {
     const at = id.lastIndexOf('#')
-    s[id]!.command = command(id.slice(0, at), id.slice(at + 1))
+    // Every derivation runs a builder: a task without a command runs `true`.
+    s[id]!.command = command(id.slice(0, at), id.slice(at + 1)) ?? 'true'
   }
   return `# Written by the conformance suite's Nix adapter from the case's workspace.
 { run ? "{}" }:

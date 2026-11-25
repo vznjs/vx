@@ -286,9 +286,12 @@ export const moon: Adapter = {
             {
               // A `script` takes no forwarded args; a task that reads them is a `command`, which does:
               // a shell handing them on, as an array moon takes as is.
-              ...(spec.takesArgs
-                ? { command: ['sh', '-c', `${command(name, t)} "$@"`, 'sh'] }
-                : { script: command(name, t) }),
+              ...(command(name, t) === undefined
+                ? // No command: moon's own `noop`.
+                  { command: 'noop' }
+                : spec.takesArgs
+                  ? { command: ['sh', '-c', `${command(name, t)} "$@"`, 'sh'] }
+                  : { script: command(name, t) }),
               ...(deps.length > 0 ? { deps } : {}),
               ...(inputs ? { inputs } : {}),
               ...(outputs.length > 0 ? { outputs } : {}),

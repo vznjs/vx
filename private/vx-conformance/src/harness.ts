@@ -78,11 +78,13 @@ const WATCH = { initialMs: 60_000, timeoutMs: 30_000, quietMs: 8_000, pollMs: 50
 
 const SUPERVISE = path.join(import.meta.dir, 'supervise.ts')
 
-/** The command a tool runs for `project#task`: the case's own, between the harness's marks. */
-export function marked(ws: WorkspaceSpec, project: string, task: string): string {
+/** The command a tool runs for `project#task`: the case's own, between the harness's marks; none for a task without one. */
+export function marked(ws: WorkspaceSpec, project: string, task: string): string | undefined {
   const p = ws.projects[project]
-  const cmd = p?.tasks?.[task]?.command
-  if (p === undefined || cmd === undefined) throw new Error(`no task ${project}#${task}`)
+  const spec = p?.tasks?.[task]
+  if (p === undefined || spec === undefined) throw new Error(`no task ${project}#${task}`)
+  const cmd = spec.command
+  if (cmd === undefined) return undefined
   const ran = path.posix.join(
     path.posix.relative(projectDir(project, p), '.'),
     p.tasks?.[task]?.sandbox ? ISOLATED_RAN : RAN,

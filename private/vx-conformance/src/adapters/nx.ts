@@ -114,8 +114,13 @@ export const nx: Adapter = {
         tasks.map(([t, spec]) => [
           t,
           {
-            executor: 'nx:run-commands',
-            options: { command: command(name, t), cwd: '{projectRoot}' },
+            // No command: Nx's own `nx:noop` executor.
+            ...(command(name, t) === undefined
+              ? { executor: 'nx:noop' }
+              : {
+                  executor: 'nx:run-commands',
+                  options: { command: command(name, t), cwd: '{projectRoot}' },
+                }),
             dependsOn: (spec.dependsOn ?? []).map((d) => dependsOn(d, ready)),
             inputs: [
               spec.inputs || spec.rootInputs || spec.runtime ? `${t}-inputs` : 'default',
