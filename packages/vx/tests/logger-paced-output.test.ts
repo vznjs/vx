@@ -111,3 +111,31 @@ for (const view of [{ mode: 'full' }, { mode: 'errors-only' }] as OutputView[])
       expect(got === want).toBe(true)
       expect(got.indexOf('a line logged after')).toBeGreaterThan(got.lastIndexOf(LINE))
     })
+
+it('frames on a terminal reach it as they are written, not at the next redraw', () => {
+  // Content waits for the region's next frame; a warm run's hits frame
+  // without a turn of the event loop, so every frame waited at once, unseen
+  // by stdout's pacing.
+  let written = 0
+  const tty = {
+    isTTY: true,
+    columns: 120,
+    rows: 40,
+    write(c: string | Uint8Array) {
+      written += c.length
+      return true
+    },
+  } as unknown as StatusStream
+  const log = defaultLogger({ enabled: false }, { mode: 'full' }, tty, { forceFloorMs: 60_000 })
+  log.runStart?.({ total: 50, requestedCount: 50 })
+  for (let i = 0; i < 50; i++) {
+    const n = node(`p#t${i}`)
+    log.taskStart?.(n)
+    log.taskStdout(n, LINE.repeat(2000))
+    log.taskComplete(n, { node: n, status: 'success', exitCode: 0, durationMs: 1 } as TaskOutcome)
+  }
+  // 50 frames of 100 KB: at most the last one's worth unwritten.
+  expect(written).toBeGreaterThan(50 * LINE.length * 2000 - 256 * 1024)
+  log.runEnd?.()
+  log.settle()
+})

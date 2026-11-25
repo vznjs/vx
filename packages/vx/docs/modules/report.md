@@ -330,7 +330,10 @@ when disabled (CI). When active:
   content since the last frame, then redraws, as ONE write. The region
   can never interleave with task output. A frame whose region bytes
   match what is shown writes nothing. 2,000 tasks on a terminal:
-  866 → 290 ms CPU, 8.6 → 1.1 MB, 6,057 → 165 writes. A timer holding
+  866 → 290 ms CPU, 8.6 → 1.1 MB, 6,057 → 165 writes. Content past
+  64 KiB draws at once: a warm run's hits frame without a turn of the
+  event loop, and every frame waited unwritten, out of stdout's pacing
+  (each terminal write is noted, `out-pace.ts`). A timer holding
   content keeps the process open until it lands; `clearStatus`,
   `hold` and `writeTo` hand pending content over first. The erase always uses the height of the **previous** draw;
   the new draw establishes the new height, so the region may grow and

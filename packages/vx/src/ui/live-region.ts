@@ -259,6 +259,7 @@ export function createOutputWriter(
   // used to be three writes (erase, row, region) and a whole region
   // redraw: 2,000 rows wrote 8.5 MB.
   const pending: string[] = []
+  let pendingChars = 0
   // The region's text as last written: a frame that would write the same
   // bytes writes nothing.
   let shownText = ''
@@ -267,12 +268,13 @@ export function createOutputWriter(
   const takeDown = (): void => {
     let text = pending.join('')
     pending.length = 0
+    pendingChars = 0
     if (shown) {
       text = eraseSeq() + text
       shown = false
       shownRows = 0
     }
-    if (text !== '') stream.write(rawBytes(text))
+    if (text !== '') noteWrite(stream, stream.write(rawBytes(text)))
   }
   /** Whether a frame may show the region now. */
   const showable = (): boolean => !dead && current !== null && atLineStart && holds === 0
@@ -285,6 +287,7 @@ export function createOutputWriter(
     if (content) {
       text = (shown ? eraseSeq() : '') + pending.join('')
       pending.length = 0
+      pendingChars = 0
       shown = false
       shownRows = 0
     }
@@ -297,7 +300,7 @@ export function createOutputWriter(
       const lines = fitted(current!)
       const region = lines.join('\n')
       if (shown && region === shownText) {
-        if (text !== '') stream.write(rawBytes(text))
+        if (text !== '') noteWrite(stream, stream.write(rawBytes(text)))
         lastDraw = now()
         return
       }
@@ -308,7 +311,7 @@ export function createOutputWriter(
       shownLineRows = lines.map(lineRows)
       shownText = region
     }
-    if (text !== '') stream.write(rawBytes(text))
+    if (text !== '') noteWrite(stream, stream.write(rawBytes(text)))
     lastDraw = now()
   }
   /**
@@ -380,9 +383,13 @@ export function createOutputWriter(
       }
       if (chunk.length > 0) atLineStart = chunk.endsWith('\n')
       pending.push(chunk)
+      pendingChars += chunk.length
       // A held terminal (a prompt waits on it) or a dead region takes the
-      // write now: nothing will draw a frame for it.
-      if (holds > 0 || dead) draw()
+      // write now: nothing will draw a frame for it. Nor does content wait
+      // past HELD_MAX_CHARS: a warm run's hits frame without a turn of the
+      // event loop, and each frame waited for the next draw, out of
+      // stdout's pacing (`out-pace.ts`).
+      if (holds > 0 || dead || pendingChars >= HELD_MAX_CHARS) draw()
       else frame()
     },
     writeTo(target, chunk) {
@@ -390,13 +397,13 @@ export function createOutputWriter(
       // Held stdout is older than this chunk.
       flushHeld()
       if (!enabled) {
-        target.write(rawBytes(chunk))
+        noteWrite(target, target.write(rawBytes(chunk)))
         return
       }
       // What this stream holds is older than the chunk: it lands first,
       // with the region erased, and the region returns after the chunk.
       takeDown()
-      target.write(rawBytes(chunk))
+      noteWrite(target, target.write(rawBytes(chunk)))
       if (showable()) draw()
     },
     setStatus(line, o = {}) {
