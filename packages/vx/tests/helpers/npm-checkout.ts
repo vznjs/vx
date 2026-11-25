@@ -48,6 +48,24 @@ export function installFromCheckout(root: string, names: readonly string[]): voi
   // report no user sees. Its workspace links are the edges npm() reads.
   const lock = path.join(root, 'package-lock.json')
   if (!existsSync(lock)) writeFileSync(lock, `${JSON.stringify(npmWorkspaceLock(root), null, 2)}\n`)
+  linkMembers(root)
+}
+
+/**
+ * npm's links of `root`'s `packages/*` members: a project reads another
+ * through node_modules, as the examples' app imports `lib` (a35e6ff4f).
+ */
+function linkMembers(root: string): void {
+  const members = path.join(root, 'packages')
+  for (const dir of existsSync(members) ? readdirSync(members).sort() : []) {
+    const manifest = path.join(members, dir, 'package.json')
+    if (!existsSync(manifest)) continue
+    const { name } = JSON.parse(readFileSync(manifest, 'utf8')) as { name: string }
+    const at = path.join(root, 'node_modules', name)
+    if (existsSync(at)) continue
+    mkdirSync(path.dirname(at), { recursive: true })
+    symlinkSync(path.relative(path.dirname(at), path.join(members, dir)), at)
+  }
 }
 
 /** The workspace half of the lockfile npm 10 writes for `root`'s `packages/*` members. */
