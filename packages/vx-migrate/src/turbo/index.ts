@@ -21,7 +21,7 @@ import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
-import { gitIgnored, gitIgnoredUnder, trackedKinds } from '../tracked-outputs.js'
+import { trackedKinds } from '../tracked-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import {
   onceReader,
@@ -263,7 +263,7 @@ const textOf = (file: string): Promise<string> =>
  */
 async function run(root: string, projects: readonly ProjectMeta[]): Promise<AdoptionRun> {
   const dirs = [root, ...projects.map((m) => m.dir)]
-  const [metas, configs, yarnrc, rootManifest, hookConfigs, ignored] = await Promise.all([
+  const [metas, configs, yarnrc, rootManifest, hookConfigs] = await Promise.all([
     withManifests(projects),
     Promise.all(
       dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
@@ -272,10 +272,6 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
     textOf(path.join(root, 'package.json')),
     // Whether the manager runs `pre` / `post` hooks, so whether they fold.
     Promise.all(['.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f)))),
-    // A literal input git ignores is keyed by a probe: a `.gitignore` line
-    // over one is read by no other part of the key, and a kept mapping that
-    // missed it locked what a fresh clone maps differently.
-    gitIgnoredUnder(root, ['**']),
   ])
   const envNames = envNamesThatMap(configs, envNamesNow())
   // The tsconfigs a `tsc` script reads are the mapping's inputs too.
@@ -304,7 +300,6 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       // A config file added beside mapped tasks changes what an output may cover.
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
       JSON.stringify([...tsc.texts]),
-      JSON.stringify(ignored),
     ],
     map: (tracked) => mapAll(root, metas, envNames, tracked, tsc.read),
   }
@@ -340,7 +335,6 @@ async function mapAll(
     envMode: process.env['TURBO_ENV_MODE'] ?? '',
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: (rel) => configs.get(rel === '.' ? '' : rel) ?? null,
-    ignored: (rels) => gitIgnored(root, rels),
     buildInfo: (rel, command) => tscBuildInfo(read, path.join(root, rel), command),
     ownBuildInfo: (rel) => ownBuildInfo(read, path.join(root, rel)),
     tscReach: (rel, command) => {

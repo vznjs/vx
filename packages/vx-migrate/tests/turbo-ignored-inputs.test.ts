@@ -1,17 +1,13 @@
 // G-146: Turbo hashes a path turbo.json names whether git ignores it or
-// not. Core refuses a literal input git ignores, so a gitignored
-// `config.local.json` in globalDependencies ran every task uncached and a
-// task input `secret.local.txt` its task; a probe keys each now.
+// not. A gitignored `config.local.json` in globalDependencies and a task
+// input `secret.local.txt` stay literals, which core keys from disk.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { PackageMeta } from '../src/packages.js'
 import { lock, planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, ignoredFilesProbe } from '../src/dotenv-probe.js'
-import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
-import { ownSplice } from './helpers/turbo-own.js'
 
 const ws = useTurboWorkspace({
   globalDependencies: ['config.local.json'],
@@ -71,100 +67,49 @@ describe('turbo(): gitignored inputs named by path', () => {
     expect(await locked()).toBe(clean)
   }, 30_000)
 
-  // The kept mapping is keyed on what git ignores: a `.gitignore` line over a
-  // literal input moves it to a probe, and a kept mapping that missed the line
-  // locked what a fresh clone maps differently.
-  it('a new ignore rule over a literal input locks as a fresh mapping does', async () => {
+  // Whether git ignores a literal path can differ by machine: a `dir/` rule
+  // matches `out` only where the directory exists, and `.git/info/exclude`
+  // is not committed. Core keys a named ignored path from disk itself, so the
+  // lock holds the literal as written either way.
+  it('a literal input locks alike whether this machine ignores it or not', async () => {
     const root = ws.root
     const lib = path.join(root, 'packages', 'lib')
     await writeFile(
       path.join(root, 'turbo.json'),
-      JSON.stringify({ tasks: { gen: { inputs: ['src/**', 'gen.txt'], outputs: [] } } }),
+      JSON.stringify({
+        globalDependencies: ['conf.json'],
+        tasks: { gen: { inputs: ['src/**', 'out', 'gen.txt'], outputs: [] } },
+      }),
     )
     await writeFile(
       path.join(lib, 'package.json'),
       JSON.stringify({ name: 'lib', version: '1.0.0', scripts: { gen: 'cat gen.txt' } }),
     )
-    await writeFile(path.join(lib, 'gen.txt'), 'a\n')
-    Bun.spawnSync({ cmd: ['git', 'add', '-A', ':!packages/lib/gen.txt'], cwd: root })
+    await writeFile(path.join(root, '.gitignore'), 'dist\nout/\n')
+    Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
     const locked = async () => {
+      await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
       await lock(root)
       return Bun.file(path.join(root, '.vx', 'projects.lock')).text()
     }
-    await locked()
-    await writeFile(path.join(root, '.gitignore'), 'dist\ngen.txt\n')
-    const kept = await locked()
-    await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
-    expect(kept).toBe(await locked())
+    const clean = await locked()
+    await mkdir(path.join(lib, 'out'), { recursive: true })
+    await writeFile(path.join(lib, 'out', 'a.txt'), 'a\n')
+    await writeFile(path.join(lib, 'gen.txt'), 'a\n')
+    await writeFile(path.join(root, 'conf.json'), '{}\n')
+    await writeFile(path.join(root, '.git', 'info', 'exclude'), 'gen.txt\nconf.json\n')
+    expect(await locked()).toBe(clean)
   }, 30_000)
 })
 
-// A literal path git ignores leaves the file lists (core refuses one) and
-// is keyed by a probe; a tracked one and a glob stay files.
-describe('turbo-map: gitignored inputs named by path', () => {
+// The probe that keys an uncached producer's outputs (`dependencyOutputs`).
+describe('turbo-map: ignoredFilesProbe', () => {
   let dir: string
   beforeEach(async () => {
     dir = await mkdtemp(path.join(tmpdir(), 'vx-turbo-ignored-'))
   })
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true })
-  })
-
-  it('probes each ignored literal, from the list that named it, and asks only for literals', async () => {
-    await writeFile(
-      path.join(dir, 'turbo.json'),
-      JSON.stringify({
-        globalDependencies: ['config.local.json', 'tsconfig.json', 'certs/*.pem'],
-        tasks: {
-          build: {
-            inputs: ['src/**', 'secret.local.txt', '$TURBO_ROOT$/root.local', 'README.md'],
-          },
-          only: { inputs: ['secret.local.txt', '!x/**'] },
-        },
-      }),
-    )
-    const pkgDir = path.join(dir, 'packages', 'a')
-    await mkdir(pkgDir, { recursive: true })
-    const scripts = { build: 'b', only: 'o' }
-    const metas: PackageMeta[] = [
-      { name: 'a', dir: pkgDir, packageJson: { name: 'a', scripts } as never, configPath: null },
-    ]
-    const asked: string[][] = []
-    const ignore = new Set(['config.local.json', 'packages/a/secret.local.txt', 'root.local'])
-    const m = await mapTurboWorkspace(dir, metas, {
-      splice: ownSplice,
-      persistentTodo: 'PERSIST',
-      ignored: async (rels) => {
-        asked.push([...rels].sort())
-        return new Set(rels.filter((r) => ignore.has(r)))
-      },
-    })
-    const inputs = Object.fromEntries(
-      m.projects[0]!.tasks.map((t) => [t.name, (t.task as { inputs: unknown }).inputs]),
-    )
-    expect({ globals: m.globals.inputs, asked, inputs }).toEqual({
-      globals: ['tsconfig.json', 'certs/*.pem'],
-      asked: [
-        ['config.local.json', 'tsconfig.json'],
-        ['config.local.json', 'packages/a/README.md', 'packages/a/secret.local.txt', 'root.local'],
-      ],
-      inputs: {
-        build: {
-          files: ['src/**', 'README.md', 'package.json'],
-          workspaceFiles: ['tsconfig.json', 'certs/*.pem'],
-          workspaceRuntime: [
-            ignoredFilesProbe(['config.local.json', 'packages/a/secret.local.txt', 'root.local']),
-          ],
-        },
-        only: {
-          files: ['!x/**', 'package.json'],
-          workspaceFiles: ['tsconfig.json', 'certs/*.pem'],
-          workspaceRuntime: [
-            ignoredFilesProbe(['config.local.json', 'packages/a/secret.local.txt']),
-          ],
-        },
-      },
-    })
   })
 
   // Core keys a probe on its output trimmed (cache/inputs.ts), so each

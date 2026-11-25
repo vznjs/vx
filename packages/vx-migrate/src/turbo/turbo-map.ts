@@ -317,11 +317,6 @@ export interface MapTurboOptions {
    */
   ownConfig?: (rel: string) => string | null
   /**
-   * Which root-relative paths git ignores (`gitIgnored`): an input named by
-   * path among them is keyed by a probe. Absent, none is.
-   */
-  ignored?: (rels: readonly string[]) => Promise<ReadonlySet<string>>
-  /**
    * The `.tsbuildinfo` files a root-relative package's command writes,
    * relative to the package (`tscBuildInfo`). Absent, none.
    */
@@ -337,17 +332,6 @@ export interface MapTurboOptions {
    */
   tscReach?: (rel: string, command: string) => string | null
 }
-
-/**
- * A cacheable task's inputs and what its turbo.json names literally: each
- * path root-relative, and the list and entry that name it (none: a global
- * already left out).
- */
-interface Literals {
-  readonly inputs: Record<string, unknown>
-  readonly rels: ReadonlyMap<string, Named>
-}
-type Named = readonly ['files' | 'workspaceFiles' | null, string]
 
 /**
  * X for a Turbo glob `X/**` whose X has a wildcard, else null. Turbo's
@@ -410,29 +394,6 @@ const turboGlobstar = (glob: string): string =>
 
 /** No glob syntax: one path, which git may ignore. */
 const isLiteral = (glob: string): boolean => !/[*?[\]{}()!]/.test(glob)
-
-/**
- * Keys gitignored paths (root-relative, with what names them) by a probe and takes
- * their entries out of the file lists. A global one was never put there.
- */
-function keyIgnored(
-  inputs: Record<string, unknown>,
-  hits: readonly (readonly [string, Named])[],
-): void {
-  for (const kind of ['files', 'workspaceFiles'] as const) {
-    const list = inputs[kind] as unknown[] | undefined
-    const entries = new Set(hits.flatMap(([, [k, e]]) => (k === kind ? [e] : [])))
-    if (list === undefined || entries.size === 0) continue
-    const kept = list.filter((e) => typeof e !== 'string' || !entries.has(e))
-    // Exclusions left alone narrow nothing core will take.
-    const left = kept.some((e) => typeof e !== 'string' || !e.startsWith('!')) ? kept : []
-    if (kind === 'files') inputs['files'] = left
-    else if (left.length > 0) inputs['workspaceFiles'] = left
-    else delete inputs['workspaceFiles']
-  }
-  const probes = (inputs['workspaceRuntime'] as unknown[] | undefined) ?? []
-  inputs['workspaceRuntime'] = [...probes, ignoredFilesProbe(hits.map(([rel]) => rel))]
-}
 
 async function readTurboJson(file: string, root: string): Promise<TurboJson> {
   const text = await Bun.file(file).text()
@@ -1074,15 +1035,6 @@ export async function mapTurboWorkspace(
     ...microfrontendsConfigs(root, [root, ...metas.map((m) => m.dir)]).map((c) => c.rel),
   ]
   const rootDotenv = opts.ownOnly ? [] : globalFiles.filter((f) => isDotenvGlob(f))
-  // Turbo globs an explicit input on the disk, gitignored or not. Core
-  // refuses a literal input git ignores (it would key nothing), so a
-  // `config.local.json` in globalDependencies ran every task uncached: a
-  // probe keys each such path instead. One `git check-ignore` per kind.
-  const globalIgnored = opts.ownOnly
-    ? []
-    : [...(await (opts.ignored?.(globalFiles.filter(isLiteral)) ?? new Set<string>()))].filter(
-        (f) => !isDotenvGlob(f),
-      )
   const dropped = opts.ownOnly
     ? (['globalDependencies', 'globalDotEnv', 'globalEnv', 'globalPassThroughEnv'] as const)
         .filter((f) => (rootCfg[f]?.length ?? 0) > 0)
@@ -1091,7 +1043,7 @@ export async function mapTurboWorkspace(
   const globals = opts.ownOnly
     ? { inputs: [], env: [], pass: [] }
     : {
-        inputs: globalFiles.filter((f) => !isDotenvGlob(f) && !globalIgnored.includes(f)),
+        inputs: globalFiles.filter((f) => !isDotenvGlob(f)),
         env: [
           // Turbo's defaults sit before the user's list, so its `!` takes them back.
           ...envNames('globalEnv', [...TURBO_DEFAULT_ENV, ...(rootCfg.globalEnv ?? [])]),
@@ -1462,7 +1414,6 @@ export async function mapTurboWorkspace(
   // Turbo 2.11's `global.inputs` joins each task's own inputs, where its
   // `!` entries reach them; `globalDependencies` is hashed apart.
   const globalPrepended = new Set(opts.ownOnly ? [] : (rootCfg.global?.inputs ?? []))
-  const literals = { tasks: [] as Literals[], globalIgnored, globalPrepended }
   for (const meta of metas) {
     const scripts = packageScripts(meta)
     const own = runnable.get(meta.name)!
@@ -1496,7 +1447,7 @@ export async function mapTurboWorkspace(
         tasks.push(
           keyOnlyGroup(
             buildTask(
-              literals,
+              globalPrepended,
               name,
               noop ? { ...defFor(name)!, outputs: [] } : defFor(name)!,
               'true',
@@ -1530,7 +1481,7 @@ export async function mapTurboWorkspace(
             }
           : defFor(name)!
         const t = buildTask(
-          literals,
+          globalPrepended,
           name,
           groupDef,
           '',
@@ -1592,7 +1543,7 @@ export async function mapTurboWorkspace(
         )
       if (defFor(name)!['interruptible'] === true) interruptible.push(`${meta.name}#${name}`)
       const mapped = buildTask(
-        literals,
+        globalPrepended,
         name,
         defFor(name)!,
         command,
@@ -1710,16 +1661,6 @@ export async function mapTurboWorkspace(
           : [d.includes('#') ? d : `${meta.name}#${d}`]
       if (deps.some((d) => ids(d).some((i) => unfold.has(i))))
         inputs['tasks'] = [...deps, ...[...unfold].map((i) => `!${i}`)]
-    }
-  }
-
-  if (opts.ignored !== undefined) {
-    const ignored = await opts.ignored([
-      ...new Set(literals.tasks.flatMap((l) => [...l.rels.keys()])),
-    ])
-    for (const { inputs, rels } of literals.tasks) {
-      const hits = [...rels].filter(([rel]) => ignored.has(rel))
-      if (hits.length > 0) keyIgnored(inputs, hits)
     }
   }
 
@@ -2068,11 +2009,7 @@ const undefinedTaskTodo = (d: string): string =>
   `dependsOn ${JSON.stringify(d)}: turbo.json defines no "${d.replace(/^\^/, '')}" task, which Turbo refuses — edge dropped`
 
 function buildTask(
-  literals: {
-    readonly tasks: Literals[]
-    readonly globalIgnored: readonly string[]
-    readonly globalPrepended: ReadonlySet<string>
-  },
+  globalPrepended: ReadonlySet<string>,
   name: string,
   def: TurboTask,
   command: string,
@@ -2308,8 +2245,6 @@ function buildTask(
   // The task's own root-relative inputs; globalDependencies, root-relative
   // by definition, join them in inputs.workspaceFiles.
   const wsFiles: string[] = []
-  // Root-relative path → the entry naming it.
-  const rels = new Map<string, Named>(literals.globalIgnored.map((f) => [f, [null, f]]))
   const atRoot = pkgDir === '' || pkgDir === '.'
   if (def.inputs === undefined || def.inputs.length === 0) {
     // Turbo's default input set is every package file, and an empty `inputs` is
@@ -2348,11 +2283,8 @@ function buildTask(
       }
       if (body.startsWith('$TURBO_ROOT$/')) {
         wsFiles.push(...withZeroSegments((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length)))
-        const rel = body.slice('$TURBO_ROOT$/'.length)
-        if (!neg) rels.set(rel, ['workspaceFiles', rel])
       } else if (up !== null) {
         wsFiles.push(...withZeroSegments(up))
-        if (!neg) rels.set(up, ['workspaceFiles', up])
       } else if (body.startsWith('../')) {
         todos.push(`input ${JSON.stringify(i)}: leaves the workspace — map manually`)
       } else if (i.includes('$TURBO_ROOT$')) {
@@ -2363,8 +2295,6 @@ function buildTask(
       } else {
         // Unkeyed, a root file edit `*\/**` reaches in Turbo replayed a stale hit.
         files.push(...withZeroSegments(translated))
-        const rel = path.posix.join(atRoot ? '.' : pkgDir, body)
-        if (!neg) rels.set(rel, [atRoot ? 'workspaceFiles' : 'files', translated])
       }
     }
     // Turbo keys the package's own package.json beside any explicit
@@ -2396,7 +2326,7 @@ function buildTask(
   // replayed green after a member file broke. A root task's globs are the
   // workspace's, outputs too.
   const head = atRoot ? files.splice(0) : []
-  const joined = (g: string) => literals.globalPrepended.has(g)
+  const joined = (g: string) => globalPrepended.has(g)
   const [apartKept, ownKept] = apartTakeBacks<unknown>(
     globals.inputs.filter((g) => !joined(g)),
     [...globals.inputs.filter(joined), ...head, ...wsFiles],
@@ -2419,8 +2349,6 @@ function buildTask(
   if (keyEnv.length > 0) inputs['env'] = keyEnv
   if (pkgDotenv) inputs['runtime'] = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
   if (wsDotenv.length > 0) inputs['workspaceRuntime'] = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]
-  for (const rel of rels.keys()) if (!isLiteral(rel)) rels.delete(rel)
-  literals.tasks.push({ inputs, rels })
   // Turbo keys every task on its inputs, cached or not, and a dependant
   // folds that key: an uncached task's inputs still move its dependants.
   task['inputs'] = inputs

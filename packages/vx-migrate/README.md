@@ -372,10 +372,10 @@ Rules:
 
 </details>
 
-**Gitignored inputs.** A gitignored file an input names by path is keyed by a probe, as Turbo hashes it.
+**Gitignored inputs.** A gitignored file an input names by path is keyed, as Turbo hashes it. The path stays as written and core reads it from disk.
 
 - An ignored file under a glob is not an input. Turbo walks an explicit glob on disk, ignored files and all; vx's globs skip them, as core's do.
-- The lock is committed and an ignored file is on one machine only, so the lock never names one.
+- The lock is committed and an ignored file is on one machine only, so the lock never depends on one.
 - To key one, name it in the input (`src/env.local`) or commit it. `vx lock` names one a glob's last segment matches.
 
 **A glued `**`.** A `**` glued to text in an input, output or `globalDependencies` glob is read as Turbo reads it.

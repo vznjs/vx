@@ -38,7 +38,6 @@ async function globals(field: 'pipeline' | 'tasks'): Promise<readonly string[]> 
   const m = await mapTurboWorkspace(dir, metas, {
     splice: (_k, v) => v,
     persistentTodo: 'PERSIST',
-    ignored: async () => new Set(),
   })
   return m.globals.inputs
 }
