@@ -235,3 +235,97 @@ it('a frame read while others write reads its own output, not a compacted file',
   a.release()
   spool.end()
 })
+
+/** 256 MiB of others' output past one task still holding its own. */
+function othersPast(spool: OutputSpool): void {
+  const mib = 'z'.repeat(1024 * 1024 - 1) + '\n'
+  for (let i = 0; i < 128; i++) {
+    const t = new TaskOutput(spool)
+    t.push(mib, false)
+    t.push(mib, false)
+    t.release()
+  }
+}
+
+it("a compaction opens its file only where the spool's is, and never retries each write", () => {
+  // os.tmpdir() is RAM on many CI images; and a disk that refused one
+  // compaction was asked again at every 64 KiB written.
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-spool-'))
+  dirs.push(dir)
+  const real = fs.openSync
+  const opens: string[] = []
+  const open = spyOn(fs, 'openSync').mockImplementation(((p: string, ...rest: never[]) => {
+    opens.push(p)
+    if (opens.length > 1) throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' })
+    return (real as (...a: unknown[]) => number)(p, ...rest)
+  }) as typeof fs.openSync)
+  try {
+    const spool = new OutputSpool()
+    spool.in(path.join(dir, 'cache'))
+    const long = new TaskOutput(spool)
+    long.push('still running\n'.repeat(10_000), false)
+    othersPast(spool)
+    const tmp = opens.filter((p) => !p.startsWith(path.join(dir, 'cache')))
+    expect(tmp).toEqual([])
+    expect(opens.length).toBeLessThan(8)
+    long.release()
+    spool.end()
+  } finally {
+    open.mockRestore()
+  }
+})
+
+it('a long chunk the disk refused leaves nothing of its batch in the file', () => {
+  const real = fs.writeSync
+  const write = spyOn(fs, 'writeSync').mockImplementation(((
+    fd: number,
+    b: Buffer,
+    ...rest: never[]
+  ) => {
+    if (b.length > 4 * 1024 * 1024) throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' })
+    return (real as (...a: unknown[]) => number)(fd, b, ...rest)
+  }) as typeof fs.writeSync)
+  try {
+    const spool = new OutputSpool()
+    const t = new TaskOutput(spool)
+    const big = 'b'.repeat(5 * 1024 * 1024)
+    t.push('small\n', false)
+    t.push(big, false)
+    expect(spool.current.size).toBe(0)
+    expect([...t.chunks()].map((c) => c.text).join('') === `small\n${big}`).toBe(true)
+    t.release()
+    spool.end()
+  } finally {
+    write.mockRestore()
+  }
+})
+
+for (const [kind, big, size] of [
+  ['UTF-8', 'é'.repeat(5 * 1024 * 1024), 10 * 1024 * 1024],
+  // Not well-formed: kept as UTF-16, read back in whole units.
+  ['UTF-16', `x${'\ud800a'.repeat(2.5 * 1024 * 1024)}`, 10 * 1024 * 1024 + 2],
+] as const)
+  it(`a record longer than one read is read once, not its first read's worth twice (${kind})`, () => {
+    const spool = new OutputSpool()
+    const t = new TaskOutput(spool)
+    t.push(big, false)
+    t.push('tail\n', true)
+    let bytes = 0
+    const real = fs.readSync
+    const read = spyOn(fs, 'readSync').mockImplementation(((...a: unknown[]) => {
+      const n = (real as (...b: unknown[]) => number)(...a)
+      bytes += n
+      return n
+    }) as typeof fs.readSync)
+    try {
+      const got = [...t.chunks()]
+      expect(got.map((c) => c.text).join('') === `${big}tail\n`).toBe(true)
+      expect(got.at(-1)!.err).toBe(true)
+      // The record and two heads, read once each.
+      expect(bytes).toBeLessThan(size + 64 * 1024)
+    } finally {
+      read.mockRestore()
+    }
+    t.release()
+    spool.end()
+  })

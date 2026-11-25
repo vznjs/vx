@@ -49,20 +49,29 @@ class RecordFile {
   private wbuf = Buffer.allocUnsafe(64 * 1024)
   private rbuf: Buffer | null = Buffer.allocUnsafe(64 * 1024)
 
-  private constructor(private readonly fd: number) {}
+  private constructor(
+    private readonly fd: number,
+    /** The directory it opened in. */
+    readonly dir: string,
+  ) {}
 
-  /** A new file in `dir`, else in the temporary directory; null where both refuse. */
-  static open(dir: string | undefined): RecordFile | null {
-    for (const at of dir === undefined ? [os.tmpdir()] : [dir, os.tmpdir()]) {
+  /** A new file in the first of `dirs` that takes one; null where all refuse. */
+  static open(dirs: readonly string[]): RecordFile | null {
+    for (const at of dirs) {
       const file = path.join(at, `.vx-output-${process.pid}-${randomUUID()}`)
       try {
         fs.mkdirSync(at, { recursive: true })
         const fd = fs.openSync(file, 'wx+', 0o600)
         fs.unlinkSync(file)
-        return new RecordFile(fd)
+        return new RecordFile(fd, at)
       } catch {}
     }
     return null
+  }
+
+  /** `dir`, else the temporary directory. */
+  static in(dir: string | undefined): RecordFile | null {
+    return RecordFile.open(dir === undefined ? [os.tmpdir()] : [dir, os.tmpdir()])
   }
 
   /** `chunks` in one write. False when the file refused it (a full disk); the file is as before. */
@@ -73,7 +82,16 @@ class RecordFile {
     if (total > this.wbuf.length)
       if (total > READ_BYTES) {
         // A long chunk (a hit's replayed log) is written as it is, not copied.
-        for (const c of chunks) if (!this.append1(c)) return false
+        const from = this.size
+        for (const c of chunks)
+          if (!this.append1(c)) {
+            // The batch's records written before it would lie unread.
+            this.size = from
+            try {
+              fs.ftruncateSync(this.fd, from)
+            } catch {}
+            return false
+          }
         return true
       } else
         this.wbuf = Buffer.allocUnsafe(Math.min(READ_BYTES, Math.max(total, this.wbuf.length * 2)))
@@ -173,7 +191,16 @@ class RecordFile {
             // character cut between them. `ignoreBOM`: a chunk that starts with
             // U+FEFF keeps it.
             const utf8 = enc === 'utf8' ? new TextDecoder('utf-8', { ignoreBOM: true }) : null
-            at = body
+            // What the head's read took of it already: UTF-16 whole units.
+            let k = Math.max(0, end - body)
+            if (utf8 === null) k &= ~1
+            const first = buf.subarray(body - start, body - start + k)
+            at = body + k
+            if (k > 0) {
+              const piece =
+                utf8 === null ? first.toString('utf16le') : utf8.decode(first, { stream: true })
+              if (piece.length > 0) yield { text: piece, err }
+            }
             while (at < stop) {
               const n = Math.min(READ_BYTES, stop - at)
               if (n > buf.length) buf = Buffer.allocUnsafe(READ_BYTES)
@@ -237,6 +264,9 @@ export class OutputSpool {
   private live = 0
   /** Reads in flight: a paced frame is read while the run writes on, and a compaction would close its file. */
   reading = 0
+  // The size past which the file is compacted: after a compaction the disk
+  // refused, twice the size then, or every 64 KiB written asked it again.
+  private compactPast = COMPACT_BYTES
   private ended = false
   private dir: string | undefined
 
@@ -252,7 +282,7 @@ export class OutputSpool {
 
   /** The file, `task` a holder of it; null where none can be opened. */
   hold(task: TaskOutput): RecordFile | null {
-    if (this.file === undefined) this.file = RecordFile.open(this.dir)
+    if (this.file === undefined) this.file = RecordFile.in(this.dir)
     if (this.file !== null) this.holders.add(task)
     return this.file
   }
@@ -266,7 +296,11 @@ export class OutputSpool {
   wrote(n: number): void {
     this.live += n
     const file = this.file!
-    if (this.reading === 0 && file.size > COMPACT_BYTES && (file.size - this.live) * 2 >= file.size)
+    if (
+      this.reading === 0 &&
+      file.size > this.compactPast &&
+      (file.size - this.live) * 2 >= file.size
+    )
       this.compact()
   }
 
@@ -275,6 +309,7 @@ export class OutputSpool {
     this.live -= task.bytes
     if (this.holders.size > 0) return
     this.live = 0
+    this.compactPast = COMPACT_BYTES
     if (!this.ended) this.file!.reset()
     else this.close()
   }
@@ -292,15 +327,19 @@ export class OutputSpool {
 
   /** Each holder's records copied, back to back, into a new file that replaces this one. */
   private compact(): void {
-    const next = RecordFile.open(this.dir)
-    if (next === null) return
+    // Where the file is: never memory (os.tmpdir() on many CI images) for a disk that is full.
+    const next = RecordFile.open([this.file!.dir])
+    const refused = (): void => {
+      this.compactPast = this.file!.size * 2
+    }
+    if (next === null) return refused()
     const moved = new Map<TaskOutput, number[]>()
     for (const t of this.holders) {
       const at = next.size
       for (let i = 0; i < t.runs.length; i += 2)
         if (!next.copy(this.file!, t.runs[i]!, t.runs[i + 1]!)) {
           next.close()
-          return
+          return refused()
         }
       moved.set(t, at === next.size ? [] : [at, next.size])
     }
@@ -308,6 +347,7 @@ export class OutputSpool {
     this.file!.close()
     this.file = next
     this.live = next.size
+    this.compactPast = COMPACT_BYTES
   }
 }
 
@@ -545,7 +585,7 @@ export class DeferredFrames {
 
   /** A frame's `pieces`, and the annotation that heads it. */
   add(note: string, pieces: Iterable<string>): void {
-    if (this.file === undefined) this.file = RecordFile.open(this.spool.where)
+    if (this.file === undefined) this.file = RecordFile.in(this.spool.where)
     const file = this.file
     const entry: (typeof this.entries)[number] = {
       from: file?.size ?? 0,

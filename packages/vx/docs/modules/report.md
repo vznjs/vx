@@ -158,7 +158,10 @@ unlinked as soon as it is open so a crash leaves nothing behind; each
 task (`TaskOutput`) keeps only where its records lie, read back head and
 body in one read. Past 64 MiB, a file at least half released is
 compacted into a new one, so a task that runs long keeps only its own
-output on disk, not the run's. With no task holding it the file is
+output on disk, not the run's. The new file opens only where the old
+one is (never `os.tmpdir()`, RAM on many CI images), and a compaction
+the disk refused waits until the file doubles; a batch the disk refused
+is cut from the file, not left in it unread. With no task holding it the file is
 written from its start again, and it closes when the run is done (a
 logger per `vx watch` cycle kept one open). A read that fails (EIO, a
 file cut short) ends the frame's output with a line saying so; the
