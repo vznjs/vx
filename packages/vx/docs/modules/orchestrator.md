@@ -3032,18 +3032,6 @@ export function openRemotes(
   ci: boolean,
   secrets: SecretBroker,
 ): Promise<boolean>
-// The config `vx lock` would find at the directory `name` reads as, or in an unlocked directory whose package.json is named `name`, where no project is: a run and `vx show` refuse with "run `vx lock`"
-export function unlockedDir(
-  name: string,
-  metas: ReadonlyArray<{ dir: string }>,
-  workspaceRoot: string,
-): Promise<string | undefined>
-// The locked project whose package.json took `name` since the lock, asked only on a refusal
-export function renamedSinceLock(
-  name: string,
-  metas: ReadonlyArray<{ name: string; dir: string }>,
-  workspaceRoot: string,
-): Promise<string | undefined>
 ```
 
 ### Steps

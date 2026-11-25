@@ -3661,24 +3661,12 @@ So a config that reads the environment keeps its lock-time values.
   lists all.
 - `vx lock` and `vx lock --check` refuse there too, naming the same
   command: the lock they wrote would drop those projects.
-- A config added since the lock is no project until `vx lock`. Naming
-  its task says so:
-  ``web#build: packages/web/vx.config.ts is not in the lock yet — run `vx lock` ``
-- A run from its directory says `packages/web/vx.config.ts is not in the
-lock yet`, where it ran the locked project around it.
-- So do `--filter ./packages/web`, `--filter web`, `vx show web` and
-  `vx show web#build`, `web` its directory or its `package.json` name.
-- A project keeps its locked name until `vx lock`. Naming it by the name
-  its `package.json` took since says so:
-  ``web2#build: packages/web/package.json names it "web2", the lock "web" — run `vx lock` ``
-- So do `--filter web2`, `vx show web2` and `vx show web2#build`. A
-  project named by its path is never hinted this way.
-- So does `--all`, for any config git lists (tracked or not) in a
-  directory the lock holds no config for.
-- `--all` leaves out ignored configs and ones under a nested workspace.
-  It costs one `git ls-files`, which a filtered run does not pay.
-- So does a bare `build` that the cwd's project or a `--filter` leaves
-  unresolved, while a selected project holds such a config.
+- A config added since the lock is no project until `vx lock`: a run
+  never looks for one.
+- `--all` runs the locked projects; a run from its directory runs the
+  locked project around it; naming it is an unknown project.
+- A project keeps its locked name until `vx lock`; a run reads no
+  `package.json`.
 - An entry edited by hand into a shape `vx lock` could not write fails the
   run: ``.vx/projects.lock is invalid, run `vx lock` ``.
 - So does a key `vx lock` never writes, in an entry or the first line:
@@ -5124,8 +5112,6 @@ A `tags` column appears when any project has tags.
   build.
 - `vx show bare`: a package nothing configured reaches lists no task, and
   `vx run bare#build` refuses it.
-- `vx.config.ts not locked — run vx lock`: a config written after the
-  lock. It shows in the list and in `vx show <project>`'s `config` row.
 - On a terminal too narrow for the list, `tags` goes, then `dir`.
 - `--format json`: an array of `{ name, dir, tags: string[], tasks: string[], defaultBuild: boolean }`. `defaultBuild` is true where the text says `default build`.
 

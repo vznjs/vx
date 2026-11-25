@@ -1,19 +1,83 @@
-// `c#build` where c's vx.config came after the lock ran c's default
-// `build`: 0 tasks, exit 0, while a renamed task gets "run `vx lock`"
-// (Growth, lock drift L2). It is that config's task: refused, with the fix.
+// A config the lock does not hold is not there for a run (owner, 2026-11-25:
+// "Not in lock not there"). A run never looks for one: `--all`, the cwd, a
+// `project#task`, a filter and `vx show` see only the lock's projects, with
+// no "not in the lock yet" refusal. `vx lock` makes it a project.
+import { mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { expect, it } from 'bun:test'
+import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { PARITY_TIMEOUT as TIMEOUT } from './helpers/parity.js'
 import { BIN, vx as spawnVx } from './helpers/vx.js'
 
 // The bare CLI: the test helper's `vx` locks before each run.
-
 const vx = (cwd: string, args: string[]) => spawnVx(cwd, args, { bin: BIN })
 
+// Each task leaves `ran-<word>` in the system temp dir's `marks`: a run's
+// output shows no task's when several run.
+const marks = path.join(tmpdir(), `vx-unlocked-marks-${process.pid}`)
+const build = (word: string) =>
+  `export default { tasks: { build: { exec: { command: 'touch ${marks}/ran-${word}' } } } }\n`
+
+/** The `ran-*` marks tasks left since the last call, which clears them. */
+function ran(): string[] {
+  const found = readdirSync(marks).sort()
+  for (const f of found) rmSync(path.join(marks, f))
+  return found
+}
+
+beforeAll(() => mkdirSync(marks, { recursive: true }))
+afterAll(() => rmSync(marks, { recursive: true, force: true }))
+
 it(
-  'naming a task in a config the lock has not seen asks for `vx lock`',
+  'an --all run with a config the lock lacks runs the locked projects, green',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-unlocked-all-', edges: {} })
+    try {
+      await addProject(root, 'd', { config: build('d') })
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      await addProject(root, 'c', { config: build('c') })
+      const r = await vx(root, ['run', 'build', '--all', '--no-cache'])
+      expect({ code: r.code, ran: ran(), lock: r.text.includes('vx lock') }).toEqual({
+        code: 0,
+        ran: ['ran-d'],
+        lock: false,
+      })
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      const after = await vx(root, ['run', 'build', '--all', '--no-cache'])
+      expect({ code: after.code, ran: ran() }).toEqual({
+        code: 0,
+        ran: ['ran-c', 'ran-d'],
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)
+
+it(
+  'a run from a directory whose config the lock lacks runs the locked project above it',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-unlocked-cwd-', workspaceFile: false })
+    try {
+      await writeFile(path.join(root, 'vx.config.mjs'), build('root'))
+      expect((await vx(root, ['lock'])).code).toBe(0)
+      const dir = path.join(root, 'packages', 'n')
+      await mkdir(dir, { recursive: true })
+      await writeFile(path.join(dir, 'vx.config.mjs'), build('n'))
+      const r = await vx(dir, ['run', 'build', '--no-cache'])
+      expect({ code: r.code, ran: ran() }).toEqual({ code: 0, ran: ['ran-root'] })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)
+
+it(
+  "naming a locked config-less project whose config came after the lock runs the lock's build",
   async () => {
     // `d` depends on `c`: a configured dependant gives config-less `c` its default build.
     const root = await makeWorkspace({ prefix: 'vx-unlocked-config-', edges: { d: ['c'] } })
@@ -21,50 +85,13 @@ it(
       const dir = await addProject(root, 'c', {})
       await addProject(root, 'd', { config: 'export default { tasks: {} }\n' })
       expect((await vx(root, ['lock'])).code).toBe(0)
-      // CONTROL: with no config, `c#build` names the default build.
-      expect((await vx(root, ['run', 'c#build'])).code).toBe(0)
-      await writeFile(
-        path.join(dir, 'vx.config.mjs'),
-        "export default { tasks: { build: { exec: { command: 'echo c' } } } }\n",
-      )
-      const r = await vx(root, ['run', 'c#build'])
-      expect(r.code).toBe(1)
-      expect(r.text).toContain(
-        'c#build: packages/c/vx.config.mjs is not in the lock yet — run `vx lock`',
-      )
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  },
-  TIMEOUT,
-)
-
-it(
-  'a scoped bare task in a project whose config the lock has not seen asks for `vx lock`',
-  async () => {
-    // From c's directory, or `--filter c`, the run said only projects
-    // outside the selection declare build and to pass --all, which skips
-    // c too: its config is no project config until it is locked.
-    const root = await makeWorkspace({ prefix: 'vx-unlocked-scoped-', edges: {} })
-    try {
-      const dir = await addProject(root, 'c', {})
-      await addProject(root, 'd', {
-        config: "export default { tasks: { build: { exec: { command: 'echo d' } } } }\n",
+      await writeFile(path.join(dir, 'vx.config.mjs'), build('c'))
+      const r = await vx(root, ['run', 'c#build', '--no-cache'])
+      expect({ code: r.code, ran: ran(), lock: r.text.includes('not in the lock') }).toEqual({
+        code: 0,
+        ran: [],
+        lock: false,
       })
-      expect((await vx(root, ['lock'])).code).toBe(0)
-      await writeFile(
-        path.join(dir, 'vx.config.mjs'),
-        "export default { tasks: { build: { exec: { command: 'echo c' } } } }\n",
-      )
-      for (const r of [
-        await vx(dir, ['run', 'build']),
-        await vx(root, ['run', 'build', '--filter', 'c']),
-      ]) {
-        expect(r.code).toBe(1)
-        // From c's directory the cwd check says it first, without the `build:` lead.
-        expect(r.text).toContain('packages/c/vx.config.mjs is not in the lock yet — run `vx lock`')
-        expect(r.text).not.toContain('outside the selection')
-      }
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -72,174 +99,28 @@ it(
   TIMEOUT,
 )
 
-// From an unlocked config's own directory the run fell under the locked
-// root project and ran ROOT's build, exit 0.
 it(
-  "a run from a directory whose config the lock has not seen asks for `vx lock`, not the parent's task",
+  'a directory or package whose config came after the lock is no project to name',
   async () => {
-    const root = await makeWorkspace({ prefix: 'vx-unlocked-cwd-', workspaceFile: false })
+    const root = await makeWorkspace({ prefix: 'vx-unlocked-dir-', edges: {} })
     try {
-      await writeFile(
-        path.join(root, 'vx.config.mjs'),
-        "export default { tasks: { build: { exec: { command: 'echo ROOT-ran' } } } }\n",
-      )
+      await addProject(root, 'a', { config: build('a') })
       expect((await vx(root, ['lock'])).code).toBe(0)
-      const dir = path.join(root, 'packages', 'n')
-      await mkdir(dir, { recursive: true })
-      // CONTROL: a plain subdirectory of the root project runs the root's task.
-      const control = await vx(dir, ['run', 'build'])
-      expect(control.code).toBe(0)
-      expect(control.text).toContain('ROOT-ran')
-      await writeFile(
-        path.join(dir, 'vx.config.mjs'),
-        "export default { tasks: { build: { exec: { command: 'echo N-ran' } } } }\n",
-      )
-      const r = await vx(dir, ['run', 'build'])
-      expect(r.text).not.toContain('ROOT-ran')
-      expect(r.text).toContain('packages/n/vx.config.mjs is not in the lock yet — run `vx lock`')
-      expect(r.code).toBe(1)
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  },
-  TIMEOUT,
-)
-
-// A lock that held no config at all made the hint "run `vx init`", false.
-it(
-  'a bare task from a project whose config the lock has not seen asks for `vx lock`, not `vx init`',
-  async () => {
-    const root = await makeWorkspace({ prefix: 'vx-unlocked-bare-', edges: {} })
-    try {
-      const dir = await addProject(root, 'c', {})
-      expect((await vx(root, ['lock'])).code).toBe(0)
-      await writeFile(
-        path.join(dir, 'vx.config.mjs'),
-        "export default { tasks: { build: { exec: { command: 'echo c' } } } }\n",
-      )
-      const r = await vx(dir, ['run', 'build'])
-      expect(r.code).toBe(1)
-      expect(r.text).not.toContain('vx init')
-      expect(r.text).toContain('packages/c/vx.config.mjs is not in the lock yet — run `vx lock`')
-      // From the root, whose own directory holds no config, the hint says the same.
-      const all = await vx(root, ['run', 'build', '--all'])
-      expect(all.code).toBe(1)
-      expect(all.text).not.toContain('vx init')
-      expect(all.text).toContain('packages/c/vx.config.mjs is not in the lock yet — run `vx lock`')
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  },
-  TIMEOUT,
-)
-
-// With no discover plugin a new directory is no project at all, so the
-// check above, which asks only projects, never saw it: `packages/d#build`
-// said no project declares it and offered `packages/a#build`, a root
-// `c#build` listed the projects.
-it(
-  'naming a task of a directory whose config came after the lock asks for `vx lock`',
-  async () => {
-    const root = await makeWorkspace({ prefix: 'vx-unlocked-dir-', workspaceFile: false })
-    try {
-      for (const p of ['a', 'b'])
-        await addProject(
-          root,
-          p,
-          `export default { tasks: { build: { exec: { command: 'echo ${p}' } } } }\n`,
-        )
-      expect((await vx(root, ['lock'])).code).toBe(0)
-      const config = "export default { tasks: { build: { exec: { command: 'echo new' } } } }\n"
-      await mkdir(path.join(root, 'packages', 'd'), { recursive: true })
-      await writeFile(path.join(root, 'packages', 'd', 'vx.config.mjs'), config)
       await mkdir(path.join(root, 'c'), { recursive: true })
-      await writeFile(path.join(root, 'c', 'vx.config.mjs'), config)
-      const d = await vx(root, ['run', 'packages/d#build'])
-      expect(d.text).toContain(
-        'packages/d#build: packages/d/vx.config.mjs is not in the lock yet — run `vx lock`',
-      )
-      expect(d.text).not.toContain('packages/a#build')
-      expect(d.code).toBe(1)
-      const c = await vx(root, ['run', 'c#build'])
-      expect(c.text).toContain('c#build: c/vx.config.mjs is not in the lock yet — run `vx lock`')
-      expect(c.code).toBe(1)
-      // CONTROL: a directory with no config is still no project.
-      const e = await vx(root, ['run', 'e#build'])
-      expect(e.text).not.toContain('not in the lock yet')
-      expect(e.code).toBe(1)
-      // `vx show` said "unknown project" and guessed another.
-      for (const target of ['c', 'c#build']) {
-        const s = await vx(root, ['show', target])
-        expect(s.text).toContain(
-          `${target}: c/vx.config.mjs is not in the lock yet — run \`vx lock\``,
-        )
-        expect(s.text).not.toContain('unknown project')
-        expect(s.code).toBe(1)
-      }
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  },
-  TIMEOUT,
-)
-
-// A package added after the lock, named by its package.json name and not
-// its directory: `--filter`, `vx show` and `name#build` said only
-// "no projects matched" or "unknown project", where `packages/x#build` asked for `vx lock`.
-it(
-  'a package the lock has not seen, named by its package name, asks for `vx lock`',
-  async () => {
-    const root = await makeWorkspace({ prefix: 'vx-unlocked-pkgname-', edges: {} })
-    try {
-      await addProject(root, 'p9', {
-        config: "export default { tasks: { build: { exec: { command: 'echo p9' } } } }\n",
-      })
-      expect((await vx(root, ['lock'])).code).toBe(0)
-      await addProject(root, '@s/newpkg', {
-        config: "export default { tasks: { build: { exec: { command: 'echo new' } } } }\n",
-      })
+      await writeFile(path.join(root, 'c', 'vx.config.mjs'), build('c'))
+      await addProject(root, '@s/newpkg', { config: build('new') })
       for (const args of [
-        ['run', 'build', '--filter', '@s/newpkg'],
-        ['show', '@s/newpkg'],
+        ['run', 'c#build'],
         ['run', '@s/newpkg#build'],
+        ['run', 'build', '--filter', '@s/newpkg'],
+        ['run', 'build', '--filter', './c'],
+        ['show', 'c'],
+        ['show', '@s/newpkg'],
       ]) {
         const r = await vx(root, args)
-        expect({ args, code: r.code }).toEqual({ args, code: 1 })
-        expect(r.text).toContain(
-          'packages/s-newpkg/vx.config.mjs is not in the lock yet — run `vx lock`',
-        )
+        expect({ args, code: r.code, ran: ran() }).toEqual({ args, code: 1, ran: [] })
+        expect(r.text).not.toContain('not in the lock')
       }
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  },
-  TIMEOUT,
-)
-
-// `vx run build --all` with a config added since the lock ran the locked
-// projects, green, and left the new one out without a word.
-it(
-  'an --all run with a config the lock has not seen asks for `vx lock`',
-  async () => {
-    const root = await makeWorkspace({ prefix: 'vx-unlocked-all-', edges: {} })
-    try {
-      await addProject(root, 'd', {
-        config: "export default { tasks: { build: { exec: { command: 'echo d' } } } }\n",
-      })
-      expect((await vx(root, ['lock'])).code).toBe(0)
-      // CONTROL: the locked workspace runs; a file vx does not read is no project.
-      await writeFile(path.join(root, 'packages', 'd', 'vx.config.json'), '{}\n')
-      expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
-      const dir = await addProject(root, 'c', {
-        config: "export default { tasks: { build: { exec: { command: 'echo c' } } } }\n",
-      })
-      const r = await vx(root, ['run', 'build', '--all'])
-      expect(r.code).toBe(1)
-      expect(r.text).toContain('packages/c/vx.config.mjs is not in the lock yet — run `vx lock`')
-      // A filtered run asks nothing of the configs it does not select.
-      expect((await vx(root, ['run', 'build', '--filter', 'd'])).code).toBe(0)
-      await rm(dir, { recursive: true })
-      expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -252,9 +133,7 @@ it(
   async () => {
     const root = await makeWorkspace({ prefix: 'vx-unlocked-nested-', edges: {} })
     try {
-      await addProject(root, 'd', {
-        config: "export default { tasks: { build: { exec: { command: 'echo d' } } } }\n",
-      })
+      await addProject(root, 'd', { config: build('d') })
       const inner = path.join(root, 'inner')
       await mkdir(path.join(inner, '.vx'), { recursive: true })
       await writeFile(path.join(inner, '.vx', 'workspace.ts'), 'export default {}\n')

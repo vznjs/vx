@@ -5,12 +5,9 @@ import type { InputStability, TaskConfig } from '../config.js'
 import {
   type ProjectEntry,
   EMPTY_LOCK,
-  findProjectConfigs,
   inputStabilityEnv,
   LOCK_INVALID,
   lockEntryBroken,
-  lockKey,
-  readLockfile,
   startDeferredBuilds,
 } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
@@ -86,7 +83,6 @@ import {
   isUserError,
   SecretBroker,
   thrownMessage,
-  relPosix,
   owedIfStranded,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -2241,7 +2237,7 @@ async function nothingToRun(
           options.projects,
           prepared.projects,
           options.handoff?.selectedByFilter === true,
-        )}${await initHint(prepared)}`
+        )}${initHint(prepared)}`
       : 'no tasks to run.'
   return { ok: false, outcomes: [], refused }
 }
@@ -2468,7 +2464,6 @@ async function unresolvedHint(
     declaredElsewhere: readonly string[]
     anyProjectConfig: boolean
     taskless: (name: string) => boolean
-    unlockedConfig: () => string | undefined
     projects: ReadonlyMap<string, ProjectEntry>
   },
   selected: readonly string[] | undefined,
@@ -2491,14 +2486,7 @@ async function unresolvedHint(
     byFilter,
     prepared.projects,
   )
-  const init = await initHint(prepared)
-  // "No project declares a task yet" beside configs that declare one: the
-  // lock holds none of them (a `vx lock` that failed), so say that.
-  if (near.includes(NO_TASK)) {
-    const unlocked = await unlockedAnywhere(prepared.workspaceRoot)
-    if (unlocked !== undefined)
-      return `${elsewhere}${near.replace(NO_TASK, `The lock holds no project for ${unlocked}: run \`vx lock\` (did it fail?).`)}${init}`
-  }
+  const init = initHint(prepared)
   // Beside `--all` too: a task just added to the selected project's config
   // is declared only outside the selection until `vx lock`.
   const lock =
@@ -2511,27 +2499,9 @@ async function unresolvedHint(
   return `${elsewhere}${near}${init}${lock}`
 }
 
-/**
- * The first run, told apart from a typo: the lock holds no project. Said of the
- * lock, the one thing a run reads; a config written after the lock is no first
- * run, its fix is `vx lock`. Error path only.
- */
-async function initHint(prepared: {
-  anyProjectConfig: boolean
-  unlockedConfig: () => string | undefined
-}): Promise<string> {
-  if (prepared.anyProjectConfig) return ''
-  const unlocked = prepared.unlockedConfig()
-  if (unlocked !== undefined) return ` ${unlocked} is not in the lock yet — run \`vx lock\`.`
-  return ` ${EMPTY_LOCK}.`
-}
-
-/** A project config the lock holds no project for, found by the walk `vx lock` makes. */
-async function unlockedAnywhere(root: string): Promise<string | undefined> {
-  const [{ configs }, lock] = await Promise.all([findProjectConfigs(root), readLockfile(root)])
-  const held = new Set(Object.keys(lock?.projects ?? {}))
-  const c = configs.find((x) => !held.has(lockKey(root, x.dir)))
-  return c === undefined ? undefined : relPosix(root, c.configPath)
+/** The first run, told apart from a typo: the lock holds no project. Error path only. */
+function initHint(prepared: { anyProjectConfig: boolean }): string {
+  return prepared.anyProjectConfig ? '' : ` ${EMPTY_LOCK}.`
 }
 
 // The state right after `vx init`: the lock is current, so the lock hint

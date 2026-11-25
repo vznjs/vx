@@ -25,7 +25,8 @@ const cases: [string, (r: string) => Promise<unknown>, string, string][] = [
   [
     'a project directory renamed',
     (r) => rename(path.join(r, 'packages/a'), path.join(r, 'packages/a2')),
-    'packages/a2/vx.config.mjs is not in the lock yet — run `vx lock`',
+    // The new folder is no project until `vx lock`; the locked one is gone.
+    'locks packages/a ("a"), but its directory is gone — run `vx lock`',
     'the lock holds packages/a, which has no vx.config now',
   ],
   [
@@ -44,7 +45,7 @@ const cases: [string, (r: string) => Promise<unknown>, string, string][] = [
       )
       await rename(path.join(r, 'packages/a'), path.join(r, 'libs/a'))
     },
-    'libs/a/vx.config.mjs is not in the lock yet — run `vx lock`',
+    'locks packages/a ("a"), but its directory is gone — run `vx lock`',
     'the lock holds packages/a, which has no vx.config now',
   ],
   [

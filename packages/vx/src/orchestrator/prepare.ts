@@ -1,7 +1,7 @@
 // Shared setup for `run()` and `planRun()`: discovery, config load, graph
 // build, cache open. The caller owns `cache.close()`.
 
-import { existsSync, realpathSync } from 'node:fs'
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import type { InputStability, WorkspaceConfig } from '../config.js'
 import {
@@ -46,13 +46,11 @@ import { clockDir, measureFsClockLag } from '../memo/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
-  findProjectConfigs,
   findWorkspaceRoot,
   configuredBaseBranch,
   DEPENDENCIES_LOCK_NAME,
   type LoadReads,
   lockDigest,
-  PROJECT_CONFIG_FILENAMES,
   readClaimedFiles,
   lockedDependencies,
   resolveCacheDir,
@@ -86,7 +84,6 @@ import { withExtraHashes } from './lockfile-claim.js'
 import {
   discoverProjects,
   discoveryOf,
-  ignoredConfigRefusal,
   loadProjects,
   loadWorkspacePlugins,
   lockReader,
@@ -177,11 +174,6 @@ export interface PreparedRun {
   anyProjectConfig: boolean
   /** A workspace project that declares no task: no config, and nothing configured reaches it. */
   taskless: (name: string) => boolean
-  /**
-   * With no config in the lock, one a directory holds anyway (root-relative):
-   * written after `vx lock`, so the fix is `vx lock`. Asked only by a refusal.
-   */
-  unlockedConfig: () => string | undefined
   /** The claimed root files, and whether a task has since rewritten one (fingerprint-watch.ts). */
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
@@ -290,7 +282,6 @@ export async function prepareRunLocked(
       hintProjects: asked.hintProjects,
       anyProjectConfig: load.projectsWithConfigs.length > 0,
       taskless: asked.taskless,
-      unlockedConfig: () => unlockedConfigOf(load.projectsWithConfigs, projectMetas, workspaceRoot),
       fingerprintWatch,
       nestedDirsByProject: asked.nestedDirsByProject,
       hashCache,
@@ -631,7 +622,7 @@ type Load = Awaited<ReturnType<typeof loadScope>>
  * of a name they cannot find: unresolved, declared elsewhere, or hinted at.
  */
 async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scope, load: Load) {
-  const { workspaceRoot, projectMetas } = ws
+  const { projectMetas } = ws
   const { tasks } = scope
   const { projects, projectsWithConfigs, everyProject } = load
   // A config the load left out may declare what nothing loaded does. Asked by
@@ -665,15 +656,6 @@ async function judgeRequests(options: CoreRunOptions, ws: Workspace, scope: Scop
   // still to judge, or a typo ran nothing, exit 0.
   if (options.handoff?.selectedByDiff === true && candidateProjects.length === 0)
     unresolvedTasks = [...new Set([...tasks.filter((t) => !t.includes('#')), ...unresolvedTasks])]
-  await refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
-  // A scope that loaded no candidate judged no bare name: each is unresolved.
-  if (options.projects !== undefined && options.handoff?.selectedByDiff !== true)
-    refuseUnlockedScope(
-      candidateProjects.length === 0 ? tasks : unresolvedTasks,
-      options.projects,
-      projectMetas,
-      workspaceRoot,
-    )
   if (options.handoff?.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, even if the load was
     // partial. Only what is still unjudged pays for the rest of the workspace.
@@ -1291,166 +1273,6 @@ export function workspaceCachePolicy(
       'VX_E_CONFIG',
     )
   }
-}
-
-/** A config no locked project has, looked for only when the lock holds none. */
-function unlockedConfigOf(
-  configured: readonly unknown[],
-  metas: ReadonlyArray<{ name: string; dir: string }>,
-  workspaceRoot: string,
-): string | undefined {
-  if (configured.length > 0) return undefined
-  for (const m of metas) {
-    const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(m.dir, n)))
-    if (config === undefined) continue
-    const file = path.join(m.dir, config)
-    // `vx lock` never reads it: the hint would send the user to it for nothing.
-    if (ignoredConfigRefusal(workspaceRoot, m, file) === undefined)
-      return relPosix(workspaceRoot, file)
-  }
-  return undefined
-}
-
-/**
- * A `project#build` naming the default `build` of a project the lock has no
- * config for, while its directory holds one: it asks for that config's task, so
- * suggest `vx lock` instead of running nothing.
- */
-async function refuseUnlockedConfig(
-  tasks: readonly string[],
-  projects: ReadonlyMap<string, ProjectEntry>,
-  metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
-  workspaceRoot: string,
-): Promise<void> {
-  for (const spec of tasks) {
-    const at = spec.indexOf('#')
-    if (at < 0) continue
-    const name = spec.slice(0, at)
-    const entry = projects.get(name)
-    // No entry: a package the lock holds no project for, whose config came after it.
-    if (entry !== undefined && !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
-    const config =
-      unlockedConfig(name, metas) ??
-      (metas.some((m) => m.name === name)
-        ? undefined
-        : await unlockedDir(name, metas, workspaceRoot))
-    if (config !== undefined)
-      throw new UserError(
-        `${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`,
-        'VX_E_LOCK',
-      )
-    if (entry !== undefined || metas.some((m) => m.name === name)) continue
-    const renamed = await renamedSinceLock(name, metas, workspaceRoot)
-    if (renamed !== undefined) throw new UserError(`${spec}: ${renamed}`, 'VX_E_LOCK')
-  }
-}
-
-/**
- * The same for a bare name the selection left unresolved: a member whose config
- * came after the lock.
- */
-function refuseUnlockedScope(
-  unresolved: readonly string[],
-  selected: readonly string[],
-  metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
-  workspaceRoot: string,
-): void {
-  const spec = unresolved.find((t) => !t.includes('#'))
-  if (spec === undefined) return
-  // The selection, not the loaded projects: a scope loads no config-less
-  // member nothing configured reaches, and that is the one to ask about.
-  for (const name of selected) {
-    const config = unlockedConfig(name, metas)
-    if (config === undefined) continue
-    throw new UserError(`${spec}: ${notLockedYet(workspaceRoot, config, metas, name)}`, 'VX_E_LOCK')
-  }
-}
-
-/**
- * Why the lock holds no `config`: git ignores it in a `discover`-made project
- * (which `vx lock` cannot fix), else it came after the lock.
- */
-function notLockedYet(
-  workspaceRoot: string,
-  config: string,
-  metas: ReadonlyArray<{ name: string; dir: string }>,
-  name: string,
-): string {
-  const meta = metas.find((m) => m.name === name)
-  return (
-    (meta === undefined ? undefined : ignoredConfigRefusal(workspaceRoot, meta, config)) ??
-    `${relPosix(workspaceRoot, config)} is not in the lock yet — run \`vx lock\``
-  )
-}
-
-/** The config file in a project's directory the lock holds none for. */
-function unlockedConfig(
-  name: string,
-  metas: ReadonlyArray<{ name: string; dir: string; configPath?: string | null }>,
-): string | undefined {
-  const meta = metas.find((m) => m.name === name)
-  if (meta === undefined) return undefined
-  if (typeof meta.configPath === 'string' && meta.configPath !== '') return undefined
-  const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(meta.dir, n)))
-  return config === undefined ? undefined : path.join(meta.dir, config)
-}
-
-/**
- * The locked project whose package.json took `name` since the lock: the
- * `discover` stage is locked, so it keeps its old name until `vx lock`.
- * A project named by its path took no name from its package.json. Asked only
- * on a refusal.
- */
-export async function renamedSinceLock(
-  name: string,
-  metas: ReadonlyArray<{ name: string; dir: string }>,
-  workspaceRoot: string,
-): Promise<string | undefined> {
-  const named = metas.filter(
-    (m) => m.name !== name && m.name !== relPosix(workspaceRoot, m.dir) && m.dir !== workspaceRoot,
-  )
-  const found = await Promise.all(
-    named.map(async (m) => {
-      try {
-        const pkg = (await Bun.file(path.join(m.dir, 'package.json')).json()) as { name?: unknown }
-        return pkg.name === name ? m : undefined
-      } catch {
-        // No package.json, or not JSON: no package name to match.
-        return undefined
-      }
-    }),
-  )
-  const m = found.find((x) => x !== undefined)
-  if (m === undefined) return undefined
-  const file = relPosix(workspaceRoot, path.join(m.dir, 'package.json'))
-  return `${file} names it "${name}", the lock "${m.name}" — run \`vx lock\``
-}
-
-/**
- * The config `vx lock` would find for a name no project has: a config written
- * after the lock makes no project. Asked only on a refusal.
- */
-export async function unlockedDir(
-  name: string,
-  metas: ReadonlyArray<{ dir: string }>,
-  workspaceRoot: string,
-): Promise<string | undefined> {
-  const dir = path.resolve(workspaceRoot, name)
-  // A project's directory typed for its name is that project, hinted as such.
-  if (metas.some((m) => m.dir === dir)) return undefined
-  const { configs } = await findProjectConfigs(workspaceRoot)
-  const atDir = configs.find((c) => c.dir === dir)
-  if (atDir !== undefined) return atDir.configPath
-  for (const c of configs) {
-    if (metas.some((m) => m.dir === c.dir)) continue
-    try {
-      const pkg = (await Bun.file(path.join(c.dir, 'package.json')).json()) as { name?: unknown }
-      if (pkg.name === name) return c.configPath
-    } catch {
-      // No package.json, or not JSON: no package name to match.
-    }
-  }
-  return undefined
 }
 
 /**

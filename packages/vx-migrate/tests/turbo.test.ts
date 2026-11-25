@@ -1455,9 +1455,9 @@ describe('turbo(): the mapping cache', () => {
 })
 
 // Every run reads configs from the lock, on real Turbo repos too: the
-// plugin's tasks are no vx.config, so the lock records none of them and a
-// run maps turbo.json live. A config written after the lock waits for
-// `vx lock`: an --all run refuses it, and `--check` names it.
+// plugin's tasks are no vx.config; the lock records the tasks it mapped. A
+// config written after the lock is not there for a run until `vx lock`;
+// `--check` names it.
 describe('turbo() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
@@ -1492,12 +1492,10 @@ describe('turbo() under vx lock', () => {
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
         'export default { tasks: { build: { exec: { command: "true" } } } }\n',
       )
-      // A config the lock lacks refuses an --all run until `vx lock`.
+      // A config the lock lacks is not there: the run runs the locked tasks.
       const third = vx('run', 'build', '--all')
-      expect({ code: third.code, err: third.err }).toEqual({
-        code: 1,
-        err: '✗ vx run  packages/lib/vx.config.mjs is not in the lock yet — run `vx lock`\n',
-      })
+      expect({ code: third.code, err: third.err }).toEqual({ code: 0, err: '' })
+      expect(third.out).toContain('3 success')
       expect(vx('lock', '--check')).toEqual({
         code: 1,
         out: '',
