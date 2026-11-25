@@ -65,7 +65,7 @@ export {
   type Tone,
 } from './theme.js'
 export { colorsOf, data, dataPieces, print, say, transient, type StreamName } from './terminal.js'
-export { endStyle, hasEscape, lastRedraw, leavesStyle, STYLE_END } from './ansi.js'
+export { endStyle, hasEscape, lastRedraw, leavesStyle, STYLE_END, styleWatch } from './ansi.js'
 export {
   createOutputWriter,
   type OutputWriter,

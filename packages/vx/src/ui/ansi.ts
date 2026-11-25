@@ -17,6 +17,25 @@ export function leavesStyle(text: string): boolean {
   return sgr[1] !== '' && sgr[1] !== '0'
 }
 
+/**
+ * `leavesStyle` of a text given in pieces, its whole never held: only the
+ * last colour code's 64 characters (all `leavesStyle` reads) are kept.
+ */
+export function styleWatch(): { add(text: string): void; leaves(): boolean } {
+  let seg: string | null = null
+  let tail = ''
+  return {
+    add(text) {
+      const s = tail + text
+      const at = s.lastIndexOf('\x1b[')
+      if (at >= 0) seg = s.slice(at, at + 64)
+      else if (seg !== null && seg.length < 64) seg += text.slice(0, 64 - seg.length)
+      tail = s.slice(-64)
+    },
+    leaves: () => seg !== null && leavesStyle(seg),
+  }
+}
+
 /** `text`, with any colour it leaves on ended. */
 export const endStyle = (text: string): string => (leavesStyle(text) ? `${text}${RESET}` : text)
 

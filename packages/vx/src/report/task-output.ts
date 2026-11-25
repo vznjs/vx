@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { hasEscape, leavesStyle } from '../ui/index.js'
+import { hasEscape, leavesStyle, styleWatch } from '../ui/index.js'
 import { MASKED, maskStreams, type SecretMask } from '../util/index.js'
 import type { OutputChunk, OutputSource } from './framed-output.js'
 
@@ -482,14 +482,10 @@ function* masked(
 function styleTracker(): { add(c: OutputChunk): boolean; end(): boolean } {
   let leaves = false
   let err: boolean | undefined
-  let esc = false
-  let seg: string | null = null
-  let tail = ''
+  let run: ReturnType<typeof styleWatch> | null = null
   const close = (): void => {
-    if (esc) leaves = seg !== null && leavesStyle(seg)
-    esc = false
-    seg = null
-    tail = ''
+    if (run !== null) leaves = run.leaves()
+    run = null
   }
   return {
     add(c) {
@@ -497,14 +493,9 @@ function styleTracker(): { add(c: OutputChunk): boolean; end(): boolean } {
         close()
         err = c.err
       }
-      if (!esc && hasEscape(c.text)) esc = true
-      if (esc) {
-        const s = tail + c.text
-        const at = s.lastIndexOf('\x1b[')
-        if (at >= 0) seg = s.slice(at, at + 64)
-        else if (seg !== null && seg.length < 64) seg += c.text.slice(0, 64 - seg.length)
-        tail = s.slice(-64)
-      }
+      // Watched from the run's first escape on: a run with none leaves the last verdict.
+      if (run === null && hasEscape(c.text)) run = styleWatch()
+      run?.add(c.text)
       return leaves
     },
     end() {
