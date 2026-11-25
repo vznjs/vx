@@ -44,6 +44,7 @@ async function branchOf(
       workspaceRoot,
       warn: () => {},
       setBranch: (f) => Object.assign(facts, f),
+      lock: false,
     })
     return facts
   } finally {
@@ -232,7 +233,7 @@ it('a missing predefined variable is named', async () => {
   try {
     await gitlab()!.config!(
       {},
-      { workspaceRoot: '/ws', warn: (m) => warns.push(m), setBranch: () => {} },
+      { workspaceRoot: '/ws', warn: (m) => warns.push(m), setBranch: () => {}, lock: false },
     )
   } finally {
     for (const [k, v] of saved) {

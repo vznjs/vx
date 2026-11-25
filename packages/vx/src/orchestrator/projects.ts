@@ -62,6 +62,8 @@ import { type ExtraHashes, withExtraHashes } from './lockfile-claim.js'
 export async function loadWorkspacePlugins(
   workspaceRoot: string,
   warn: (message: string) => void,
+  /** `vx lock`'s load (`ConfigContext.lock`). */
+  lock = false,
 ): Promise<{
   workspaceConfig: WorkspaceConfig | null
   plugins: readonly VxPlugin[]
@@ -130,27 +132,32 @@ export async function loadWorkspacePlugins(
   const settingValues = new Map(settingPaths.map((p) => [p, atPath(workspaceConfig, p)]))
   let basePlugin: string | undefined
   let base: string | undefined
-  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) => {
-    if (branch.base !== base) {
-      base = branch.base
-      basePlugin = plugin.name
-    }
-    const at = `.vx/workspace (after plugin '${plugin.name}')`
-    validateWorkspace(workspaceConfig, at)
-    for (const p of settingPaths) {
-      const v = atPath(workspaceConfig, p)
-      if (v === settingValues.get(p)) continue
-      settingValues.set(p, v)
-      settingPlugins.set(p, plugin.name)
-    }
-    // The run takes `plugins` from the file: an edited list validated and was dropped.
-    const now = workspaceConfig.plugins
-    if (now?.length !== list?.length || now?.some((p, i) => p !== list![i])) {
-      throw new UserError(
-        `${at}: \`plugins\` is fixed before the config stage, so an edit to it would change nothing — declare plugins in .vx/workspace`,
-      )
-    }
-  })
+  await applyConfigHooks(
+    plugins,
+    workspaceConfig,
+    { workspaceRoot, warn, setBranch, lock },
+    (plugin) => {
+      if (branch.base !== base) {
+        base = branch.base
+        basePlugin = plugin.name
+      }
+      const at = `.vx/workspace (after plugin '${plugin.name}')`
+      validateWorkspace(workspaceConfig, at)
+      for (const p of settingPaths) {
+        const v = atPath(workspaceConfig, p)
+        if (v === settingValues.get(p)) continue
+        settingValues.set(p, v)
+        settingPlugins.set(p, plugin.name)
+      }
+      // The run takes `plugins` from the file: an edited list validated and was dropped.
+      const now = workspaceConfig.plugins
+      if (now?.length !== list?.length || now?.some((p, i) => p !== list![i])) {
+        throw new UserError(
+          `${at}: \`plugins\` is fixed before the config stage, so an edit to it would change nothing — declare plugins in .vx/workspace`,
+        )
+      }
+    },
+  )
   applyWorkspaceTimers(workspaceConfig)
   applyWorkspaceLimits(workspaceConfig)
   return {

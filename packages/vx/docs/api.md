@@ -496,6 +496,7 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void
+  readonly lock: boolean
 }
 ```
 

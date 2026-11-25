@@ -3081,7 +3081,7 @@ interface CacheSettings {
 - On `baseBranch`, a run has no cache scope and a bare `--affected` has no default: run `--all`, or pass the last good commit, `--affected=<sha>`.
 - Off it, a bare `--affected` compares with the merge base of HEAD and `origin/<baseBranch>`, or that branch's tip when they share no history.
 - In a clone with no remote, the local `<baseBranch>` stands in for `origin/<baseBranch>`.
-- A plugin's `config` stage may set `baseBranch`: `nx()` sets it from nx.json's `defaultBase`.
+- A plugin's `config` stage may set `baseBranch`. `bunx @vzn/vx-migrate` writes nx.json's `defaultBase` as it.
 - A base commit is a plugin's to name (`setBranch({ base })`), and it beats `baseBranch`. `github()` names a pull request's base.
 - `nx()` names `NX_BASE`. `turbo()` names `TURBO_SCM_BASE`, else on GitHub Actions `GITHUB_BASE_REF` or the push event's `before`.
 - `VX_AFFECTED_BASE` beats a plugin's base, and `--affected=<base>` beats them all. Core itself reads no CI variable for the base.

@@ -51,9 +51,11 @@ export const warnToStderr = (message: string): void => {
 export async function loadCliWorkspace(
   workspaceRoot: string,
   warn: (message: string) => void = warnToStderr,
+  /** `vx lock`'s load (`ConfigContext.lock`). */
+  lock = false,
 ): Promise<CliWorkspace> {
   const { workspaceConfig, plugins, branch, settingPlugins, basePlugin } =
-    await loadWorkspacePlugins(workspaceRoot, warn)
+    await loadWorkspacePlugins(workspaceRoot, warn, lock)
   return {
     workspaceConfig,
     plugins,

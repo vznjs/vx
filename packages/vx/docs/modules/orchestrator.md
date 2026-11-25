@@ -3532,6 +3532,7 @@ export interface BranchFacts {
 }
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void // a later plugin's field wins; a bad scope, base or ref is refused
+  readonly lock: boolean // `vx lock` (and `--check`) only: a run reads no file but the locks
 }
 ```
 

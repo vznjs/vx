@@ -48,6 +48,7 @@ async function branchOf(
       workspaceRoot: dir,
       warn: () => {},
       setBranch: (f) => Object.assign(facts, f),
+      lock: false,
     })
     return facts
   } finally {
@@ -328,7 +329,7 @@ it('a missing runner variable or an unreadable event file is named', async () =>
     try {
       await github()!.config!(
         {},
-        { workspaceRoot: dir, warn: (m) => warns.push(m), setBranch: () => {} },
+        { workspaceRoot: dir, warn: (m) => warns.push(m), setBranch: () => {}, lock: false },
       )
       return warns
     } finally {

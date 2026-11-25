@@ -189,19 +189,16 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
             p ? ((p as VxPlugin).fingerprint?.files ?? []) : [],
           ),
         )
-        const root = rootOf(ctx.workspaceRoot)
         const nxBaseCommit = Bun.env['NX_BASE']?.trim()
         if (nxBaseCommit) ctx.setBranch({ base: nxBaseCommit })
-        if (workspace.baseBranch === undefined) {
-          const branch = await nxDefaultBase(root)
-          if (branch !== undefined) workspace.baseBranch = branch
-        }
         if (workspace.run?.concurrency === undefined) {
-          const parallel = await nxParallel(root)
+          const parallel = nxParallel()
           if (parallel !== undefined) workspace.run = { ...workspace.run, concurrency: parallel }
         }
-        if (workspace.run?.rules?.dependencies === undefined) {
-          const dependencies = await nxDependencyRules(root)
+        // A run reads no nx.json or lint config (it reads only the locks);
+        // `vx lock` reads the module boundaries, the rules it checks.
+        if (ctx.lock && workspace.run?.rules?.dependencies === undefined) {
+          const dependencies = await nxDependencyRules(rootOf(ctx.workspaceRoot))
           if (dependencies !== undefined && dependencies.length > 0)
             workspace.run = {
               ...workspace.run,
@@ -293,43 +290,16 @@ function isWithin(root: string, dir: string): boolean {
 }
 
 /**
- * nx.json's `parallel` (or the legacy runner's option): how many tasks Nx
- * runs at once. Read by nothing, a repo that set 1 for a shared database
- * ran on every core under vx (TanStack/router sets 5, nx-examples 1).
+ * `NX_PARALLEL` (a count, or `50%` of the cores), as Nx 23's
+ * `readParallelFromArgsAndEnv` reads it. nx.json's `parallel` is not read: a
+ * run reads only the locks.
  */
-async function nxParallel(root: string): Promise<number | undefined> {
-  // `NX_PARALLEL` (a count, or `50%` of the cores) wins over nx.json, as
-  // Nx 23's `readParallelFromArgsAndEnv` reads it; a CI that set 2 for a
-  // small runner got nx.json's number under vx.
+function nxParallel(): number | undefined {
   const env = process.env['NX_PARALLEL']?.trim()
-  if (env) {
-    const n = Number.parseInt(env, 10)
-    const p = env.endsWith('%') ? Math.floor((availableParallelism() * n) / 100) : n
-    if (Number.isInteger(p)) return Math.max(1, p)
-  }
-  const json = (await readNxJson(root).catch(() => null))?.json as
-    | {
-        parallel?: unknown
-        tasksRunnerOptions?: { default?: { options?: { parallel?: unknown } } }
-      }
-    | undefined
-  const p = json?.parallel ?? json?.tasksRunnerOptions?.default?.options?.parallel
-  return typeof p === 'number' && Number.isInteger(p) && p > 0 ? p : undefined
-}
-
-/**
- * nx.json's `defaultBase` (Nx 19's `affected.defaultBase` before it), the
- * branch `nx affected` compares with. Read by nothing, a git-flow repo's
- * `develop` was lost and a bare `vx run … --affected` diffed against
- * origin/HEAD.
- */
-async function nxDefaultBase(root: string): Promise<string | undefined> {
-  const json = (await readNxJson(root).catch(() => null))?.json as
-    | { defaultBase?: unknown; affected?: { defaultBase?: unknown } }
-    | undefined
-  const b = json?.defaultBase ?? json?.affected?.defaultBase
-  // `baseBranch` is the branch; vx compares with it on `origin`.
-  return typeof b === 'string' && b.trim() !== '' ? b.trim().replace(/^origin\//, '') : undefined
+  if (!env) return undefined
+  const n = Number.parseInt(env, 10)
+  const p = env.endsWith('%') ? Math.floor((availableParallelism() * n) / 100) : n
+  return Number.isInteger(p) ? Math.max(1, p) : undefined
 }
 
 interface LoadedGraph {

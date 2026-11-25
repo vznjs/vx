@@ -174,7 +174,10 @@ describe("Turbo's switches the plugins leave alone", () => {
   it('a turbo() repo maps and stages the same with every one of them set', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),
-      JSON.stringify({ tasks: { build: { outputs: ['dist/**'] } }, concurrency: '3' }),
+      JSON.stringify({
+        tasks: { build: { outputs: ['dist/**'] } },
+        boundaries: { tags: { web: { dependencies: { deny: ['internal'] } } } },
+      }),
     )
     const dir = path.join(root, 'packages', 'a')
     await mkdir(dir, { recursive: true })
@@ -189,13 +192,16 @@ describe("Turbo's switches the plugins leave alone", () => {
         workspaceRoot: root,
         warn: () => {},
         setBranch: (f) => void branch.push(f),
+        lock: true,
       })
       const m = await mapTurboWorkspace(root, metas, { splice: ownSplice, persistentTodo: 'P' })
       return { ws, branch, tasks: m.projects.map((p) => p.tasks), notes: m.notes }
     }
     const unset = Object.fromEntries(Object.keys(IGNORED).map((n) => [n, '']))
     const before = await withEnv(unset, both)
-    expect(before.ws).toEqual({ run: { concurrency: 3 } })
+    expect(before.ws).toEqual({
+      run: { rules: { dependencies: [{ from: 'tag:web', deny: ['tag:internal'] }] } },
+    })
     expect(await withEnv(IGNORED, both)).toEqual(before)
   })
 })

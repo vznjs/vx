@@ -491,11 +491,12 @@ So the loader refuses two cached tasks whose outputs provably overlap. Example: 
 - That covers `envMode` at top level or in `global`, and `TURBO_ENV_MODE=loose`, which wins.
 - An unknown Turbo key is a todo naming it. `extends` is accepted and ignored: the overlay order above is what it means.
 
-**Workspace settings.** The workspace keys vx has a home for, top level or in `global`, fill what `.vx/workspace.ts` leaves unset.
+**Workspace settings.** A run reads no turbo.json, so its workspace keys reach vx through the `.vx/workspace.ts` a migration writes.
 
 - `concurrency` (`"10"`, or `"50%"` of the cores) is `run.concurrency`.
-- `TURBO_CONCURRENCY` wins over turbo.json, as under Turbo. A set one decides, its `0` included.
-- `boundaries.tags` is `run.rules.dependencies`. A tag's `dependencies.allow` / `deny` is its rule.
+- On a run `turbo()` takes `TURBO_CONCURRENCY` when `.vx/workspace.ts` sets none. A set one decides; `0` is none.
+- `boundaries.tags` is `run.rules.dependencies`, which `vx lock` checks; `turbo()` reads them there when `.vx/workspace.ts` sets none.
+- A tag's `dependencies.allow` / `deny` is its rule.
 - A `dependents.deny` is each named tag's deny of that tag.
 - `dependents.allow` (who may depend on the tag) has no vx form and is a note.
 - A migration writes the same fields into the `.vx/workspace.ts` it writes, or names each beside one already there.
@@ -519,6 +520,7 @@ So the loader refuses two cached tasks whose outputs provably overlap. Example: 
 - So a bare `vx run build --affected` compares with the same ref.
 - With it unset on GitHub Actions (`GITHUB_ACTIONS`), Turbo's own base applies.
 - That base is a pull request's `GITHUB_BASE_REF`, else the push event's `before` from `GITHUB_EVENT_PATH`.
+- turbo.json's `futureFlags.githubActionsRemoteBaseRefFallback` is not read: a run reads no turbo.json.
 - `TURBO_SCM_HEAD` is the commit Turbo compares up to. vx's is its checkout: `--affected` compares the base with HEAD and its working tree.
 - So a head at HEAD's commit (`$GITHUB_SHA` on a checkout of it) is honoured as is. Any other one is a warning to check that commit out.
 - Turbo hashes each package's `microfrontends.json` (or `.jsonc`) into every task. So does `turbo()`.
@@ -723,7 +725,7 @@ With this file, `vx run build --all` maps every project's `build` target the way
 
 The `depConstraints` of `@nx/enforce-module-boundaries` in the root ESLint config become `run.rules.dependencies`.
 
-`.vx/workspace.ts` can set its own instead. `vx lock` checks the rules over each project's workspace dependencies.
+`.vx/workspace.ts` can set its own instead. `vx lock` reads the ESLint config and checks the rules over each project's workspace dependencies; a run reads neither.
 
 - `sourceTag` is `from`.
 - `onlyDependOnLibsWithTags` is `allow`.
@@ -910,17 +912,15 @@ Two cached tasks on one workspace path cannot both keep their cache, and the fir
 
 ### nx.json `parallel`
 
-`parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) is the run's `run.concurrency` when `.vx/workspace.ts` sets none.
+A run reads no nx.json. A migration writes `parallel` (or the legacy `tasksRunnerOptions.default.options.parallel`) as `run.concurrency` in `.vx/workspace.ts`.
 
-`NX_PARALLEL` (a count or `50%`) wins over it, as in Nx. So a repo that sets `1` for a shared resource keeps one task at a time.
+On a run `nx()` takes `NX_PARALLEL` (a count or `50%`) when `.vx/workspace.ts` sets none, as Nx reads it.
 
 ### nx.json `defaultBase`
 
 `NX_BASE` is the run's base commit (`setBranch({ base })`).
 
-`defaultBase` is `baseBranch` when `.vx/workspace.ts` sets none. Nx 19 called it `affected.defaultBase`; an `origin/` prefix is dropped.
-
-So a bare `vx run test --affected` compares with the ref `nx affected` does.
+A migration writes `defaultBase` as `baseBranch`. Nx 19 called it `affected.defaultBase`; an `origin/` prefix is dropped. So a bare `vx run test --affected` compares with the ref `nx affected` does.
 
 ### nx.json `maxCacheSize`
 
@@ -1300,7 +1300,7 @@ The CLI reads the **resolved** project graph only, through the same mapper `nx()
 - A target with `configurations` writes one task per configuration (`build`, `build:ci`).
 - A project's Nx `tags` are written as its `tags`.
 - Named inputs expand from `nx.json` when readable.
-- nx.json's `parallel` and `defaultBase` and the ESLint module boundaries, which `nx()` applies live, are each a field of the written `.vx/workspace.ts`.
+- nx.json's `parallel` and `defaultBase` and the ESLint module boundaries are each a field of the written `.vx/workspace.ts`. A run reads none of those files.
 - The fields are `run.concurrency`, `baseBranch` and `run.rules`. They are read from nx.json alone, never the environment.
 - Beside a workspace file already there, each is a note naming the field to add.
 

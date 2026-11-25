@@ -33,7 +33,9 @@ describe('a futureFlags row marked not supported names a flag turbo() never read
     expect(read).toEqual([])
   })
 
-  it('the code scan sees a flag turbo() does read', () => {
-    expect(code()).toContain('githubActionsRemoteBaseRefFallback')
+  // No flag is read by name since a run stopped reading turbo.json (2026-11-25):
+  // the control is a key the mapper reads, in code and not a comment.
+  it('the code scan sees a key turbo() does read', () => {
+    expect(code()).toContain("'dependsOn'")
   })
 })

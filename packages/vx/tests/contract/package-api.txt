@@ -749,6 +749,7 @@ export interface CommandContext extends BaseContext {
 == type ConfigContext (src/orchestrator/plugin.ts)
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void
+  readonly lock: boolean
 }
 == type DeclaredOutputs (src/cache/layer.ts)
 export interface DeclaredOutputs {

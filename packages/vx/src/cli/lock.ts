@@ -228,7 +228,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     dependencies: null,
   }
   try {
-    const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
+    const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root, warnToStderr, true)
     out.reviewFiles = resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
     out.staged = !hasHook(plugins, 'project')
     const {

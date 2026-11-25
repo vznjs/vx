@@ -367,6 +367,12 @@ export interface BranchFacts {
 
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void
+  /**
+   * True under `vx lock` (and `--check`) only. A run reads no file but the
+   * locks, so a hook reads a tool's config (turbo.json, nx.json) only here,
+   * for what `vx lock` itself uses (`run.rules.dependencies`).
+   */
+  readonly lock: boolean
 }
 
 export interface DiscoverContext extends WorkspaceHookContext {
