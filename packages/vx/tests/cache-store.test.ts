@@ -217,6 +217,22 @@ it.each([
   }
 })
 
+// `--max-size` and `vx info` count sizes on disk, as `du` does. A `.tar.zst`
+// recorded its length: a store of small archives, each a whole block on
+// disk, read as a fraction of what it held and a size bound never bit.
+it('a .tar.zst entry records the bytes its file holds on disk', async () => {
+  const { cache } = await saved({ embeddings: 0, decompress: false }, SMALL)
+  const file = readdirSync(path.join(root, 'c'), { recursive: true })
+    .map(String)
+    .find((n) => n.endsWith(`${HASH}.tar.zst`))!
+  const st = statSync(path.join(root, 'c', file))
+  const size = (indexDb(cache).query('SELECT size_bytes AS s FROM entries').get() as { s: number })
+    .s
+  expect(st.blocks).toBeGreaterThan(0)
+  expect(size).toBe(st.blocks * 512)
+  cache.close()
+})
+
 describe('cache.store.embeddings', () => {
   it('is the bound: an entry past it is files, and false keeps none inline', async () => {
     // SMALL's tar is past 1 KiB, under 32 KiB.
