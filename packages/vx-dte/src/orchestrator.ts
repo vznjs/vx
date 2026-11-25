@@ -1716,7 +1716,7 @@ export class Orchestrator extends RunReport<Worker> {
       const landed = (async () => {
         await upstream()
         await this.clear(job, node)
-        const got = (await restore()) ?? (await restore())
+        const got = await restore()
         this.trace.slice({
           track: ORCHESTRATOR,
           name: task,
@@ -1724,8 +1724,7 @@ export class Orchestrator extends RunReport<Worker> {
           from: endAt,
           to: performance.now(),
         })
-        if (got === null)
-          throw new Error(`no cache this machine reads gave its entry ${key}, asked twice`)
+        if (got === null) throw new Error(`no cache this machine reads gave its entry ${key}`)
         await this.unlay(task, head, job, node)
       })()
       const settled: Promise<void> = landed
@@ -1757,11 +1756,10 @@ export class Orchestrator extends RunReport<Worker> {
       return
     }
     const read = () => (eager ? restore() : this.o.artifacts.output(key))
-    // A failed download reads as a miss: asked once more, since one stalled
-    // download failed a CI run whose upload had landed (main, 2026-10-28).
+    // A failed download is asked again by the cache itself (`getSaved`),
+    // over a budget of its own: this entry must come home.
     const log = await (eager ? upstream().then(() => this.clear(job, node)) : Promise.resolve())
       .then(read)
-      .then((got) => got ?? read())
       .catch((err: unknown) => {
         job.reject(err)
         return undefined
@@ -1777,7 +1775,7 @@ export class Orchestrator extends RunReport<Worker> {
     if (log === null) {
       job.reject(
         new Error(
-          `${task}: ${a.label} ran it, and no cache this machine reads gave its entry, asked twice: a download failed (warned above), or the workers and this machine share no remote cache the workers write`,
+          `${task}: ${a.label} ran it, and no cache this machine reads gave its entry: a download failed (warned above), or the workers and this machine share no remote cache the workers write`,
         ),
       )
       return
