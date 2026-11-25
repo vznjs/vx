@@ -741,7 +741,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
             [prior.stdout_raw, prior.stdout_digest] as const,
             [prior.stderr_raw, prior.stderr_digest] as const,
           ].flatMap(([raw, digest]) =>
-            (raw?.length ?? 0) === 0 && Number(digest?.size_bytes ?? 0) > 0 ? [digest!] : [],
+            (raw?.length ?? 0) === 0 && digest != null && !isEmptyBlob(client, digest)
+              ? [digest]
+              : [],
           )
           const referenced = [
             ...(prior.output_files ?? []).map((f) => f.digest),
@@ -1566,6 +1568,9 @@ function unfetched(err: unknown): unknown {
  * undefined dereferenced the null and crashed the whole execute call —
  * caught by the node_modules chain test the moment the record
  * short-circuit widened past `remote: 'only'`.
+ *
+ * Only the empty blob's own digest is taken unread: size 0 alone under
+ * another hash (a server that leaves `size_bytes` unset) lost the log.
  */
 async function readStream(
   client: ReapiClient,
@@ -1574,7 +1579,7 @@ async function readStream(
   what: string,
 ): Promise<string> {
   if (raw !== undefined && raw !== null && raw.length > 0) return new TextDecoder().decode(raw)
-  if (digest !== undefined && digest !== null && digest.size_bytes > 0) {
+  if (digest !== undefined && digest !== null && !isEmptyBlob(client, digest)) {
     const bytes = await client.readBlob(digest)
     if (bytes === null) {
       throw missingFromCas(`${what} ${digest.hash.slice(0, 12)} is missing from the CAS`)
