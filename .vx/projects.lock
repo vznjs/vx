@@ -213,11 +213,11 @@
 #3g0aozu
 {"dependsOn":["canary.*"]}
 	canary
-#116nadk
-{"cache":true,"dependsOn":["install"],"description":"compile the host binary the way npm.yml does; it must launch and report the manifest version","exec":{"command":"bun scripts/check-binary.ts","env":{"passThrough":["VX_REQUIRE_SANDBOX","VX_DEBUG_STRACE"]},"platforms":["darwin-arm64"],"sandbox":{"allow":{"network":["registry.npmjs.org"],"read":["**/*","../vx-history/**"],"systemInfo":["vfs.disk-space"],"write":["dist/**","~/.bun/install/cache/",".*.tmp/**"]},"ignore":{"write":["*.bun-build"]}}},"inputs":{"files":["src/**","package.json","scripts/check-binary.ts","scripts/binary-launch.ts"],"runtime":["bun --version"],"workspaceFiles":["packages/vx-history/**"]},"outputs":{"files":[]}}
+#2wg4gbs
+{"cache":true,"dependsOn":["install"],"description":"compile the host binary the way npm.yml does; it must launch and report the manifest version","exec":{"command":"bun scripts/check-binary.ts","env":{"passThrough":["VX_REQUIRE_SANDBOX","VX_DEBUG_STRACE"]},"platforms":["darwin-arm64"],"sandbox":{"allow":{"network":["registry.npmjs.org"],"read":["**/*"],"systemInfo":["vfs.disk-space"],"write":["dist/**","~/.bun/install/cache/",".*.tmp/**"]},"ignore":{"write":["*.bun-build"]}}},"inputs":{"files":["src/**","package.json","scripts/check-binary.ts","scripts/binary-launch.ts"],"runtime":["bun --version"]},"outputs":{"files":[]}}
 	canary.bun.darwin-arm64
-#28fwf22
-{"cache":true,"dependsOn":["install"],"description":"compile the host binary the way npm.yml does; it must launch and report the manifest version","exec":{"command":"bun scripts/check-binary.ts","env":{"passThrough":["VX_REQUIRE_SANDBOX","VX_DEBUG_STRACE"]},"platforms":["linux-arm64"],"sandbox":{"allow":{"network":["registry.npmjs.org"],"read":["**/*","../vx-history/**"],"systemInfo":["vfs.disk-space"],"write":["dist/**","~/.bun/install/cache/",".*.tmp/**"]},"ignore":{"write":["*.bun-build"]}}},"inputs":{"files":["src/**","package.json","scripts/check-binary.ts","scripts/binary-launch.ts"],"runtime":["bun --version"],"workspaceFiles":["packages/vx-history/**"]},"outputs":{"files":[]}}
+#24d7y02
+{"cache":true,"dependsOn":["install"],"description":"compile the host binary the way npm.yml does; it must launch and report the manifest version","exec":{"command":"bun scripts/check-binary.ts","env":{"passThrough":["VX_REQUIRE_SANDBOX","VX_DEBUG_STRACE"]},"platforms":["linux-arm64"],"sandbox":{"allow":{"network":["registry.npmjs.org"],"read":["**/*"],"systemInfo":["vfs.disk-space"],"write":["dist/**","~/.bun/install/cache/",".*.tmp/**"]},"ignore":{"write":["*.bun-build"]}}},"inputs":{"files":["src/**","package.json","scripts/check-binary.ts","scripts/binary-launch.ts"],"runtime":["bun --version"]},"outputs":{"files":[]}}
 	canary.bun.linux-arm64
 #azzzymn
 {"dependsOn":["install"],"description":"every package’s build under this machine’s sandbox, no cache, as a developer runs it","exec":{"command":"bun scripts/build-cold.ts","platforms":["darwin-arm64"]}}
@@ -228,8 +228,8 @@
 #1zmyf8s
 {"dependsOn":["check.*"]}
 	check
-#1ubaxl6
-{"cache":true,"dependsOn":["install"],"description":"compile the host binary the way npm.yml does; it must launch and report the manifest version","exec":{"command":"bun scripts/check-binary.ts","env":{"passThrough":["VX_REQUIRE_SANDBOX","VX_DEBUG_STRACE"]},"sandbox":{"allow":{"network":["registry.npmjs.org"],"read":["**/*","../vx-history/**"],"systemInfo":["vfs.disk-space"],"write":["dist/**","~/.bun/install/cache/",".*.tmp/**"]},"ignore":{"write":["*.bun-build"]}}},"inputs":{"files":["src/**","package.json","scripts/check-binary.ts","scripts/binary-launch.ts"],"runtime":["bun --version"],"workspaceFiles":["packages/vx-history/**"]},"outputs":{"files":[]}}
+#2gipxcy
+{"cache":true,"dependsOn":["install"],"description":"compile the host binary the way npm.yml does; it must launch and report the manifest version","exec":{"command":"bun scripts/check-binary.ts","env":{"passThrough":["VX_REQUIRE_SANDBOX","VX_DEBUG_STRACE"]},"sandbox":{"allow":{"network":["registry.npmjs.org"],"read":["**/*"],"systemInfo":["vfs.disk-space"],"write":["dist/**","~/.bun/install/cache/",".*.tmp/**"]},"ignore":{"write":["*.bun-build"]}}},"inputs":{"files":["src/**","package.json","scripts/check-binary.ts","scripts/binary-launch.ts"],"runtime":["bun --version"]},"outputs":{"files":[]}}
 	check.bun.binary
 #38mvu0o
 {"description":"refuse a Bun below the floor (engines.bun) before any shard starts","exec":{"command":"bun scripts/bun-floor.ts","sandbox":{"allow":{"read":["."]}}},"inputs":{"files":["scripts/bun-floor.ts","src/util/**","package.json"],"runtime":["bun --version"]}}

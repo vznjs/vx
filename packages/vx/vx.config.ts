@@ -160,8 +160,7 @@ const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) =>
     env: { passThrough: ['VX_REQUIRE_SANDBOX', 'VX_DEBUG_STRACE'] },
     sandbox: {
       allow: {
-        // The bare-specifier workspace links the schedule plugin.
-        read: ['**/*', '../vx-history/**'],
+        read: ['**/*'],
         write: ['dist/**', ...BUN_RUNTIME_WRITES],
         network: BUN_RUNTIME_NETWORK,
         systemInfo: ['vfs.disk-space'],
@@ -173,7 +172,6 @@ const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) =>
   },
   inputs: {
     files: ['src/**', 'package.json', 'scripts/check-binary.ts', 'scripts/binary-launch.ts'],
-    workspaceFiles: ['packages/vx-history/**'],
     runtime: BUN_VERSION,
   },
   outputs: { files: [] },

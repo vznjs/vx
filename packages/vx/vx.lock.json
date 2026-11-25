@@ -6979,8 +6979,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../vx-history/**"
+              "**/*"
             ],
             "write": [
               "dist/**",
@@ -7007,9 +7006,6 @@
           "package.json",
           "scripts/check-binary.ts",
           "scripts/binary-launch.ts"
-        ],
-        "workspaceFiles": [
-          "packages/vx-history/**"
         ],
         "runtime": [
           "bun --version"
@@ -7039,8 +7035,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../vx-history/**"
+              "**/*"
             ],
             "write": [
               "dist/**",
@@ -7067,9 +7062,6 @@
           "package.json",
           "scripts/check-binary.ts",
           "scripts/binary-launch.ts"
-        ],
-        "workspaceFiles": [
-          "packages/vx-history/**"
         ],
         "runtime": [
           "bun --version"
@@ -7099,8 +7091,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../vx-history/**"
+              "**/*"
             ],
             "write": [
               "dist/**",
@@ -7127,9 +7118,6 @@
           "package.json",
           "scripts/check-binary.ts",
           "scripts/binary-launch.ts"
-        ],
-        "workspaceFiles": [
-          "packages/vx-history/**"
         ],
         "runtime": [
           "bun --version"
