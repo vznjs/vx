@@ -2216,6 +2216,9 @@ export function ignoredInputLine(task: string, rel: string, glob: string): strin
   git. A run's miss passes its keyed files, so what is left is ignored;
   `vx lock` passes the entries' literals and asks `checkIgnoreSync` of
   what is left. `ignoredInputLine` is the line both print.
+- `isVxConfigPath`: a project's `vx.config.*` or the root's
+  `.vx/workspace.*`, never an input, so neither `ignoredByGlobs` nor a
+  miss's dead-glob line names one.
 
 Callers: `graph/task-graph.ts` `refuseOverlaps` (at `vx lock`) and
 `orchestrator/stable-keys.ts` `askIgnoredOutputs` (once per run);

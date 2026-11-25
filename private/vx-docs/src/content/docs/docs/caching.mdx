@@ -485,6 +485,7 @@ One that declares no `inputs` has no key, and every task behind it misses. `inpu
 - **The task's own outputs** are out, except a file git tracks. That one stays in the key by what git holds, and a miss writes git's version back first.
 - **A nested project's files** are out. A leading `**` passes over them; a glob that names its way into one (`*/dist/**`, a root `packages/**/*.ts`) is refused by `vx lock`.
 - **Always excluded:** `.git`, an install's `node_modules` (untracked, not ignored), and vx's own files at the project's root.
+- **vx's configs:** `vx.config.{ts,mts,js,mjs,cts,cjs}` and `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`. The lock keys what they resolve to.
 - **vx's own files:** `.vx/cache`, `.vx/tmp`, and the lock files `vx lock` writes (`.vx/projects.lock`, `.vx/dependencies.lock`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`).
 - **And their temp copies** a killed `vx lock` leaves behind: `.vx/projects.lock.tmp-*`, `.vx/dependencies.lock.tmp-*`, `vx.lock.json.tmp-*`.
 

@@ -144,6 +144,7 @@ export {
   ignoredByGlobs,
   ignoredInputLine,
   ignoreProbes,
+  isVxConfigPath,
   listedSync,
   changedSinceCommitOf,
   skipWorktreeSync,
