@@ -295,7 +295,7 @@ async function installPlugins(
   scope = path.join(root, 'node_modules', '@vzn'),
 ): Promise<void> {
   await mkdir(scope, { recursive: true })
-  await symlink(path.resolve(import.meta.dir, '..', '..', 'vx'), path.join(scope, 'vx'))
+  await symlink(path.resolve(import.meta.dir, '../node_modules/@vzn/vx'), path.join(scope, 'vx'))
   for (const [pkg, factories] of [
     ['vx-lockfile', ['pnpm', 'bun', 'npm', 'yarn']],
     ['vx-history', ['vxHistory']],

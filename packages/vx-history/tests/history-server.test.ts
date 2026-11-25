@@ -1068,7 +1068,7 @@ describe('vx run with vxHistory({ url })', () => {
         ],
         cwd: other,
       })
-      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      const bin = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
       Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
       const cli = Bun.spawnSync({
         cmd: [process.execPath, bin, 'run', 'build', '--all'],
@@ -1114,7 +1114,7 @@ describe('vx run with vxHistory({ url })', () => {
       await Bun.write(path.join(plugin, 'package.json'), '{ "name": "before" }\n')
       await Bun.write(
         path.join(plugin, 'index.mjs'),
-        `import { definePlugin } from ${JSON.stringify(path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'index.ts'))}\n` +
+        `import { definePlugin } from ${JSON.stringify(Bun.fileURLToPath(import.meta.resolve('@vzn/vx')))}\n` +
           'export default definePlugin(import.meta, { teardown: () => globalThis.__vxHistoryBefore() })\n',
       )
       await Bun.write(
@@ -1176,7 +1176,7 @@ describe('vx run with vxHistory({ url })', () => {
         ],
         cwd: other,
       })
-      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      const bin = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
       Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
       const cli = Bun.spawn({
         cmd: [process.execPath, bin, 'run', 'build', '--all'],
@@ -1227,7 +1227,7 @@ describe('vx run with vxHistory({ url })', () => {
           `export default { plugins: [vxHistory({ url: ${JSON.stringify(hung)}, ...${JSON.stringify(NAMED)} })] }\n`,
       )
       Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
-      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      const bin = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
       Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
       const cli = Bun.spawn({
         cmd: [process.execPath, bin, 'run', 'build', '--all'],
@@ -1425,7 +1425,7 @@ describe('vx run with vxHistory({ url })', () => {
         ],
         cwd: other,
       })
-      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      const bin = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
       Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
       const before = seen.length
       // Not spawnSync: the server answers from this process.

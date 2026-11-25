@@ -10,7 +10,7 @@ import { dte, github, gitlab, local } from '../src/index.js'
 import { askTasks } from '../src/init.js'
 
 const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
 
 let root: string
 let printed: string[]

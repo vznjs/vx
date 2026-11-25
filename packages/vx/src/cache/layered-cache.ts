@@ -23,8 +23,8 @@ import {
   type SaveArgs,
 } from './cache.js'
 import { isCorruptArtifact, type TaskInputComponent, type TaskMemo } from './layer.js'
-import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
-import { teardownTimeoutMs, type PluginSecrets } from '../util/index.js'
+import { RemoteLane, Stalled, type ResolvedRemote } from './remote-lane.js'
+import { savedDownloadBudgetMs, teardownTimeoutMs, type PluginSecrets } from '../util/index.js'
 
 const STOPPED: unique symbol = Symbol('stopped')
 
@@ -65,7 +65,7 @@ function endsOnStop(
       if (stop) controller.error(new Error('the run was stopped'))
       else if (idle)
         controller.error(
-          new Error(`no bytes for ${idleMs} ms (run.pluginTimeout) — degraded to a miss`),
+          new Stalled(`no bytes for ${idleMs} ms (run.pluginTimeout) — degraded to a miss`),
         )
       else if (next.done) controller.close()
       else {
@@ -369,10 +369,34 @@ export class LayeredCache implements CacheLayer {
       return here
     }
     // Every remote, read or not, and past a probe's absence: the probe ran
-    // before the agent saved it.
-    for (const lane of this.lanes)
-      if (await this.pullFrom(lane, hash, ctx, true)) return this.local.getIngested(hash)
-    return null
+    // before the agent saved it. This entry must come home: two stalled
+    // downloads from the cache Worker failed a run whose every task passed
+    // (2026-11-25). So a remote that stalled is asked again, backing off,
+    // until the budget; one that holds none once more, a CDN's 404 may
+    // predate the upload. A refusal, a bad answer or bad bytes would come
+    // back the same, and are not asked again. The budget bounds when an ask
+    // starts; each ask is bounded by its own stall bound, so a body that
+    // keeps streaming is never cut.
+    const budget = savedDownloadBudgetMs()
+    const until = performance.now() + budget
+    const stopped = Promise.race(this.lanes.map((l) => l.whenStopped)).then(() => true)
+    const nonePast = new Set<RemoteLane>()
+    let asking: readonly RemoteLane[] = this.lanes
+    for (let wait = budget / 100; ; wait = Math.min(wait * 2, budget / 10)) {
+      const again: RemoteLane[] = []
+      for (const lane of asking) {
+        const got = await this.pullFrom(lane, hash, ctx, true)
+        if (got === 'hit') {
+          if (asking !== this.lanes) lane.landed(hash)
+          return this.local.getIngested(hash)
+        }
+        if (got === 'stalled' || (got === 'none' && !nonePast.has(lane))) again.push(lane)
+        if (got === 'none') nonePast.add(lane)
+      }
+      if (again.length === 0 || performance.now() + wait > until) return null
+      if (await Promise.race([stopped, Bun.sleep(wait).then(() => false)])) return null
+      asking = again
+    }
   }
 
   /**
@@ -440,20 +464,26 @@ export class LayeredCache implements CacheLayer {
     let absent = true
     for (const lane of this.readable) {
       const got = await this.pullFrom(lane, hash, ctx)
-      if (got === true) return true
-      if (got === false) absent = false
+      if (got === 'hit') return true
+      if (got !== 'none') absent = false
     }
     // Every remote answered it holds none: a hit the index kept is gone.
     if (absent) this.local.remoteHits.forget(hash)
     return false
   }
 
+  /**
+   * One ask of one remote: `hit` once the artifact is in local, `none` when
+   * the remote holds none, `stalled` when it went quiet (`Stalled`), `failed`
+   * on any other failure or a stop. `fresh` (`getSaved`): past a probe's
+   * absence, and kept out of `downloads`, which `awaitOrRun` may abandon.
+   */
   private async pullFrom(
     lane: RemoteLane,
     hash: string,
     ctx?: CacheGetContext,
     fresh = false,
-  ): Promise<boolean | null> {
+  ): Promise<'hit' | 'none' | 'stalled' | 'failed'> {
     const fetchStart = performance.now()
     // A stopped run waits on no read: a download in flight held Ctrl-C until
     // its last byte. The body is cancelled.
@@ -462,12 +492,17 @@ export class LayeredCache implements CacheLayer {
     const remoteBody = await Promise.race([pending, stopped])
     if (remoteBody === STOPPED) {
       // A late answer's body would hold its connection to the exit.
-      void pending.then((r) => (r?.body instanceof Response ? r.body.body?.cancel() : undefined))
-      return false
+      void pending.then((r) =>
+        r !== undefined && r !== null && !(r instanceof Stalled) && r.body instanceof Response
+          ? r.body.body?.cancel()
+          : undefined,
+      )
+      return 'failed'
     }
     // The remote holds none: the one answer that says the key is gone.
-    if (remoteBody === null) return null
-    if (remoteBody === undefined) return false
+    if (remoteBody === null) return 'none'
+    if (remoteBody === undefined) return 'failed'
+    if (remoteBody instanceof Stalled) return 'stalled'
 
     // Ingest the remote body with the caller's taskId and command and the
     // remote's durationMs. Without `ctx`, placeholders.
@@ -482,7 +517,7 @@ export class LayeredCache implements CacheLayer {
     let abandon = (): void => {}
     const abandoned = new Promise<typeof STOPPED>((resolve) => (abandon = () => resolve(STOPPED)))
     const dl: Download = { start: performance.now(), received: 0, abandon }
-    this.downloads.set(hash, dl)
+    if (!fresh) this.downloads.set(hash, dl)
     const ends = Promise.race([stopped, abandoned])
     try {
       const ingest = this.local.ingest(
@@ -492,16 +527,17 @@ export class LayeredCache implements CacheLayer {
       )
       // quiet: raced and awaited below, where its error is reported
       ingest.catch(() => undefined)
-      if ((await Promise.race([ingest, ends])) === STOPPED) return false
+      if ((await Promise.race([ingest, ends])) === STOPPED) return 'failed'
     } catch (err) {
       // Network bytes: a corrupt or truncated artifact is a miss, never a
       // crash. A corrupt local one is too (`Cache.restoreOutputs` drops it).
       lane.report('download', hash, err)
       // Bad bytes there: the re-run's save sends good ones over them.
       if (isCorruptArtifact(err)) lane.distrust(hash)
-      return false
+      return err instanceof Stalled ? 'stalled' : 'failed'
     } finally {
-      this.downloads.delete(hash)
+      // A `getSaved` pull beside this one is not in the map; another `get`'s is.
+      if (this.downloads.get(hash) === dl) this.downloads.delete(hash)
     }
     this.remoteSourced.set(hash, Math.round(performance.now() - fetchStart))
     const bytes = remoteBody.body instanceof Blob ? remoteBody.body.size : dl.received
@@ -514,7 +550,7 @@ export class LayeredCache implements CacheLayer {
       this.infos.set(hash, info)
       this.local.remoteHits.record([hash], new Map([[hash, info]]))
     }
-    return true
+    return 'hit'
   }
 
   outputsPath(hash: string): string {

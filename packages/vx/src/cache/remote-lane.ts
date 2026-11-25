@@ -14,6 +14,13 @@ import {
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { ArtifactInfo, RemoteCacheLayer } from './layered-cache.js'
 
+/**
+ * A remote that went quiet past `run.pluginTimeout`: no answer, or no bytes.
+ * The one failure worth asking again for an entry that must come home; a
+ * refusal, a bad answer or bad bytes come back the same.
+ */
+export class Stalled extends Error {}
+
 /** One remote, resolved: its wire and what the run's policy and its `access` let it do. */
 export interface ResolvedRemote {
   readonly remote: RemoteCacheLayer
@@ -151,7 +158,10 @@ export class RemoteLane {
    * One entry per failure class said; `repeats` counts the ones held back,
    * since concurrent requests would print one line each.
    */
-  private readonly reported = new Map<string, { cause: string; repeats: number }>()
+  private readonly reported = new Map<
+    string,
+    { cause: string; repeats: number; asked: Set<string> }
+  >()
 
   constructor(
     resolved: ResolvedRemote,
@@ -194,7 +204,7 @@ export class RemoteLane {
       timer = setTimeout(
         () =>
           reject(
-            new Error(
+            new Stalled(
               `get() did not answer within ${ms} ms (run.pluginTimeout) — degraded to a miss`,
             ),
           ),
@@ -315,19 +325,20 @@ export class RemoteLane {
 
   /**
    * The artifact's body: null on a miss or known absence (unless `fresh`: saved
-   * since the probe), undefined on a failure or malformed answer.
+   * since the probe), `Stalled` when no answer came in time, undefined on any
+   * other failure or a malformed answer.
    */
   async get(
     hash: string,
     fresh = false,
-  ): Promise<{ body: Blob | Response; durationMs?: number } | null | undefined> {
+  ): Promise<{ body: Blob | Response; durationMs?: number } | null | undefined | Stalled> {
     if (!fresh && this.absent.has(hash)) return null
     let result: unknown
     try {
       result = await this.bounded(this.asked('get', () => this.remote.get(hash)))
     } catch (err) {
       this.report('download', hash, err)
-      return undefined
+      return err instanceof Stalled ? err : undefined
     }
     if (result === undefined) return undefined
     if (!result) {
@@ -369,6 +380,15 @@ export class RemoteLane {
   /** `hash`'s bytes here are unreadable: a save of it uploads, held or not. */
   distrust(hash: string): void {
     this.distrusted.add(hash)
+  }
+
+  /**
+   * `hash` came from here after a download of it failed: the task's row does
+   * not say a failure its entry got past.
+   */
+  landed(hash: string): void {
+    const key = this.traffic.keys.get(hash)
+    if (key !== undefined) key.failures = key.failures.filter((f) => !f.startsWith('download: '))
   }
 
   /**
@@ -514,13 +534,20 @@ export class RemoteLane {
     const cls = failureClass(e, hash)
     const seen = this.reported.get(cls)
     if (seen !== undefined) {
-      seen.repeats++
+      // A key asked again (`getSaved`) is one request that failed, not more.
+      const asked = hash === undefined ? undefined : `${op}\0${hash}`
+      if (asked === undefined || !seen.asked.has(asked)) seen.repeats++
+      if (asked !== undefined) seen.asked.add(asked)
       return
     }
     // The repeats are other artifacts, so the line that counts them must not
     // name this one.
     const cause = hash === undefined ? e.message : e.message.replaceAll(hash, '<hash>')
-    this.reported.set(cls, { cause, repeats: 0 })
+    this.reported.set(cls, {
+      cause,
+      repeats: 0,
+      asked: new Set(hash === undefined ? [] : [`${op}\0${hash}`]),
+    })
     const what = typeof subject === 'string' ? subject : subject.batch
     const where = this.endpoint === undefined ? '' : ` ${PREPOSITION[op]} ${this.endpoint}`
     this.emit(new Error(`${op} ${what}${where} failed: ${e.message}`, { cause: e }))

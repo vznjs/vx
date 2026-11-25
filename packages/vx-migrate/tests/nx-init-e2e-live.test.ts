@@ -26,7 +26,7 @@ if (process.env['VX_REQUIRE_NX'] === '1' && !MODULES) {
 }
 const TIMEOUT = 300_000
 const PKG = path.resolve(import.meta.dir, '..')
-const VX = path.resolve(PKG, '..', 'vx', 'src', 'bin.ts')
+const VX = path.join(PKG, 'node_modules/.bin/vx')
 const MIGRATE = path.join(PKG, 'src', 'bin.ts')
 
 const roots: string[] = []
@@ -47,7 +47,7 @@ async function linkModules(root: string): Promise<void> {
   for (const bin of await readdir(path.join(from, '.bin'))) {
     await symlink(await realpath(path.join(from, '.bin', bin)), path.join(to, '.bin', bin))
   }
-  await symlink(path.resolve(PKG, '..', 'vx'), path.join(to, '@vzn', 'vx'))
+  await symlink(path.join(PKG, 'node_modules/@vzn/vx'), path.join(to, '@vzn', 'vx'))
   await symlink(PKG, path.join(to, '@vzn', 'vx-migrate'))
   // Stand-ins for the plugins init and the migrator declare: the sandbox
   // lets this suite read no other package but core. npm() links what the

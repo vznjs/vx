@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-const CORE_BIN = path.resolve(import.meta.dir, '..', '..', '..', 'vx', 'src', 'bin.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '../../node_modules/.bin/vx')
 
 /** The task ids whose key moved between two plans of the same tasks, sorted. */
 export function moved(before: Record<string, string>, after: Record<string, string>): string[] {

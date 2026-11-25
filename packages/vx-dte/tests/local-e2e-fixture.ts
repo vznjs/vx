@@ -10,8 +10,8 @@ import path from 'node:path'
 import { expect } from 'bun:test'
 
 export const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-export const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
-export const CORE_INDEX = path.resolve(import.meta.dir, '../../vx/src/index.ts')
+export const CORE_BIN = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
+export const CORE_INDEX = Bun.fileURLToPath(import.meta.resolve('@vzn/vx'))
 // Relative, as this package's test task sets it: each worker's worktree
 // must still share the run's store.
 process.env['VX_CACHE_DIR'] = '.vx/cache'

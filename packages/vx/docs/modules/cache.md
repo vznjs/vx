@@ -99,7 +99,7 @@ export interface CacheLayer {
   stopUploads?(): void // a stopped run: start no more uploads, and let drainUploads resolve now
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
-  getSaved?(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> // past the read policy: an entry this run's agent saved
+  getSaved?(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> // past the read policy: an entry this run's agent saved; a failed download asked again (savedDownloadBudgetMs)
   getMany?(
     hashes: readonly string[],
     ctx?: (hash: string) => CacheGetContext, // each hash's get context: an unindexed artifact is adopted
@@ -1138,7 +1138,19 @@ local concerns.
 - No wire knowledge — URLs, headers, integrity digests, redirects,
   timeouts all live inside the `RemoteCacheLayer` implementation
   (e.g. `@vzn/vx-reapi`'s CAS client).
-- No write-batching or retry on transient errors. Fire-and-forget.
+- No write-batching or retry on transient errors. Fire-and-forget. The
+  one retry is `getSaved`'s: an entry another machine of the run saved
+  must come home, so a download of it that stalled (`Stalled`: no answer,
+  or no bytes, within `run.pluginTimeout`) is asked again, backing off,
+  while ten of those bounds have not passed (30 s by default; an ask that
+  goes quiet ends one bound later, one that streams is never cut), and a
+  remote that holds none is asked once more, since a CDN may serve a 404
+  from before the upload. A refusal, a malformed answer or bad bytes
+  would come back the same and are not asked again. A key asked again is
+  one request in "N more requests failed", and one that lands drops its
+  download failures from the task's row. A `getSaved` pull stays out of
+  `downloads`, so a `get` beside it that gives up its slow body gives up
+  only its own (2026-11-25: two stalled downloads failed a green DTE run).
 - One bound, on waiting, never on working: a `get` that has not
   answered within `run.pluginTimeout` (3 s), or a body that sends no
   bytes for as long (`endsOnStop`), is a miss, warned by plugin, and the

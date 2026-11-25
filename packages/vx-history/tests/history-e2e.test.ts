@@ -12,7 +12,7 @@ import { run } from '@vzn/vx/testing'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
 const TIMEOUT = 30_000
 let root: string
 

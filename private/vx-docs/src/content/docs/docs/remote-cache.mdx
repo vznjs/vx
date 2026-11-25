@@ -58,6 +58,9 @@ vx asks the cache on this machine first, the remote second. A task runs only whe
 <Aside type="tip">
   A remote that is down never fails a run. vx says so once, then runs the task as if there were no
   remote.
+
+  One download vx cannot do without is a task a [DTE](../distributed-task-execution/) worker ran.
+  When it goes quiet, vx asks again, for ten `run.pluginTimeout`s (30 s).
 </Aside>
 
 <Quiz q="The cache server is down during a pull request's run. What happens?">

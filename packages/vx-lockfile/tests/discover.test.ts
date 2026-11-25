@@ -18,7 +18,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { editMemo } from './helpers/memo.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
 
 const PNPM = `lockfileVersion: '9.0'
 

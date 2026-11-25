@@ -360,7 +360,7 @@ describe('a refused token costs ONE line on a whole workspace', () => {
     const proc = Bun.spawn({
       cmd: [
         'bun',
-        path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts'),
+        path.resolve(import.meta.dir, '../node_modules/@vzn/vx/tests/helpers/vx-locked.ts'),
         'run',
         'build',
         '--all',
@@ -388,7 +388,7 @@ describe('a refused token costs ONE line on a whole workspace', () => {
   })
 })
 
-const BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts')
+const BIN = path.resolve(import.meta.dir, '../node_modules/@vzn/vx/tests/helpers/vx-locked.ts')
 
 /** `vx run build` through the CLI: the warnings are stderr lines, and their count is the claim. */
 async function cliRun(

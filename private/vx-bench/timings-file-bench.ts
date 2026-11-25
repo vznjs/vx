@@ -15,16 +15,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { run, type Logger } from '@vzn/vx'
 
-const PLUGIN = path.resolve(
-  import.meta.dir,
-  '..',
-  '..',
-  'packages',
-  'vx-history',
-  'src',
-  'index.ts',
-)
-const BIN = path.resolve(import.meta.dir, '..', '..', 'packages', 'vx', 'src', 'bin.ts')
+const PLUGIN = Bun.fileURLToPath(import.meta.resolve('@vzn/vx-history'))
+const BIN = path.join(import.meta.dir, 'node_modules/.bin/vx')
 const WORKERS = 4
 const LIBS = 8
 const SLOW = 3

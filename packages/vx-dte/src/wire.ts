@@ -36,9 +36,10 @@ export function unsent(
 }
 
 /**
- * A dropped socket's first redial waits up to this, doubling per failure
- * (full jitter) to half a heartbeat: the relay loses a participant three
- * heartbeats without one.
+ * A dropped socket's first redial waits up to this, doubling per failure to
+ * half a heartbeat (the relay loses a participant three heartbeats without
+ * one), jittered down to half, never to nothing: full jitter spent a run's
+ * `RETRIES` dials in the 500 ms a relay took to restart (a PR's CI).
  */
 const FIRST_REDIAL_MS = 250
 /**
@@ -605,7 +606,8 @@ export async function join(
   const again = (): void => {
     if (left || ended !== undefined || redial !== undefined || socket?.open === true) return
     lostAt ??= performance.now()
-    const ms = Math.random() * Math.min(heartbeatMs / 2, FIRST_REDIAL_MS * 2 ** failures)
+    const ms =
+      (Math.min(heartbeatMs / 2, FIRST_REDIAL_MS * 2 ** failures) * (1 + Math.random())) / 2
     redial = setTimeout(() => {
       dialing = dial()
         .catch((err: unknown) => {

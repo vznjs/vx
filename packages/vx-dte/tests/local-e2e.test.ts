@@ -54,7 +54,7 @@ async function logTimings(): Promise<string> {
   await writeFile(
     ws,
     `import { appendFileSync } from 'node:fs'
-import { definePlugin } from ${JSON.stringify(path.resolve(import.meta.dir, '../../vx/src/index.ts'))}
+import { definePlugin } from ${JSON.stringify(Bun.fileURLToPath(import.meta.resolve('@vzn/vx')))}
 const timings = definePlugin({ dir: ${JSON.stringify(dir)} }, {
   setup(ctx) {
     ctx.on('onTaskComplete', (n, o) => ${line('id: n.id, status: o.status, durationMs: o.durationMs, cpuMs: o.usage?.cpuMs, rss: o.usage?.peakRssBytes, where: o.placement?.where')})

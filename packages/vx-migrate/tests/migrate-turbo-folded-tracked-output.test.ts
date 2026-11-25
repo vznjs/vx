@@ -9,7 +9,7 @@ import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const CORE = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
+const CORE = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
 const roots: string[] = []
 afterAll(async () => {
   for (const r of roots) await rm(r, { recursive: true, force: true })

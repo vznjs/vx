@@ -16,7 +16,7 @@ import { planRun } from '@vzn/vx/testing'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const CORE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx')
+const CORE_PKG = path.resolve(import.meta.dir, '../node_modules/@vzn/vx')
 const FIXTURES = path.join(import.meta.dir, 'fixtures', 'nx-shapes')
 const silent: Logger = {
   status: () => undefined,

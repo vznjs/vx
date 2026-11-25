@@ -80,6 +80,44 @@ it('restores a task another machine saved by its key: its files and its output, 
   expect(remote.puts()).toBe(1)
 })
 
+// A DTE run whose every task passed failed: the cache Worker sent no bytes
+// on both downloads of a worker's entry (2026-11-25). The run's restore of
+// it asks again past a stall.
+it('a restore asks again past a download that stalled, and lays the files', async () => {
+  const remote = memoryRemote()
+  const agent = await machine('agent', remote.layer)
+  const task = (root: string) => ({
+    id: 'app#build',
+    projectDir: path.join(root, 'app'),
+    command: 'build',
+    outputs: { files: ['dist/**'], workspaceFiles: [] },
+  })
+  await mkdir(path.join(agent.root, 'app', 'dist'), { recursive: true })
+  await writeFile(path.join(agent.root, 'app', 'dist', 'out.js'), 'built')
+  const output = [{ text: 'compiled\n', err: false }]
+  await agent.artifacts.save(KEY, task(agent.root), { output, durationMs: 12 })
+  let gets = 0
+  const stalling: RemoteCacheLayer = {
+    ...remote.layer,
+    get: async (hash) =>
+      ++gets === 1
+        ? {
+            body: new Response(new ReadableStream({ pull: () => new Promise(() => {}) })),
+            durationMs: 5,
+          }
+        : remote.layer.get(hash),
+  }
+  const here = await machine('here', stalling)
+  process.env['VX_RUN_PLUGIN_TIMEOUT'] = '20ms'
+  try {
+    expect(await here.artifacts.restore(KEY, task(here.root))).toEqual(output)
+  } finally {
+    delete process.env['VX_RUN_PLUGIN_TIMEOUT']
+  }
+  expect(gets).toBe(2)
+  expect(await readFile(path.join(here.root, 'app', 'dist', 'out.js'), 'utf8')).toBe('built')
+})
+
 it('masks a secret of the task env out of the stored output', async () => {
   const remote = memoryRemote()
   const agent = await machine('agent', remote.layer)

@@ -30,10 +30,7 @@ beforeEach(async () => {
   copy = await mkdtemp(path.join(tmpdir(), 'vx-memo-id-src-'))
   await cp(SRC, path.join(copy, 'src'), { recursive: true })
   await cp(path.join(SRC, '..', 'package.json'), path.join(copy, 'package.json'))
-  await symlink(
-    path.resolve(import.meta.dir, '../../../node_modules'),
-    path.join(copy, 'node_modules'),
-  )
+  await symlink(path.resolve(import.meta.dir, '../node_modules'), path.join(copy, 'node_modules'))
 })
 afterEach(async () => {
   await rm(root, { recursive: true, force: true })

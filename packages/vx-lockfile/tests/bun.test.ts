@@ -14,7 +14,7 @@ import { importerDigests, importerLinks, parseLockfile, patchFiles } from '../sr
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '../node_modules/@vzn/vx/tests/helpers/vx-locked.ts')
 
 function silent(): Logger {
   return {

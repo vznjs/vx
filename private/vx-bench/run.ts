@@ -30,12 +30,11 @@ import { deleteDist, missingDist } from './outputs.js'
 
 const projects = Number(process.argv[2] ?? 100)
 const reps = Number(process.argv[3] ?? 3)
-const vxRoot = path.resolve(import.meta.dir, '..', '..')
 const vxBin = process.env['VX_BIN']
 const vxCmd: string[] =
   vxBin !== undefined && vxBin !== ''
     ? [path.resolve(vxBin)]
-    : [process.execPath, path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts')]
+    : [process.execPath, path.join(import.meta.dir, 'node_modules/.bin/vx')]
 
 async function vx(cwd: string, args: readonly string[]): Promise<number> {
   const t0 = Bun.nanoseconds()

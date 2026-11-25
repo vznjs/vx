@@ -228,6 +228,34 @@ it('gives up on a relay down after 3 dials, not a wait', async () => {
   }
 })
 
+// Full jitter let a redial wait nothing: an orchestrator spent its 3 dials
+// in the 500 ms its relay took to restart, and the run failed (a PR's CI).
+it('waits at least half its backoff before each redial', async () => {
+  const { url, open } = sockets(50)
+  const random = Math.random
+  const Real = globalThis.WebSocket
+  try {
+    const o = await join(url, R, 'orchestrator', null, undefined)
+    Math.random = () => 0
+    globalThis.WebSocket = class extends Real {
+      constructor(u: string | URL, opts?: unknown) {
+        super(String(u).replace(/:\d+\//, ':1/'), opts as never)
+      }
+    } as typeof WebSocket
+    const at = performance.now()
+    for (const w of open) if (w.data.id === o.id) w.close()
+    const polls = async (): Promise<never> => {
+      for (;;) await o.poll()
+    }
+    await expect(polls()).rejects.toThrow('no socket in 3 dials')
+    // Four waits of half of half a 50 ms heartbeat.
+    expect(performance.now() - at).toBeGreaterThanOrEqual(4 * 12.5)
+  } finally {
+    Math.random = random
+    globalThis.WebSocket = Real
+  }
+})
+
 // Sends asked for in one tick went as one frame, which the relay refused
 // whole once they passed its 1 MiB body limit together (2026-10-22).
 it('sends asked for together that would pass the relay’s body limit go as several frames', async () => {

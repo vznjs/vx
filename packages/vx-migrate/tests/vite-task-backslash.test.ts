@@ -8,7 +8,7 @@ import { afterAll, expect, it } from 'bun:test'
 import { loadProjectConfig } from '@vzn/vx'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const CORE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx')
+const CORE_PKG = path.resolve(import.meta.dir, '../node_modules/@vzn/vx')
 
 let root: string
 afterAll(async () => {

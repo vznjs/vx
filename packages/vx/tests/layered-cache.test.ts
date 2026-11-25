@@ -533,6 +533,173 @@ describe('LayeredCache', () => {
       )
       expect([errors, hit?.source]).toEqual([[], 'remote'])
     })
+
+    // A DTE worker's entry must come home: two stalled downloads from the
+    // cache Worker failed a run whose every task passed (2026-11-25).
+    it('getSaved() asks again past stalled downloads until one lands', async () => {
+      await saveSample(makeLayered(), 'h-home')
+      const whole = remote.store.get('h-home')!
+      await wipeLocal()
+      const errors: Error[] = []
+      const stalling = trickling(whole, 1, true)
+      const serving = trickling(whole, 1)
+      let gets = 0
+      const flaky: RemoteCacheLayer = {
+        ...serving,
+        get: (hash) => (++gets <= 3 ? stalling : serving).get(hash),
+      }
+      const layered = layeredOver(local, flaky, { onRemoteError: (e) => errors.push(e) })
+      const entry = await withTimeout('20ms', () =>
+        layered.getSaved('h-home', { taskId: 'pkg#build', command: 'echo produced' }),
+      )
+      expect([entry?.stdout, gets]).toEqual(['compiling…', 4])
+      // The one key's failures are not more requests, nor its row's once it landed.
+      expect(local.traffic.keys.get('h-home')?.failures ?? []).toEqual([])
+      layered.close()
+      local = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
+      expect(errors.map((e) => e.message)).toEqual([
+        'download h-home failed: no bytes for 20 ms (run.pluginTimeout) — degraded to a miss',
+      ])
+    })
+
+    it('getSaved() asks again past a get that does not answer', async () => {
+      await saveSample(makeLayered(), 'h-quiet')
+      await wipeLocal()
+      let gets = 0
+      const quiet: RemoteCacheLayer = {
+        ...remote.layer,
+        get: (hash) => (++gets === 1 ? new Promise(() => {}) : remote.layer.get(hash)),
+      }
+      const layered = layeredOver(local, quiet, { onRemoteError: () => {} })
+      const entry = await withTimeout('20ms', () => layered.getSaved('h-quiet'))
+      expect([entry?.stdout, gets]).toEqual(['compiling…', 2])
+    })
+
+    // A lookup that gives a slow body up must not give up the saved
+    // entry's pull of the same key beside it.
+    it('getSaved() beside a get() of its key is not given up with it', async () => {
+      await saveSample(makeLayered(), 'h-both')
+      const whole = remote.store.get('h-both')!
+      await wipeLocal()
+      let gets = 0
+      const half = Math.floor(whole.length / 2)
+      const body = (rest: boolean): Response =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(c) {
+              c.enqueue(whole.slice(0, half))
+              if (!rest) return
+              await Bun.sleep(150)
+              c.enqueue(whole.slice(half))
+              c.close()
+            },
+          }),
+        )
+      const slow: RemoteCacheLayer = {
+        has: async () => ({}),
+        // Too big to wait for against a 1 ms task: a lookup gives it up.
+        hasMany: async (hs) =>
+          new Map(hs.map((h) => [h, { size: whole.length * 1000, durationMs: 1 }])),
+        get: async () => ({ body: body(++gets > 1), durationMs: 1 }),
+        put: async () => {},
+      }
+      const layered = layeredOver(local, slow, { onRemoteError: () => {} })
+      await layered.remoteHasMany(['h-both'])
+      const [looked, saved] = await withTimeout('2s', async () => {
+        const lookup = layered.get('h-both')
+        while (gets === 0) await Bun.sleep(1)
+        return Promise.all([lookup, layered.getSaved('h-both')])
+      })
+      expect([looked, saved?.stdout]).toEqual([null, 'compiling…'])
+    })
+
+    it('getSaved() asks no more past a refusal: it would come back the same', async () => {
+      let gets = 0
+      const refusing: RemoteCacheLayer = {
+        has: async () => ({}),
+        get: async () => {
+          gets++
+          throw new Error('GET said 401')
+        },
+        put: async () => {},
+      }
+      const layered = layeredOver(local, refusing, { onRemoteError: () => {} })
+      expect(await withTimeout('20ms', () => layered.getSaved('h-401'))).toBeNull()
+      expect(gets).toBe(1)
+    })
+
+    // A CDN may serve a 404 it cached before the worker's upload.
+    it('getSaved() asks a remote that holds none once more, and takes what it then holds', async () => {
+      await saveSample(makeLayered(), 'h-late')
+      await wipeLocal()
+      let gets = 0
+      const late: RemoteCacheLayer = {
+        ...remote.layer,
+        get: async (hash) => (++gets === 1 ? null : remote.layer.get(hash)),
+      }
+      const layered = layeredOver(local, late, { onRemoteError: () => {} })
+      const entry = await withTimeout('20ms', () => layered.getSaved('h-late'))
+      expect([entry?.stdout, gets]).toEqual(['compiling…', 2])
+    })
+
+    it('getSaved() over a remote that always stalls gives up within its budget', async () => {
+      await saveSample(makeLayered(), 'h-gone')
+      const whole = remote.store.get('h-gone')!
+      await wipeLocal()
+      let gets = 0
+      const stalling = trickling(whole, 1, true)
+      const layered = layeredOver(
+        local,
+        { ...stalling, get: (hash) => (gets++, stalling.get(hash)) },
+        { onRemoteError: () => {} },
+      )
+      const started = performance.now()
+      expect(await withTimeout('20ms', () => layered.getSaved('h-gone'))).toBeNull()
+      // Ten stall bounds of budget: a few asks, then the miss, never a hang.
+      expect(gets).toBeGreaterThan(2)
+      expect(performance.now() - started).toBeLessThan(2000)
+    })
+
+    it('getSaved() asks a remote that holds none once more only', async () => {
+      let gets = 0
+      const empty: RemoteCacheLayer = {
+        has: async () => null,
+        get: async () => (gets++, null),
+        put: async () => {},
+      }
+      const layered = layeredOver(local, empty, { onRemoteError: () => {} })
+      expect(await withTimeout('20ms', () => layered.getSaved('h-none'))).toBeNull()
+      expect(gets).toBe(2)
+    })
+
+    it('getSaved() asks no more for bytes that did not read back', async () => {
+      let gets = 0
+      const corrupt: RemoteCacheLayer = {
+        has: async () => ({}),
+        get: async () => (gets++, { body: new Blob(['not an archive']), durationMs: 1 }),
+        put: async () => {},
+      }
+      const layered = layeredOver(local, corrupt, { onRemoteError: () => {} })
+      expect(await withTimeout('20ms', () => layered.getSaved('h-bad'))).toBeNull()
+      expect(gets).toBe(1)
+    })
+
+    it('getSaved() asks no more a remote that turned itself off', async () => {
+      let gets = 0
+      const off = {
+        off: false,
+        has: async () => ({}),
+        get: async () => {
+          gets++
+          off.off = true
+          return undefined
+        },
+        put: async () => {},
+      }
+      const layered = layeredOver(local, off, { onRemoteError: () => {} })
+      expect(await withTimeout('20ms', () => layered.getSaved('h-off'))).toBeNull()
+      expect(gets).toBe(1)
+    })
   })
 
   it('get() that resolves the pre-stream bytes shape is refused, naming the new one', async () => {

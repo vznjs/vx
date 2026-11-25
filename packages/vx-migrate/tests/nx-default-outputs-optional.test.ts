@@ -9,7 +9,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 
-const CORE = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
+const CORE = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
 
 let root: string
 beforeEach(async () => {

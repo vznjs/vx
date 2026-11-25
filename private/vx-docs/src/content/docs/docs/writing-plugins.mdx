@@ -980,7 +980,9 @@ Off CI a run only reads a remote. To try your `put` on your machine, run with `-
 
 An entry never changes: a `put` of a key the remote holds keeps the stored bytes. A remote error is a miss and one warning.
 
-vx bounds only how long a download waits, for its answer and then between bytes (`run.pluginTimeout`, then a miss), so give every request a deadline of its own:
+vx bounds only how long a download waits, for its answer and then between bytes (`run.pluginTimeout`, then a miss). A task another machine of the run ran is asked again, for ten of those.
+
+So give every request a deadline of its own:
 
 ```ts
 import { definePlugin, defineWorkspace, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
