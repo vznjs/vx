@@ -230,7 +230,8 @@ When `tasks.length === 0`:
 picker; tasks here: …)`: `taskNamesHere(cwd, asked)` (`cli/task-verb.ts`) names
   the tasks of the projects `--filter` / `--affected` select (`asked`), or
   every project's under `--all`, else the cwd project's, else every
-  project's, twelve then `and N more`; with no workspace, `vx run <task>,
+  project's, twelve then `and N more` (a cwd project with none of its own
+  names every project's, with `--all`); with no workspace, `vx run <task>,
 e.g. vx run build`.
 - TTY → `pickTask(cwd)` loads every project's tasks (only the projects
   `--filter` / `--affected` select, through `scopeFilters` and

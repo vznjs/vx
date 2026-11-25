@@ -296,6 +296,8 @@ Off a terminal (a pipe, CI) there is no list: name the task.
   `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`.
 - Outside any project it names every project's tasks:
   `not inside a project, the workspace's tasks with --all: build, test`.
+- In a project with no task of its own, such as the root one `vx init`
+  writes: `acme declares none, the workspace's tasks with --all: …`.
 - The list stops at twelve names, then `and N more`.
 - Under `--all` it names `every project's tasks: …`.
 - Under `--filter` or `--affected` it names
