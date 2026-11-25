@@ -23,6 +23,14 @@ export default defineProject({
       dependsOn: ['^build'],
     },
 
+    // What @vzn/vx-docs reads from this package through its node_modules
+    // besides bench.site's outputs: the real-repo rows. Never run; its key
+    // reaches the site's tasks.
+    site: {
+      description: 'the real-repo rows the site prints',
+      inputs: { files: ['real-repos.json'] },
+    },
+
     perf: {
       dependsOn: ['perf.*'],
     },

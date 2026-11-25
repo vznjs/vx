@@ -8,7 +8,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { RUNNERS, assertFastest, type BenchData, type RunnerResult } from '../src/bench/format.ts'
 
-const SITE = path.resolve(import.meta.dir, '../../vx-bench/site')
+const SITE = path.resolve(import.meta.dir, '../node_modules/@vzn/vx-bench/site')
 const OUT = path.resolve(import.meta.dir, '../measured/bench.json')
 
 type RunFile = Omit<RunnerResult, 'row'> & {

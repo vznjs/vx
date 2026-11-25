@@ -12,13 +12,15 @@
  * run happens only when this file is the entry point.
  */
 import { Glob } from 'bun'
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 
 const HERE = import.meta.dir
-const DOCS_DIR = path.resolve(HERE, '../../../packages/vx/docs')
-const PACKAGES_DIR = path.resolve(HERE, '../../../packages')
+// Every package as this project installed it (its devDependencies): each
+// declares a `site` task over the files read here, which keys the import.
+const PACKAGES_DIR = path.resolve(HERE, '../node_modules/@vzn')
+const DOCS_DIR = path.join(PACKAGES_DIR, 'vx/docs')
 const OUT_DIR = path.resolve(HERE, '../src/content/docs')
 
 /** A YAML comment in every generated page's frontmatter — the only way a page says it is generated. */
@@ -498,8 +500,12 @@ const REPO_BLOB = 'https://github.com/vznjs/vx/blob/main/'
 
 /** The published plugin packages under `packagesDir`: every `vx-*` that is not private. */
 function pluginPackages(packagesDir: string): string[] {
-  return [...new Glob('vx-*/package.json').scanSync({ cwd: packagesDir })]
-    .map((f) => f.split(path.sep)[0]!)
+  // Read, not globbed: each is a link in node_modules, and a glob does not
+  // walk into a linked directory.
+  return readdirSync(packagesDir)
+    .filter(
+      (dir) => dir.startsWith('vx-') && existsSync(path.join(packagesDir, dir, 'package.json')),
+    )
     .filter((dir) => {
       const pkg = JSON.parse(readFileSync(path.join(packagesDir, dir, 'package.json'), 'utf8'))
       return pkg.private !== true

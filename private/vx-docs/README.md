@@ -7,7 +7,9 @@ Pages.
 ## Source of truth
 
 The core package's [`packages/vx/docs/`](../../packages/vx/docs) tree is the single
-source of truth for the reference pages. `scripts/import-docs.ts` copies
+source of truth for the reference pages. `scripts/import-docs.ts` reads
+it, and every package's README, through this package's `node_modules`
+(each is a devDependency whose `site` task keys the import), and copies
 that Markdown into the Starlight content collection
 (`src/content/docs/`), adding frontmatter and rewriting internal `.md`
 links to clean URLs. The generated pages are git-ignored (see

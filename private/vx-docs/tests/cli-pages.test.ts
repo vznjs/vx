@@ -3,7 +3,7 @@
 // (each verb's section, each flag explained, real coloured output) is
 // one click from the Docs sidebar.
 import { expect, it } from 'bun:test'
-import { CORE_VERBS } from '../../../packages/vx/src/util/index.js'
+import { CORE_VERBS } from '../node_modules/@vzn/vx/src/util/index.js'
 import { SPLIT_REFERENCES } from '../scripts/import-docs.js'
 import { SIDEBAR } from '../src/nav/sections.js'
 

@@ -7140,6 +7140,21 @@
       },
       "cache": true
     },
+    "site": {
+      "description": "the files the site reads from core besides src",
+      "inputs": {
+        "files": [
+          "docs/*.md",
+          "docs/modules/*.md",
+          "docs/design/*.md",
+          "!docs/STATUS.md",
+          "tests/contract/config-schema.json",
+          "scripts/github.ts",
+          "scripts/release-notes.ts",
+          "package.json"
+        ]
+      }
+    },
     "lint": {
       "dependsOn": [
         "lint.*"

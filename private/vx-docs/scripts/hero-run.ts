@@ -5,7 +5,7 @@
 
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { simulate, type SimTask } from '../../../packages/vx-dte/tests/sim.ts'
+import { simulate, type SimTask } from '../node_modules/@vzn/vx-dte/tests/sim.ts'
 
 const s = 1000
 const GB = 1e9

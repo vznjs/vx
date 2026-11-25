@@ -115,6 +115,13 @@ export default defineProject({
       inputs: { files: ['src/**'] },
     },
 
+    // What @vzn/vx-docs reads from this package through its node_modules
+    // (the plugin pages): never run, its key reaches the site's tasks.
+    site: {
+      description: 'the files the site reads from this package',
+      inputs: { files: ['README.md', 'package.json'] },
+    },
+
     lint: {
       dependsOn: ['lint.*'],
     },

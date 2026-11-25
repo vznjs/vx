@@ -21,7 +21,7 @@ import {
   type SchemaRecord,
 } from '../src/components/play/model/config-explorer.ts'
 
-const CORE = path.join(import.meta.dir, '..', '..', '..', 'packages', 'vx')
+const CORE = path.join(import.meta.dir, '..', 'node_modules', '@vzn', 'vx')
 const DOC = readFileSync(path.join(CORE, 'docs', 'schema.md'), 'utf8')
 const RECORD = JSON.parse(
   readFileSync(path.join(CORE, 'tests', 'contract', 'config-schema.json'), 'utf8'),

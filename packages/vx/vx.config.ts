@@ -683,6 +683,25 @@ export default defineProject({
     'canary.bun.linux-arm64': checkBinary(['linux-arm64']),
     'canary.bun.darwin-arm64': checkBinary(MAC),
 
+    // What @vzn/vx-docs reads from core through its node_modules besides
+    // the source `build` keys: the docs it imports, the config schema its
+    // explorer shows, the release helpers deploy.github runs. Never run;
+    // its key reaches the site's tasks.
+    site: {
+      description: 'the files the site reads from core besides src',
+      inputs: {
+        files: [
+          'docs/*.md',
+          'docs/modules/*.md',
+          'docs/design/*.md',
+          '!docs/STATUS.md',
+          'tests/contract/config-schema.json',
+          'scripts/github.ts',
+          'scripts/release-notes.ts',
+        ],
+      },
+    },
+
     lint: {
       dependsOn: ['lint.*'],
     },

@@ -16,7 +16,7 @@
 @vzn/vx		W0uWSEzW_-E
 
 @vzn/vx-docs
-@vzn/vx,@vzn/vx-cache,@vzn/vx-ci,@vzn/vx-dte,@vzn/vx-history,@vzn/vx-lockfile,@vzn/vx-migrate,@vzn/vx-otel,@vzn/vx-reapi		8E-IeLfpYyk
+@vzn/vx,@vzn/vx-bench,@vzn/vx-cache,@vzn/vx-cache-server,@vzn/vx-ci,@vzn/vx-devtools,@vzn/vx-dte,@vzn/vx-dte-server,@vzn/vx-history,@vzn/vx-history-server,@vzn/vx-lockfile,@vzn/vx-migrate,@vzn/vx-otel,@vzn/vx-reapi		cjlZ1ez-oFY
 
 @vzn/vx-reapi
 @vzn/vx		SDpZSAzvQh4

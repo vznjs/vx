@@ -1,23 +1,11 @@
 import { defineProject } from '@vzn/vx'
 
-// The choosing page (item 689) links each vx guarantee to the test row that
-// holds it, and compare.test.ts reads each file for that row's title,
-// so a renamed row or a moved file fails the site's test instead of leaving
-// a dead link. Granted by name and keyed as inputs.
-const PROOFS = [
-  'packages/vx/tests/config.test.ts',
-  'packages/vx/tests/sandbox-runtime.unsafe.test.ts',
-  'packages/vx/tests/task-hash-derive.test.ts',
-  'packages/vx/tests/plugin-pipeline.test.ts',
-  'packages/vx/tests/layered-cache.test.ts',
-  'packages/vx-reapi/tests/exec-e2e.test.ts',
-  'packages/vx-migrate/tests/turbo.test.ts',
-]
-
-// The real-repo rows src/bench/data.ts imports (the bench's own file): every
-// task that loads that module is granted it by name and keyed on it.
-const REAL_ROWS = 'private/vx-bench/real-repos.json'
-const REAL_ROWS_READ = '../vx-bench/real-repos.json'
+// What this site reads from other packages it reads through node_modules
+// (its devDependencies), never by path. Each package declares a `site` task
+// over those files, and a task that reads them depends on `^site`: the edge
+// keys it, and grants the sandbox that package's link. Their source arrives
+// through `install` (`^build`).
+const SOURCES = ['install', '^site'] as const
 
 // What `build.bun.import` generates from packages/vx/docs: a hit restores only these,
 // so a page missing here vanishes from the site on a hit. Pinned to the
@@ -52,14 +40,6 @@ const IMPORTED = [
 // so no key read them before either.
 const NOT_GENERATED = [...IMPORTED, 'public/_img/**', 'dist/**'].map((g) => `!${g}`)
 
-// The config explorer (src/components/play/ConfigExplorer.astro) reads every
-// field the validator accepts and the reference's words about each, at build time.
-const CONFIG_EXPLORER = [
-  'packages/vx/docs/schema.md',
-  'packages/vx/tests/contract/config-schema.json',
-]
-const CONFIG_EXPLORER_READ = CONFIG_EXPLORER.map((p) => `../../${p}`)
-
 // Under Bun, prerender included: the `build.astro` task says why.
 const ASTRO_BUILD =
   'mkdir -p .astro/bin && ln -sf "$(command -v bun)" .astro/bin/node && PATH="$PWD/.astro/bin:$PATH" bun --bun astro build'
@@ -87,12 +67,12 @@ export default defineProject({
           'oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/conformance src/nav src/pages src/plugins tests',
         sandbox: {
           allow: {
-            read: ['**/*', '../../packages/vx/src/**', REAL_ROWS_READ],
+            read: ['**/*'],
             systemInfo: ['vfs.disk-space'],
           },
         },
       },
-      dependsOn: ['install'],
+      dependsOn: SOURCES,
       inputs: {
         files: [
           'astro.config.mjs',
@@ -115,7 +95,6 @@ export default defineProject({
           '.oxlintrc.json',
           'tsconfig.json',
         ],
-        workspaceFiles: [REAL_ROWS],
       },
       outputs: { files: [] },
       cache: true,
@@ -141,30 +120,22 @@ export default defineProject({
       cache: true,
     },
 
-    // The Starlight collection is generated from `packages/vx/docs`. That is
-    // a read across a project boundary, which the sandbox denies unless the
-    // task declares it — so the task declares it: the read grant names the
-    // sibling's docs directory, and `workspaceFiles` makes the same files
-    // the task's inputs, so an edit there re-keys this task and, through
-    // `dependsOn`, `build` and `test`. Every generated page carries a
+    // The Starlight collection is generated from core's docs and the
+    // packages' READMEs, read through node_modules: `^site` keys them, so an
+    // edit there re-keys this task and, through `dependsOn`, `build` and
+    // `test`. Every generated page carries a
     // marker and lives beside the hand-written ones, so the outputs are the
     // generated set by name — a hit restores exactly them and never wipes
     // a tracked page.
     'build.bun.import': {
       description:
         'generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol',
-      dependsOn: ['install'],
+      dependsOn: SOURCES,
       exec: {
         command: 'bun scripts/import-docs.ts',
         sandbox: {
           allow: {
-            read: [
-              '**/*',
-              '../../packages/vx/docs/**',
-              '../../packages/vx-*/README.md',
-              '../../packages/vx-*/package.json',
-              '../../packages/vx-dte-server/PROTOCOL.md',
-            ],
+            read: ['**/*'],
             write: ['src/content/docs/**'],
             systemInfo: ['vfs.disk-space'],
           },
@@ -172,12 +143,6 @@ export default defineProject({
       },
       inputs: {
         files: ['scripts/import-docs.ts'],
-        workspaceFiles: [
-          'packages/vx/docs/**',
-          'packages/vx-*/README.md',
-          'packages/vx-*/package.json',
-          'packages/vx-dte-server/PROTOCOL.md',
-        ],
       },
       outputs: { files: IMPORTED },
       cache: true,
@@ -202,7 +167,7 @@ export default defineProject({
         env: { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' } },
         sandbox: {
           allow: {
-            read: ['**/*', '../vx-bench/site/**'],
+            read: ['**/*'],
             write: ['measured/bench.json'],
             systemInfo: ['vfs.disk-space'],
           },
@@ -222,9 +187,8 @@ export default defineProject({
     // reaches this one through `dependsOn`, and a hit on `build` restores
     // `dist/` before this runs.
     //
-    // Three rows read across project boundaries through packages this one
-    // links (package.json), whose keys arrive through `install`
-    // (`^build` folds each linked package's `source`, item 687): the CI
+    // Rows read other packages through the ones this one links
+    // (package.json), keyed through `install` and `^site` (SOURCES): the CI
     // guide's job summary is rendered by `@vzn/vx-ci`, the plugins
     // guide's snippets type-check against `@vzn/vx-history`, and every
     // page's config blocks against the plugins they call.
@@ -235,29 +199,14 @@ export default defineProject({
     'test.bun': {
       description:
         'bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)',
-      dependsOn: ['install', 'build'],
+      dependsOn: [...SOURCES, 'build'],
       exec: {
         command: 'bun test --only-failures --timeout=30000',
         // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
         env: { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0', VX_CACHE_DIR: '.vx/cache' } },
         sandbox: {
           allow: {
-            read: [
-              '**/*',
-              '../../packages/vx/src/**',
-              // config-snippets.test.ts checks each page's plugin call
-              // against the plugin's source.
-              ...['cache', 'ci', 'dte', 'history', 'lockfile', 'migrate', 'otel'].map(
-                (p) => `../../packages/vx-${p}/src/**`,
-              ),
-              ...PROOFS.map((p) => `../../${p}`),
-              // reference-pages.test.ts maps the one-page references' ids to their pages.
-              '../../packages/vx/docs/cli.md',
-              '../../packages/vx/docs/schema.md',
-              // play-config-explorer.test.ts reads the validator's fields.
-              '../../packages/vx/tests/contract/config-schema.json',
-              REAL_ROWS_READ,
-            ],
+            read: ['**/*'],
             systemInfo: ['vfs.disk-space'],
           },
         },
@@ -297,13 +246,6 @@ export default defineProject({
           'scripts/**',
           ...NOT_GENERATED,
         ],
-        workspaceFiles: [
-          ...PROOFS,
-          'packages/vx/docs/cli.md',
-          'packages/vx/docs/schema.md',
-          'packages/vx/tests/contract/config-schema.json',
-          REAL_ROWS,
-        ],
       },
       outputs: { files: [] },
       cache: true,
@@ -342,7 +284,7 @@ export default defineProject({
 
     'build.astro': {
       description: 'astro build → dist/',
-      dependsOn: ['install', 'build.bun.import', 'build.bun.images'],
+      dependsOn: [...SOURCES, 'build.bun.import', 'build.bun.images'],
       exec: {
         // Under Bun, prerender included. `bun --bun` runs astro's bin on Bun,
         // but astro prerenders in a CHILD process it starts as `node`, and
@@ -369,7 +311,7 @@ export default defineProject({
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
         sandbox: {
           allow: {
-            read: ['**/*', REAL_ROWS_READ, ...CONFIG_EXPLORER_READ],
+            read: ['**/*'],
             // astro's and vite's caches live under `.astro/` (astro.config.mjs),
             // never under node_modules: a write grant there makes the sandbox
             // punch the read grant into node_modules' children, and bwrap
@@ -391,7 +333,6 @@ export default defineProject({
       // `packages/`, so a docs edit never re-keyed the build.
       inputs: {
         files: ['**/*', ...NOT_GENERATED],
-        workspaceFiles: [REAL_ROWS, ...CONFIG_EXPLORER],
       },
       outputs: { files: ['dist/**'] },
       cache: true,
@@ -425,7 +366,7 @@ export default defineProject({
         },
         sandbox: {
           allow: {
-            read: ['**/*', REAL_ROWS_READ, ...CONFIG_EXPLORER_READ],
+            read: ['**/*'],
             write: [
               'measured/live.json',
               'measured/live-conformance.json',
@@ -513,7 +454,7 @@ export default defineProject({
         timeout: '2m',
         sandbox: {
           allow: {
-            read: ['**/*', REAL_ROWS_READ, ...CONFIG_EXPLORER_READ],
+            read: ['**/*'],
             write: ['.astro/**'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],

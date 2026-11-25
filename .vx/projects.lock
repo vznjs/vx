@@ -15,6 +15,9 @@
 #13z2pjs
 {"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
 	lint.oxlint
+#2an9k9g
+{"description":"the files the site reads from this package","inputs":{"files":["README.md","package.json"]}}
+	site
 #lewu2os
 {"dependsOn":["test.*"]}
 	test
@@ -50,6 +53,8 @@
 #3gvykz9
 {"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #1mzk7qb
@@ -99,6 +104,8 @@
 	lint.oxfmt
 #3gvykz9
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #30nxhwy
@@ -108,20 +115,20 @@
 #3l5986h
 {"dependsOn":["bench.*"]}
 	bench
-#m0o4by2
-{"cache":true,"dependsOn":["install","@vzn/vx-bench#bench.site"],"description":"gather the head-to-head rows of @vzn/vx-bench#bench.site → measured/bench.json","exec":{"command":"bun scripts/bench-data.ts","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0"}},"sandbox":{"allow":{"read":["**/*","../vx-bench/site/**"],"systemInfo":["vfs.disk-space"],"write":["measured/bench.json"]}}},"inputs":{"files":["scripts/bench-data.ts","src/bench/format.ts","package.json"]},"outputs":{"files":["measured/bench.json"]}}
+#3d0usvy
+{"cache":true,"dependsOn":["install","@vzn/vx-bench#bench.site"],"description":"gather the head-to-head rows of @vzn/vx-bench#bench.site → measured/bench.json","exec":{"command":"bun scripts/bench-data.ts","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0"}},"sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"],"write":["measured/bench.json"]}}},"inputs":{"files":["scripts/bench-data.ts","src/bench/format.ts","package.json"]},"outputs":{"files":["measured/bench.json"]}}
 	bench.bun.data
 #2r7nc4e
 {"dependsOn":["build.*"]}
 	build
-#35l8c1d
-{"cache":true,"dependsOn":["install","build.bun.import","build.bun.images"],"description":"astro build → dist/","exec":{"command":"rm -rf .astro/cache && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build","env":{"define":{"ASTRO_TELEMETRY_DISABLED":"1"}},"sandbox":{"allow":{"machLookup":["com.apple.SystemConfiguration.DNSConfiguration"],"read":["**/*","../vx-bench/real-repos.json","../../packages/vx/docs/schema.md","../../packages/vx/tests/contract/config-schema.json"],"systemInfo":["vfs.disk-space","net.link.addr"],"write":["dist/**",".astro/**"]}}},"inputs":{"files":["**/*","!src/content/docs/all-features.md","!src/content/docs/api.md","!src/content/docs/architecture.md","!src/content/docs/benchmarks.md","!src/content/docs/caching.md","!src/content/docs/cli.md","!src/content/docs/compare/turbo-nx-support.md","!src/content/docs/comparison.md","!src/content/docs/execution.md","!src/content/docs/flows.md","!src/content/docs/optimizations.md","!src/content/docs/overview.md","!src/content/docs/parity.md","!src/content/docs/patterns.md","!src/content/docs/schema.md","!src/content/docs/security.md","!src/content/docs/switchboard.md","!src/content/docs/upstream-ledger.md","!src/content/docs/modules/**","!src/content/docs/design/**","!src/content/docs/plugins/**","!src/content/docs/cli/**","!src/content/docs/schema/**","!public/_img/**","!dist/**","package.json"],"workspaceFiles":["private/vx-bench/real-repos.json","packages/vx/docs/schema.md","packages/vx/tests/contract/config-schema.json"]},"outputs":{"files":["dist/**"]}}
+#3cfa8h2
+{"cache":true,"dependsOn":["install","^site","build.bun.import","build.bun.images"],"description":"astro build → dist/","exec":{"command":"rm -rf .astro/cache && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build","env":{"define":{"ASTRO_TELEMETRY_DISABLED":"1"}},"sandbox":{"allow":{"machLookup":["com.apple.SystemConfiguration.DNSConfiguration"],"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"],"write":["dist/**",".astro/**"]}}},"inputs":{"files":["**/*","!src/content/docs/all-features.md","!src/content/docs/api.md","!src/content/docs/architecture.md","!src/content/docs/benchmarks.md","!src/content/docs/caching.md","!src/content/docs/cli.md","!src/content/docs/compare/turbo-nx-support.md","!src/content/docs/comparison.md","!src/content/docs/execution.md","!src/content/docs/flows.md","!src/content/docs/optimizations.md","!src/content/docs/overview.md","!src/content/docs/parity.md","!src/content/docs/patterns.md","!src/content/docs/schema.md","!src/content/docs/security.md","!src/content/docs/switchboard.md","!src/content/docs/upstream-ledger.md","!src/content/docs/modules/**","!src/content/docs/design/**","!src/content/docs/plugins/**","!src/content/docs/cli/**","!src/content/docs/schema/**","!public/_img/**","!dist/**","package.json"]},"outputs":{"files":["dist/**"]}}
 	build.astro
 #1a2xb16
 {"cache":true,"dependsOn":["install"],"description":"resize src/assets/blog → public/_img/","exec":{"command":"bun scripts/build-images.ts","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"],"write":["public/_img/**"]}}},"inputs":{"files":["scripts/build-images.ts","src/assets/blog/**","package.json"]},"outputs":{"files":["public/_img/**"]}}
 	build.bun.images
-#17gi76h
-{"cache":true,"dependsOn":["install"],"description":"generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol","exec":{"command":"bun scripts/import-docs.ts","sandbox":{"allow":{"read":["**/*","../../packages/vx/docs/**","../../packages/vx-*/README.md","../../packages/vx-*/package.json","../../packages/vx-dte-server/PROTOCOL.md"],"systemInfo":["vfs.disk-space"],"write":["src/content/docs/**"]}}},"inputs":{"files":["scripts/import-docs.ts","package.json"],"workspaceFiles":["packages/vx/docs/**","packages/vx-*/README.md","packages/vx-*/package.json","packages/vx-dte-server/PROTOCOL.md"]},"outputs":{"files":["src/content/docs/all-features.md","src/content/docs/api.md","src/content/docs/architecture.md","src/content/docs/benchmarks.md","src/content/docs/caching.md","src/content/docs/cli.md","src/content/docs/compare/turbo-nx-support.md","src/content/docs/comparison.md","src/content/docs/execution.md","src/content/docs/flows.md","src/content/docs/optimizations.md","src/content/docs/overview.md","src/content/docs/parity.md","src/content/docs/patterns.md","src/content/docs/schema.md","src/content/docs/security.md","src/content/docs/switchboard.md","src/content/docs/upstream-ledger.md","src/content/docs/modules/**","src/content/docs/design/**","src/content/docs/plugins/**","src/content/docs/cli/**","src/content/docs/schema/**"]}}
+#1icv6n7
+{"cache":true,"dependsOn":["install","^site"],"description":"generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol","exec":{"command":"bun scripts/import-docs.ts","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"],"write":["src/content/docs/**"]}}},"inputs":{"files":["scripts/import-docs.ts","package.json"]},"outputs":{"files":["src/content/docs/all-features.md","src/content/docs/api.md","src/content/docs/architecture.md","src/content/docs/benchmarks.md","src/content/docs/caching.md","src/content/docs/cli.md","src/content/docs/compare/turbo-nx-support.md","src/content/docs/comparison.md","src/content/docs/execution.md","src/content/docs/flows.md","src/content/docs/optimizations.md","src/content/docs/overview.md","src/content/docs/parity.md","src/content/docs/patterns.md","src/content/docs/schema.md","src/content/docs/security.md","src/content/docs/switchboard.md","src/content/docs/upstream-ledger.md","src/content/docs/modules/**","src/content/docs/design/**","src/content/docs/plugins/**","src/content/docs/cli/**","src/content/docs/schema/**"]}}
 	build.bun.import
 #1vif3j4
 {"dependsOn":["deploy.*"]}
@@ -132,14 +139,14 @@
 #erglwg7
 {"dependsOn":["lint","build","test","deploy.pages.build"],"description":"deploy dist-live/ to GitHub Pages once every check passed (GitHub Actions only)","exec":{"command":"bun scripts/deploy-pages.ts dist-live","env":{"passThrough":["ACTIONS_RUNTIME_TOKEN","ACTIONS_RESULTS_URL","ACTIONS_ID_TOKEN_REQUEST_URL","ACTIONS_ID_TOKEN_REQUEST_TOKEN","GITHUB_TOKEN","GITHUB_REPOSITORY","GITHUB_SHA","GITHUB_API_URL"],"secret":["ACTIONS_RUNTIME_TOKEN","ACTIONS_ID_TOKEN_REQUEST_TOKEN","GITHUB_TOKEN"]},"sandbox":{"allow":{"network":["*.actions.githubusercontent.com","*.blob.core.windows.net","api.github.com"],"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}}}
 	deploy.pages
-#2uqrm91
-{"dependsOn":["install","build.bun.import","build.bun.images"],"description":"build the site with main's newest bench and conformance runs → dist-live/ (GitHub Actions only)","exec":{"command":"bun scripts/live-bench.ts && bun scripts/live-conformance.ts && rm -rf .astro/live && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build --outDir dist-live","env":{"define":{"ASTRO_TELEMETRY_DISABLED":"1","VX_DOCS_BENCH":"measured/live.json","VX_DOCS_CONFORMANCE":"measured/live-conformance.json"},"passThrough":["GITHUB_TOKEN","GITHUB_REPOSITORY","GITHUB_API_URL"],"secret":["GITHUB_TOKEN"]},"sandbox":{"allow":{"machLookup":["com.apple.SystemConfiguration.DNSConfiguration"],"network":["api.github.com","*.blob.core.windows.net"],"read":["**/*","../vx-bench/real-repos.json","../../packages/vx/docs/schema.md","../../packages/vx/tests/contract/config-schema.json"],"systemInfo":["vfs.disk-space","net.link.addr"],"write":["measured/live.json","measured/live-conformance.json","dist-live/**",".astro/**"]}}}}
+#2pmxox8
+{"dependsOn":["install","build.bun.import","build.bun.images"],"description":"build the site with main's newest bench and conformance runs → dist-live/ (GitHub Actions only)","exec":{"command":"bun scripts/live-bench.ts && bun scripts/live-conformance.ts && rm -rf .astro/live && mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build --outDir dist-live","env":{"define":{"ASTRO_TELEMETRY_DISABLED":"1","VX_DOCS_BENCH":"measured/live.json","VX_DOCS_CONFORMANCE":"measured/live-conformance.json"},"passThrough":["GITHUB_TOKEN","GITHUB_REPOSITORY","GITHUB_API_URL"],"secret":["GITHUB_TOKEN"]},"sandbox":{"allow":{"machLookup":["com.apple.SystemConfiguration.DNSConfiguration"],"network":["api.github.com","*.blob.core.windows.net"],"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"],"write":["measured/live.json","measured/live-conformance.json","dist-live/**",".astro/**"]}}}}
 	deploy.pages.build
 #plvlz0v
 {"dependsOn":["dev.*"]}
 	dev
-#1lrs38o
-{"dependsOn":["install","build.bun.images"],"description":"astro dev server (persistent)","exec":{"command":"bun --bun astro dev","env":{"define":{"ASTRO_TELEMETRY_DISABLED":"1"}},"persistent":{"readyWhen":"Local"},"sandbox":{"allow":{"localBinding":true,"machLookup":["com.apple.SystemConfiguration.DNSConfiguration"],"read":["**/*","../vx-bench/real-repos.json","../../packages/vx/docs/schema.md","../../packages/vx/tests/contract/config-schema.json"],"systemInfo":["vfs.disk-space","net.link.addr"],"write":[".astro/**"]}},"timeout":"2m"}}
+#1p1au8o
+{"dependsOn":["install","build.bun.images"],"description":"astro dev server (persistent)","exec":{"command":"bun --bun astro dev","env":{"define":{"ASTRO_TELEMETRY_DISABLED":"1"}},"persistent":{"readyWhen":"Local"},"sandbox":{"allow":{"localBinding":true,"machLookup":["com.apple.SystemConfiguration.DNSConfiguration"],"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"],"write":[".astro/**"]}},"timeout":"2m"}}
 	dev.astro
 #1o9csrk
 	install
@@ -148,8 +155,8 @@
 #3f3tdk9
 {"cache":true,"dependsOn":["install"],"description":"oxfmt --check (no rewrite; CI-safe)","exec":{"command":"oxfmt --check .","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["**/*","!src/content/docs/all-features.md","!src/content/docs/api.md","!src/content/docs/architecture.md","!src/content/docs/benchmarks.md","!src/content/docs/caching.md","!src/content/docs/cli.md","!src/content/docs/compare/turbo-nx-support.md","!src/content/docs/comparison.md","!src/content/docs/execution.md","!src/content/docs/flows.md","!src/content/docs/optimizations.md","!src/content/docs/overview.md","!src/content/docs/parity.md","!src/content/docs/patterns.md","!src/content/docs/schema.md","!src/content/docs/security.md","!src/content/docs/switchboard.md","!src/content/docs/upstream-ledger.md","!src/content/docs/modules/**","!src/content/docs/design/**","!src/content/docs/plugins/**","!src/content/docs/cli/**","!src/content/docs/schema/**","!public/_img/**","!dist/**","package.json"]},"outputs":{"files":[]}}
 	lint.oxfmt
-#3u64z07
-{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/conformance src/nav src/pages src/plugins tests","sandbox":{"allow":{"read":["**/*","../../packages/vx/src/**","../vx-bench/real-repos.json"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["astro.config.mjs","scripts/**","src/env.d.ts","src/bench/**","src/data/bench.json","src/conformance/**","src/data/conformance.json","src/blog/**","src/components/**","src/llms/**","src/nav/**","src/pages/**","src/plugins/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"],"workspaceFiles":["private/vx-bench/real-repos.json"]},"outputs":{"files":[]}}
+#1yrtaqm
+{"cache":true,"dependsOn":["install","^site"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check astro.config.mjs scripts src/bench src/components src/conformance src/nav src/pages src/plugins tests","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["astro.config.mjs","scripts/**","src/env.d.ts","src/bench/**","src/data/bench.json","src/conformance/**","src/data/conformance.json","src/blog/**","src/components/**","src/llms/**","src/nav/**","src/pages/**","src/plugins/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
 	lint.oxlint
 #142fjfw
 {"dependsOn":["deploy"]}
@@ -162,8 +169,8 @@
 	preview.astro
 #lewu2os
 	test
-#3afmpwk
-{"cache":true,"dependsOn":["install","build"],"description":"bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"read":["**/*","../../packages/vx/src/**","../../packages/vx-cache/src/**","../../packages/vx-ci/src/**","../../packages/vx-dte/src/**","../../packages/vx-history/src/**","../../packages/vx-lockfile/src/**","../../packages/vx-migrate/src/**","../../packages/vx-otel/src/**","../../packages/vx/tests/config.test.ts","../../packages/vx/tests/sandbox-runtime.unsafe.test.ts","../../packages/vx/tests/task-hash-derive.test.ts","../../packages/vx/tests/plugin-pipeline.test.ts","../../packages/vx/tests/layered-cache.test.ts","../../packages/vx-reapi/tests/exec-e2e.test.ts","../../packages/vx-migrate/tests/turbo.test.ts","../../packages/vx/docs/cli.md","../../packages/vx/docs/schema.md","../../packages/vx/tests/contract/config-schema.json","../vx-bench/real-repos.json"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["tests/**","src/content/docs/**","src/components/demos/model/**","src/components/play/model/**","src/bench/**","src/data/bench.json","src/conformance/**","src/data/conformance.json","src/nav/**","src/llms/**","src/plugins/code-region-names.ts","src/components/guide/**","src/components/landing/**","src/components/Demo.astro","src/components/demos/widget.css","src/styles/theme.css","astro.config.*",".gitignore","package.json","scripts/**","!src/content/docs/all-features.md","!src/content/docs/api.md","!src/content/docs/architecture.md","!src/content/docs/benchmarks.md","!src/content/docs/caching.md","!src/content/docs/cli.md","!src/content/docs/compare/turbo-nx-support.md","!src/content/docs/comparison.md","!src/content/docs/execution.md","!src/content/docs/flows.md","!src/content/docs/optimizations.md","!src/content/docs/overview.md","!src/content/docs/parity.md","!src/content/docs/patterns.md","!src/content/docs/schema.md","!src/content/docs/security.md","!src/content/docs/switchboard.md","!src/content/docs/upstream-ledger.md","!src/content/docs/modules/**","!src/content/docs/design/**","!src/content/docs/plugins/**","!src/content/docs/cli/**","!src/content/docs/schema/**","!public/_img/**","!dist/**"],"workspaceFiles":["packages/vx/tests/config.test.ts","packages/vx/tests/sandbox-runtime.unsafe.test.ts","packages/vx/tests/task-hash-derive.test.ts","packages/vx/tests/plugin-pipeline.test.ts","packages/vx/tests/layered-cache.test.ts","packages/vx-reapi/tests/exec-e2e.test.ts","packages/vx-migrate/tests/turbo.test.ts","packages/vx/docs/cli.md","packages/vx/docs/schema.md","packages/vx/tests/contract/config-schema.json","private/vx-bench/real-repos.json"]},"outputs":{"files":[]}}
+#2344gcj
+{"cache":true,"dependsOn":["install","^site","build"],"description":"bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["tests/**","src/content/docs/**","src/components/demos/model/**","src/components/play/model/**","src/bench/**","src/data/bench.json","src/conformance/**","src/data/conformance.json","src/nav/**","src/llms/**","src/plugins/code-region-names.ts","src/components/guide/**","src/components/landing/**","src/components/Demo.astro","src/components/demos/widget.css","src/styles/theme.css","astro.config.*",".gitignore","package.json","scripts/**","!src/content/docs/all-features.md","!src/content/docs/api.md","!src/content/docs/architecture.md","!src/content/docs/benchmarks.md","!src/content/docs/caching.md","!src/content/docs/cli.md","!src/content/docs/compare/turbo-nx-support.md","!src/content/docs/comparison.md","!src/content/docs/execution.md","!src/content/docs/flows.md","!src/content/docs/optimizations.md","!src/content/docs/overview.md","!src/content/docs/parity.md","!src/content/docs/patterns.md","!src/content/docs/schema.md","!src/content/docs/security.md","!src/content/docs/switchboard.md","!src/content/docs/upstream-ledger.md","!src/content/docs/modules/**","!src/content/docs/design/**","!src/content/docs/plugins/**","!src/content/docs/cli/**","!src/content/docs/schema/**","!public/_img/**","!dist/**"]},"outputs":{"files":[]}}
 	test.bun
 @vzn/vx-reapi	{"path":"packages/vx-reapi"}
 #2lxpni7
@@ -177,6 +184,8 @@
 	lint.oxfmt
 #3gvykz9
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #ufngcvf
@@ -310,6 +319,9 @@
 #adlvh0g
 {"dependsOn":["release.npm.linux.publish"],"description":"wait until npm serves every published tarball (HTTP 200), up to 15 min","exec":{"command":"bun scripts/release.ts served","env":{"passThrough":["VX_RELEASE_VERSION"]},"platforms":["linux-x64"],"sandbox":{"allow":{"network":["registry.npmjs.org"],"read":["."]}},"timeout":"30m"}}
 	release.npm.served
+#2av2uu7
+{"description":"the files the site reads from core besides src","inputs":{"files":["docs/*.md","docs/modules/*.md","docs/design/*.md","!docs/STATUS.md","tests/contract/config-schema.json","scripts/github.ts","scripts/release-notes.ts","package.json"]}}
+	site
 #lewu2os
 	test
 #3mgbwz8
@@ -636,6 +648,8 @@
 #oso502m
 {"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"],"workspaceFiles":["packages/vx/tests/helpers/**","packages/vx-cache-server/tests/issuer.ts","packages/vx-cache-server/tests/mem-blobs.ts","packages/vx-cache-server/tests/conformance.ts"]},"outputs":{"files":[]}}
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #3l0ky48
@@ -677,6 +691,9 @@
 #3gwkoqu
 {"cache":true,"dependsOn":["install"],"description":"perf-guard.ts then pr-bench.ts: hot-path counts, and vx against the base commit and every rival","exec":{"command":"bun perf-guard.ts && bun pr-bench.ts","env":{"define":{"BENCH_BUILD_MS":"0","BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0"},"passThrough":["VX_BENCH_BASE"]},"timeout":"10m"},"inputs":{"env":["VX_BENCH_BASE"],"files":["perf-guard.ts","perf-baseline.json","pr-bench.ts","pr-bench-base.ts","compile-entries.ts","site-workspace.ts","shape.ts","prng.ts","ideal.ts","outputs.ts","quiet.ts","bench-env.ts","edges.ts","workspace-copy.ts","package.json"]},"outputs":{"files":[]}}
 	perf.vx
+#19hx5rp
+{"description":"the real-repo rows the site prints","inputs":{"files":["real-repos.json","package.json"]}}
+	site
 #lewu2os
 	test
 #1exyoj2
@@ -727,6 +744,8 @@
 	lint.oxfmt
 #3gvykz9
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #3rn74vh
@@ -749,6 +768,9 @@
 	lint.oxfmt
 #13z2pjs
 	lint.oxlint
+#3el0sys
+{"description":"the files the site reads from this package","inputs":{"files":["README.md","package.json","PROTOCOL.md"]}}
+	site
 #lewu2os
 	test
 #3k0cbbn
@@ -768,6 +790,8 @@
 	lint.oxfmt
 #3gvykz9
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #yl8ek7x
@@ -784,6 +808,8 @@
 	lint.oxfmt
 #3gvykz9
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #2ly1e7i
@@ -824,6 +850,8 @@
 	lint.oxfmt
 #13z2pjs
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #1n14maf
@@ -843,6 +871,8 @@
 #2x37nrr
 {"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","scripts/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #ec5xp48
@@ -908,6 +938,8 @@
 	lint.oxfmt
 #13z2pjs
 	lint.oxlint
+#2an9k9g
+	site
 #lewu2os
 	test
 #2umhfwy
