@@ -32945,8 +32945,8 @@
       "ref": "wq2ih5",
       "category": "affected",
       "kind": "correctness",
-      "title": "A task that declares no inputs is selected by every change",
-      "why": "A task that names no inputs has not said what it reads, so no change can be ruled out: it may read any file, here or elsewhere. An affected run must select it wherever it is declared. Leaving it out because nothing declared the edited file skips a check the edit can make fail.",
+      "title": "A task that declares no inputs is selected when its project or a project it depends on changes",
+      "why": "A task that names no inputs has not said which of its project’s files it reads, so any edit in its project, or in a project it depends on, may change its result. An affected run must select it there. Leaving it out because nothing declared the edited file skips a check the edit can make fail; selecting it in a project the edit cannot reach reruns work for nothing.",
       "from": [
         "affected-by-inputs"
       ],
@@ -32957,12 +32957,12 @@
         "turbo": {
           "status": "fail",
           "step": 3,
-          "detail": "did not run app#check, docs#check"
+          "detail": "did not run app#check"
         },
         "nx": {
           "status": "fail",
           "step": 3,
-          "detail": "did not run app#check, docs#check"
+          "detail": "did not run app#check"
         },
         "vite-task": {
           "status": "n/a",
@@ -32975,7 +32975,7 @@
         "moon": {
           "status": "fail",
           "step": 3,
-          "detail": "did not run app#check, docs#check"
+          "detail": "did not run app#check"
         }
       }
     },
