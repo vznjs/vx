@@ -1,7 +1,7 @@
 {"version":10}
 app	{"path":"packages/app"}
-#13b0fdw
-{"cache":true,"dependsOn":["^build"],"exec":{"command":"mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
+#2ly5fxw
+{"cache":true,"dependsOn":["^build"],"exec":{"command":"bun build src/main.js --outfile dist/app.js"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
 	build
 #w1kodr5
 {"dependsOn":["build","test"]}

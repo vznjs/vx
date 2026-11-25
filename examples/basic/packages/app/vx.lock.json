@@ -5,7 +5,7 @@
         "^build"
       ],
       "exec": {
-        "command": "mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js"
+        "command": "bun build src/main.js --outfile dist/app.js"
       },
       "inputs": {
         "files": [

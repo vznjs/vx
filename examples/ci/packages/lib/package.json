@@ -1,4 +1,5 @@
 {
   "name": "lib",
-  "private": true
+  "private": true,
+  "exports": "./dist/greet.js"
 }

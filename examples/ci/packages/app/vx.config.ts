@@ -10,8 +10,9 @@ export default defineProject({
     },
     build: {
       // `^build`: every dependency's build runs first, so lib/dist exists.
+      // The bundler reaches lib by its package name, through node_modules.
       dependsOn: ['^build'],
-      exec: { command: 'mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js' },
+      exec: { command: 'bun build src/main.js --outfile dist/app.js' },
       inputs: { files: ['src/**'] },
       outputs: { files: ['dist/**'] },
       cache: true,

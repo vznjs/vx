@@ -1,10 +1,10 @@
 {"version":10}
 app	{"path":"packages/app"}
-#13b0fdw
-{"cache":true,"dependsOn":["^build"],"exec":{"command":"mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
+#2ly5fxw
+{"cache":true,"dependsOn":["^build"],"exec":{"command":"bun build src/main.js --outfile dist/app.js"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":["dist/**"]}}
 	build
-#3ijd5ej
-{"cache":true,"dependsOn":["build"],"exec":{"command":"grep -q \"greet('vx')\" dist/app.js"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":[]}}
+#2zzrrvf
+{"cache":true,"dependsOn":["build"],"exec":{"command":"bun dist/app.js | grep -q ', vx$'"},"inputs":{"files":["src/**","package.json"]},"outputs":{"files":[]}}
 	test
 lib	{"path":"packages/lib"}
 #295rbtx
