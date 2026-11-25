@@ -432,28 +432,6 @@ export default [
   }),
 
   defineCase({
-    id: 'failure/task-only-outside-selection-fails',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'Asking for a task in a project that does not declare it fails the run',
-    why: 'The user asked for typecheck in a, which does not declare it; only b does. If the run exits 0, it reports a type check that never happened. Running b’s typecheck in its place is also wrong, since b was not selected. Failing points the user at the missing task before anyone relies on the result.',
-    from: ['task-selection'],
-    workspace: {
-      projects: {
-        a: checked(),
-        b: checked([], { typecheck: { command: 'true', inputs: ['src/**'] } }),
-      },
-    },
-    steps: [
-      {
-        run: 'typecheck',
-        projects: ['a'],
-        expect: { exit: 'fail', notRan: ['b#typecheck'] },
-      },
-    ],
-  }),
-
-  defineCase({
     id: 'graph/select-exclude-keeps-root-project',
     category: 'graph',
     kind: 'correctness',

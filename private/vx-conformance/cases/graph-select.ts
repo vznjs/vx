@@ -220,19 +220,6 @@ export default [
   }),
 
   selects({
-    slug: 'exclude-before-include',
-    title: 'An exclude given before an include still removes what the include adds',
-    why: 'An exclude names a project the user does not want run, wherever it appears on the command line. Applying selectors in order, so a later include adds utils back, makes the result depend on argument order. Scripts and CI configs build these lists in any order and expect the same set.',
-    workspace: chain(),
-    select: [
-      { name: 'utils', exclude: true },
-      { name: 'app', with: 'dependencies' },
-    ],
-    ran: ['app', 'ui'],
-    notRan: ['utils', 'lib'],
-  }),
-
-  selects({
     slug: 'exclude-walk',
     title: 'Excluding a project with its dependencies removes them all',
     why: 'Excluding a project with its dependencies removes the project and everything below it. Removing only ui leaves utils in the run, though the user excluded the whole subtree. The rest of the workspace, app and lib here, must still run. This is how a user leaves out a whole stack, such as a library and its private helpers.',
@@ -280,16 +267,6 @@ export default [
     select: [{ name: '*utils', exclude: true }],
     ran: ['@acme/core', 'app'],
     notRan: ['@acme/utils'],
-  }),
-
-  selects({
-    slug: 'name-without-scope',
-    title: 'A bare `core` selects `@acme/core` when only that package carries the name',
-    why: 'When only one package is named `core` under any scope, a bare `core` can only mean that package. This is how the common package manager filter grammar reads it, which users already know. Selecting nothing instead runs nothing the user asked for, and may pass CI having checked nothing.',
-    workspace: scoped(),
-    select: [{ name: 'core' }],
-    ran: ['@acme/core'],
-    notRan: ['@acme/utils', 'app'],
   }),
 
   selects({

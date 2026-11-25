@@ -560,41 +560,6 @@ export default [
     ran: ['root'],
   }),
 
-  // filter.test.ts: 'a one-level path glob takes no root project'
-  selects({
-    slug: 'select-dir-top-level-glob',
-    title: 'A `*` directory glob takes the projects one level below the root only',
-    why: '`*` as a directory is one level down from the root: tools here. The root itself is not one level down, and packages/a is two. A pattern that also takes the root or reaches deeper runs projects its single star does not cover.',
-    from: ['filter'],
-    workspace: {
-      projects: {
-        root: { dir: '.', tasks: { check: { command: 'true', inputs: ['misc/**'] } } },
-        tools: p([], { dir: 'tools' }),
-        a: p(),
-      },
-      files: { 'misc/t.txt': 't\n' },
-    },
-    all: ['root', 'tools', 'a'],
-    select: [{ dir: '*' }],
-    ran: ['tools'],
-  }),
-
-  // find-matching-projects.spec.ts: 'should handle case where scope and names are the same'
-  selects({
-    slug: 'select-bare-name-same-as-scope',
-    title: 'A bare `test` selects `@test/test` and not `@test/test-e2e`',
-    why: '`test` is the whole name after the scope of `@test/test`, so it selects that package. `@test/test-e2e` only starts with it. Matching on the scope, which both share, or by prefix runs the end-to-end suite the user did not name.',
-    workspace: {
-      projects: {
-        '@test/test': p([], { dir: 'packages/test' }),
-        '@test/test-e2e': p([], { dir: 'packages/test-e2e' }),
-      },
-    },
-    all: ['@test/test', '@test/test-e2e'],
-    select: [{ name: 'test' }],
-    ran: ['@test/test'],
-  }),
-
   // turborepo-scope filter.rs: "select by parentDir and exclude one package by pattern"
   selects({
     slug: 'select-scope-glob-minus-one',

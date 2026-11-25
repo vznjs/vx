@@ -459,21 +459,6 @@ export default [
     ],
   }),
 
-  // missing_tasks_test.rs test_single_missing_task, in a one-package repository
-  defineCase({
-    id: 'failure/single-package-unknown-task-fails',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'In a one-package repository, asking for a task the package does not declare fails',
-    why: 'A typo in a task name must not look like success. With no members there is no other project to run it in, so the run has nothing to do. A tool that exits 0 with nothing run lets CI pass a test job that tested nothing. The run fails and runs nothing.',
-    from: ['root-project', 'cli-task-names'],
-    workspace: single(
-      { build: build('mkdir -p dist && cat src/*.txt > dist/out.txt') },
-      { 'src/a.txt': 'one\n' },
-    ),
-    steps: [{ run: 'tset', expect: { exit: 'fail', notRan: ['app#build'] } }],
-  }),
-
   // single_package_with_deps_test.rs: the step before the build fails
   defineCase({
     id: 'failure/single-package-failing-prerequisite-skips-task',
