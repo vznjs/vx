@@ -4,30 +4,34 @@
 // that moves turns the guide red before an author copies a stale block.
 // Blocks that open with `interface` are contract sketches with untyped
 // parameters and are skipped on purpose.
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 
 const SITE = path.resolve(import.meta.dir, '..')
 const GUIDE = path.join(SITE, 'src/content/docs/docs/writing-plugins.mdx')
-// oxlint is a ROOT devDependency; Bun hoists it, so this package's own
-// `node_modules/.bin` never has it and the root's is the one place it is.
-const ROOT = path.resolve(SITE, '../..')
-const OXLINT = path.join(ROOT, 'node_modules/.bin/oxlint')
+const OXLINT = path.join(SITE, 'node_modules/.bin/oxlint')
+// The site's own dependencies (package.json): never the workspace root's.
+const MODULES = path.join(SITE, 'node_modules')
 
 it('every code block in the plugins guide type-checks against @vzn/vx', async () => {
   const text = await Bun.file(GUIDE).text()
   const blocks = [...text.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!)
   expect(blocks.length).toBeGreaterThan(5)
   // A tmp dir OUTSIDE the repo — a test writing into its own project would
-  // dirty the tree the cache hashes. `@vzn/vx` and `@types/bun` resolve
-  // through the linked ROOT node_modules, and a self-contained tsconfig is
+  // dirty the tree the cache hashes. `@types/bun` and `@vzn/vx` resolve
+  // through the site's own node_modules, and a self-contained tsconfig is
   // written beside the blocks (the site's own extends astro's, which is not
   // hoisted and would not resolve from here).
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-guide-snippets-'))
   try {
-    await symlink(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), 'dir')
+    const nm = path.join(dir, 'node_modules')
+    await mkdir(path.join(nm, '@vzn'), { recursive: true })
+    for (const e of await readdir(MODULES)) {
+      if (e !== '@vzn') await symlink(path.join(MODULES, e), path.join(nm, e))
+    }
+    await symlink(path.join(SITE, 'node_modules/@vzn/vx'), path.join(nm, '@vzn/vx'), 'dir')
     await writeFile(
       path.join(dir, 'tsconfig.json'),
       JSON.stringify({
