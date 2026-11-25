@@ -1095,17 +1095,17 @@
     },
     "turbo": {
       "all": {
-        "pass": 1397,
+        "pass": 1401,
         "can": 1819,
         "of": 2219
       },
       "correctness": {
-        "pass": 1123,
+        "pass": 1125,
         "can": 1470,
         "of": 1794
       },
       "efficiency": {
-        "pass": 244,
+        "pass": 246,
         "can": 319,
         "of": 335
       },
@@ -1130,12 +1130,12 @@
         "of": 169
       },
       "affected": {
-        "pass": 144,
+        "pass": 147,
         "can": 189,
         "of": 190
       },
       "cache": {
-        "pass": 87,
+        "pass": 88,
         "can": 105,
         "of": 129
       },
@@ -1172,7 +1172,7 @@
     },
     "nx": {
       "all": {
-        "pass": 1395,
+        "pass": 1397,
         "can": 1854,
         "of": 2219
       },
@@ -1182,7 +1182,7 @@
         "of": 1794
       },
       "efficiency": {
-        "pass": 283,
+        "pass": 285,
         "can": 329,
         "of": 335
       },
@@ -1207,7 +1207,7 @@
         "of": 169
       },
       "affected": {
-        "pass": 124,
+        "pass": 126,
         "can": 190,
         "of": 190
       },
@@ -1250,17 +1250,17 @@
     "vite-task": {
       "all": {
         "pass": 1028,
-        "can": 1402,
+        "can": 1398,
         "of": 2219
       },
       "correctness": {
         "pass": 863,
-        "can": 1179,
+        "can": 1177,
         "of": 1794
       },
       "efficiency": {
         "pass": 156,
-        "can": 214,
+        "can": 212,
         "of": 335
       },
       "data": {
@@ -1285,7 +1285,7 @@
       },
       "affected": {
         "pass": 0,
-        "can": 4,
+        "can": 0,
         "of": 190
       },
       "cache": {
@@ -1326,18 +1326,18 @@
     },
     "nix": {
       "all": {
-        "pass": 1100,
-        "can": 1398,
+        "pass": 1101,
+        "can": 1394,
         "of": 2219
       },
       "correctness": {
-        "pass": 943,
-        "can": 1200,
+        "pass": 944,
+        "can": 1198,
         "of": 1794
       },
       "efficiency": {
         "pass": 147,
-        "can": 188,
+        "can": 186,
         "of": 335
       },
       "data": {
@@ -1362,11 +1362,11 @@
       },
       "affected": {
         "pass": 0,
-        "can": 4,
+        "can": 0,
         "of": 190
       },
       "cache": {
-        "pass": 85,
+        "pass": 86,
         "can": 102,
         "of": 129
       },
@@ -1403,17 +1403,17 @@
     },
     "moon": {
       "all": {
-        "pass": 1282,
+        "pass": 1286,
         "can": 1742,
         "of": 2219
       },
       "correctness": {
-        "pass": 1011,
+        "pass": 1013,
         "can": 1421,
         "of": 1794
       },
       "efficiency": {
-        "pass": 236,
+        "pass": 238,
         "can": 286,
         "of": 335
       },
@@ -1438,12 +1438,12 @@
         "of": 169
       },
       "affected": {
-        "pass": 144,
+        "pass": 147,
         "can": 190,
         "of": 190
       },
       "cache": {
-        "pass": 84,
+        "pass": 85,
         "can": 103,
         "of": 129
       },
@@ -32884,6 +32884,23 @@
       "outcomes": {
         "vx": {
           "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },
@@ -32901,6 +32918,25 @@
       "outcomes": {
         "vx": {
           "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#test"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#test, app#build, app#test"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },
@@ -32917,6 +32953,29 @@
       "outcomes": {
         "vx": {
           "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#check, docs#check"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#check, docs#check"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#check, docs#check"
         }
       }
     },
@@ -32933,6 +32992,25 @@
       "outcomes": {
         "vx": {
           "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run app#ship"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },
@@ -32948,6 +33026,23 @@
       ],
       "outcomes": {
         "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
           "status": "pass"
         }
       }
