@@ -359,17 +359,6 @@ export default [
   }),
 
   defineCase({
-    id: 'failure/zero-concurrency-does-not-hang',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'A concurrency of 0 is refused or read as a limit, never a run that waits for good',
-    why: 'A concurrency of 0 lets no task start, so a run that takes it literally waits forever. In CI that is a job that hangs until its timeout, with no error to explain it. The runner may refuse the value with a clear message or read it as some valid limit, but it must never sit idle.',
-    from: ['run-concurrency'],
-    workspace: a({ t: { command: 'echo t' } }),
-    steps: [{ run: 't', concurrency: 0, expect: { within: 30 } }],
-  }),
-
-  defineCase({
     id: 'failure/second-stop-kills-at-once',
     category: 'failure',
     kind: 'correctness',

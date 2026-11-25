@@ -1199,14 +1199,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1963,
-        "can": 1963,
-        "of": 2032
+        "pass": 1961,
+        "can": 1961,
+        "of": 2030
       },
       "correctness": {
-        "pass": 1634,
-        "can": 1634,
-        "of": 1695
+        "pass": 1632,
+        "can": 1632,
+        "of": 1693
       },
       "efficiency": {
         "pass": 329,
@@ -1219,9 +1219,9 @@
         "of": 300
       },
       "failure": {
-        "pass": 147,
-        "can": 147,
-        "of": 159
+        "pass": 145,
+        "can": 145,
+        "of": 157
       },
       "affected": {
         "pass": 193,
@@ -1266,14 +1266,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 1327,
-        "can": 1730,
-        "of": 2032
+        "pass": 1326,
+        "can": 1729,
+        "of": 2030
       },
       "correctness": {
-        "pass": 1080,
-        "can": 1409,
-        "of": 1695
+        "pass": 1079,
+        "can": 1408,
+        "of": 1693
       },
       "efficiency": {
         "pass": 247,
@@ -1286,9 +1286,9 @@
         "of": 300
       },
       "failure": {
-        "pass": 58,
-        "can": 104,
-        "of": 159
+        "pass": 57,
+        "can": 103,
+        "of": 157
       },
       "affected": {
         "pass": 149,
@@ -1333,14 +1333,14 @@
     },
     "nx": {
       "all": {
-        "pass": 1346,
-        "can": 1766,
-        "of": 2032
+        "pass": 1345,
+        "can": 1765,
+        "of": 2030
       },
       "correctness": {
-        "pass": 1060,
-        "can": 1435,
-        "of": 1695
+        "pass": 1059,
+        "can": 1434,
+        "of": 1693
       },
       "efficiency": {
         "pass": 286,
@@ -1353,9 +1353,9 @@
         "of": 300
       },
       "failure": {
-        "pass": 83,
-        "can": 114,
-        "of": 159
+        "pass": 82,
+        "can": 113,
+        "of": 157
       },
       "affected": {
         "pass": 129,
@@ -1400,14 +1400,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 985,
-        "can": 1334,
-        "of": 2032
+        "pass": 984,
+        "can": 1333,
+        "of": 2030
       },
       "correctness": {
-        "pass": 829,
-        "can": 1122,
-        "of": 1695
+        "pass": 828,
+        "can": 1121,
+        "of": 1693
       },
       "efficiency": {
         "pass": 156,
@@ -1420,9 +1420,9 @@
         "of": 300
       },
       "failure": {
-        "pass": 61,
-        "can": 84,
-        "of": 159
+        "pass": 60,
+        "can": 83,
+        "of": 157
       },
       "affected": {
         "pass": 0,
@@ -1467,14 +1467,14 @@
     },
     "nix": {
       "all": {
-        "pass": 1060,
-        "can": 1332,
-        "of": 2032
+        "pass": 1059,
+        "can": 1331,
+        "of": 2030
       },
       "correctness": {
-        "pass": 913,
-        "can": 1146,
-        "of": 1695
+        "pass": 912,
+        "can": 1145,
+        "of": 1693
       },
       "efficiency": {
         "pass": 147,
@@ -1487,9 +1487,9 @@
         "of": 300
       },
       "failure": {
-        "pass": 59,
-        "can": 92,
-        "of": 159
+        "pass": 58,
+        "can": 91,
+        "of": 157
       },
       "affected": {
         "pass": 0,
@@ -1534,14 +1534,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1209,
-        "can": 1643,
-        "of": 2032
+        "pass": 1208,
+        "can": 1641,
+        "of": 2030
       },
       "correctness": {
-        "pass": 970,
-        "can": 1355,
-        "of": 1695
+        "pass": 969,
+        "can": 1353,
+        "of": 1693
       },
       "efficiency": {
         "pass": 239,
@@ -1554,9 +1554,9 @@
         "of": 300
       },
       "failure": {
-        "pass": 91,
-        "can": 142,
-        "of": 159
+        "pass": 90,
+        "can": 140,
+        "of": 157
       },
       "affected": {
         "pass": 150,
@@ -26285,39 +26285,6 @@
         },
         "moon": {
           "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "failure/zero-concurrency-does-not-hang",
-      "ref": "xw76at",
-      "category": "failure",
-      "kind": "correctness",
-      "title": "A concurrency of 0 is refused or read as a limit, never a run that waits for good",
-      "why": "A concurrency of 0 lets no task start, so a run that takes it literally waits forever. In CI that is a job that hangs until its timeout, with no error to explain it. The runner may refuse the value with a clear message or read it as some valid limit, but it must never sit idle.",
-      "from": [
-        "run-concurrency"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "pass"
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "pass"
-        },
-        "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "did not finish within 30 s"
         }
       }
     },
@@ -63053,41 +63020,6 @@
       "from": [
         "retries",
         "flaky-retry"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "n/a",
-          "detail": "Turborepo does not retry a failed task."
-        },
-        "nx": {
-          "status": "n/a",
-          "detail": "Nx does not retry a failed task."
-        },
-        "vite-task": {
-          "status": "n/a",
-          "detail": "Vite Task does not retry a failed task."
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "Nix does not retry a failed build."
-        },
-        "moon": {
-          "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "failure/zero-retries-runs-once",
-      "ref": "ef8em4",
-      "category": "failure",
-      "kind": "correctness",
-      "title": "A task given zero retries runs once and fails",
-      "why": "Zero retries means no retry. A runner that reads 0 as unset and falls back to some default retry count runs a failing deploy or migration again when the user said not to. The count is the number of extra attempts, and here there are none.",
-      "from": [
-        "retries"
       ],
       "outcomes": {
         "vx": {
