@@ -386,8 +386,8 @@ describe('vx migrate (turbo)', () => {
 
   it('reports clean/TODO counts and lists each TODO under its project#task', () => {
     // turbo.json writes a global block, so every task with a command names
-    // it. build has 2 more ($TURBO_ROOT$ dep, env wildcard), inherited by
-    // lib#build. app#dev is persistent and nothing depends on it, so its
+    // it. build has 1 more ($TURBO_ROOT$ dep; an env wildcard is a pattern
+    // now, ae6d4dd46), inherited by lib#build. app#dev is persistent and nothing depends on it, so its
     // readiness note is no TODO (item 602). Each package's `deploy` (no
     // script anywhere) is an empty group, clean.
     expect(result.out).toContain('  tasks     2 clean · 7 todo\n')
@@ -403,11 +403,10 @@ describe('vx migrate (turbo)', () => {
     ])
     expect(todos.get('packages/app#build')!.map((r) => r.split(' ')[0])).toEqual([
       'dependsOn',
-      'env',
       "turbo.json's",
     ])
     expect(todos.get('packages/app#build')![0]).toContain('$TURBO_ROOT$')
-    expect(todos.get('packages/lib#build')).toHaveLength(2) // and the global one, among "2 more"
+    expect(todos.get('packages/lib#build')).toHaveLength(1)
     expect(result.out).toContain(
       `turbo.json's global block (globalDependencies ["tsconfig.base.json"], globalEnv ` +
         '["GLOBAL_MODE"], globalPassThroughEnv ["AWS_PROFILE"]) is carried onto no task',

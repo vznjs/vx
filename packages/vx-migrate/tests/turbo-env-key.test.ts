@@ -1,7 +1,7 @@
 // G-147: the kept turbo() mapping keyed on every env var name, so a
 // variable that came or went (a CI step's, `VX_DEBUG_TIMING`) remapped the
-// workspace (~330 ms a run on vercel/ai). It keys on the names a wildcard
-// can match, and on those core cannot key.
+// workspace (~330 ms a run on vercel/ai). A wildcard is kept as a pattern
+// each run matches (ae6d4dd46), so no name moves the mapping.
 import { describe, expect, it } from 'bun:test'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
@@ -19,9 +19,8 @@ const MAPPED = 'mkdir -p dist && echo lib > dist/lib.js'
 describe('turbo(): the mapping cache and the environment', () => {
   it.each([
     ['an unrelated name serves the kept mapping', 'VX_G147_UNRELATED', 'echo from-cache'],
-    ['a name a turbo.json wildcard matches maps afresh', 'MY_G147', MAPPED],
-    ['a name a framework wildcard matches maps afresh', 'NEXT_PUBLIC_G147', MAPPED],
-    ['a name core cannot key maps afresh', 'G147*NAME', MAPPED],
+    ['a name a turbo.json wildcard matches serves it too', 'MY_G147', 'echo from-cache'],
+    ['a name a framework wildcard matches serves it too', 'NEXT_PUBLIC_G147', 'echo from-cache'],
   ])('%s', async (_, name, expected) => {
     expect(await command()).toBe(MAPPED)
     await tamperMapping(ws.root, 'turbo')
