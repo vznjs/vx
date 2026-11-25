@@ -1049,7 +1049,10 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       const outcome = r.outcomes.find((o) => o.node.id === 'dirgrant2#build')
       const lines = outcome?.sandbox?.lines ?? []
       expect(outcome?.status).toBe('failed')
-      expect(lines.some((l) => l.includes('stray.txt'))).toBe(true)
+      // macOS reports violations lossily by design (runtime.ts attemptDenials):
+      // the unified log may drop the record, so the path is Linux's to assert.
+      if (process.platform === 'linux')
+        expect(lines.some((l) => l.includes('stray.txt'))).toBe(true)
       expect(lines.some((l) => l.includes('spell the grant `dist/`'))).toBe(true)
     },
     TIMEOUT,
