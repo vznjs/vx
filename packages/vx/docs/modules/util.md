@@ -1584,6 +1584,9 @@ export interface SecretMask {
   mask(text: string): string
   spans(text: string): Array<[start: number, end: number]> // where mask replaces a value
   stream(): { push(chunk: string): string; end(): string }
+  // `spans` over a text in chunks: each call returns the spans it settled, as
+  // offsets into the whole text (a frame read back from its file, report.md)
+  spanStream(): { push(chunk: string): Array<[number, number]>; end(): Array<[number, number]> }
   maskCut(head: string, tail: string): [string, string] // also the pieces a cut left
 }
 export function secretMask(

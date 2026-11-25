@@ -21,6 +21,29 @@ const SECRET = 'hunter2-l11-sekret'
 const DEFINED = 'defined-l11-sekret'
 
 describe('secretMask', () => {
+  it('spanStream finds the spans `spans` finds in the text joined, however it is cut', () => {
+    // A value overlapping another's end, back-to-back values, a value that
+    // is a prefix of a longer one, and an escape's hex in either case.
+    const mask = secretMask([
+      { API_TOKEN: 'abcdef123', B_TOKEN: 'f123xyz789', C_KEY: 'abcdef1234567', D_KEY: 'p@ss/w0rd' },
+    ])!
+    const text =
+      'x abcdef123xyz789 abcdef123abcdef123 abcdef1234567 abcdef12 p%40ss%2Fw0rd p%40ss%2fw0rd y'
+    let seed = 7
+    const random = (n: number): number => (seed = (seed * 48271) % 2147483647) % n
+    for (let round = 0; round < 200; round++) {
+      const s = mask.spanStream()
+      const got: Array<[number, number]> = []
+      for (let at = 0; at < text.length;) {
+        const end = Math.min(text.length, at + 1 + random(12))
+        got.push(...s.push(text.slice(at, end)))
+        at = end
+      }
+      got.push(...s.end())
+      expect(got).toEqual(mask.spans(text))
+    }
+  })
+
   it('holds back only a tail that could begin a value; other output passes at once', () => {
     const s = secretMask([{ API_TOKEN: SECRET }])!.stream()
     // A persistent task's `readyWhen` and a test's start marker read the
