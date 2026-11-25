@@ -1238,7 +1238,11 @@ async function asLockHolds(
         workspaceRoot: root,
         cacheDir: args.cacheDir,
         plugins: args.plugins,
-        projectMetas: args.projectMetas,
+        // A new pass, by identity: a plugin keeps its mapping per
+        // `ctx.projects`, and the run's own array, the same through a process
+        // that locked or ran before (a test, `vx watch`), served the mapping
+        // made before the edit, so a script edit ran green.
+        projectMetas: [...args.projectMetas],
         seeds: metas.map((m) => m.name),
         closure: false,
         configs: async () => view,
