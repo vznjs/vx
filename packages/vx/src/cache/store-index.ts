@@ -749,10 +749,31 @@ function carryEntries(ix: StoreIndex, cacheDir: string, storeDir: string): void 
       }
     }
   }
+  const salt = (schema: 'main' | 'store'): string | undefined =>
+    has(schema, 'store_meta')
+      ? (
+          ix.db
+            .prepare(`SELECT value FROM ${schema}.store_meta WHERE key = 'value_salt'`)
+            .get() as { value: string } | null
+        )?.value
+      : undefined
   ix.db
     .transaction(() => {
+      // The carried rows' value digests are under the index's salt: a store
+      // with a salt of its own made `vx why` name every env value and plugin
+      // part changed after a repository's first commit. A new store takes
+      // the index's salt; one that has another keeps its own rows only.
+      const carried = salt('main')
+      const kept = salt('store')
+      if (carried !== undefined && kept === undefined && has('store', 'store_meta')) {
+        ix.db
+          .prepare("INSERT INTO store.store_meta(key, value) VALUES ('value_salt', ?)")
+          .run(carried)
+      }
+      const foreignSalt = carried !== undefined && kept !== undefined && carried !== kept
       // `entries` first: the other tables' rows reference it.
       for (const t of STORE_TABLES.toReversed()) {
+        if (t === 'entry_inputs' && foreignSalt) continue
         if (t !== 'store_meta' && has('main', t) && has('store', t)) {
           ix.db.exec(`INSERT OR IGNORE INTO store.${t} SELECT * FROM main.${t}`)
         }

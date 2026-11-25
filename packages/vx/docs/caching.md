@@ -2570,7 +2570,9 @@ CREATE TABLE entry_inputs (
 
 -- v32: what belongs to the entries, not to one workspace: 'value_salt',
 -- the salt entry_inputs digests are taken under, so they compare with
--- another workspace's run.
+-- another workspace's run. Entries a workspace held before its first
+-- commit move here with their salt; a store with another salt keeps its
+-- own entry_inputs rows only.
 CREATE TABLE store_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
