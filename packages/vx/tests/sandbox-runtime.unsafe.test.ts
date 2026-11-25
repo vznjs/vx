@@ -1027,8 +1027,10 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     async () => {
       // Bun reads `bunfig.toml` first: that refused read was reported, the
       // note held back, and the fix line named the read alone (2026-11-24).
+      // opt.cfg exists: a read of a missing file is reported on one runner
+      // and not on another (CI 2026-11-25), a refused one on each.
       await addProject(fixture.root, 'dirgrant2', {
-        files: { 'src/x.txt': 'hi' },
+        files: { 'src/x.txt': 'hi', 'opt.cfg': 'x' },
         config: `
           export default {
             tasks: {
