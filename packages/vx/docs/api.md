@@ -50,6 +50,7 @@ export interface AffectedChanges {
   whole: ReadonlySet<string>
   wholeBy?: ReadonlyMap<string, string>
   wide?: boolean
+  workspace?: string
   nested?: readonly string[]
   dirLinks?: ReadonlySet<string>
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>>
@@ -578,15 +579,16 @@ export function defineProject<const T extends ProjectConfig>(
     KnownExecs<T> &
     Known<T, ProjectConfig> & {
       tasks?: {
-        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
-          dependsOn?: DependsOn<
-            At<NonNullable<T['tasks']>[K], 'dependsOn'>,
-            Extract<keyof NonNullable<T['tasks']>, string>
-          >
-          exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
-          inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
-          outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
-        }
+        [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> &
+          NoOpNeedsExec<NonNullable<T['tasks']>[K]> & {
+            dependsOn?: DependsOn<
+              At<NonNullable<T['tasks']>[K], 'dependsOn'>,
+              Extract<keyof NonNullable<T['tasks']>, string>
+            >
+            exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
+            inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
+            outputs?: Known<At<NonNullable<T['tasks']>[K], 'outputs'>, TaskOutputs>
+          }
       }
     },
 ): T
