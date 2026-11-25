@@ -101,6 +101,7 @@ export {
   POST_EXIT_DRAIN_MS,
   settleWithin,
   teardownTimeoutMs,
+  savedDownloadBudgetMs,
   testTimerMs,
   setWorkspaceTimers,
   limitSetting,

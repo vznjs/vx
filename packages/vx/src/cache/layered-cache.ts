@@ -24,7 +24,7 @@ import {
 } from './cache.js'
 import { isCorruptArtifact, type TaskInputComponent, type TaskMemo } from './layer.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
-import { teardownTimeoutMs, type PluginSecrets } from '../util/index.js'
+import { savedDownloadBudgetMs, teardownTimeoutMs, type PluginSecrets } from '../util/index.js'
 
 const STOPPED: unique symbol = Symbol('stopped')
 
@@ -369,10 +369,26 @@ export class LayeredCache implements CacheLayer {
       return here
     }
     // Every remote, read or not, and past a probe's absence: the probe ran
-    // before the agent saved it.
-    for (const lane of this.lanes)
-      if (await this.pullFrom(lane, hash, ctx, true)) return this.local.getIngested(hash)
-    return null
+    // before the agent saved it. A failed download is asked again, backing
+    // off, until the budget: this entry must come home, and two stalled
+    // downloads from the cache Worker failed a run whose every task passed
+    // (2026-11-25). A remote that holds none, sent bytes that did not read
+    // back, or turned itself off is not asked again.
+    const budget = savedDownloadBudgetMs()
+    const until = performance.now() + budget
+    const stopped = Promise.race(this.lanes.map((l) => l.whenStopped)).then(() => true)
+    let asking: readonly RemoteLane[] = this.lanes
+    for (let wait = budget / 100; ; wait = Math.min(wait * 2, budget / 10)) {
+      const failed: RemoteLane[] = []
+      for (const lane of asking) {
+        const got = await this.pullFrom(lane, hash, ctx, true)
+        if (got === true) return this.local.getIngested(hash)
+        if (got === false && !lane.off && !lane.distrusts(hash)) failed.push(lane)
+      }
+      if (failed.length === 0 || performance.now() + wait > until) return null
+      if (await Promise.race([stopped, Bun.sleep(wait).then(() => false)])) return null
+      asking = failed
+    }
   }
 
   /**

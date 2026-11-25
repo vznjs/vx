@@ -74,6 +74,17 @@ export function teardownTimeoutMs(): number {
 }
 
 /**
+ * How long a download that must land is asked again: an entry another
+ * machine of the run saved is the run's own work, and its miss fails a run
+ * whose every task passed. Ten stall bounds (`run.pluginTimeout`), ten of
+ * the default when that bound is off, so a remote that never answers still
+ * ends the wait.
+ */
+export function savedDownloadBudgetMs(): number {
+  return 10 * (teardownTimeoutMs() || DEFAULT_TIMEOUT_MS)
+}
+
+/**
  * Grace after the direct child exits before we abort the stdout/stderr readers.
  * The pipe reaches EOF only when EVERY write-end fd is closed, so a task that
  * backgrounds a process inheriting fd 1/2 (`server & echo up` — `execWrap`

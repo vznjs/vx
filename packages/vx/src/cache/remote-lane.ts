@@ -212,6 +212,11 @@ export class RemoteLane {
     return this.resolved.write
   }
 
+  /** A failure turned the remote off for the run: asking again gets nothing. */
+  get off(): boolean {
+    return this.remote.off === true
+  }
+
   /**
    * Existence probe; a failure is a miss. A key a `hasMany` this run
    * answered for is not asked again: `--dry` batches its keys first.
@@ -369,6 +374,11 @@ export class RemoteLane {
   /** `hash`'s bytes here are unreadable: a save of it uploads, held or not. */
   distrust(hash: string): void {
     this.distrusted.add(hash)
+  }
+
+  /** Whether `hash`'s bytes here did not read back: asked again, the same bytes come. */
+  distrusts(hash: string): boolean {
+    return this.distrusted.has(hash)
   }
 
   /**
