@@ -143,6 +143,7 @@ export {
   listedSync,
   changedSinceCommitOf,
   skipWorktreeSync,
+  uncheckedSubmoduleSync,
   wholeIgnored,
 } from './git-ignored.js'
 export { CHECK_ATTR, parseCheckAttrOutput } from './git-attributes.js'

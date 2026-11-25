@@ -41,6 +41,7 @@ import {
   listed,
   relPosix,
   skipWorktreeSync,
+  uncheckedSubmoduleSync,
   UserError,
 } from '../util/index.js'
 import {
@@ -588,6 +589,24 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
                 sparse.map((s) => lockedProject(workspaceRoot, s.meta.name, s.meta.dir)),
                 5,
               )} are outside this sparse checkout, but this run needs their configs — run \`${add}\``,
+        )
+      }
+      // A submodule a clone skipped, not deleted either: `vx lock` would
+      // drop it, and the committed lock would flip between machines.
+      const unchecked = goneAll.flatMap((m) => {
+        const at = uncheckedSubmoduleSync(workspaceRoot, relPosix(workspaceRoot, m.dir))
+        return at === null ? [] : [{ meta: m, at }]
+      })
+      if (unchecked.length > 0) {
+        const init = `git submodule update --init ${[...new Set(unchecked.map((u) => u.at))].join(' ')}`
+        const one = unchecked.length === 1 ? unchecked[0]! : null
+        throw new UserError(
+          one !== null
+            ? `${lockedProject(workspaceRoot, one.meta.name, one.meta.dir)} is in submodule ${one.at}, which is not checked out, but this run needs its ${relPosix(one.meta.dir, one.meta.configPath)} — run \`${init}\``
+            : `${listed(
+                unchecked.map((u) => lockedProject(workspaceRoot, u.meta.name, u.meta.dir)),
+                5,
+              )} are in submodules not checked out, but this run needs their configs — run \`${init}\``,
         )
       }
       const locked = lockedProject(workspaceRoot, gone.name, gone.dir)

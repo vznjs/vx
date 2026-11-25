@@ -47,6 +47,7 @@ import {
   outputMatcher,
   relPosix,
   type RefusalParts,
+  uncheckedSubmoduleSync,
   UserError,
   errorCode,
   secretMask,
@@ -251,6 +252,33 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
           : `${listed(dirs, 5)} are outside this sparse checkout, so vx lock cannot read their configs — run \`${add}\``,
         'VX_E_LOCK',
       )
+    }
+    // A submodule a clone skipped: what the lock holds there would leave it,
+    // and the committed lock flipped between machines. Asked only of what
+    // the lock holds and the worktree lacks, so a full checkout pays nothing.
+    const held = await readLockfile(root).catch(() => null)
+    if (held !== null) {
+      const here = new Set([
+        ...found.map((f) => lockKey(root, f.dir)),
+        ...nestedWorkspaces.map((d) => lockKey(root, d)),
+      ])
+      const missing = [
+        ...Object.entries(held.projects).flatMap(([dir, p]) => (p.file === undefined ? [] : [dir])),
+        ...(held.nestedWorkspaces ?? []),
+      ].filter((dir) => dir !== '.' && !here.has(dir))
+      const unchecked = [
+        ...new Set(
+          missing.flatMap((dir) => {
+            const at = uncheckedSubmoduleSync(root, dir)
+            return at === null ? [] : [at]
+          }),
+        ),
+      ].sort()
+      if (unchecked.length > 0)
+        throw new UserError(
+          `${listed(unchecked, 5)} ${unchecked.length === 1 ? 'is a submodule' : 'are submodules'} not checked out, so vx lock cannot read what the lock holds there — run \`git submodule update --init ${unchecked.join(' ')}\``,
+          'VX_E_LOCK',
+        )
     }
     out.strayReviews = strayReviews
     out.shadowed = shadowed

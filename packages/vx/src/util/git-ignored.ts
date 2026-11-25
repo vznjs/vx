@@ -248,6 +248,59 @@ export function skipWorktreeSync(cwd: string, rel: string): string | null {
 }
 
 /**
+ * The outermost submodule at or above directory `rel` (relative to `cwd`)
+ * that is not checked out — no `.git`, nothing in it — as git names it from
+ * `cwd`, else null. A clone skips submodules by default; a vendored copy
+ * with files and no `.git` is not one. Failure paths only.
+ */
+export function uncheckedSubmoduleSync(cwd: string, rel: string): string | null {
+  const ancestors: string[] = []
+  for (let d = rel; d !== '' && d !== '.'; d = d.slice(0, Math.max(d.lastIndexOf('/'), 0)))
+    ancestors.push(d)
+  if (ancestors.length === 0) return null
+  try {
+    const r = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        ...gitCaseArgs(cwd),
+        'ls-files',
+        '-z',
+        '--stage',
+        '--',
+        ...ancestors.map((d) => `:(literal)${d}`),
+      ],
+      env: gitEnv(),
+      cwd,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    if (r.exitCode !== 0) return null
+    const asked = new Set(ancestors)
+    const links = new TextDecoder()
+      .decode(r.stdout)
+      .split('\0')
+      .filter((e) => e.startsWith('160000 '))
+      .map((e) => e.slice(e.indexOf('\t') + 1))
+      .filter((p) => asked.has(p))
+      .sort((a, b) => a.length - b.length)
+    for (const link of links) {
+      const dir = path.join(cwd, link)
+      if (existsSync(path.join(dir, '.git'))) return null
+      let entries: string[]
+      try {
+        entries = readdirSync(dir)
+      } catch {
+        entries = []
+      }
+      return entries.length === 0 ? link : null
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Of `globs` (root-relative), those git ignores whole: each probe ignored
  * and, for a deep glob, no listed file it matches (`listedMatch`).
  */

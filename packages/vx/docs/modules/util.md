@@ -2171,6 +2171,10 @@ export function ignoredInputLine(task: string, rel: string, glob: string): strin
   repository path when the index flags it skip-worktree (a sparse
   checkout left it out), else null. Asked only when a locked config is
   missing (`orchestrator/projects.ts`), so a run pays no spawn.
+- `uncheckedSubmoduleSync`: one `git ls-files --stage` of a directory's
+  ancestors: the outermost submodule among them with no `.git` and nothing
+  in it (a clone skipped it), else null. Asked only when a locked config
+  is missing (a run, `vx lock`), so a full checkout pays no spawn.
 - `changedSinceCommitOf`: of `rels`, the ones `git diff --name-only` lists
   against the last commit that changed `anchor`; null when git cannot say.
   Asked only when a run with no stamps refuses a mapping, to name an

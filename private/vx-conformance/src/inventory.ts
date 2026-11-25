@@ -184,6 +184,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'stale-hit-git-entries',
     'stale-hit-git-enumeration',
     'stop-signal-before-spawn',
+    'submodule-unchecked-config',
     'task-edge-selection',
     'task-glob-brackets',
     'task-graph',
