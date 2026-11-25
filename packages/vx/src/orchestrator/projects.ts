@@ -1034,12 +1034,6 @@ async function workspaceStat(root: string): Promise<ConfigStat | null> {
 }
 
 /**
- * Whether the plugins as the workspace file declares them now discover and
- * map every project as the lock holds, as `vx lock --check` compares them:
- * `workspaceDiscovers`, then each config after the `project` stage. Asked
- * only once the file moved since its stamp.
- */
-/**
  * The workspace file's stamped imports, one stat each: `moved` gone, or
  * there when `vx lock` found it absent; `present` for `LockStamps.edited`.
  */
@@ -1063,6 +1057,12 @@ async function importStats(
   return { moved: moved.sort(), present }
 }
 
+/**
+ * Whether the plugins as the workspace file declares them now discover and
+ * map every project as the lock holds, as `vx lock --check` compares them:
+ * `workspaceDiscovers`, then each config after the `project` stage. Asked
+ * only once the file moved since its stamp.
+ */
 async function workspaceHolds(
   args: LoadProjectsArgs,
   digest: string,

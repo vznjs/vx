@@ -105,8 +105,9 @@ function genTask(r: R): Obj {
   const description = maybe(r, () => pick(r, ['Builds the package', '']))
   if (chance(r, 0.15)) {
     const dependsOn = some(r, DEPS)
-    // A group, keyed or not.
-    return fields({ dependsOn, description, inputs: maybe(r, () => genInputs(r, dependsOn)) })
+    // A group, or a no-op task: its inputs name something (6d2009d33).
+    const inputs = maybe(r, () => ({ ...genInputs(r, dependsOn), files: ['src/**'] }))
+    return fields({ dependsOn, description, inputs })
   }
   const dependsOn = maybe(r, () => some(r, DEPS))
   const mode = pick(r, ['plain', 'cached', 'persistent', 'interactive'] as const)
@@ -251,9 +252,9 @@ const BAD_VALUES: Record<string, readonly unknown[]> = {
   policy: ['', '   ', 3],
   localBinding: [0, 70_000],
   tags: [''],
-  passThrough: ['A=B', 'my.var', 'VITE_*', '!HOME'],
+  passThrough: ['A=B', 'my.var', '*', '!HOME'],
   secret: ['A=B', 'TOKEN_*', '!X'],
-  env: ['A*', 'A=B', ''],
+  env: ['A?', 'A=B', ''],
   files: ['', '/abs/**', '../x', 'a\\b'],
   workspaceFiles: ['', '/abs/**', '../x'],
   runtime: ['  ', 'a\0b'],

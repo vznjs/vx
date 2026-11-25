@@ -288,7 +288,7 @@ describe('loadProjectConfig', () => {
         (e: Error) => e.message,
       )
       expect(err).toBe(
-        `${file}: tasks.empty: a task with no \`exec\` must declare \`dependsOn\` or \`inputs\` (group tasks exist to chain dependencies or carry a key)`,
+        `${file}: tasks.empty: a task with no \`exec\` must declare \`dependsOn\` (a group) or \`inputs\` (a no-op task, a key its dependants fold)`,
       )
     })
 
@@ -430,15 +430,12 @@ describe('loadProjectConfig', () => {
       }
     })
 
-    it('rejects wildcards in inputs.env (no silent literal misinterpretation)', async () => {
-      // Turbo expands `VERCEL_*` in env tracking; vx requires explicit
-      // names so an unset wildcard doesn't silently become an empty
-      // value in the cache key. Reject at load time with a clear
-      // pointer to the workaround (list names individually).
-      // An env name is no path, so the bracket that became a literal in a
-      // task glob (item 667) is still refused here.
+    it('rejects every env wildcard but * (no silent literal misinterpretation)', async () => {
+      // `*` is a pattern (0a7d89289); any other glob character would key ''
+      // for a literal no variable has. An env name is no path, so the
+      // bracket that became a literal in a task glob (item 667) is refused.
       const file = path.join(dir, 'vx.config.mjs')
-      for (const name of ['VERCEL_*', 'A?', 'A[0]', 'A{B}']) {
+      for (const name of ['A?', 'A[0]', 'A{B}']) {
         await writeFile(
           file,
           `export default { tasks: { build: {
@@ -446,7 +443,7 @@ describe('loadProjectConfig', () => {
             inputs: { files: ['src/**'], env: [${JSON.stringify(name)}] }, outputs: { files: [] }, cache: true,
           } } }`,
         )
-        await expect(loadProjectConfig(file)).rejects.toThrow(/wildcards.*env names.*not supported/)
+        await expect(loadProjectConfig(file)).rejects.toThrow(/is the only wildcard in env names/)
       }
     })
 

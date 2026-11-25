@@ -846,6 +846,9 @@ async function writeLock(
   return 0
 }
 
+/** How long `vx lock` waits on every task's runtime probes, asked at once. */
+const PROBE_ANSWER_MS = 5_000
+
 /**
  * Variables a bundler writes into what it builds: Vite's, Next's, CRA's,
  * Astro's and SvelteKit's, Expo's, Gatsby's, Storybook's, Vue CLI's, Bun's,
@@ -853,9 +856,6 @@ async function writeLock(
  * Only these: `passThrough` exists for values that do not change the output
  * (`CI`, a region, a token).
  */
-/** How long `vx lock` waits on every task's runtime probes, asked at once. */
-const PROBE_ANSWER_MS = 5_000
-
 const INLINED_ENV =
   /^(?:VITE_|NEXT_PUBLIC_|REACT_APP_|PUBLIC_|EXPO_PUBLIC_|GATSBY_|STORYBOOK_|VUE_APP_|BUN_PUBLIC_|NX_PUBLIC_|NUXT_ENV_|NUXT_PUBLIC_|REDWOOD_ENV_|SANITY_STUDIO_)|^NODE_ENV$/
 

@@ -173,7 +173,12 @@ describe('the schema', () => {
   }
   it('refuses `cache` without a command, and without inputs', () => {
     expect(
-      refusal({ dependsOn: ['x'], inputs: { files: [] }, outputs: { files: [] }, cache: true }),
+      refusal({
+        dependsOn: ['x'],
+        inputs: { files: ['src/**'] },
+        outputs: { files: [] },
+        cache: true,
+      }),
     ).toContain('`cache` needs `exec`')
     expect(refusal({ exec: { command: 'x' }, outputs: { files: [] }, cache: true })).toBe(
       "p: tasks.t: `cache` needs `inputs` — the key is the task's inputs, `inputs: { files: [...] }`",

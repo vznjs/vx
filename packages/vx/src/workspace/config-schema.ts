@@ -1983,13 +1983,6 @@ function specForm(spec: string): SpecForm {
 }
 
 /**
- * A name an environment can hold. An `=` splits at the first one (`'A=B':
- * 'x'` gave `A` the value `B=x`), `''` was dropped, a NUL failed the spawn.
- * The task runs under `sh -c`, and dash (Linux) drops a name that is no
- * shell identifier: `my.var` reached a task under macOS's bash and not on
- * Linux. Refused at load, where the config is named.
- */
-/**
  * True when `name` is a `*` pattern, which it refuses unless sound. Every other
  * glob character stays refused: `?`, `[]` and `{}` match nothing here, and a
  * name holding one would key '' for a literal no variable has.
@@ -2006,6 +1999,13 @@ function assertEnvPattern(name: string, field: string): boolean {
   return true
 }
 
+/**
+ * A name an environment can hold. An `=` splits at the first one (`'A=B':
+ * 'x'` gave `A` the value `B=x`), `''` was dropped, a NUL failed the spawn.
+ * The task runs under `sh -c`, and dash (Linux) drops a name that is no
+ * shell identifier: `my.var` reached a task under macOS's bash and not on
+ * Linux. Refused at load, where the config is named.
+ */
 function assertShellName(name: string, field: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     throw new UserError(

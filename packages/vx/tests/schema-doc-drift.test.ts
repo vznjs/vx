@@ -219,7 +219,30 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
         },
       }),
   ],
-  ['a task with no exec must declare dependsOn or inputs', () => validated({ tasks: { b: {} } })],
+  [
+    'a task with no exec must declare dependsOn (a group) or inputs (a no-op task, a key its dependants fold)',
+    () => validated({ tasks: { b: {} } }),
+  ],
+  [
+    'a task with no exec needs non-empty inputs — add exec, or drop inputs to make it a group',
+    () => validated({ tasks: { b: { inputs: { files: [] } } } }),
+  ],
+  [
+    '<list>: "<pattern>" matches every variable',
+    () => validated({ tasks: { b: { ...ok, inputs: { files: [], env: ['*'] } } } }),
+  ],
+  [
+    '<list>: "<pattern>" holds a character no variable name has',
+    () => validated({ tasks: { b: { ...ok, inputs: { files: [], env: ['A-*'] } } } }),
+  ],
+  [
+    '<list>: "<pattern>" starts with a digit, as no variable name does',
+    () => validated({ tasks: { b: { ...ok, inputs: { files: [], env: ['1A*'] } } } }),
+  ],
+  [
+    '<list>: "<name>" — * is the only wildcard in env names',
+    () => validated({ tasks: { b: { ...ok, inputs: { files: [], env: ['A?'] } } } }),
+  ],
   [
     '<list> lists "<name>" twice',
     () => validated({ tasks: { b: { ...ok, inputs: { files: [], env: ['A', 'A'] } } } }),
@@ -231,7 +254,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
         tasks: {
           b: {
             dependsOn: ['o'],
-            inputs: { files: [] },
+            inputs: { files: ['src/**'] },
             outputs: { files: [] },
             cache: true,
           },
@@ -359,7 +382,9 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   [
     'inputs.stability needs exec — a task with no command runs nothing that could write its inputs',
     () =>
-      validated({ tasks: { b: { inputs: { files: [], stability: { strategy: 'mutable' } } } } }),
+      validated({
+        tasks: { b: { inputs: { files: ['src/**'], stability: { strategy: 'mutable' } } } },
+      }),
   ],
   [
     'inputs.stability must be an object',

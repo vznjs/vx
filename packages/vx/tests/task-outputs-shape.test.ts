@@ -80,7 +80,7 @@ describe('cache is the switch; outputs and stability sit beside it', () => {
     expect(task({ dependsOn: ['a'], outputs: { files: [] } })).toBe(
       `${CFG}: tasks.t.outputs needs \`exec\` — a task with no command writes nothing`,
     )
-    expect(task({ inputs: { files: [], stability: { strategy: 'mutable' } } })).toBe(
+    expect(task({ inputs: { files: ['src/**'], stability: { strategy: 'mutable' } } })).toBe(
       `${CFG}: tasks.t.inputs.stability needs \`exec\` — a task with no command runs nothing that could write its inputs`,
     )
   })
