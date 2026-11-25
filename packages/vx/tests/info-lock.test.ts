@@ -99,7 +99,7 @@ describe('vx info reads the lock', () => {
     expect(vx(root, 'lock').code).toBe(0)
     await writeFile(
       path.join(root, 'packages', 'app', 'vx.config.mjs'),
-      "throw new Error('evaluated')\n",
+      "export default { tasks: { lint: { exec: { command: 'false' } } } }\n",
     )
     const r = vx(root, 'info', '--format', 'json')
     const facts = JSON.parse(r.out) as Record<string, unknown>
@@ -108,6 +108,21 @@ describe('vx info reads the lock', () => {
       '',
       'packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
     ])
+  })
+
+  // A run names the error of an edit that no longer evaluates (b0f9ef596);
+  // info kept only a VX_E_LOCK refusal and read the lock as fine, 0 tasks.
+  it('a config that no longer evaluates is the error a run refuses with', async () => {
+    const root = await workspace()
+    expect(vx(root, 'lock').code).toBe(0)
+    const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
+    await writeFile(config, "throw new Error('evaluated')\n")
+    const r = vx(root, 'info', '--format', 'json')
+    const facts = JSON.parse(r.out) as Record<string, unknown>
+    const said = `Project config ${config} threw: evaluated (at ${config}:1:11)`
+    expect([r.code, r.err, facts['lockError']]).toEqual([0, '', said])
+    const run = vx(root, 'run', 'lint', '--all')
+    expect([run.code, run.err.includes('threw: evaluated')]).toEqual([1, true])
   })
 
   // A lock a run refuses read "projects lock yes" with no task, and exit 0:
