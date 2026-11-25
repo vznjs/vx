@@ -206,6 +206,20 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     })
   }
 
+  // 2026-11-25: a CI plugin's base (a pull request's base commit, gone with a
+  // force-push) said "Pass a branch or commit you have locally", as if typed.
+  it("a plugin's base that does not resolve is named as the plugin's", async () => {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `${PLUGIN_IMPORT}export default { plugins: [${edgesSource()}, ${pluginSource('org/ci', "{ config(_w, ctx) { ctx.setBranch({ base: 'gone' }) } }")}] }\n`,
+    )
+    const p = vxSync(root, ['run', 'build', '--affected', '--dry'])
+    expect(p.code).toBe(1)
+    expect(p.err).toContain('the base org/ci named: git ref "gone" did not resolve')
+    const typed = vxSync(root, ['run', 'build', '--affected=gone', '--dry'])
+    expect(typed.err).not.toContain('named:')
+  })
+
   it('CONTROL: a real base that happens to select nothing keeps the plain note', async () => {
     await writeFile(path.join(root, 'README.md'), 'docs only\n')
     git(root, 'add', '-A')

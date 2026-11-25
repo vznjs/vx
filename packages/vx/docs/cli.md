@@ -528,6 +528,7 @@ Picking the base:
 
 - A `VX_AFFECTED_BASE` ref that does not resolve is named as its:
   `VX_AFFECTED_BASE=origin/develop: git ref "origin/develop" did not resolve`.
+- So is a plugin's: `the base @vzn/vx-ci named: git ref "<sha>" did not resolve`.
 - A plugin's base is `setBranch({ base })`: `github()` gives a pull
   request's base, `nx()` `NX_BASE`, `turbo()` `TURBO_SCM_BASE`.
 - On GitHub Actions, `turbo()` also gives the pull request's base branch

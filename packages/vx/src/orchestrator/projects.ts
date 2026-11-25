@@ -89,6 +89,8 @@ export async function loadWorkspacePlugins(
   branch: BranchFacts
   /** Setting path → the last plugin whose `config` hook changed it (`vx info`). */
   settingPlugins: ReadonlyMap<string, string>
+  /** The last plugin whose `config` hook named `branch.base`. */
+  basePlugin?: string
 }> {
   const loaded = await loadWorkspaceConfig(workspaceRoot)
   const policy = loaded?.cache?.policy
@@ -147,7 +149,13 @@ export async function loadWorkspacePlugins(
   }
   const settingPaths = SETTINGS.filter((s) => s.config !== false).map((s) => s.path)
   const settingValues = new Map(settingPaths.map((p) => [p, atPath(workspaceConfig, p)]))
+  let basePlugin: string | undefined
+  let base: string | undefined
   await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) => {
+    if (branch.base !== base) {
+      base = branch.base
+      basePlugin = plugin.name
+    }
     const at = `.vx/workspace (after plugin '${plugin.name}')`
     validateWorkspace(workspaceConfig, at)
     for (const p of settingPaths) {
@@ -166,7 +174,13 @@ export async function loadWorkspacePlugins(
   })
   applyWorkspaceTimers(workspaceConfig)
   applyWorkspaceLimits(workspaceConfig)
-  return { workspaceConfig, plugins, branch, settingPlugins }
+  return {
+    workspaceConfig,
+    plugins,
+    branch,
+    settingPlugins,
+    ...(basePlugin !== undefined ? { basePlugin } : {}),
+  }
 }
 
 const isRef = (r: unknown): boolean =>

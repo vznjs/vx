@@ -359,10 +359,14 @@ function refusalOf(err: unknown): Refusal {
     : { error: err.message }
 }
 
-/** The filter `--affected` became; `env` is the `VX_AFFECTED_BASE` value that gave its base. */
+/**
+ * The filter `--affected` became; `env` is the `VX_AFFECTED_BASE` value that
+ * gave its base, `plugin` the plugin whose `setBranch` did.
+ */
 export interface AffectedFilter {
   readonly filter: string
   readonly env?: string
+  readonly plugin?: string
 }
 
 /**
@@ -381,10 +385,12 @@ export async function affectedFilterFor(
   const root = await findWorkspaceRoot(cwd)
   const env = affected === '' ? (settingEnv('affectedBase') as string | undefined) : undefined
   let base = affected || (env ?? '')
+  let plugin: string | undefined
   if (base === '') {
     const ws =
       (discovered === undefined ? undefined : workspaceOfDiscovery(discovered)) ??
       (await loadCliWorkspace(root))
+    if (ws.branch.base !== undefined) plugin = ws.basePlugin
     try {
       base =
         ws.branch.base ??
@@ -394,7 +400,9 @@ export async function affectedFilterFor(
       return refusalOf(err)
     }
   }
-  return env === undefined ? { filter: `...[${base}]` } : { filter: `...[${base}]`, env }
+  const filter = `...[${base}]`
+  if (env !== undefined) return { filter, env }
+  return plugin === undefined ? { filter } : { filter, plugin }
 }
 
 /**
@@ -610,9 +618,13 @@ export async function resolveFilters(
       affectedByFilter.set(f, names)
     } catch (err) {
       const refusal = refusalOf(err)
-      // A base the variable gave was reported as if typed.
-      if (affected?.env !== undefined && f === byAffected && refusal.code === 'VX_E_AFFECTED_BASE')
-        return { ...refusal, error: `VX_AFFECTED_BASE=${affected.env}: ${refusal.error}` }
+      // A base the variable or a plugin gave was reported as if typed.
+      if (f === byAffected && refusal.code === 'VX_E_AFFECTED_BASE') {
+        if (affected?.env !== undefined)
+          return { ...refusal, error: `VX_AFFECTED_BASE=${affected.env}: ${refusal.error}` }
+        if (affected?.plugin !== undefined)
+          return { ...refusal, error: `the base ${affected.plugin} named: ${refusal.error}` }
+      }
       return refusal
     }
   }
