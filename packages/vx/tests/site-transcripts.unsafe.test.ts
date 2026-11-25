@@ -1028,7 +1028,10 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
       expect(sh('git', 'checkout', '-q', 'main')).toBe(0)
       expect(sh('git', 'branch', '-qD', 'edit')).toBe(0)
       expect(r.code).toBe(0)
-      holds(block(page, `<TabItem label="${tab}">`), r.out)
+      // A path no input declares reaches no task: one line, no table.
+      if (tab === 'Edit ui/README.md') {
+        expect(loose(block(page, `<TabItem label="${tab}">`))).toContain(loose(r.out))
+      } else holds(block(page, `<TabItem label="${tab}">`), r.out)
     }
   })
 

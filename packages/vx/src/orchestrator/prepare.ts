@@ -92,7 +92,7 @@ import {
   lockReader,
   type LoadedProjects,
 } from './projects.js'
-import { keptByAffected } from './affected-tasks.js'
+import { keptByAffected, keysTasks } from './affected-tasks.js'
 import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
@@ -871,6 +871,7 @@ async function buildGraph(
         outright: new Set(options.handoff?.selectedOutright),
       },
       options.handoff?.affectedReasons && { reasons: options.handoff?.affectedReasons },
+      keysTasks(plugins),
     )
     if (kept.length === 0) return 'none-affected' as const
     if (before !== null) {

@@ -249,7 +249,9 @@ describe('resolveFilters', () => {
       const { value } = await quiet(() =>
         resolveFilters(root, ['...[HEAD]', '...[HEAD]'], {}, { filter: '...[HEAD]' }),
       )
-      expect(value).toMatchObject({ names: ['lib'], outright: ['lib'] })
+      // Every project is an --affected candidate; the run keeps the tasks.
+      expect(value).toMatchObject({ outright: ['lib'] })
+      expect((value as { names: string[] }).names).toContain('lib')
       // CONTROL: --affected alone selects no project outright.
       const alone = await quiet(() =>
         resolveFilters(root, ['...[HEAD]'], {}, { filter: '...[HEAD]' }),

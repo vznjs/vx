@@ -216,8 +216,13 @@ export interface AffectedChanges {
   whole: ReadonlySet<string>
   /** A whole project → the workspace-wide file that made it so (a workspace config, a claimed root file). */
   wholeBy?: ReadonlyMap<string, string>
-  /** `wholeBy`'s file reached every project (the workspace config), not only those a claim named. */
+  /** `wholeBy`'s file reached every project, not only those a claim named. */
   wide?: boolean
+  /**
+   * The workspace config (or a file it imports) that changed. Its edit moves a
+   * task only through the lock (`configTasks`) or a plugin's `key` material.
+   */
+  workspace?: string
   /**
    * Changed paths that are nested repositories: each stands for every file in
    * it.
@@ -260,10 +265,12 @@ export async function affectedChanges(
     const wholeBy = new Map([...all].map((n) => [n, file]))
     return { projects: all, changed, paths: new Map(), whole: all, wholeBy, wide: true }
   }
-  // The workspace config's plugins shape every project's config, so its edit
-  // can re-key any task. Selection is not hashed, so widening changes no key.
-  const wsConfig = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
-  if (wsConfig !== undefined) return everything(wsConfig)
+  // The workspace config's plugins shape every project's config. Per task, its
+  // edit moves what the lock shows moved (`configTasks`) and a plugin's `key`
+  // material (affected-tasks.ts), no more (M, 2026-11-25); per project it
+  // still selects everything.
+  let workspace = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
+  if (workspace !== undefined && !perTask) return everything(workspace)
   // A line-ending rule changes the bytes a checkout writes for every file
   // under it while git's blobs stay the same, so no input path moves
   // (vercel/turborepo#15004).
@@ -306,7 +313,10 @@ export async function affectedChanges(
     skip: perTask ? new Set() : owned,
     workspaceConfigs: WORKSPACE_CONFIG_FILENAMES.map((n) => path.join(diff.rootDir, n)),
   })
-  if (imports.workspace !== undefined) return everything(imports.workspace)
+  if (imports.workspace !== undefined) {
+    if (!perTask) return everything(imports.workspace)
+    workspace ??= imports.workspace
+  }
   if (imports.outside !== undefined) {
     const moved = await outsideChanged(args.workspaceRoot, base, imports.outside)
     if (moved !== undefined) return everything(moved)
@@ -330,6 +340,7 @@ export async function affectedChanges(
     ...(untrackedIn.size > 0 ? { untrackedIn } : {}),
     ...(untrackedSet.size > 0 ? { untracked: untrackedSet } : {}),
     ...(configTasks.size > 0 ? { configTasks } : {}),
+    ...(workspace !== undefined ? { workspace } : {}),
   })
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
   const globOwners = await args.workspaceGlobOwners(changed, nestedDirs, dirLinks, untrackedSet)
@@ -880,8 +891,9 @@ async function pathOwners(
 
 /**
  * The task names whose entry differs between two lock entries of one project,
- * or undefined when anything else in it did (a project-level field, a task
- * added or removed, the entry new or gone): that reaches the whole project.
+ * a task added among them, or undefined when anything else in it did (a
+ * project-level field, a task removed, the entry new or gone): that reaches
+ * the whole project.
  */
 function movedTasks(before: unknown, after: unknown): Set<string> | undefined {
   const split = (e: unknown) => {
@@ -893,13 +905,11 @@ function movedTasks(before: unknown, after: unknown): Set<string> | undefined {
   const b = split(before)
   const a = split(after)
   if (b === undefined || a === undefined || b.rest !== a.rest) return undefined
-  const names = Object.keys(a.tasks)
-  if (
-    names.length !== Object.keys(b.tasks).length ||
-    !names.every((n) => Object.hasOwn(b.tasks, n))
+  // A removed task may have been one a pattern in `inputs.tasks` folded.
+  if (!Object.keys(b.tasks).every((n) => Object.hasOwn(a.tasks, n))) return undefined
+  return new Set(
+    Object.keys(a.tasks).filter((n) => JSON.stringify(a.tasks[n]) !== JSON.stringify(b.tasks[n])),
   )
-    return undefined
-  return new Set(names.filter((n) => JSON.stringify(a.tasks[n]) !== JSON.stringify(b.tasks[n])))
 }
 
 /** Git's attributes file: its eol and filter rules shape the bytes a checkout writes. */

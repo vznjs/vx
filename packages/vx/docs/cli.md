@@ -619,9 +619,9 @@ git: <root> is not inside a git work tree`.
 </div>
 </details>
 
-**It selects the tasks the change reaches.** A change marks tasks in
-the projects it touches. A requested task runs when its `dependsOn`
-closure holds a marked task.
+**It selects the tasks the change reaches.** A change marks tasks by
+their inputs, in every project. A requested task runs when its
+`dependsOn` closure holds a marked task.
 
 With `@demo/web#test` behind `^build`:
 
@@ -629,7 +629,8 @@ With `@demo/web#test` behind `^build`:
   tasks and `@demo/web#test`;
 - an edit to `ui/src/button.test.ts`, which only `ui#test` reads, runs
   `ui#test` alone;
-- `@demo/web#lint`, which depends on nothing, never runs for a change in `ui`.
+- `@demo/web#lint`, with `inputs` and no dependency, never runs for a change in `ui`.
+- a task with `exec` and no `inputs` runs on every `--affected` run.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
@@ -637,24 +638,21 @@ With `@demo/web#test` behind `^build`:
 
 What a change marks:
 
-- A cached task, when a changed path is one of its declared inputs
-  (`files`, `workspaceFiles`).
-- A cached task, when a changed path is a submodule or embedded
-  repository its `workspaceFiles` may reach into.
-- A task whose locked config moved when its project's `vx.config.*`
-  changed, and every task without `inputs` there (below).
-- Every task of a project that holds a changed path no task of its
-  declares: vx cannot prove that path changes no key.
+- A task with `exec` and no `inputs`: always. Nothing it declares rules a
+  change out.
+- A task with `inputs` (a no-op task too), when a changed path is one of
+  them (`files`, `workspaceFiles`), or a submodule or embedded repository
+  its `workspaceFiles` may reach into.
+- `inputs: { files: [] }` on a task with `exec`: no path marks it, only
+  its dependencies and its own definition.
+- Any task, a group included, whose own definition moved (below).
+- A task with `inputs`, when its key's material moved for its project: a
+  lockfile claim, a deleted dependency, a changed nested repository.
+- An install that added or removed a dependency shows as the lockfile's change.
+- A changed path no input declares marks nothing: it is in no key.
 - An untracked file under a task's `outputs`, `files` or
   `workspaceFiles` is none of its inputs: the key folds only a tracked one.
-- Every task of a project that holds a changed submodule or embedded repository.
-- Every task of a project a lockfile plugin or a config import names.
-  An install that added or removed a dependency shows as the lockfile's change.
-- A task with no `inputs`, when a changed path lies in its project or
-  the whole project is marked.
-- A root file another task of its declares (`workspaceFiles`) is no
-  change for a task with no `inputs`.
-- A group marks nothing.
+- A group (no `exec`, no `inputs`) is marked only through its dependencies.
 
 How it spreads:
 
@@ -666,8 +664,7 @@ How it spreads:
   ([schema](schema.md)), so any change there reaches a dependent behind `^build`.
 - A `graph` plugin's dependency or input works as a declared one.
 - A task a `graph` plugin marks requested runs whatever the diff.
-- With a `graph` plugin, every project is a candidate once the diff
-  touched anything.
+- Every project is a candidate once the diff touched anything.
 
 The filter forms select whole projects instead:
 
@@ -725,13 +722,13 @@ What `vx lock` writes:
   changed is selected whole, with the lock as the reason shown.
 - `vx lock` rewriting the same entries selects nothing.
 - When only some tasks' locked configs moved, a config edit selects
-  those tasks alone, with the config as the `input` shown.
+  those tasks alone, with the config as the `input` shown. A group's
+  definition counts: a new `description` marks it and its dependants.
 - An edit to a file the config imports does the same, with
   `.vx/projects.lock` as the `input` shown.
 - So changing `build`'s command does not re-run `test`.
 - An edit that moves no locked task (a comment) selects none of its
   tasks with `inputs`.
-- A task without `inputs` reads its whole project, the config too.
 
 </div>
 </details>
@@ -797,15 +794,19 @@ inputs stop at every project below it.
 </div>
 </details>
 
-**A workspace config change selects everything.** The plugins in
-`.vx/workspace.*` shape every resolved config, so vx cannot tell which
-key an edit there changes.
+**A workspace config change selects what it moves.** The plugins in
+`.vx/workspace.*` shape every resolved config; the lock shows which.
 
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">
 
-- So does an edit to a file it imports, directly or through another file.
+- It marks the tasks whose locked config moved, as a project config does.
+- With a plugin that has a `key` hook and claims no file, it marks every
+  task with `inputs`: vx cannot tell what that key reads.
+- A comment marks only the tasks marked always.
+- `--filter '[<ref>]'` still selects every project for it.
+- An edit to a file it imports counts the same, directly or through another file.
 - That includes a workspace package it imports by name (linked into
   `node_modules`, as `workspace:*` does).
 - That includes a file above the workspace root in the same git repository.
@@ -2221,8 +2222,9 @@ vx run build lint --affected=main --dry
 
 | `kind`      | Why the task is kept                                                   |
 | ----------- | ---------------------------------------------------------------------- |
-| `input`     | a changed `file` is one of its declared inputs                         |
-| `project`   | its project changed and the task reads the project whole               |
+| `input`     | a changed `file` is one of its inputs, or its definition               |
+| `always`    | it has `exec` and no `inputs`                                          |
+| `project`   | its key's material moved for its whole project (a lockfile claim)      |
 | `workspace` | a `file` no project owns changed and reached every task of the project |
 | `package`   | a `^` edge passes a changed `project` that has no such task            |
 | `named`     | you named it as `pkg#task` beside a bare task                          |
@@ -2235,12 +2237,11 @@ vx run build lint --affected=main --dry
 <div class="vx-deeper-body">
 
 - On a terminal too narrow for the reason beside its row, the reason goes on its own line under the row.
-- `project` covers a task with no `inputs`, and a changed `file` no task of the project declares, often an output git does not ignore.
 - When one of its inputs changed too, the reason is `input`, the most precise one.
 - A `project` reason for a config import has no `file`.
 - `workspace` from the workspace config reaches every project, shown as `changed (workspace-wide)`.
 - `workspace` from a root file a plugin claims (a lockfile) or a folder it names reaches only the projects whose digest moved.
-- That one is shown as `changed (every task in its project)`.
+- That one is shown as `changed (in its key)`.
 - A dependency the kept tasks pull in carries no reason.
 - The reasons are gathered only for a plan. A run pays nothing for them.
 - `--dry --format json` also states `affectedBase`, the ref the diff was taken against.

@@ -32,7 +32,8 @@ function planned(root: string, task: string): string[] {
     .sort()
 }
 
-// y depends on x (an `edges()` plugin); each declares `test`; x changes.
+// y depends on x (an `edges()` plugin); each declares `test` reading
+// `*.txt` (a task with no inputs is affected by any change); x changes.
 async function fixture(yTest: string): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-affected-'))
   roots.push(root)
@@ -45,7 +46,7 @@ async function fixture(yTest: string): Promise<string> {
   await write('pkgs/x/package.json', JSON.stringify({ name: 'x' }))
   await write(
     'pkgs/x/vx.config.mjs',
-    `export default { tasks: { test: { exec: { command: 'echo t' } } } }\n`,
+    `export default { tasks: { test: { exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } } } }\n`,
   )
   await write('pkgs/y/package.json', JSON.stringify({ name: 'y' }))
   await write('pkgs/y/vx.config.mjs', `export default { tasks: { test: ${yTest} } }\n`)
@@ -60,8 +61,10 @@ let noEdge: string
 let edge: string
 
 beforeAll(async () => {
-  noEdge = await fixture(`{ exec: { command: 'echo t' } }`)
-  edge = await fixture(`{ dependsOn: ['^test'], exec: { command: 'echo t' } }`)
+  noEdge = await fixture(`{ exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } }`)
+  edge = await fixture(
+    `{ dependsOn: ['^test'], exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } }`,
+  )
 })
 
 afterAll(async () => {
@@ -132,12 +135,12 @@ describe('vx show <task> --affected', () => {
     await write('pkgs/x/package.json', JSON.stringify({ name: 'x' }))
     await write(
       'pkgs/x/vx.config.mjs',
-      `export default { tasks: { test: { exec: { command: 'echo t' } } } }\n`,
+      `export default { tasks: { test: { exec: { command: 'echo t' }, inputs: { files: ['*.txt'] } } } }\n`,
     )
     await write('pkgs/z/package.json', JSON.stringify({ name: 'z' }))
     await write(
       'pkgs/z/vx.config.mjs',
-      `export default { tasks: { lint: { exec: { command: 'echo l' } } } }\n`,
+      `export default { tasks: { lint: { exec: { command: 'echo l' }, inputs: { files: ['*.txt'] } } } }\n`,
     )
     git(root, 'init', '-q')
     git(root, 'add', '-A')

@@ -476,8 +476,9 @@ Set it in [`.vx/workspace.ts`](../workspace/) or with `VX_BASE_BRANCH`.
 - Write the value with `=`: `--affected=origin/main`. In
   `--affected main`, `main` is read as a task name.
 
-What marks a task: a changed file in its `inputs`, a changed
-`vx.config.ts`, or a changed file no task of its project declares.
+What marks a task: a changed file in its `inputs`, or a change to its
+own definition. A task with `exec` and no `inputs` is always marked; a
+group only through what it depends on.
 
 A change then travels only along `dependsOn`. Full rules: [`--affected`](../../cli/run/#--affectedbase).
 
@@ -531,21 +532,13 @@ dependency and is a cache hit:
 </TabItem>
 <TabItem label="Edit ui/README.md">
 
-<ProjectMap picked={['ui', 'web', 'admin']} changed="ui" label="A README edit in @demo/ui marks all three affected, yet all three are cache hits" />
+<ProjectMap picked={[]} changed="ui" label="A README edit in @demo/ui marks no task" />
 
-The README is in `ui`, so all three are affected. No task reads it, so
-all three are cache hits and nothing runs:
+No task lists the README in its `inputs`, so it is in no key. Nothing is
+affected and nothing runs:
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m3[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [2maffected: packages/ui/README.md changed (in its project), via @demo/ui#build[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [2maffected: packages/ui/README.md changed (in its project)[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [2maffected: packages/ui/README.md changed (in its project), via @demo/ui#build[0m
-
-  [2mtasks   [0m  [38;2;203;213;225m3 planned · 3 cache hits (3 local)[0m
+[38;2;6;182;212m›[0m [1mvx run[0m  [38;2;203;213;225mNothing affected: the change reaches no build task.[0m
 ```
 
 </TabItem>

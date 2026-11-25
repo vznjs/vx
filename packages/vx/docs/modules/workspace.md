@@ -711,7 +711,7 @@ the shipped standalone binary fail with `ModuleNotFound`.
   - A task with no `exec` MUST declare `dependsOn` or `inputs` (group
     task) — a no-op task is rejected.
   - `cache` requires `exec`, the task's `inputs.files` and
-    `outputs.files`; a group (a keyed group is `inputs` with no
+    `outputs.files`; a group (a no-op task is `inputs` with no
     `exec`) takes no `cache`.
   - `dependsOn` must be a `string[]`.
   - `description` must be a string.
@@ -1248,7 +1248,8 @@ export interface AffectedChanges {
   paths: ReadonlyMap<string, readonly string[]> // project → its changed paths, project-relative
   whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, config import, nested repo
   wholeBy?: ReadonlyMap<string, string> // a whole project → the workspace-wide file that made it so
-  wide?: boolean // wholeBy's file reached every project (the workspace config), not only those a claim named
+  wide?: boolean // wholeBy's file reached every project, not only those a claim named
+  workspace?: string // the workspace config (or a file it imports) that changed: per task, it moves only what the lock or a plugin's key says
   nested?: readonly string[] // changed nested repositories, workspace-relative: each stands for its files
   dirLinks?: ReadonlySet<string> // changed paths that are (or were) a link to a directory, workspace-relative
   dirLinksIn?: ReadonlyMap<string, ReadonlySet<string>> // project → its dirLinks, project-relative

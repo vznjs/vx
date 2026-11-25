@@ -41,8 +41,9 @@ it('deleting a project config selects its dependants and names the file', async 
     ['app#build', 'no-cache'],
     ['lib#build', 'group'],
   ])
+  // The placeholder's definition moved with the file.
   expect(tasks[0]!.affected).toEqual({
-    kind: 'project',
+    kind: 'input',
     file: 'packages/lib/vx.config.mjs',
     via: ['lib#build'],
   })

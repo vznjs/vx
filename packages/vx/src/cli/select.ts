@@ -50,7 +50,6 @@ import {
   discoveryOf,
   fingerprintClaims,
   hashExtra,
-  hasHook,
   renamedSinceLock,
   unlockedDir,
   withExtraHashes,
@@ -600,18 +599,13 @@ export async function resolveFilters(
       if (answer.changed.length > 0 || answer.nested !== undefined) changedAny.add(f)
       if (f === byAffected) {
         changes = answer
-        // A `graph` plugin may tie any task to a changed path, and only the run
-        // builds that graph: every project is a candidate, and the run keeps
-        // what its final graph reaches.
-        if (
-          changes.changed.length > 0 &&
-          hasHook(
-            (workspaceOfDiscovery(projects) ?? (await loadCliWorkspace(root))).plugins,
-            'graph',
-          )
-        ) {
+        // Once anything changed, a task with `exec` and no `inputs` is
+        // affected wherever it is (M, 2026-11-25), and a `graph` plugin may
+        // tie any task to a changed path: every project is a candidate, and
+        // the run keeps what its final graph reaches. No change at all is
+        // "nothing affected", with the base named.
+        if (answer.changed.length > 0 || answer.nested !== undefined)
           names = new Set(projects.map((p) => p.name))
-        }
       }
       affectedByFilter.set(f, names)
     } catch (err) {

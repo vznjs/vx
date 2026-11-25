@@ -242,7 +242,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     const undeclared = dry('--affected=HEAD~1')
     expect(undeclared.code).toBe(0)
     expect(JSON.parse(undeclared.stdout)).toEqual({ affectedBase: 'HEAD~1', tasks: [] })
-    expect(undeclared.stderr).toContain('build')
+    expect(undeclared.stderr).toContain('the change reaches no build task')
   })
 
   // nx#33330: an explicit base still probed the default branch first, and
@@ -351,9 +351,10 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     for (const name of ['lib', 'other']) {
       await mkdir(path.join(root, `pkgs/${name}/src`), { recursive: true })
       await writeFile(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
+      // Inputs: a task with none is affected by any change.
       await writeFile(
         path.join(root, `pkgs/${name}/vx.config.mjs`),
-        `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] } } } }\n`,
       )
       await writeFile(path.join(root, `pkgs/${name}/src/l.txt`), 'l1\n')
     }
@@ -439,10 +440,14 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     // the edit, and the note still claimed a clean tree.
     for (const args of [['--affected=HEAD'], ['--filter', '[HEAD]'], ['--filter', 'app[HEAD]']]) {
       const r = vx(root, 'run', 'build', ...args)
+      // `--affected` asks the tasks; a project filter, the projects.
       expect({ args, exitCode: r.code, out: r.text.trim() }).toEqual({
         args,
         exitCode: 0,
-        out: noticed('vx run: nothing affected since HEAD', 'info').trimEnd(),
+        out:
+          args[0] === '--affected=HEAD'
+            ? 'Nothing affected: the change reaches no build task.'
+            : noticed('vx run: nothing affected since HEAD', 'info').trimEnd(),
       })
     }
   })
