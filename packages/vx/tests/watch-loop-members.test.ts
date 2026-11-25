@@ -465,9 +465,10 @@ describe('vx watch loop (e2e): the watched set', () => {
     await initialOnly(w, f.log)
 
     await writeFile(path.join(outside, 'armed'), '')
-    // Locked: a config edit with no `vx lock` is refused, and runs nothing.
+    // An edit that evaluates as the lock holds runs with no `vx lock`. A
+    // `vx lock` here raced the cycle: its task let the plugin write the new
+    // lock, which that `vx lock`, still running, wrote over with its own.
     await writeFile(file, `${config('')}// edited\n`)
-    relock()
     await until(async () => (await executions(f.log)) >= 2, "the config edit's cycle")
     await until(async () => (await executions(f.log)) >= 3, "the new lock's cycle")
   }, 40_000)
