@@ -347,7 +347,8 @@ describe('vx watch loop (e2e)', () => {
   it('a shared preset outside the project is watched, and its edit runs once re-locked (item 949)', async () => {
     // Configs compose through imports; a preset outside the project was in
     // no arm, so its edit started no cycle. A cycle runs the lock's
-    // configs, so the edit changes the command only once `vx lock` runs.
+    // configs, and refuses one edited since `vx lock` (7c6e8e295), so the
+    // edit runs only once `vx lock` runs.
     // Outside the workspace, as the count is: only the preset and the lock start cycles.
     const said = path.join(path.dirname(f.log), 'said.txt')
     await mkdir(path.join(f.root, 'shared'), { recursive: true })
@@ -368,7 +369,7 @@ describe('vx watch loop (e2e)', () => {
     await writeFile(path.join(f.root, 'shared', 'preset.mjs'), "export const word = 'TWO'\n")
     await until(() => w.cycles() === 1, 'the cycle the preset edit starts')
     await Bun.sleep(SETTLE_MS)
-    expect(await executions(f.log)).toBe(2)
+    expect(await executions(f.log)).toBe(1)
     expect(await readFile(said, 'utf8')).toBe('ONE\n')
     expect(w.err()).toContain(
       noticed(
@@ -376,9 +377,10 @@ describe('vx watch loop (e2e)', () => {
         'warn',
       ),
     )
+    expect(w.err()).toContain('shared/preset.mjs changed since the last `vx lock` — run `vx lock`')
 
     lock(f.root)
-    await until(async () => (await executions(f.log)) === 3, 'the re-run after a re-lock')
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after a re-lock')
     expect(await readFile(said, 'utf8')).toBe('TWO\n')
   }, 40_000)
 
