@@ -112,6 +112,17 @@ describe('vx init with no package.json', () => {
     expect(r.out).toContain("biome checks vx's locks")
   })
 
+  // A `.vx/` line hid the workspace file init wrote: the first clone had no
+  // workspace, and init said nothing, where vx-migrate names it.
+  it('names the written files .gitignore drops', async () => {
+    const root = await tmp('vx-init-ignored-')
+    await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+    const r = await vx(root, ['init', '--dry', '--format', 'json'])
+    expect((JSON.parse(r.out) as { notes: string[] }).notes).toEqual([
+      '.gitignore drops 3 files this would write (.vx/workspace.ts, .vx/.gitignore, .vx/.gitattributes): stop ignoring .vx/ (a ! line cannot re-include a file inside an ignored directory), or commit them with git add -f',
+    ])
+  })
+
   it('--dry --mjs writes nothing and prints the .mjs files', async () => {
     const root = await tmp('vx-init-bare-dry-')
     const r = await vx(root, ['init', '--dry', '--mjs'])

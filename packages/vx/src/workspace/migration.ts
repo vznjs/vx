@@ -620,13 +620,12 @@ export async function writeMigration(
     dry || args.written === undefined ? [] : args.written(files.map((f) => f.relPath))
   const formatIgnored = dry ? [] : [...formatterIgnore(root), ...biomeNote(root)]
 
-  // One reason, its tasks: the same TODO repeated per task reads as noise. A
-  // file.gitignore drops is lost at the first commit, unnoticed.
-  const ignored = gitIgnored(
+  const ignoredNote = ignoredNotes(
     root,
     files.map((f) => f.relPath),
+    dry,
   )
-  const ignoredNote = ignored.length === 0 ? [] : [ignoreAdvice(root, ignored, dry)]
+  // One reason, its tasks: the same TODO repeated per task reads as noise.
   const todos = new Map<string, string[]>()
   let clean = 0
   let todo = 0
@@ -895,6 +894,16 @@ function ignoreAdvice(root: string, ignored: readonly string[], dry: boolean): s
         ]),
   ]
   return `.gitignore drops ${ignored.length} file${ignored.length === 1 ? '' : 's'} this ${dry ? 'would write' : 'wrote'} (${ignored.slice(0, IGNORED_SHOWN).join(', ')}${ignored.length > IGNORED_SHOWN ? ', …' : ''}): ${cures.join(', ')}, or commit them with git add -f`
+}
+
+/**
+ * The note for the written files (root-relative) `.gitignore` drops, as
+ * `vx init` and a migration print it: such a file is lost at the first
+ * commit, unnoticed.
+ */
+export function ignoredNotes(root: string, relPaths: readonly string[], dry: boolean): string[] {
+  const ignored = gitIgnored(root, relPaths)
+  return ignored.length === 0 ? [] : [ignoreAdvice(root, ignored, dry)]
 }
 
 /** The paths (root-relative) git's ignore rules drop; none outside a work tree. */

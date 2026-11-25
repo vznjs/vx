@@ -2336,6 +2336,8 @@ export function tscCompilesConfigNotes(root: string, written: readonly string[])
 // `exclude`, the locks join `.prettierignore`, biome's lines are named, as a
 // migration does. The notes.
 export function settleToolFiles(root: string, written: readonly string[]): string[]
+// The note for the written files `.gitignore` drops (`vx init` and a migration).
+export function ignoredNotes(root: string, relPaths: readonly string[], dry: boolean): string[]
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TODO: string
 // Drops `note` from each persistent task no `dependsOn` in the mapping

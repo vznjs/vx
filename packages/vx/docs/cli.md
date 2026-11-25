@@ -4503,6 +4503,8 @@ edges.
   one.
 - Beside a `.moon/workspace.yml`, a note says moon's tasks are not
   migrated: vx reads no moon config.
+- A note names each written file `.gitignore` drops, and how to keep
+  it: such a file is lost at the first commit.
 
 **What it prints next**
 

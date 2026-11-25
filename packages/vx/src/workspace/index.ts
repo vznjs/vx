@@ -90,6 +90,7 @@ export {
 export type { LoadReads } from './load-reads.js'
 // The migration seam (see migration.ts).
 export {
+  ignoredNotes,
   isStarterConfig,
   PERSISTENT_TODO,
   pruneOrphanPersistentNotes,

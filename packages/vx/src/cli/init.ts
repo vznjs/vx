@@ -39,6 +39,7 @@ import { sayNotice } from '../ui/index.js'
 import {
   DEPENDENCIES_LOCK_NAME,
   findWorkspaceRoot,
+  ignoredNotes,
   LOCKFILE_NAME,
   PROJECT_CONFIG_FILENAMES,
   readLockfile,
@@ -632,7 +633,15 @@ async function starter(
     root === process.cwd() ? 'git init' : `git init ${path.relative(process.cwd(), root)}`
   const next = `${noGit ? `${gitInit}, ` : ''}${hasScripts(pkgRoot) ? `${migrateHint(args.mjs === true)} to make package.json scripts tasks, or ${declare}` : declare}`
   const written = files.map((f) => path.join(root, f.path))
-  const notes = [...unreadRunnerNotes(root), ...keptWithoutPluginNotes(root, kept, plugin, pkgRoot)]
+  const notes = [
+    ...unreadRunnerNotes(root),
+    ...keptWithoutPluginNotes(root, kept, plugin, pkgRoot),
+    ...ignoredNotes(
+      root,
+      files.map((f) => f.path),
+      args.dry || args.json === true,
+    ),
+  ]
   // Settled after the write, as vx-migrate settles them: a dry run names
   // what tsc would compile.
   if (args.json === true || args.dry) notes.push(...tscCompilesConfigNotes(root, written))
