@@ -122,7 +122,7 @@ describe('vx-migrate on package.json scripts', () => {
     const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
     expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root, env }).exitCode).toBe(0)
     const init = Bun.spawnSync(
-      [process.execPath, path.resolve(import.meta.dir, '../../vx/src/bin.ts'), 'init'],
+      [process.execPath, path.resolve(import.meta.dir, '../node_modules/.bin/vx'), 'init'],
       { cwd: root, env, stdout: 'pipe', stderr: 'pipe' },
     )
     expect([init.exitCode, init.stdout.toString()]).toEqual([
@@ -173,7 +173,7 @@ describe('vx-migrate on package.json scripts', () => {
       '{"name":"b","dependencies":{"a":"workspace:*"},"scripts":{"build":"tsc"}}\n',
     )
     const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
-    const core = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
+    const core = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
     expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root, env }).exitCode).toBe(0)
     expect(Bun.spawnSync([process.execPath, core, 'init'], { cwd: root, env }).exitCode).toBe(0)
     const r = await migrate(root, ['--no-install'])
@@ -245,7 +245,7 @@ describe('vx-migrate on package.json scripts', () => {
     expect(r.out).toContain('vx lock, then vx run build --all')
     const vx = (args: string[]) =>
       Bun.spawnSync(
-        [process.execPath, path.resolve(import.meta.dir, '../../vx/src/bin.ts'), ...args],
+        [process.execPath, path.resolve(import.meta.dir, '../node_modules/.bin/vx'), ...args],
         {
           cwd: root,
           env,
@@ -282,7 +282,7 @@ describe('vx-migrate on package.json scripts', () => {
     expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root, env }).exitCode).toBe(0)
     const vx = (args: string[]) =>
       Bun.spawnSync(
-        [process.execPath, path.resolve(import.meta.dir, '../../vx/src/bin.ts'), ...args],
+        [process.execPath, path.resolve(import.meta.dir, '../node_modules/.bin/vx'), ...args],
         { cwd: root, env, stdout: 'pipe', stderr: 'pipe' },
       )
     expect(vx(['init']).exitCode).toBe(0)

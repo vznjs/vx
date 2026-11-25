@@ -52,7 +52,7 @@ describe('turbo(): the root package.json engines', () => {
       await rootManifest({ engines: { node: '>=18', pnpm: '9' } })
       await mkdir(path.join(ws.root, 'node_modules', '@vzn'), { recursive: true })
       await symlink(
-        path.resolve(import.meta.dir, '..', '..', 'vx'),
+        path.resolve(import.meta.dir, '../node_modules/@vzn/vx'),
         path.join(ws.root, 'node_modules', '@vzn', 'vx'),
         'dir',
       )

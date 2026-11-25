@@ -30,7 +30,7 @@ function silent(): Logger {
     status() {},
   } as never
 }
-const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '../node_modules/@vzn/vx/tests/helpers/vx-locked.ts')
 
 /**
  * A v9 lockfile: `a` → foo → bar; `b` → baz; `c` → link:../b, and qux with

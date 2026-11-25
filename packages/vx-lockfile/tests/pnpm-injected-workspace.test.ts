@@ -191,7 +191,7 @@ it("`vx lock --check` passes where the injected copy differs from the lock's", a
     Bun.spawnSync({
       cmd: [
         process.execPath,
-        path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
+        path.resolve(import.meta.dir, '../node_modules/.bin/vx'),
         'lock',
         '--check',
       ],

@@ -647,7 +647,7 @@ describe('turbo.json is a claimed root file (item 961)', () => {
       const p = Bun.spawnSync({
         cmd: [
           process.execPath,
-          path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts'),
+          path.resolve(import.meta.dir, '../node_modules/@vzn/vx/tests/helpers/vx-locked.ts'),
           'run',
           'lint',
           '--affected=HEAD',
@@ -1461,11 +1461,7 @@ describe('turbo(): the mapping cache', () => {
 describe('turbo() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
-      cmd: [
-        process.execPath,
-        path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
-        ...args,
-      ],
+      cmd: [process.execPath, path.resolve(import.meta.dir, '../node_modules/.bin/vx'), ...args],
       cwd: root,
       env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
     })

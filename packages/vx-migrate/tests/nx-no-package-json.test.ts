@@ -12,7 +12,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 
 const MIGRATE = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const VX = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+const VX = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
 
 const GRAPH = {
   graph: {

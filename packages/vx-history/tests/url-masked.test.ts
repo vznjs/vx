@@ -49,7 +49,7 @@ async function warned(url: string): Promise<string[]> {
       VX_HISTORY_TOKEN: 't',
       CI: 'true',
     }
-    const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+    const bin = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
     Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other, env })
     const cli = Bun.spawn({
       cmd: [process.execPath, bin, 'run', 'build', '--all'],

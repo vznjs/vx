@@ -69,7 +69,7 @@ describe('turbo(): vx lock over a bracketed route input', () => {
     Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
     const vx = (...args: string[]) =>
       Bun.spawnSync({
-        cmd: [process.execPath, path.resolve(import.meta.dir, '../../vx/src/bin.ts'), ...args],
+        cmd: [process.execPath, path.resolve(import.meta.dir, '../node_modules/.bin/vx'), ...args],
         cwd: root,
         env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
       })

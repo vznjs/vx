@@ -71,7 +71,7 @@ function todosOf(out: string): Map<string, string[]> {
   return map
 }
 
-const CORE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx')
+const CORE_PKG = path.resolve(import.meta.dir, '../node_modules/@vzn/vx')
 
 async function makeRoot(prefix: string): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), prefix))

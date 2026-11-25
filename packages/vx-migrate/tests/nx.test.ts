@@ -1609,11 +1609,7 @@ describe('nx(): the graph snapshot, keyed and not', () => {
 describe('nx() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
-      cmd: [
-        process.execPath,
-        path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
-        ...args,
-      ],
+      cmd: [process.execPath, path.resolve(import.meta.dir, '../node_modules/.bin/vx'), ...args],
       cwd: root,
       env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
     })
@@ -1696,7 +1692,7 @@ describe('nx(): one git status per run', () => {
         const p = Bun.spawnSync({
           cmd: [
             process.execPath,
-            path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
+            path.resolve(import.meta.dir, '../node_modules/.bin/vx'),
             ...args,
           ],
           cwd: root,

@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { loadProjectConfig } from '@vzn/vx'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const CORE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx')
+const CORE_PKG = path.resolve(import.meta.dir, '../node_modules/@vzn/vx')
 
 describe('vx-migrate (vite-task): env wildcards', () => {
   let root: string

@@ -7,7 +7,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { useTurboWorkspace } from './helpers/turbo-workspace.js'
 
-const CORE = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
+const CORE = path.resolve(import.meta.dir, '../node_modules/.bin/vx')
 
 const ws = useTurboWorkspace({ tasks: { build: { outputs: ['dist/**'] } } })
 
