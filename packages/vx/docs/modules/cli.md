@@ -633,7 +633,10 @@ git checkout packages`) was no event to its own arm, nor to the
      the fix a `lint` reading `**/*` took `build`'s `dist/` write for
      its input and re-ran `vx watch build` on every save), and a task's own outputs (and
      their directory) are no input of it, as its key reads them, so a
-     `turbo()` task reading `**/*` does not re-run on its own `dist/` —
+     `turbo()` task reading `**/*` does not re-run on its own `dist/`,
+     and a project's `files` stop at a project nested in it, as its key
+     does (the root's default `build`, `**`, took a package's `dist/`
+     write for an edit) —
      the directory holding an output tree, `outputContainer`, which the
      clean before a miss prunes and the task re-creates; a literal entry
      is its whole tree, as in the schema (`makeWatchIgnore`, pinned in
