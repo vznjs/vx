@@ -176,6 +176,8 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   // A task's projects under `--affected` are the ones whose task the run
   // keeps: the change reaches another project only along a task edge.
   let byDiff: { changes: AffectedChanges; outright?: readonly string[] | undefined } | undefined
+  // The selection's own notice ("nothing affected since …"), said already.
+  let saidEmpty = false
   if (parsed.filters.length > 0 || parsed.affected !== undefined) {
     if (scope !== 'all') {
       throw new UserError(
@@ -208,7 +210,10 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       metas,
     )
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
-    if ('empty' in r) sayNotice('info', 'vx show', r.empty)
+    if ('empty' in r) {
+      sayNotice('info', 'vx show', r.empty)
+      saidEmpty = true
+    }
     selected = new Set('empty' in r ? [] : r.names)
     if ('names' in r && r.affected !== undefined)
       byDiff = { changes: r.affected, outright: r.outright }
@@ -274,7 +279,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       shown = shown.filter((p) => kept.has(p.name))
     }
     // An empty list printed nothing and exited 0, where the run says why.
-    if (shown.length === 0 && parsed.format === 'pretty') {
+    if (shown.length === 0 && parsed.format === 'pretty' && !saidEmpty) {
       const n = declaring.length
       sayNotice(
         'info',

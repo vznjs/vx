@@ -91,3 +91,26 @@ describe('vx show --filter / --affected', () => {
     ])
   })
 })
+
+// With nothing changed, `vx show <task> --affected` said "nothing affected",
+// then "no selected project declares lint (2 outside the selection do)":
+// no filter left them out.
+describe('vx show <task> --affected with nothing changed', () => {
+  it('says only that nothing is affected', () => {
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'two')
+    const r = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'show', 'lint', '--affected=HEAD'],
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect([r.exitCode, r.stdout.toString(), r.stderr.toString().split('\n').length]).toEqual([
+      0,
+      '',
+      2,
+    ])
+    expect(r.stderr.toString()).toStartWith('› vx show  nothing affected since HEAD')
+  })
+})
