@@ -954,12 +954,11 @@ fails every task not done (`the relay is unreachable`).
 - A fault (a `5xx`, a dropped or refused connection) is tried again 3
   times, by the orchestrator and workers alike.
 - The third failed retry ends them (`no socket in 3 dials`).
-- The waits are random, from up to 250 ms doubling to up to half a
-  heartbeat: about 3 s at most in all on the default.
+- The waits are random, from 250 ms doubling to half a heartbeat, each
+  jittered to half: 1.4 to 2.75 s in all on the default.
 - So a relay down or restarting is asked through only when it is back
   within them.
-- A relay down under a second usually is; one down 2 s usually fails the
-  run.
+- A relay down under 1.4 s always is; one down past 2.75 s fails the run.
 - The relay stores nothing, so a restart forgets the run.
 - After one, the orchestrator joins again as its host and each worker joins
   again as itself, for two heartbeats (4 s on the default).
