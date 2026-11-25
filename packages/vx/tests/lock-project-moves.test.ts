@@ -31,7 +31,7 @@ const cases: [string, (r: string) => Promise<unknown>, string, string][] = [
   [
     'a project deleted',
     (r) => rm(path.join(r, 'packages/b'), { recursive: true }),
-    'locks packages/b ("b"), but its vx.config.mjs is gone — run `vx lock`',
+    'locks packages/b ("b"), but its directory is gone — run `vx lock`',
     'the lock holds packages/b, which has no vx.config now',
   ],
   [

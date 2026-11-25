@@ -1871,8 +1871,6 @@ naming the task: the task's output clean would delete it mid-run. Its layout:
 │                                           a file below (v33)
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
-├── config-stamps.json                      each config as `vx lock` last read it (a run
-│                                           refuses one edited since)
 └── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
     ├── <rel>                               declared output files, project-relative (when any),
     │                                       each with its saved mtime; an output symlink

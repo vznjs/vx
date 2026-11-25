@@ -189,38 +189,37 @@ describe('vx watch loop (e2e)', () => {
     await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
+    // A cycle whose task is a hit says so: the count says how many settled.
+    const rows = (): number => w.out().split('1 task cached, nothing ran').length - 1
+    const settled = rows()
+
     // The config's command changes; the lock still holds the old one, so
-    // the cycle this edit starts refuses and executes nothing.
+    // the cycle this edit starts runs the locked command, a hit.
     const config = path.join(f.dir, 'vx.config.mjs')
     const before = await readFile(config, 'utf8')
     await writeFile(config, before.replace('cat src/*.txt', 'cat src/*.txt src/*.txt'))
-    await until(() => w.cycles() === 1, 'the cycle the config edit starts')
-    // Past the cycle's refusal, not a sleep: a loaded host had printed the
-    // hint and not yet the refusal (load 40, 2026-11-24).
-    await until(
-      () => w.err().includes('changed since the last `vx lock` — run `vx lock`'),
-      "the cycle's refusal",
-    )
+    await until(() => rows() > settled, 'the cycle the config edit starts')
     expect(await executions(f.log)).toBe(1)
     // Said, or the cycle read as the edit applied: it printed `changed` and
-    // no row, the same as an edit that changed nothing.
+    // a hit, the same as an edit that changed nothing.
     const hint = noticed(
       'vx watch: packages/app/vx.config.mjs changed; runs read the lock, so run `vx lock` to apply it',
       'warn',
     )
     expect(w.err()).toContain(hint)
-    // The cycle refuses the edited config, as a run does, until a re-lock.
-    expect(w.err()).toContain('changed since the last `vx lock` — run `vx lock`')
+    expect(w.err()).not.toContain('changed since the last `vx lock`')
 
     // The re-lock is the edit that changes what a cycle runs.
     lock(f.root)
     await until(async () => (await executions(f.log)) === 2, 'the re-run after a re-lock')
     expect(w.err().split(hint).length - 1).toBe(1)
 
-    // A config gone is the run's own refusal to say, not a second line.
+    // A config gone runs as locked too, and is no hint: nothing to apply.
+    const relocked = rows()
     await rm(config)
-    await until(() => w.err().includes('but its vx.config.mjs is gone'), 'the refusal')
+    await until(() => rows() > relocked, 'the cycle the removal starts')
     expect(w.err().split(hint).length - 1).toBe(1)
+    expect(await executions(f.log)).toBe(2)
     expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a1\na1\n')
   }, 40_000)
 
@@ -347,8 +346,7 @@ describe('vx watch loop (e2e)', () => {
   it('a shared preset outside the project is watched, and its edit runs once re-locked (item 949)', async () => {
     // Configs compose through imports; a preset outside the project was in
     // no arm, so its edit started no cycle. A cycle runs the lock's
-    // configs, and refuses one edited since `vx lock` (7c6e8e295), so the
-    // edit runs only once `vx lock` runs.
+    // configs, so the edit runs only once `vx lock` runs.
     // Outside the workspace, as the count is: only the preset and the lock start cycles.
     const said = path.join(path.dirname(f.log), 'said.txt')
     await mkdir(path.join(f.root, 'shared'), { recursive: true })
@@ -367,9 +365,8 @@ describe('vx watch loop (e2e)', () => {
     expect(await readFile(said, 'utf8')).toBe('ONE\n')
 
     await writeFile(path.join(f.root, 'shared', 'preset.mjs'), "export const word = 'TWO'\n")
-    await until(() => w.cycles() === 1, 'the cycle the preset edit starts')
-    await Bun.sleep(SETTLE_MS)
-    expect(await executions(f.log)).toBe(1)
+    // Uncached: the cycle the edit starts runs the lock's command again.
+    await until(async () => (await executions(f.log)) === 2, 'the cycle the preset edit starts')
     expect(await readFile(said, 'utf8')).toBe('ONE\n')
     expect(w.err()).toContain(
       noticed(
@@ -377,10 +374,9 @@ describe('vx watch loop (e2e)', () => {
         'warn',
       ),
     )
-    expect(w.err()).toContain('shared/preset.mjs changed since the last `vx lock` — run `vx lock`')
 
     lock(f.root)
-    await until(async () => (await executions(f.log)) === 2, 'the re-run after a re-lock')
+    await until(async () => (await executions(f.log)) === 3, 'the re-run after a re-lock')
     expect(await readFile(said, 'utf8')).toBe('TWO\n')
   }, 40_000)
 
@@ -473,20 +469,18 @@ describe('vx watch with a persistent task (e2e)', () => {
     expect(await readPids()).toEqual([first!])
     expect(isAlive(first!)).toBe(true)
 
-    // Its config edit alone is refused until `vx lock`, and the server stays…
+    // Its config edit alone runs the locked task until `vx lock`, and the
+    // server stays…
     const cfg = path.join(dir, 'vx.config.mjs')
     await writeFile(cfg, (await readFile(cfg, 'utf8')).replace('echo READY', 'echo READY again'))
-    await until(
-      () => w.err().includes('changed since the last `vx lock`'),
-      'the refusal of the unlocked config edit',
-    )
-    expect(runsEnded(w)).toBe(2)
+    await until(() => runsEnded(w) === 3, 'the end of the cycle the config edit starts')
+    expect(w.err()).not.toContain('changed since the last `vx lock`')
     expect(await readPids()).toEqual([first!])
     expect(isAlive(first!)).toBe(true)
 
     // …and once locked the old one goes before the new one starts.
     lock(root)
-    await until(() => runsEnded(w) === 3, 'the end of the cycle after a re-lock')
+    await until(() => runsEnded(w) === 4, 'the end of the cycle after a re-lock')
     const all = await readPids()
     expect(all).toHaveLength(2)
     expect(isAlive(first!)).toBe(false)

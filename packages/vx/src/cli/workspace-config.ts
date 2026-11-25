@@ -217,8 +217,6 @@ export interface CliLoadOptions {
    * itself: printed per read, one cycle said it seven times.
    */
   warn?: (message: string) => void
-  /** Read the lock though a config was edited since (`LoadProjectsArgs.asLocked`). */
-  asLocked?: boolean
 }
 
 /**
@@ -250,7 +248,6 @@ export async function loadCliProjects(
       : { closure: false as const }),
     configs: discoveryOf(metas).lock ?? lockReader(workspaceRoot),
     warn,
-    ...(opts.asLocked === true ? { asLocked: true } : {}),
   })
   return loaded.projects
 }

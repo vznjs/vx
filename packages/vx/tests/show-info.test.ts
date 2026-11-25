@@ -1276,9 +1276,9 @@ describe('vx show reads the lock (e2e)', () => {
   )
 
   it(
-    // A config whose bytes moved is evaluated, as `vx lock --check` does; one
-    // that throws refuses with its own error (b0f9ef596), not a bare `vx lock`.
-    'refuses a config edited since the lock with the error it throws',
+    // Show reads the lock, never the config (2026-11-25): one that no
+    // longer evaluates shows what the lock holds.
+    'shows the locked config of one edited since the lock to throw',
     async () => {
       expect(raw(root, ['lock']).exitCode).toBe(0)
       await writeFile(
@@ -1286,10 +1286,8 @@ describe('vx show reads the lock (e2e)', () => {
         "throw new Error('no longer evaluates')\n",
       )
       const r = raw(root, ['show', 'app'])
-      expect(r.exitCode).toBe(1)
-      expect(r.stderr.toString()).toContain('packages/app/vx.config.mjs:1:11')
-      expect(r.stderr.toString()).toContain('threw: no longer evaluates')
-      expect(r.stdout.toString()).toBe('')
+      expect([r.exitCode, r.stderr.toString()]).toEqual([0, ''])
+      expect(r.stdout.toString()).toContain('app')
     },
     TIMEOUT,
   )

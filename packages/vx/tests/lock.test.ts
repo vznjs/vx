@@ -169,7 +169,7 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'a changed config file: a run refuses it until re-lock',
+    'a changed config file: a run runs the locked config until re-lock',
     async () => {
       const dir = await addProject(root, 'app', ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
@@ -183,8 +183,8 @@ describe('vx lock (e2e)', () => {
       expect(check.code).toBe(1)
       expect(check.err).toBe(DRIFT('tasks.build.exec.command: "echo flavor-a" → "echo edited"'))
 
-      // A run reads the lock, never the config: it names the edit and
-      // refuses, and leaves the lock as it was.
+      // A run reads the lock, never the config: it runs the locked command
+      // and leaves the lock as it was.
       const frozen = await vx(
         root,
         ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
@@ -192,11 +192,9 @@ describe('vx lock (e2e)', () => {
           X: 'a',
         },
       )
-      expect(frozen.code).toBe(1)
-      expect(frozen.err).toContain(
-        'packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
-      )
-      expect(frozen.out).not.toContain('flavor-a')
+      expect([frozen.code, frozen.err]).toEqual([0, ''])
+      expect(frozen.out).toContain('flavor-a')
+      expect(frozen.out).not.toContain('edited')
 
       // Re-lock brings the edit into the frozen graph.
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
@@ -249,12 +247,7 @@ describe('vx lock (e2e)', () => {
       await rm(path.join(dir, 'vx.config.mjs'))
       await writeFile(path.join(dir, 'vx.config.ts'), bytes)
       const frozen = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
-      expect([frozen.code, frozen.err]).toEqual([
-        1,
-        noticed(
-          'vx run: .vx/projects.lock locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`\n',
-        ),
-      ])
+      expect([frozen.code, frozen.err]).toEqual([0, ''])
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
       expect([check.code, check.err]).toEqual([
         1,

@@ -209,7 +209,7 @@ describe('a refusal under --format json', () => {
   // A config written or removed after the lock is the lock's drift, and
   // its fix is `vx lock`: it read VX_E_USAGE from the project's directory
   // and VX_E_REFUSED by name, where a missing lock reads VX_E_LOCK.
-  it('a config the lock has not seen, or one it locks that is gone, is VX_E_LOCK', async () => {
+  it('a config the lock has not seen, or a project it locks that is gone, is VX_E_LOCK', async () => {
     const ws = await makeWorkspace({ prefix: 'vx-error-codes-drift-', edges: {} })
     try {
       const c = await addProject(ws, 'c', {})
@@ -236,7 +236,7 @@ describe('a refusal under --format json', () => {
         filter: code(['run', 'build', '--filter', 'c', '--dry', '--format', 'json']),
       }
       await rm(path.join(c, 'vx.config.mjs'))
-      await rm(path.join(d, 'vx.config.mjs'))
+      await rm(d, { recursive: true })
       expect({
         ...unlocked,
         gone: code(['run', 'build', '--all', '--dry', '--format', 'json']),

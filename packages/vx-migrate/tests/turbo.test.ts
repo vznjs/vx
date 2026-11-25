@@ -1508,10 +1508,10 @@ describe('turbo() under vx lock', () => {
   )
 
   // 2026-11-11: "We never relock during runs ... it should always follow
-  // the lock blindly." A run mapped turbo.json and the scripts afresh, so
-  // an edit ran with no `vx lock`.
+  // the lock blindly." 2026-11-25: no refusal either; the run runs what the
+  // lock holds until `vx lock` maps the edit.
   it(
-    'a run refuses an edit vx lock has not mapped, naming the files and vx lock',
+    'a run runs the locked script for an edit vx lock has not mapped, the edit once it has',
     async () => {
       expect(vx('lock').code).toBe(0)
       const kept = await Array.fromAsync(
@@ -1519,15 +1519,10 @@ describe('turbo() under vx lock', () => {
       )
       for (const f of kept) await rm(path.join(root, f))
       await pkg('lib', { build: 'mkdir -p dist && echo edited > dist/lib.js' })
-      // The run maps the edit only to compare it (63c8d1b8f): it moved, so
-      // the run refuses and runs neither the old command nor the new.
-      const stale = vx('run', 'lib#build', '--no-cache')
-      expect(stale.code).toBe(1)
-      expect(stale.err).toContain(
-        'packages/lib/package.json changed since the last `vx lock` — run `vx lock`',
-      )
       const lib = path.join(root, 'packages', 'lib', 'dist', 'lib.js')
-      expect(await Bun.file(lib).exists()).toBe(false)
+      const stale = vx('run', 'lib#build', '--no-cache')
+      expect({ code: stale.code, err: stale.err }).toEqual({ code: 0, err: '' })
+      expect(await Bun.file(lib).text()).not.toBe('edited\n')
       expect(vx('lock', '--check').err).toContain(
         'packages/lib: the plugins map it differently from the lock here',
       )

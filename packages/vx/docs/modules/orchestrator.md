@@ -3169,21 +3169,15 @@ a mapping reads (turbo.json, a manifest, git, the environment). It
 follows the record: a project loads its recorded config, or `{ tasks: {} }` when the lock
 holds none (2026-11-11: "we
 never relock during runs ... it should always follow the lock blindly").
-`vx lock --check` names the drift. Three exceptions: a file a hook named
-with `ctx.read` is stat'ed, and once it changed, appeared or went every
-mapping that read it runs again, as `vx lock --check` does: the run refuses
-when one maps otherwise, naming `vx lock`, as for an edited `vx.config`. The workspace file is stamped
-too: once it moved, `workspaceHolds` runs `discover` and the `project`
-stage with its plugins as `vx lock --check` does, and refuses it when a
-name, an edge, a mapping or a recorded dependency digest differs (a plugin's options edited ran the
-locked commands, green); one that holds is stamped. And a run with no stamps beside
-its lock (a fresh clone, CI, a new `--cache-dir`) evaluates every config
-and runs the stage once, as `vx lock --check` does, to verify the lock
-and stamp what matches; it still runs what the lock records. It runs
-`discover` again too: a project a plugin no longer adds refuses, naming the
-workspace file, and a workspace file that holds is stamped, so the next run
-does not evaluate it all again. A mapping that differs there names its
-project, or the workspace file when git says it moved since the lock's commit.
+`vx lock --check` names the drift. A run never evaluates a config, a file
+one imports, the workspace file's plugin options or a file a hook named
+with `ctx.read`, and never refuses an edit to one: it runs what the lock
+holds until `vx lock` (2026-11-25: "No vx lock, we run what's already
+locked"). It stats each config it reads from the lock, and that config's
+directory once the config is missing: a project whose directory is gone
+(or left out of a sparse checkout, or in a submodule not checked out) is
+refused, naming the fix; a config deleted from a directory still there
+runs as locked.
 
 `loadWorkspacePlugins` runs the `config` stage on a copy of the
 workspace file's export (its plugins kept as they are): the export is one
@@ -3246,8 +3240,8 @@ export interface DiscoveryFacts {
   graph?: PackageGraph
 }
 export function discoveryOf(projects: readonly ProjectMeta[]): DiscoveryFacts
-// The refusal a task gets when it cannot spawn because its locked
-// project's directory is gone: run `vx lock`.
+// The refusal for a locked project whose directory is gone (the load's,
+// or a task's that cannot spawn there): run `vx lock`.
 export function lockedDirGone(root: string, name: string, dir: string): string
 // Why a project a `discover` plugin added has no config while its directory
 // holds one git ignores (`config`, looked for when not given), naming the
@@ -3258,22 +3252,6 @@ export function ignoredConfigRefusal(
   meta: { readonly name: string; readonly dir: string },
   config?: string,
 ): string | undefined
-// Each config's local imports, by project dir, as files under `root`:
-// `vx lock` and a run that evaluates stamp them beside the configs.
-export function importedBy(
-  root: string,
-  configs: readonly { dir: string; configPath: string | null }[],
-  sources?: ReadonlyMap<string, Uint8Array>, // each config's bytes, already read
-): Promise<Map<string, string[]>>
-// The workspace file's local imports into `taken` (`workspace` and their
-// stamps), one written since this process's load listed but not stamped.
-export function stampWorkspaceImports(
-  root: string,
-  file: string,
-  read: Uint8Array | undefined, // the workspace file's bytes, already read
-  taken: ConfigStamps,
-): Promise<void>
-
 // The graph is read only for the closure, so only a closure load needs one.
 export type LoadProjectsArgs = LoadProjectsBase &
   ({ closure: true; packageGraph: PackageGraph } | { closure: false; packageGraph?: PackageGraph })
@@ -3287,7 +3265,6 @@ interface LoadProjectsBase {
   warn: (m: string) => void
   lock?: boolean // `vx lock`'s audit: the one load that runs the `project` hooks
   staged?: ReadonlyMap<string, ProjectEntry> // entries a load in this process already produced
-  asLocked?: boolean // read the lock though a config was edited since (`vx watch`'s watched set)
 }
 export interface LoadedProjects {
   projects: Map<string, ProjectEntry>

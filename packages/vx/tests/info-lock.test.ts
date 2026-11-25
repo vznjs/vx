@@ -93,36 +93,21 @@ describe('vx info reads the lock', () => {
     }).toEqual({ code: 0, err: '', lockfile: true, tasks: 3 })
   })
 
-  // Edited after the lock: info evaluates nothing, and says why a run refuses.
-  it('a config edited since the lock is the lock error a run refuses with', async () => {
-    const root = await workspace()
-    expect(vx(root, 'lock').code).toBe(0)
-    await writeFile(
-      path.join(root, 'packages', 'app', 'vx.config.mjs'),
-      "export default { tasks: { lint: { exec: { command: 'false' } } } }\n",
-    )
-    const r = vx(root, 'info', '--format', 'json')
-    const facts = JSON.parse(r.out) as Record<string, unknown>
-    expect([r.code, r.err, facts['lockError']]).toEqual([
-      0,
-      '',
-      'packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
-    ])
-  })
-
-  // A run names the error of an edit that no longer evaluates (b0f9ef596);
-  // info kept only a VX_E_LOCK refusal and read the lock as fine, 0 tasks.
-  it('a config that no longer evaluates is the error a run refuses with', async () => {
+  // Edited after the lock, or no longer evaluating: info evaluates nothing,
+  // and a run runs the lock, so there is no lock error.
+  it('a config edited since the lock, even to one that throws, is no lock error', async () => {
     const root = await workspace()
     expect(vx(root, 'lock').code).toBe(0)
     const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
-    await writeFile(config, "throw new Error('evaluated')\n")
-    const r = vx(root, 'info', '--format', 'json')
-    const facts = JSON.parse(r.out) as Record<string, unknown>
-    const said = `Project config ${config} threw: evaluated (at ${config}:1:11)`
-    expect([r.code, r.err, facts['lockError']]).toEqual([0, '', said])
-    const run = vx(root, 'run', 'lint', '--all')
-    expect([run.code, run.err.includes('threw: evaluated')]).toEqual([1, true])
+    for (const text of [
+      "export default { tasks: { lint: { exec: { command: 'false' } } } }\n",
+      "throw new Error('evaluated')\n",
+    ]) {
+      await writeFile(config, text)
+      const r = vx(root, 'info', '--format', 'json')
+      const facts = JSON.parse(r.out) as Record<string, unknown>
+      expect([r.code, r.err, facts['lockError'], facts['tasks']]).toEqual([0, '', null, 3])
+    }
   })
 
   // A lock a run refuses read "projects lock yes" with no task, and exit 0:

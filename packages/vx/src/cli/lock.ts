@@ -24,10 +24,8 @@ import {
   hasHook,
   holdLockFiles,
   ignoredConfigRefusal,
-  importedBy,
   loadProjects,
   networkPatternRefusal,
-  stampWorkspaceImports,
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
@@ -61,9 +59,7 @@ import {
   writeAllOrNone,
   writeNoFollow,
 } from '../util/index.js'
-import { answerRuntime, makeIgnoredCacheDir } from '../cache/index.js'
-import { type ConfigStamps, takeConfigStamps, writeConfigStamps } from '../memo/index.js'
-import { workspaceFile, workspaceRootOf } from '../handoff.js'
+import { answerRuntime } from '../cache/index.js'
 import * as ui from '../ui/index.js'
 import { refusalNotice, sayNotice } from '../ui/index.js'
 import {
@@ -88,7 +84,6 @@ import {
   sameRecord,
   parseDependenciesLock,
   dependenciesLockWrite,
-  evaluatedWorkspace,
   type DependenciesLock,
   type LockedProject,
   type Lockfile,
@@ -285,39 +280,6 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     }
     out.strayReviews = strayReviews
     out.shadowed = shadowed
-    // The workspace file too: the plugins' options there map the projects.
-    const workspace = await workspaceFile(root)
-    // Each config's local imports, stamped beside it: a helper edited with no
-    // `vx lock` ran the locked config, green.
-    const sources = new Map<string, Uint8Array>()
-    const taken = await takeConfigStamps(
-      root,
-      [
-        ...found.map((f) => f.configPath),
-        ...(workspace !== null && workspaceRootOf(workspace) === root ? [workspace] : []),
-      ],
-      sources,
-    )
-    const imported = await importedBy(root, found, sources)
-    const helpers = await takeConfigStamps(root, [...new Set([...imported.values()].flat())])
-    taken.configs = { ...taken.configs, ...helpers.configs }
-    const byDir: Record<string, string[]> = {}
-    const readBy = (dir: string, files: Iterable<string>): void => {
-      const key = lockKey(root, dir)
-      const rels = [...files].map((f) => relPosix(root, f))
-      if (rels.length > 0) byDir[key] = [...new Set([...(byDir[key] ?? []), ...rels])].sort()
-    }
-    for (const [dir, files] of imported) readBy(dir, files)
-    taken.reads = byDir
-    // A plugin option may live in a file the workspace file imports.
-    if (workspace !== null && workspaceRootOf(workspace) === root)
-      await stampWorkspaceImports(root, workspace, sources.get(workspace), taken)
-    // Only the bytes the plugins came from: an edit since the load is
-    // asked of the next run.
-    const rel = workspace === null ? null : path.relative(root, workspace)
-    const read = rel === null ? undefined : taken.configs[rel]
-    if (read !== undefined && !evaluatedWorkspace(workspace!, read[2])) delete taken.configs[rel!]
-    out.stamps = { cacheDir, taken }
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(
       found.map((f) => f.configPath),
@@ -371,17 +333,6 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       warn,
       lock: true,
     })
-    // The files a `project` plugin made a config from, stamped as configs are
-    // (after the stage read them: one edited in between reads as unchanged).
-    if (reads !== undefined && reads.size > 0 && out.stamps !== undefined) {
-      for (const [dir, files] of reads) readBy(dir, files)
-      const read = await takeConfigStamps(root, [
-        ...new Set([...reads.values()].flatMap((f) => [...f])),
-      ])
-      const taken = out.stamps.taken
-      // A file absent has no stamp: a run refuses once it appears.
-      out.stamps.taken = { ...taken, configs: { ...taken.configs, ...read.configs }, reads: byDir }
-    }
     if (reads !== undefined) out.reads = reads
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     // Each project as the stages left it, and nothing of the steps there: a
@@ -566,8 +517,6 @@ interface GraphCheck {
   shadowed: { file: string; read: string }[]
   /** What the dependencies resolve to here; null when the configs did not load. */
   dependencies: DependenciesLock | null
-  /** Each config as read before its evaluation, and where a run reads it back. */
-  stamps?: { cacheDir: string; taken: ConfigStamps }
   /** The files the `project` stage made each project's config from, by directory. */
   reads?: ReadonlyMap<string, ReadonlySet<string>>
 }
@@ -822,7 +771,6 @@ async function writeLock(
     held()
   }
   await writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES)
-  if (check.stamps) await keepConfigStamps(root, check.stamps)
   const n = metas.length
   say(
     `${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}, ${DEPENDENCIES_LOCK_NAME}${bareNote(bare)}`,
@@ -1424,9 +1372,6 @@ async function checkLock(root: string, json: boolean): Promise<number> {
         ),
       )
   }
-  // The configs read as locked: a run that finds one edited since says so.
-  if (failures.length + refused.length === 0 && check.stamps)
-    await keepConfigStamps(root, check.stamps)
   if (json)
     // Root-relative, as every other problem: the loader names the absolute path.
     return answer([
@@ -1446,17 +1391,4 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   const mapped = bare.length === 0 ? '' : `; mapped by a plugin: ${bareNames(bare)}`
   ui.print('out', ui.status('ok', 'vx lock --check', `up to date (${audited}${mapped})`))
   return 0
-}
-
-/** The configs as read, beside the lock; a cache dir that cannot be made keeps none (a warning light only). */
-async function keepConfigStamps(
-  root: string,
-  stamps: { cacheDir: string; taken: ConfigStamps },
-): Promise<void> {
-  try {
-    makeIgnoredCacheDir(stamps.cacheDir)
-  } catch {
-    return
-  }
-  await writeConfigStamps(root, stamps.cacheDir, stamps.taken)
 }

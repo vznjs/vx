@@ -18,7 +18,6 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { closeDb } from '../index-db/index.js'
-import { CONFIG_STAMPS_FILE } from '../memo/index.js'
 import {
   UserError,
   DOT_VX_GITIGNORE,
@@ -38,9 +37,6 @@ export const VX_ARTIFACT_NAME = /^([0-9a-f]{16})\.(?:tar\.zst|tree)(\.tmp-\d+-\d
 /** The file in a cache directory with no store that its runs hold shared and a clean alone (`holdCacheDir`). */
 const DIR_LOCK = 'cache.lock'
 
-/** A config-stamps write a crash left before its rename. */
-const STAMPS_TEMP = new RegExp(`^${CONFIG_STAMPS_FILE.replace('.', '\\.')}\\.\\d+\\.tmp$`)
-
 /** What vx writes in a cache directory besides its artifacts. */
 const VX_CACHE_NAMES = new Set([
   'cache.db',
@@ -48,7 +44,6 @@ const VX_CACHE_NAMES = new Set([
   'cache.db-shm',
   'cache.db-journal',
   DIR_LOCK,
-  CONFIG_STAMPS_FILE,
   // Every other record vx keeps lives in cache.db, and the config bundle
   // always in `.vx/cache/compiled`, so any directory here is the user's.
 ])
@@ -69,8 +64,7 @@ export function vxCacheEntries(cacheDir: string): string[] {
   }
   const own = names.filter((name) => {
     if (name === DIR_LOCK) return false
-    if (VX_CACHE_NAMES.has(name) || VX_ARTIFACT_NAME.test(name) || STAMPS_TEMP.test(name))
-      return true
+    if (VX_CACHE_NAMES.has(name) || VX_ARTIFACT_NAME.test(name)) return true
     if (name !== '.gitignore') return false
     try {
       return readFileSync(path.join(cacheDir, name), 'utf8') === IGNORE_ALL
@@ -120,9 +114,8 @@ export function openCacheDir(
 }
 
 /**
- * Make `cacheDir` and its ignore file for a verb that writes beside the index
- * but opens none (`vx lock`'s config stamps): made bare, the first `vx lock`
- * of a workspace left `.vx/cache/` for `git add -A` to commit. A `*` goes into
+ * Make `cacheDir` and its ignore file before any index opens (`vx watch`'s
+ * clock): made bare, `.vx/cache/` was left for `git add -A` to commit. A `*` goes into
  * a named directory only when this made it: one that stood may be the user's,
  * and `openCacheDir` checks it first.
  */

@@ -83,7 +83,7 @@ it('a dependant of a project the sparse checkout left out is refused', async () 
   expect(run(root, [process.execPath, CORE_BIN, 'run', 'build', '--filter', 'app'])).toEqual({
     code: 1,
     // Named as `vx lock` recorded it, though its package.json is not on disk.
-    err: '✗ vx run  packages/lib ("lib") is outside this sparse checkout, but this run needs its vx.config.mjs — run `git sparse-checkout add packages/lib`',
+    err: '✗ vx run  packages/lib ("lib") is outside this sparse checkout, but this run needs it — run `git sparse-checkout add packages/lib`',
   })
 }, 60_000)
 

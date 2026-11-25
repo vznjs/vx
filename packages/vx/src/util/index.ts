@@ -145,7 +145,6 @@ export {
   ignoredInputLine,
   ignoreProbes,
   listedSync,
-  changedSinceCommitOf,
   skipWorktreeSync,
   uncheckedSubmoduleSync,
   wholeIgnored,

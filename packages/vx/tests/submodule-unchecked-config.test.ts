@@ -59,7 +59,7 @@ it('a run that needs a project in it names git submodule update', async () => {
   const r = await vx(root, ['run', 'hi', '--all'])
   expect([r.code, r.err.trim()]).toEqual([
     1,
-    '✗ vx run  vendor/sub/pkg is in submodule vendor/sub, which is not checked out, but this run needs its vx.config.mjs — run `git submodule update --init vendor/sub`',
+    '✗ vx run  vendor/sub/pkg is in submodule vendor/sub, which is not checked out, but this run needs it — run `git submodule update --init vendor/sub`',
   ])
 }, 30_000)
 

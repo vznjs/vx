@@ -108,15 +108,15 @@ async function editLock(
   await writeLockfile(root, held)
 }
 
-/** Locks the workspace, then deletes `name`'s config file: a run that reads it refuses. */
+/** Locks the workspace, then deletes `name`'s directory: a run that loads it refuses. */
 async function goneAfterLock(name: string): Promise<void> {
   await lock(root)
-  await rm(path.join(root, 'packages', name, 'vx.config.mjs'))
+  await rm(path.join(root, 'packages', name), { recursive: true })
 }
 
-/** What a run says when a config it reads is gone since the lock. */
+/** What a run says when a project it loads is gone since the lock. */
 const gone = (name: string): string =>
-  `.vx/projects.lock locks packages/${name} ("${name}"), but its vx.config.mjs is gone — run \`vx lock\``
+  `.vx/projects.lock locks packages/${name} ("${name}"), but its directory is gone — run \`vx lock\``
 
 /**
  * NB `prepareRun` takes an EXPLICIT project scope — resolving cwd to "the

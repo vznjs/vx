@@ -1342,28 +1342,6 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
 /** When this process first began loading each workspace config, in ms. */
 const workspaceLoadedAt = new Map<string, number>()
 
-/** The xxh3 of the bytes this process last evaluated as each workspace config. */
-const workspaceEvaluated = new Map<string, string>()
-
-/**
- * Whether `hash` (xxh3hex) is of the bytes this process last evaluated as
- * the workspace config `file`: a stamp taken after an edit that followed
- * the load holds bytes whose plugins no run checked.
- */
-export function evaluatedWorkspace(file: string, hash: string): boolean {
-  return workspaceEvaluated.get(path.resolve(file)) === hash
-}
-
-/**
- * Whether a file the workspace config `file` imports, last written at
- * `mtimeMs`, was as this process's load read it: one written after the load
- * began holds bytes whose plugins no run checked.
- */
-export function loadedWorkspaceImport(file: string, mtimeMs: number): boolean {
-  const since = workspaceLoadedAt.get(file) ?? workspaceLoadedAt.get(path.resolve(file))
-  return since !== undefined && Math.floor(mtimeMs) <= since
-}
-
 /**
  * A repeat load (`vx watch`, a plugin verb) busts the workspace config's URL,
  * but Bun serves its imports from the registry: an edited local plugin silently
@@ -1472,7 +1450,6 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     // Set by a load that succeeded: a failed one may have left nothing in
     // the registry, and its fix must not be refused.
     if (since === undefined) workspaceLoadedAt.set(configPath, startedAt)
-    workspaceEvaluated.set(path.resolve(configPath), xxh3hex(bytes))
     return mod
   }
   return null
