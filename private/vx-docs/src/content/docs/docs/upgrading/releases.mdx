@@ -18,6 +18,16 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
+### A config not in the lock is not there for a run
+
+A run reads only the lock. A vx.config, or a package.json name, added since `vx lock` is not refused: the run ignores it until you run `vx lock`.
+
+`turbo()` and `nx()` read no turbo.json or nx.json on a run. turbo.json `concurrency` and nx.json `parallel` and `defaultBase` reach a run only through the `.vx/workspace.ts` that `bunx @vzn/vx-migrate` writes.
+
+Turbo's `futureFlags.githubActionsRemoteBaseRefFallback` is not read.
+
+`PreparedRun.unlockedConfig` is gone.
+
 ### A task with empty inputs needs exec
 
 A task with no `exec` and empty `inputs` is refused. Add `exec`, or drop `inputs` to make it a group.
