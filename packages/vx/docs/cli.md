@@ -5454,6 +5454,8 @@ unreported`: the sandbox works but cannot report the reads it denies.
 - A bare `vx cache clean` frees both sizes.
 - `cache entries` reads `unreadable: <why and the fix>` when SQLite cannot
   read the index. The history rows read 0; the report still prints, exit 0.
+- `cache entries` leaves out an entry whose file is gone (deleted by hand):
+  no restore reads it.
 - `cache versions`: the key prefix (`CACHE_VERSION`) and index schema
   (`SCHEMA_VERSION`) that a bug report and the reset notice name.
 - A `CACHE_VERSION` bump orphans every entry.

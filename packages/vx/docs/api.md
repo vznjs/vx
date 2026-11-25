@@ -268,7 +268,7 @@ export class Cache implements CacheLayer {
   async stopCheckpoints(): Promise<void>
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
-  async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
+  async orphanStats(): Promise<
   close(): void
 }
 ```

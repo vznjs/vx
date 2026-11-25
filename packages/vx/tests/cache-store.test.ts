@@ -546,12 +546,41 @@ describe('a tree no row names', () => {
     const old = (Date.now() - 2 * 60 * 60 * 1000) / 1000
     await utimes(orphan, old, old)
     await utimes(indexed, old, old)
-    expect(await cache.orphanStats()).toEqual({ orphans: 1, orphanBytes: treeBytes(orphan) })
+    expect(await cache.orphanStats()).toEqual({
+      orphans: 1,
+      orphanBytes: treeBytes(orphan),
+      missing: 0,
+      missingBytes: 0,
+    })
     await cache.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
     expect(existsSync(orphan)).toBe(false)
     await cache.restoreOutputs(HASH, proj)
     expect(new Uint8Array(await readFile(path.join(proj, 'out/a.bin')))).toEqual(LARGE)
     cache.close()
+  })
+})
+
+// `vx info` counted a row whose file was deleted (by hand, a disk cleaner)
+// in its entries and size, though no restore can read it.
+describe.each([
+  ['tar', { embeddings: 0, decompress: false }],
+  ['tree', { embeddings: 0, decompress: true }],
+] as const)('a %s entry whose file is gone', (kind, store) => {
+  it('is counted missing, with its size; an inline one never is', async () => {
+    const { cache } = await saved(store, LARGE)
+    const size = (
+      indexDb(cache).query('SELECT size_bytes AS s FROM entries').get() as { s: number }
+    ).s
+    expect(await cache.orphanStats()).toMatchObject({ missing: 0, missingBytes: 0 })
+    const dir = path.join(root, 'c')
+    await rm(path.join(dir, kind === 'tar' ? `${HASH}.tar.zst` : `${HASH}.tree`), {
+      recursive: true,
+    })
+    expect(await cache.orphanStats()).toMatchObject({ missing: 1, missingBytes: size })
+    cache.close()
+    const inline = (await saved({ embeddings: 32 * 1024, decompress: false }, SMALL, 'i')).cache
+    expect(await inline.orphanStats()).toMatchObject({ missing: 0, missingBytes: 0 })
+    inline.close()
   })
 })
 
