@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
-import { pickTask } from '../src/cli/select.js'
+import { noTasksDeclared, pickTask } from '../src/cli/select.js'
 import { lock } from './helpers/orchestrator.js'
 import { packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
@@ -264,5 +264,25 @@ describe('vx run interactive picker', () => {
     await Bun.sleep(50)
     input.write('99\n')
     expect(await picking).toBeNull()
+  })
+})
+
+// vx runs any shell command: a workspace with no package.json has no
+// scripts for vx-migrate to map, so the refusal names only a vx.config.
+describe('noTasksDeclared', () => {
+  it('names vx-migrate only when the root has package.json, turbo.json or nx.json', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-no-tasks-'))
+    try {
+      const bare = noTasksDeclared(dir)
+      expect(bare).not.toContain('vx-migrate')
+      expect(bare).toContain('Declare one under `tasks` in a vx.config, then run `vx lock`')
+      for (const file of ['package.json', 'turbo.json', 'nx.json']) {
+        await writeFile(path.join(dir, file), '{}')
+        expect(noTasksDeclared(dir)).toContain('bunx @vzn/vx-migrate')
+        await rm(path.join(dir, file))
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })

@@ -732,8 +732,25 @@ export function migrateHint(mjs: boolean, running = VERSION): string {
   return `bunx @vzn/vx-migrate${running === '0.0.0' ? '' : `@${running}`}${mjs ? ' --mjs' : ''}`
 }
 
-/** What a workspace with no task yet says, picker or not: `vx init` writes no task, so the scripts route is vx-migrate's. */
-export const NO_TASKS_DECLARED = `no tasks declared in any project. Declare one under \`tasks\` in a vx.config, then run \`vx lock\`; or run \`${migrateHint(false)}\` to make them from package.json scripts`
+/**
+ * What a workspace with no task yet says, picker or not: `vx init` writes no
+ * task. vx-migrate is named only where it has something to map; vx runs any
+ * shell command, so a workspace without package.json is told of a vx.config only.
+ */
+export function noTasksDeclared(root: string): string {
+  const declare =
+    'no tasks declared in any project. Declare one under `tasks` in a vx.config, then run `vx lock`'
+  const from = fs.existsSync(path.join(root, 'turbo.json'))
+    ? 'turbo.json'
+    : fs.existsSync(path.join(root, 'nx.json'))
+      ? 'the Nx workspace'
+      : fs.existsSync(path.join(root, 'package.json'))
+        ? 'package.json scripts'
+        : undefined
+  return from === undefined
+    ? declare
+    : `${declare}; or run \`${migrateHint(false)}\` to make them from ${from}`
+}
 
 /**
  * The task the user picks from a numbered menu; null when nothing was
@@ -749,7 +766,8 @@ export async function pickTask(
   const projects = await loadWorkspaceProjects(cwd, load)
   // The staged load: a task a `project` plugin gave a config-less package
   // is on the menu, as it is in a run.
-  const staged = await loadCliProjects(await findWorkspaceRoot(cwd), projects, 'all', load)
+  const root = await findWorkspaceRoot(cwd)
+  const staged = await loadCliProjects(root, projects, 'all', load)
   const entries: PickedTask[] = []
   for (const meta of projects) {
     if (only !== undefined && !only.has(meta.name)) continue
@@ -776,7 +794,7 @@ export async function pickTask(
     return null
   }
   if (entries.length === 0) {
-    sayNotice('error', 'vx run', NO_TASKS_DECLARED)
+    sayNotice('error', 'vx run', noTasksDeclared(root))
     return null
   }
   // The menu is a conversation with the terminal, not the run's output: on

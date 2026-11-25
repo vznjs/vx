@@ -25,7 +25,7 @@ import {
   affectedFilterFor,
   findAllSelection,
   findCwdSelection,
-  NO_TASKS_DECLARED,
+  noTasksDeclared,
   pickTask,
   resolveFilters,
 } from './select.js'
@@ -698,7 +698,7 @@ export async function runCmd(
         typeof asked !== 'object' &&
         elsewhere.length === 0
       ) {
-        return refused(NO_TASKS_DECLARED, 'VX_E_USAGE')
+        return refused(noTasksDeclared(await findWorkspaceRoot(cwd)), 'VX_E_USAGE')
       }
       // A root project with none of its own (the one `vx init` writes): the
       // example `vx run build` then refused, as only other projects declare it.
