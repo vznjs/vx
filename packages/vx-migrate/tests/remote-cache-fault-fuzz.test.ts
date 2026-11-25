@@ -10,8 +10,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { run } from '../../vx/tests/helpers/orchestrator.js'
-import { silentLogger } from '../../vx/tests/helpers/orchestrator-fixture.js'
+import { run, silentLogger } from '@vzn/vx/testing'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const SEED = Number(Bun.env.VX_FUZZ_SEED ?? 1)

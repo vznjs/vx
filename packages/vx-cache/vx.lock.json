@@ -47,7 +47,8 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "^testing"
       ],
       "inputs": {
         "files": [
@@ -57,12 +58,6 @@
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
-        ],
-        "workspaceFiles": [
-          "packages/vx/tests/helpers/**",
-          "packages/vx-cache-server/tests/issuer.ts",
-          "packages/vx-cache-server/tests/mem-blobs.ts",
-          "packages/vx-cache-server/tests/conformance.ts"
         ]
       },
       "outputs": {
@@ -130,7 +125,8 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "^testing"
       ],
       "inputs": {
         "files": [
@@ -138,12 +134,6 @@
           "tests/**",
           "schemas/**",
           "package.json"
-        ],
-        "workspaceFiles": [
-          "packages/vx/tests/helpers/**",
-          "packages/vx-cache-server/tests/issuer.ts",
-          "packages/vx-cache-server/tests/mem-blobs.ts",
-          "packages/vx-cache-server/tests/conformance.ts"
         ]
       },
       "outputs": {

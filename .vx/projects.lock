@@ -27,6 +27,9 @@
 #xqsztxn
 {"cache":true,"dependsOn":["install"],"description":"docker build, then the conformance suite through the container","exec":{"command":"sh tests/docker/smoke.sh"},"inputs":{"files":["Dockerfile","src/**","tests/**","package.json"],"workspaceFiles":["packages/vx-devtools/package.json","packages/vx-devtools/src/**"]},"outputs":{"files":[]}}
 	test.docker
+#hkxc746
+{"description":"the test helpers this package's dependants import","inputs":{"files":["tests/testing.ts","tests/issuer.ts","tests/mem-blobs.ts","tests/conformance.ts","package.json"]}}
+	testing
 @vzn/vx-cache-service	{"path":"private/vx-cache-service"}
 #1o9csrk
 	install
@@ -50,8 +53,8 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#3gvykz9
-{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#1dx7z55
+{"cache":true,"dependsOn":["install","^testing"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
 	lint.oxlint
 #2an9k9g
 	site
@@ -63,17 +66,17 @@
 #mkkki1z
 {"description":"bun add nx@24 into .nx-live","exec":{"command":"mkdir -p .nx-live && cd .nx-live && { [ -f package.json ] || echo '{\"private\":true}' > package.json; } && bun add nx@24 @nx/js@24 typescript@5 && echo installed","persistent":{"readyWhen":"^installed$"}}}
 	test.bun.live.nx
-#eh3cq78
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 1 of 4","exec":{"command":"BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=1/4 --timings=tests/timings.json","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","FORCE_COLOR":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"]},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]},"ignore":{"network":["no-such-host.invalid:80"]}}},"inputs":{"env":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"],"files":["src/**","tests/**","package.json","README.md"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#14vy7wi
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 1 of 4","exec":{"command":"BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=1/4 --timings=tests/timings.json","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","FORCE_COLOR":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"]},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]},"ignore":{"network":["no-such-host.invalid:80"]}}},"inputs":{"env":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"],"files":["src/**","tests/**","package.json","README.md"]},"outputs":{"files":[]}}
 	test.bun.shard-1
-#2swfq7w
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 2 of 4","exec":{"command":"BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=2/4 --timings=tests/timings.json","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","FORCE_COLOR":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"]},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]},"ignore":{"network":["no-such-host.invalid:80"]}}},"inputs":{"env":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"],"files":["src/**","tests/**","package.json","README.md"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#3ev0cpc
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 2 of 4","exec":{"command":"BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=2/4 --timings=tests/timings.json","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","FORCE_COLOR":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"]},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]},"ignore":{"network":["no-such-host.invalid:80"]}}},"inputs":{"env":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"],"files":["src/**","tests/**","package.json","README.md"]},"outputs":{"files":[]}}
 	test.bun.shard-2
-#1jk2t0a
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 3 of 4","exec":{"command":"BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=3/4 --timings=tests/timings.json","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","FORCE_COLOR":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"]},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]},"ignore":{"network":["no-such-host.invalid:80"]}}},"inputs":{"env":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"],"files":["src/**","tests/**","package.json","README.md"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#3qaadnk
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 3 of 4","exec":{"command":"BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=3/4 --timings=tests/timings.json","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","FORCE_COLOR":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"]},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]},"ignore":{"network":["no-such-host.invalid:80"]}}},"inputs":{"env":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"],"files":["src/**","tests/**","package.json","README.md"]},"outputs":{"files":[]}}
 	test.bun.shard-3
-#29q1r4z
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 4 of 4","exec":{"command":"BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=4/4 --timings=tests/timings.json","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","FORCE_COLOR":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"]},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]},"ignore":{"network":["no-such-host.invalid:80"]}}},"inputs":{"env":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"],"files":["src/**","tests/**","package.json","README.md"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#kztup16
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 4 of 4","exec":{"command":"BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 --shard=4/4 --timings=tests/timings.json","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","FORCE_COLOR":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"]},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]},"ignore":{"network":["no-such-host.invalid:80"]}}},"inputs":{"env":["VX_NX_MODULES","VX_REQUIRE_NX","VX_REQUIRE_REFTABLE","VX_REQUIRE_NONROOT"],"files":["src/**","tests/**","package.json","README.md"]},"outputs":{"files":[]}}
 	test.bun.shard-4
 @vzn/vx-servers	{"path":"private/vx-servers"}
 #1o9csrk
@@ -102,14 +105,14 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#3gvykz9
+#1dx7z55
 	lint.oxlint
 #2an9k9g
 	site
 #lewu2os
 	test
-#30nxhwy
-{"cache":true,"dependsOn":["install"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#1a8sbq3
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json"]},"outputs":{"files":[]}}
 	test.bun
 @vzn/vx-docs	{"path":"private/vx-docs"}
 #3l5986h
@@ -182,7 +185,7 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#3gvykz9
+#1dx7z55
 	lint.oxlint
 #2an9k9g
 	site
@@ -197,14 +200,14 @@
 #2hq34h7
 {"description":"NativeLink (REAPI execution) on :51051","exec":{"command":"sh tests/helpers/nativelink.sh","persistent":{"readyWhen":"Worker registered"}},"inputs":{"files":["tests/helpers/nativelink.sh","tests/helpers/nativelink-exec.json5","package.json"]}}
 	test.bun.live.exec
-#1plipwx
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 1 of 3, one process per file (live suites need VX_REAPI_*_ENDPOINT)","exec":{"command":"for f in tests/cache-ac-refused.test.ts tests/cancel-operation.test.ts tests/exec-e2e.test.ts tests/executor-auth.test.ts tests/executor-sweep.test.ts tests/executor.test.ts tests/fake-reapi.test.ts tests/materialise-fence.test.ts tests/merkle-sweep.test.ts tests/reapi-e2e.test.ts tests/shared-subtree.test.ts tests/string-map-options.test.ts tests/wedged.test.ts tests/wire-exec-unavailable.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done","env":{"define":{"GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"]}},"inputs":{"env":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"],"files":["src/**","tests/**","protos/**","package.json","tsconfig.json","README.md"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#27tlqf4
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 1 of 3, one process per file (live suites need VX_REAPI_*_ENDPOINT)","exec":{"command":"for f in tests/cache-ac-refused.test.ts tests/cancel-operation.test.ts tests/exec-e2e.test.ts tests/executor-auth.test.ts tests/executor-sweep.test.ts tests/executor.test.ts tests/fake-reapi.test.ts tests/materialise-fence.test.ts tests/merkle-sweep.test.ts tests/reapi-e2e.test.ts tests/shared-subtree.test.ts tests/string-map-options.test.ts tests/wedged.test.ts tests/wire-exec-unavailable.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done","env":{"define":{"GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"]}},"inputs":{"env":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"],"files":["src/**","tests/**","protos/**","package.json","tsconfig.json","README.md"]},"outputs":{"files":[]}}
 	test.bun.shard-1
-#3qwsm9u
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 2 of 3, one process per file (live suites need VX_REAPI_*_ENDPOINT)","exec":{"command":"for f in tests/encoding.test.ts tests/executor-hostile-cas.test.ts tests/executor-no-stale-replay.test.ts tests/factory-capabilities.test.ts tests/merkle.test.ts tests/no-stale-hit.test.ts tests/option-kinds.test.ts tests/plugin-sweep.test.ts tests/queue-timeout.test.ts tests/read-bounds.test.ts tests/record-policy.test.ts tests/record-streams.test.ts tests/request-metadata-action.test.ts tests/timeout-options.test.ts tests/tls.test.ts tests/unknown-options.test.ts tests/wire-exec-sweep.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done","env":{"define":{"GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"]}},"inputs":{"env":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"],"files":["src/**","tests/**","protos/**","package.json","tsconfig.json","README.md"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#30lc7dq
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 2 of 3, one process per file (live suites need VX_REAPI_*_ENDPOINT)","exec":{"command":"for f in tests/encoding.test.ts tests/executor-hostile-cas.test.ts tests/executor-no-stale-replay.test.ts tests/factory-capabilities.test.ts tests/merkle.test.ts tests/no-stale-hit.test.ts tests/option-kinds.test.ts tests/plugin-sweep.test.ts tests/queue-timeout.test.ts tests/read-bounds.test.ts tests/record-policy.test.ts tests/record-streams.test.ts tests/request-metadata-action.test.ts tests/timeout-options.test.ts tests/tls.test.ts tests/unknown-options.test.ts tests/wire-exec-sweep.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done","env":{"define":{"GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"]}},"inputs":{"env":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"],"files":["src/**","tests/**","protos/**","package.json","tsconfig.json","README.md"]},"outputs":{"files":[]}}
 	test.bun.shard-2
-#31ib8yv
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 3 of 3, one process per file (live suites need VX_REAPI_*_ENDPOINT)","exec":{"command":"for f in tests/big-inputs.test.ts tests/boolean-options.test.ts tests/cache-sweep.test.ts tests/capabilities-retry.test.ts tests/decode-sweep.test.ts tests/execute-retry.test.ts tests/executor-helpers-sweep.test.ts tests/executor-missing-outputs.test.ts tests/integrity.test.ts tests/materialise-concurrency.test.ts tests/no-env.test.ts tests/plugin.test.ts tests/record-digest-sizes.test.ts tests/stream-cache.test.ts tests/vx-run-e2e.test.ts tests/wire-only-options.test.ts tests/wire-sweep.test.ts tests/wire.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done","env":{"define":{"GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"]}},"inputs":{"env":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"],"files":["src/**","tests/**","protos/**","package.json","tsconfig.json","README.md"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#of5o4hv
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 3 of 3, one process per file (live suites need VX_REAPI_*_ENDPOINT)","exec":{"command":"for f in tests/big-inputs.test.ts tests/boolean-options.test.ts tests/cache-sweep.test.ts tests/capabilities-retry.test.ts tests/decode-sweep.test.ts tests/execute-retry.test.ts tests/executor-helpers-sweep.test.ts tests/executor-missing-outputs.test.ts tests/integrity.test.ts tests/materialise-concurrency.test.ts tests/no-env.test.ts tests/plugin.test.ts tests/record-digest-sizes.test.ts tests/stream-cache.test.ts tests/vx-run-e2e.test.ts tests/wire-only-options.test.ts tests/wire-sweep.test.ts tests/wire.test.ts; do echo \"== $f\"; bun test --only-failures \"$f\" --timeout 90000 || exit 1; done","env":{"define":{"GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"]}},"inputs":{"env":["VX_REAPI_TEST_ENDPOINT","VX_REQUIRE_REAPI","VX_REAPI_EXEC_ENDPOINT","VX_REQUIRE_REAPI_EXEC"],"files":["src/**","tests/**","protos/**","package.json","tsconfig.json","README.md"]},"outputs":{"files":[]}}
 	test.bun.shard-3
 @vzn/vx	{"path":"packages/vx"}
 #obeitmu
@@ -636,6 +639,9 @@
 #2t7i24h
 {"cache":true,"dependsOn":["install"],"description":"bun test — the files a sandbox cannot host, shard 9 of 10","exec":{"command":"bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 9 10 --unsafe)","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","CI":"","FORCE_COLOR":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"},"passThrough":["VX_REQUIRE_SANDBOX","VX_REQUIRE_WATCH_EVENTS","VX_REQUIRE_NONROOT","VX_REQUIRE_TAGS","VX_REQUIRE_REFTABLE","VX_PR_TITLE","VX_PR_BASE","VX_PR_HEAD","NODE_EXTRA_CA_CERTS"]}},"inputs":{"files":["**/*","!dist/**","!**/*.bun-build","!**/.????????????????-????????.tmp/**","package.json"],"workspaceFiles":["packages/*/**","private/*/**","examples/**",".github/**","scripts/**","CLAUDE.md","README.md","LICENSE",".claude/skills/**","skills/**","vx.config.ts",".vx/workspace.ts","!packages/vx/dist/**","!private/vx-docs/dist/**","!private/vx-docs/src/content/docs/all-features.md","!private/vx-docs/src/content/docs/api.md","!private/vx-docs/src/content/docs/architecture.md","!private/vx-docs/src/content/docs/benchmarks.md","!private/vx-docs/src/content/docs/caching.md","!private/vx-docs/src/content/docs/cli.md","!private/vx-docs/src/content/docs/compare/turbo-nx-support.md","!private/vx-docs/src/content/docs/comparison.md","!private/vx-docs/src/content/docs/execution.md","!private/vx-docs/src/content/docs/flows.md","!private/vx-docs/src/content/docs/optimizations.md","!private/vx-docs/src/content/docs/overview.md","!private/vx-docs/src/content/docs/parity.md","!private/vx-docs/src/content/docs/patterns.md","!private/vx-docs/src/content/docs/schema.md","!private/vx-docs/src/content/docs/security.md","!private/vx-docs/src/content/docs/upstream-ledger.md","!private/vx-docs/src/content/docs/modules/**","!private/vx-docs/src/content/docs/design/**","!private/vx-docs/src/content/docs/plugins/**"]},"outputs":{"files":[]}}
 	test.bun.unsafe.shard-9
+#6kwed07
+{"description":"the test helpers core's dependants import","inputs":{"files":["tests/helpers/**","package.json"]}}
+	testing
 @vzn/vx-cache	{"path":"packages/vx-cache"}
 #2o9dhbb
 	build
@@ -645,15 +651,14 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#oso502m
-{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","src/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"],"workspaceFiles":["packages/vx/tests/helpers/**","packages/vx-cache-server/tests/issuer.ts","packages/vx-cache-server/tests/mem-blobs.ts","packages/vx-cache-server/tests/conformance.ts"]},"outputs":{"files":[]}}
+#1dx7z55
 	lint.oxlint
 #2an9k9g
 	site
 #lewu2os
 	test
-#3l0ky48
-{"cache":true,"dependsOn":["install"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","schemas/**","package.json"],"workspaceFiles":["packages/vx/tests/helpers/**","packages/vx-cache-server/tests/issuer.ts","packages/vx-cache-server/tests/mem-blobs.ts","packages/vx-cache-server/tests/conformance.ts"]},"outputs":{"files":[]}}
+#tfea3e2
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","schemas/**","package.json"]},"outputs":{"files":[]}}
 	test.bun
 @vzn/vx-bench	{"path":"private/vx-bench"}
 #3l5986h
@@ -682,8 +687,8 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#423kxha
-{"cache":true,"dependsOn":["install"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","real/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
+#3eckji6
+{"cache":true,"dependsOn":["install","^testing"],"description":"oxlint with tsgolint-backed type-aware checks","exec":{"command":"oxlint --type-aware --type-check --ignore-pattern node_modules","sandbox":{"allow":{"read":["**/*"],"systemInfo":["vfs.disk-space"]}}},"inputs":{"files":["*.ts","real/**","tests/**","package.json",".oxlintrc.json","tsconfig.json"]},"outputs":{"files":[]}}
 	lint.oxlint
 #2wmiv1v
 {"dependsOn":["perf.*"]}
@@ -696,8 +701,8 @@
 	site
 #lewu2os
 	test
-#1exyoj2
-{"cache":true,"dependsOn":["install"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"network":["registry.npmjs.org"],"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["*.ts","real/*.ts","real-repos.json","tests/**","package.json"]},"outputs":{"files":[]}}
+#17g0jso
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"network":["registry.npmjs.org"],"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["*.ts","real/*.ts","real-repos.json","tests/**","package.json"]},"outputs":{"files":[]}}
 	test.bun
 #1aca1gd
 {"dependsOn":["update.*"]}
@@ -742,20 +747,20 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#3gvykz9
+#1dx7z55
 	lint.oxlint
 #2an9k9g
 	site
 #lewu2os
 	test
-#3rn74vh
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 1 of 3","exec":{"command":"bun test --only-failures --timeout=30000 tests/bun-patch-installed.test.ts tests/dependency-names.test.ts tests/extra-in-project.test.ts tests/file-dir-dep.test.ts tests/installed-layout.test.ts tests/link-to-workspace.test.ts tests/lockfile-shapes.test.ts tests/npm.test.ts tests/pnpm-v13.test.ts tests/pnpm-workspace-precise.test.ts tests/rehoist-identity.test.ts tests/transitive-workspace.test.ts tests/yarn-catalog-precise.test.ts tests/yarn-classic-root-deps.test.ts tests/yarn-package-settings.test.ts tests/yarn-patch-installed.test.ts","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#28hvku0
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 1 of 3","exec":{"command":"bun test --only-failures --timeout=30000 tests/bun-patch-installed.test.ts tests/dependency-names.test.ts tests/extra-in-project.test.ts tests/file-dir-dep.test.ts tests/installed-layout.test.ts tests/link-to-workspace.test.ts tests/lockfile-shapes.test.ts tests/npm.test.ts tests/pnpm-v13.test.ts tests/pnpm-workspace-precise.test.ts tests/rehoist-identity.test.ts tests/transitive-workspace.test.ts tests/yarn-catalog-precise.test.ts tests/yarn-classic-root-deps.test.ts tests/yarn-package-settings.test.ts tests/yarn-patch-installed.test.ts","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json"]},"outputs":{"files":[]}}
 	test.bun.shard-1
-#27thm97
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 2 of 3","exec":{"command":"bun test --only-failures --timeout=30000 tests/bun-patch-precise.test.ts tests/closure-per-project.test.ts tests/deleted-project.test.ts tests/dependencies-lock-merge.test.ts tests/dependency-section.test.ts tests/lazy-load.test.ts tests/lockfile-choice.test.ts tests/outside-dir-dep.test.ts tests/overrides-precise.test.ts tests/pnpm-exclude-links.test.ts tests/pnpm-ignored-optional.test.ts tests/pnpm-injected-workspace.test.ts tests/refusal-message.test.ts tests/unknown-options.test.ts tests/yarn-classic-link-workspace.test.ts tests/yarn-package-extensions.test.ts tests/yarn-transparent-workspaces.test.ts tests/yarn.test.ts","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#xnnbho2
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 2 of 3","exec":{"command":"bun test --only-failures --timeout=30000 tests/bun-patch-precise.test.ts tests/closure-per-project.test.ts tests/deleted-project.test.ts tests/dependencies-lock-merge.test.ts tests/dependency-section.test.ts tests/lazy-load.test.ts tests/lockfile-choice.test.ts tests/outside-dir-dep.test.ts tests/overrides-precise.test.ts tests/pnpm-exclude-links.test.ts tests/pnpm-ignored-optional.test.ts tests/pnpm-injected-workspace.test.ts tests/refusal-message.test.ts tests/unknown-options.test.ts tests/yarn-classic-link-workspace.test.ts tests/yarn-package-extensions.test.ts tests/yarn-transparent-workspaces.test.ts tests/yarn.test.ts","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json"]},"outputs":{"files":[]}}
 	test.bun.shard-2
-#2jd17q2
-{"cache":true,"dependsOn":["install"],"description":"bun test, shard 3 of 3","exec":{"command":"bun test --only-failures --timeout=30000 tests/bun-catalog-precise.test.ts tests/bun.test.ts tests/discover-parity.test.ts tests/discover.test.ts tests/entry-shapes.test.ts tests/ignored-member.test.ts tests/installed-tree.test.ts tests/io-refusals.test.ts tests/link-outside-root.test.ts tests/linked-dirs.test.ts tests/memo-identity.test.ts tests/npm-nested-workspace.test.ts tests/pnpm-manifest-files.test.ts tests/pnpm.test.ts tests/root-workspace-dep.test.ts tests/settings.test.ts tests/sparse-checkout.test.ts tests/yarn-bound-descriptor.test.ts tests/yarn-classic-workspace-deps.test.ts tests/yarn-numeric-range.test.ts","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#38vin9l
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test, shard 3 of 3","exec":{"command":"bun test --only-failures --timeout=30000 tests/bun-catalog-precise.test.ts tests/bun.test.ts tests/discover-parity.test.ts tests/discover.test.ts tests/entry-shapes.test.ts tests/ignored-member.test.ts tests/installed-tree.test.ts tests/io-refusals.test.ts tests/link-outside-root.test.ts tests/linked-dirs.test.ts tests/memo-identity.test.ts tests/npm-nested-workspace.test.ts tests/pnpm-manifest-files.test.ts tests/pnpm.test.ts tests/root-workspace-dep.test.ts tests/settings.test.ts tests/sparse-checkout.test.ts tests/yarn-bound-descriptor.test.ts tests/yarn-classic-workspace-deps.test.ts tests/yarn-numeric-range.test.ts","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json"]},"outputs":{"files":[]}}
 	test.bun.shard-3
 @vzn/vx-dte-server	{"path":"packages/vx-dte-server"}
 #2o9dhbb
@@ -788,14 +793,14 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#3gvykz9
+#1dx7z55
 	lint.oxlint
 #2an9k9g
 	site
 #lewu2os
 	test
-#yl8ek7x
-{"cache":true,"dependsOn":["install"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json","bunfig.toml"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#14txvdh
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","package.json","bunfig.toml"]},"outputs":{"files":[]}}
 	test.bun
 @vzn/vx-history	{"path":"packages/vx-history"}
 #2o9dhbb
@@ -806,14 +811,14 @@
 	lint
 #ybn9dgi
 	lint.oxfmt
-#3gvykz9
+#1dx7z55
 	lint.oxlint
 #2an9k9g
 	site
 #lewu2os
 	test
-#2ly1e7i
-{"cache":true,"dependsOn":["install"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","schemas/**","package.json","README.md"],"workspaceFiles":["packages/vx/tests/helpers/**"]},"outputs":{"files":[]}}
+#3vuyo0l
+{"cache":true,"dependsOn":["install","^testing"],"description":"bun test","exec":{"command":"bun test --only-failures --timeout=30000","env":{"define":{"BUN_RUNTIME_TRANSPILER_CACHE_PATH":"0","GIT_CONFIG_GLOBAL":"/dev/null","GIT_CONFIG_NOSYSTEM":"1","VX_CACHE_DIR":".vx/cache"}},"sandbox":{"allow":{"localBinding":true,"read":["**/*"],"systemInfo":["vfs.disk-space","net.link.addr"]}}},"inputs":{"files":["src/**","tests/**","schemas/**","package.json","README.md"]},"outputs":{"files":[]}}
 	test.bun
 @vzn/vx-conformance	{"path":"private/vx-conformance"}
 #3t571f5

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import type { Logger } from '@vzn/vx'
-import { run } from '../../vx/tests/helpers/orchestrator.js'
+import { run } from '@vzn/vx/testing'
 import { fakeNx, fakeNxCli } from './helpers/fake-nx.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 

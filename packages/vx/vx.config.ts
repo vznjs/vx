@@ -700,6 +700,14 @@ export default defineProject({
       },
     },
 
+    // What the plugin packages' tests import from core through their
+    // node_modules (`@vzn/vx/testing`), besides the source `build` keys:
+    // never run, its key reaches their test and lint tasks (`^testing`).
+    testing: {
+      description: "the test helpers core's dependants import",
+      inputs: { files: ['tests/helpers/**'] },
+    },
+
     lint: {
       dependsOn: ['lint.*'],
     },

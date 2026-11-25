@@ -26,6 +26,18 @@
         ]
       }
     },
+    "testing": {
+      "description": "the test helpers this package's dependants import",
+      "inputs": {
+        "files": [
+          "tests/testing.ts",
+          "tests/issuer.ts",
+          "tests/mem-blobs.ts",
+          "tests/conformance.ts",
+          "package.json"
+        ]
+      }
+    },
     "lint": {
       "dependsOn": [
         "lint.*"
