@@ -112,6 +112,8 @@ describe('vx show and the default build of a dependency', () => {
       expect(app.defaultBuild).toBe(true)
       // The task view too: it read as a build someone declared.
       expect((await vx(root, ['show', 'app#build'])).out).toMatch(/^ {2}app#build +default$/m)
+      // The default build has inputs: a no-op task, never a group (M 2026-11-25).
+      expect((await vx(root, ['show', 'app#build'])).out).toMatch(/^ {2}command +\(no-op task\)$/m)
       const one = JSON.parse((await vx(root, ['show', 'app#build', '--format', 'json'])).out) as {
         defaultBuild: boolean
       }

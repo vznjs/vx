@@ -5149,7 +5149,8 @@ Fields the task does not set are left out. An empty list prints `none`.
 <div class="vx-deeper-body">
 
 - `config  none`: a package with no config file.
-- `command  (group)`: a group task.
+- `command  (group)`: a group task; `(no-op task)`: one with `inputs`
+  and no `exec`.
 - Fields shown: description, command, `dependsOn`, `timeout`, `retries`,
   `env.passThrough` / `env.define` / `env.secret`, `remote`, `platforms`,
   `sandbox`.

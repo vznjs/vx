@@ -552,7 +552,7 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
   }
   add('description', task.description)
   const exec = task.exec
-  rows.push(['command', exec?.command ?? '(group)'])
+  rows.push(['command', exec?.command ?? (task.inputs === undefined ? '(group)' : '(no-op task)')])
   add('dependsOn', list(task.dependsOn))
   add('timeout', exec?.timeout)
   add('retries', exec?.retries)
