@@ -55,28 +55,22 @@ vx pipeline pr --dry
 ```
 
 ```ansi
-[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m6[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
+[4m[58;2;110;118;129m  [1m[38;2;167;139;250mPlan[0m[4m[58;2;110;118;129m [2m4[0m[4m[58;2;110;118;129m    [2mstatus  cache       time   task[0m[4m[58;2;110;118;129m                 [0m
             [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;232;121;249mlint[0m
             [2maffected: packages/web/src/main.js changed (an input)[0m
-            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m   [38;2;129;140;248m@demo/admin[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [2maffected: it declares no inputs, so every change may reach it[0m
-            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
-            [38;2;6;182;212mrun[0m     [2mno-cache[0m       [2m—[0m   [38;2;232;121;249m@demo/api[0m[2m#[0m[38;2;96;165;250mtest[0m
-            [2maffected: it declares no inputs, so every change may reach it[0m
             [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m
             [2maffected: packages/web/src/main.js changed (an input)[0m
+            [38;2;34;197;94mcached[0m  [38;2;56;189;248mlocal[0m          [2m—[0m   [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m
             [38;2;6;182;212mrun[0m     [2mmiss[0m           [2m—[0m   [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m
             [2maffected: packages/web/src/main.js changed (an input)[0m
 
-  [2mtasks    [0m  [38;2;203;213;225m6 planned · 1 cache hit (1 local) · 3 would run[0m
-             [38;2;203;213;225m· 2 no-cache[0m
-  [2mpredicted[0m  [38;2;203;213;225m~2.00s wall · ~2.92s total execution · 2 tasks[0m
-             [38;2;203;213;225mnever timed (+?)[0m
+  [2mtasks    [0m  [38;2;203;213;225m4 planned · 1 cache hit (1 local) · 3 would run[0m
+  [2mpredicted[0m  [38;2;203;213;225m~2.00s wall · ~2.92s total execution[0m
 ```
 
 Read the line under each task: it says why the task is in the plan.
 
-Only `packages/web` changed. `@demo/ui#build` is listed because web's build and test need it, and it comes from the cache. `admin` and `api`'s `test` declare no `inputs`, so every change reaches them: declare `inputs` to run a task only when they change.
+Only `packages/web` changed. `@demo/ui#build` is listed because web's build and test need it, and it comes from the cache. `admin` and `api` are not listed: their tasks declare `inputs`, and none changed. A task with no `inputs` would run on every pull request.
 
 <Quiz q="Why is @demo/ui#build in the plan, when packages/ui did not change?">
   `@demo/web#build` depends on it (`^build`), so the run needs its output. It did not change, so

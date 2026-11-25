@@ -907,7 +907,7 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
     config(
       name,
       `${build(deps, 'mkdir -p dist && cp ../ui/dist/index.js dist/')}
-    test: { dependsOn: ['^build'], exec: { command: 'sleep 1' } },${name === 'web' ? "\n    e2e: { exec: { command: 'sleep 30' } }," : ''}`,
+    test: { dependsOn: ['^build'], exec: { command: 'sleep 1' }, inputs: { files: ['src/**', 'tests/**'] } },${name === 'web' ? "\n    e2e: { exec: { command: 'sleep 30' } }," : ''}`,
     )
   const write = (rel: string, text: string) => writeFile(path.join(ws, rel), text)
 
@@ -965,13 +965,13 @@ ${deps ? "      dependsOn: ['^build'],\n" : ''}      exec: { command: '${command
           ? config(
               'ui',
               `${build(false, 'sleep 0.3 && mkdir -p dist && cp src/index.ts dist/index.js')}
-    test: { dependsOn: ['^build'], exec: { command: "sleep 0.6 && echo 'expected 1 to be 2' && exit 1" } },`,
+    test: { dependsOn: ['^build'], exec: { command: "sleep 0.6 && echo 'expected 1 to be 2' && exit 1" }, inputs: { files: ['src/**', 'tests/**'] } },`,
             )
           : name === 'api'
             ? config(
                 'api',
                 `${build(false, 'mkdir -p dist && cp src/index.ts dist/index.js')}
-    test: { exec: { command: 'sleep 1' } },`,
+    test: { exec: { command: 'sleep 1' }, inputs: { files: ['src/**', 'tests/**'] } },`,
               )
             : app(name, true),
       )
