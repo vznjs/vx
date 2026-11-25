@@ -2780,6 +2780,10 @@ moat.
   `--affected` change sets. So are the files `vx lock` and `vx init`
   write beside it: each project's `vx.lock.json` review copy,
   `.vx/.gitattributes`, `.vx/.gitignore` and `.vx/dependencies.lock`.
+- **`vx.config.*` and `.vx/workspace.*`** — never inputs (M, 2026-11-25):
+  the key holds the resolved config, so a comment edit keeps it, and a
+  definition change moves it through the lock. A test that reads its own
+  `vx.config.ts` sees a definition change only through its own task's.
 - **`exec.remote` and `exec.worker`.** Pure PLACEMENT: it decides _where_ a task runs,
   never what it produces, so pinning a task to this machine does not
   bust its cache. It must not — the

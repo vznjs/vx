@@ -381,8 +381,10 @@ export function ignoredByGlobs(
       if (!e.isFile() || (dotenvOnly && !e.name.startsWith('.env'))) continue
       const rel = dir === '' ? e.name : `${dir}/${e.name}`
       if (!match(rel) || excluded(rel)) continue
-      // vx's own review copy is in no key, whatever git says of it.
+      // vx's own files are in no key, whatever git says of them: the review
+      // copy, and the configs that only generate the lock (cache/inputs.ts).
       if (e.name === 'vx.lock.json' || e.name.startsWith('vx.lock.json.tmp-')) continue
+      if (VX_CONFIG.test(rel)) continue
       const abs = path.join(base, rel)
       keyed ??= new Set(files.map((f) => f.path))
       if (keyed.has(relPosix(root, abs)) || found.some(([a]) => a === abs)) continue
@@ -391,6 +393,9 @@ export function ignoredByGlobs(
   }
   return found
 }
+
+/** A project's `vx.config.*` or the root's `.vx/workspace.*`, relative to its directory. */
+const VX_CONFIG = /^(?:vx\.config|\.vx\/workspace)\.[mc]?[jt]s$/
 
 /** What a run's miss and `vx lock` say of a file {@link ignoredByGlobs} found. */
 export function ignoredInputLine(task: string, rel: string, glob: string): string {
