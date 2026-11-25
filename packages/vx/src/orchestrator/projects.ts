@@ -701,18 +701,44 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       // the check does, before refusing; one that matches is stamped again.
       if (edited.length > 0) {
         const named = new Set(edited)
-        const asked = new Set(
+        const asked = new Set<ProjectMeta>(
           withFile.filter((m) => named.has(path.relative(workspaceRoot, m.configPath))),
         )
+        // A mapped-from file is a byte stamp too: a version bump in a
+        // package.json turbo() reads maps the same, and `--check` passes it.
+        // Every project that read it is asked, not this round's alone: one
+        // that holds would stamp it for the others.
+        const readers = new Map<string, ProjectMeta[]>()
+        if (mappedFrom.moved.length + mappedFrom.present.length > 0) {
+          const recorded = (await stamped)?.reads ?? {}
+          for (const m of args.projectMetas) {
+            if (args.staged?.get(m.name) !== undefined) continue
+            const dir = lockKey(workspaceRoot, m.dir)
+            for (const rel of Object.hasOwn(recorded, dir) ? recorded[dir]! : []) {
+              if (!named.has(rel)) continue
+              asked.add(m)
+              const of = readers.get(rel)
+              if (of === undefined) readers.set(rel, [m])
+              else of.push(m)
+            }
+          }
+        }
         if (asked.size > 0) {
-          const still = new Set(
-            await asLockHolds(args, digest, await lock(), (m) => asked.has(m as never)),
-          )
-          edited = edited.filter(
-            (rel) =>
+          const still = new Set(await asLockHolds(args, digest, await lock(), (m) => asked.has(m)))
+          const nameOf = (m: ProjectMeta): string =>
+            m.configPath === null
+              ? relPosix(workspaceRoot, m.dir)
+              : path.relative(workspaceRoot, m.configPath)
+          edited = edited.filter((rel) => {
+            const by = readers.get(rel)
+            if (by !== undefined && !by.some((m) => still.has(nameOf(m)))) return false
+            return (
               still.has(rel) ||
-              ![...asked].some((m) => path.relative(workspaceRoot, m.configPath) === rel),
-          )
+              ![...asked].some(
+                (m) => m.configPath !== null && path.relative(workspaceRoot, m.configPath) === rel,
+              )
+            )
+          })
         }
         // An edit that maps and discovers as the lock holds (a concurrency,
         // a cache plugin) runs, as `vx lock --check` passes it, and is stamped.

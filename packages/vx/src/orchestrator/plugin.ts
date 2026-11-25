@@ -424,7 +424,8 @@ export interface ProjectHookContext extends BaseContext {
    * Names a file this project's config was made from (absolute or
    * workspace-relative): `turbo.json`, a `package.json`'s scripts. A run
    * reads the lock, never the file, so once it differs from what `vx lock`
-   * read here, a run refuses, naming `vx lock`, as for an edited vx.config.
+   * read here and maps otherwise, a run refuses, naming `vx lock`, as for an
+   * edited vx.config.
    * A file named while absent is an edit once it appears.
    */
   read(file: string): void

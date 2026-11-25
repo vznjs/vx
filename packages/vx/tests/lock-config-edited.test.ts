@@ -310,6 +310,23 @@ describe('no stamps beside a lock a project plugin mapped', () => {
     expect(out).toContain('changed since the last `vx lock`')
   })
 
+  // Beside stamps the run refused any byte change to a mapped-from file,
+  // a version bump in a package.json turbo() reads, though `vx lock
+  // --check` passed and `vx lock` wrote the same lock. A CI runner that
+  // keeps its cache dir refused every such commit.
+  it('runs a mapped-from file edited to map the same beside stamps', async () => {
+    expect((await vx(root, ['run', 'bare#say'])).code).toBe(0)
+    await writeFile(path.join(root, 'mapping.txt'), 'one\n\n')
+    const { code, out } = await vx(root, ['run', 'bare#say'])
+    expect(`${code}\n${out}`).toStartWith('0\n')
+    await writeFile(path.join(root, 'mapping.txt'), 'two\n')
+    const after = await vx(root, ['run', 'bare#say'])
+    expect([after.code, after.out]).toEqual([
+      1,
+      expect.stringContaining('mapping.txt changed since the last `vx lock`'),
+    ])
+  })
+
   it('stamps every mapping, so a later edit to one is refused', async () => {
     expect((await vx(root, ['run', 'core#say'])).code).toBe(0)
     await writeFile(path.join(root, 'mapping.txt'), 'two\n')
