@@ -156,8 +156,8 @@ export async function keyOf<T>(derived: Promise<T>): Promise<T> {
  * forwardArgs) and have the cache layer combine them. Used by `executeTask` and
  * `plan()`.
  *
- * The caller handles groups first with `computeGroupKey`: a group has
- * no `exec` or `inputs`.
+ * The caller routes a task with no `exec` through `computeGroupKey`,
+ * which comes back here for a no-op task (one with `inputs`).
  */
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
   if (isKeyless(args.node.config)) return keylessHash(args.node.id)
