@@ -1643,7 +1643,7 @@ describe('nx() under vx lock', () => {
   // A run asked Nx for its graph each time, and the live graph's edges
   // decided it: an edge added without `vx lock` changed what ran.
   it(
-    'a run refuses an edited package.json and exports nothing until vx lock',
+    'a run follows the locked edges of an edited package.json until vx lock',
     async () => {
       expect(vx('lock').code).toBe(0)
       const g = structuredClone(GRAPH)
@@ -1654,12 +1654,12 @@ describe('nx() under vx lock', () => {
         path.join(root, 'packages', 'app', 'package.json'),
         JSON.stringify({ name: 'app', version: '1.0.0' }),
       )
+      // The run follows the lock's edge. It exports once to compare the
+      // edited file's mapping (63c8d1b8f), which held: the edge is
+      // `.vx/dependencies.lock`'s, which `--check` holds to the graph.
       const stale = vx('run', 'build', '--filter', 'app', '--dry')
-      expect(stale.code).toBe(1)
-      expect(stale.err).toContain(
-        'packages/app/package.json changed since the last `vx lock` — run `vx lock`',
-      )
-      expect(await nxCalls(root)).toBe(1)
+      expect([stale.code, stale.out]).toEqual([0, expect.stringContaining('lib#build')])
+      expect(await nxCalls(root)).toBe(2)
       const check = vx('lock', '--check')
       expect(check.code).toBe(1)
       expect(check.err).toContain(
@@ -1667,7 +1667,7 @@ describe('nx() under vx lock', () => {
       )
       // `--check` exported; the lock reuses that snapshot.
       expect(vx('lock').code).toBe(0)
-      expect(await nxCalls(root)).toBe(2)
+      expect(await nxCalls(root)).toBe(3)
       expect(vx('run', 'build', '--filter', 'app', '--dry').out).not.toContain('lib#build')
     },
     TIMEOUT,
