@@ -1233,8 +1233,9 @@ describe('vx info — the workers and memory rows', () => {
   })
 })
 
-describe('vx show reads the lock and evaluates nothing (e2e)', () => {
-  // Only `vx lock` and `vx lock --check` evaluate a config.
+describe('vx show reads the lock (e2e)', () => {
+  // An unedited config is read from the lock; only one whose bytes moved since
+  // `vx lock` is evaluated, as `vx lock --check` does.
   const RAW_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
   const raw = (root: string, args: string[]) =>
     Bun.spawnSync([process.execPath, RAW_BIN, ...args], {
@@ -1275,19 +1276,20 @@ describe('vx show reads the lock and evaluates nothing (e2e)', () => {
   )
 
   it(
-    'refuses a config edited since the lock, evaluating nothing',
+    // A config whose bytes moved is evaluated, as `vx lock --check` does; one
+    // that throws refuses with its own error (b0f9ef596), not a bare `vx lock`.
+    'refuses a config edited since the lock with the error it throws',
     async () => {
       expect(raw(root, ['lock']).exitCode).toBe(0)
       await writeFile(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
-        "throw new Error('never evaluated')\n",
+        "throw new Error('no longer evaluates')\n",
       )
       const r = raw(root, ['show', 'app'])
       expect(r.exitCode).toBe(1)
-      expect(r.stderr.toString()).toContain(
-        'packages/app/vx.config.mjs changed since the last `vx lock` — run `vx lock`',
-      )
-      expect(r.stderr.toString()).not.toContain('never evaluated')
+      expect(r.stderr.toString()).toContain('packages/app/vx.config.mjs:1:11')
+      expect(r.stderr.toString()).toContain('threw: no longer evaluates')
+      expect(r.stdout.toString()).toBe('')
     },
     TIMEOUT,
   )
