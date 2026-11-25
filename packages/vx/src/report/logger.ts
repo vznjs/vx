@@ -15,6 +15,7 @@ import {
   formatTaskHashLine,
   formatTaskHitLine,
   formatTaskSkippedLine,
+  type OutputChunk,
   type OutputSource,
   type TaskBlockBody,
   writeTaskBlock,
@@ -141,6 +142,8 @@ export interface DefaultLogger extends Logger {
   serverKept(id: string): void
   /** vx stopped this ready server at the run's end: its since-ready block closes `stopped`. */
   serverStopped(id: string): void
+  /** Where task output waits for its frame: the run's cache directory, once known. */
+  spoolIn(dir: string): void
 }
 
 /**
@@ -393,7 +396,7 @@ export function defaultLogger(
   // `note`: a failure's `::error` annotation on GitHub Actions, as `full`
   // writes one: CI's default view wrote none, and a failed check named no task.
   // Each frame is rendered as its task ends and waits in a file.
-  const deferredFailures = new DeferredFrames()
+  const deferredFailures = new DeferredFrames(spool)
   // Each ready server's outcome: one whose child has exited (`serverExit`) is no longer pinned.
   const pinnedPersistent: TaskOutcome[] = []
   let flushedFailures = false
@@ -838,6 +841,8 @@ export function defaultLogger(
       // The bus delivers one `run:end`, so the CLI's last word reaches here.
       flushKept()
       writer.settle()
+      // A logger per run: under `vx watch` each one's file stayed open.
+      spool.end()
     },
     status(line) {
       // A kept server's held partial line is older than this line: held
@@ -917,6 +922,11 @@ export function defaultLogger(
     runDone() {
       tail = false
       killStatus()
+      // Nothing more prints: what no task completed is dropped, and the files close.
+      for (const out of outputs.values()) out.release()
+      outputs.clear()
+      deferredFailures.close()
+      spool.end()
     },
     taskStart(node) {
       if (isGroupTask(node)) return
@@ -953,6 +963,7 @@ export function defaultLogger(
     holdStatus: () => writer.hold(),
     serverKept: (id) => void keptServers.add(id),
     serverStopped: (id) => void stoppedServers.add(id),
+    spoolIn: (dir) => spool.in(dir),
     forecast(graph, load) {
       if (statusDead || forecastTimer !== null) return
       graphForecast = graph
@@ -1100,8 +1111,11 @@ export function defaultLogger(
     // is framed as it is read, in pieces, and never held.
     const whole = output.chars < PIECEWISE_CHARS
     let source: OutputSource | undefined
+    // Read and masked once, however often the frame and its checks ask.
+    let held: OutputChunk[] | undefined
+    const heldOutput = (): OutputChunk[] => (held ??= output.held(mask))
     const body = (): TaskBlockBody => ({
-      ...(whole ? { output: output.held(mask) } : { source: (source ??= output.source(mask)) }),
+      ...(whole ? { output: heldOutput() } : { source: (source ??= output.source(mask)) }),
       ...dropped,
       ...where(node),
     })
@@ -1283,9 +1297,7 @@ export function defaultLogger(
           // each server's pre-ready lines, `Local: http://…` among them.
           if (
             node.config.exec?.persistent !== undefined &&
-            (whole
-              ? output.held(mask).some((c) => c.text.trim().length > 0)
-              : body().source!.content)
+            (whole ? heldOutput().some((c) => c.text.trim().length > 0) : body().source!.content)
           ) {
             printFenced(true)
           }

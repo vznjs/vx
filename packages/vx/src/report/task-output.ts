@@ -1,21 +1,30 @@
 // Where a task's output waits until the logger prints it or drops it: a
 // file, never memory (M, 2026-11-25). Held whole in memory, 300 MB of output
-// peaked vx at 1.93 GB under errors-only. Every chunk goes to one file the
-// run's tasks share, from the first byte, and is read back in pieces. A file
-// per task cost a warm run of 200 hits 18-43 ms more than memory (an open, an
-// unlink and a close each). The file is unlinked as soon as it is open, so a
-// crash leaves nothing behind.
+// peaked vx at 1.93 GB under errors-only. Each task's chunks gather in a
+// write buffer of at most 64 Ki characters, written in one write to a file
+// the run's tasks share, and read back in pieces. A file per task cost a warm
+// run of 200 hits 18-43 ms more than memory (an open, an unlink and a close
+// each). The file lives in the run's cache directory (`os.tmpdir()` is RAM on
+// many CI images), unlinked as soon as it is open, so a crash leaves nothing
+// behind.
 
 import { randomUUID } from 'node:crypto'
-import { closeSync, ftruncateSync, openSync, readSync, unlinkSync, writeSync } from 'node:fs'
+import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { hasEscape, leavesStyle } from '../ui/index.js'
 import { MASKED, maskStreams, type SecretMask } from '../util/index.js'
 import type { OutputChunk, OutputSource } from './framed-output.js'
 
-/** A spool no task holds that has grown past this gives its disk back. */
-const SHRINK_BYTES = 64 * 1024 * 1024
+/**
+ * Past this, a spool whose records are at least half released is compacted
+ * into a new file, so its disk tracks the output tasks still hold, not the
+ * run's total. A spool no task holds is written from its start again, and
+ * truncated past this.
+ */
+const COMPACT_BYTES = 64 * 1024 * 1024
+/** What a task's write buffer holds before one write takes it to the file. */
+const WRITE_CHARS = 64 * 1024
 /**
  * The most of a file read back at once; even, so a UTF-16 piece never splits
  * a unit, and above the bytes of the longest log read back whole (1 Mi
@@ -29,104 +38,187 @@ const ERR = 1
 // is kept as UTF-16, so it reads back as it was written.
 const WIDE = 2
 
+const wellFormed = (text: string): boolean =>
+  (text as string & { isWellFormed(): boolean }).isWellFormed()
+
 /** Chunks appended to an unlinked temporary file, read back in pieces. */
 class RecordFile {
   size = 0
-  // One buffer for every write and read up to READ_BYTES: a buffer each
-  // took 50-100 µs a 100 KB log, in collection. A read decodes what it read
-  // before it yields, so readers in turn share it.
-  private scratch = Buffer.allocUnsafe(64 * 1024)
+  // One buffer for writes and one for reads, up to READ_BYTES: a buffer each
+  // took 50-100 µs a 100 KB log, in collection.
+  private wbuf = Buffer.allocUnsafe(64 * 1024)
+  private rbuf: Buffer | null = Buffer.allocUnsafe(64 * 1024)
 
   private constructor(private readonly fd: number) {}
 
-  /** A new file, or null where the temporary directory refuses one. */
-  static open(): RecordFile | null {
-    const at = path.join(os.tmpdir(), `vx-output-${process.pid}-${randomUUID()}`)
-    try {
-      const fd = openSync(at, 'wx+', 0o600)
-      unlinkSync(at)
-      return new RecordFile(fd)
-    } catch {
-      return null
+  /** A new file in `dir`, else in the temporary directory; null where both refuse. */
+  static open(dir: string | undefined): RecordFile | null {
+    for (const at of dir === undefined ? [os.tmpdir()] : [dir, os.tmpdir()]) {
+      const file = path.join(at, `.vx-output-${process.pid}-${randomUUID()}`)
+      try {
+        fs.mkdirSync(at, { recursive: true })
+        const fd = fs.openSync(file, 'wx+', 0o600)
+        fs.unlinkSync(file)
+        return new RecordFile(fd)
+      } catch {}
     }
+    return null
   }
 
-  /** False when the file refused it (a full disk); the file is as before. */
-  append(text: string, err: boolean): boolean {
-    const wide = !(text as string & { isWellFormed(): boolean }).isWellFormed()
+  /** `chunks` in one write. False when the file refused it (a full disk); the file is as before. */
+  append(chunks: readonly OutputChunk[]): boolean {
+    let total = 0
+    for (const c of chunks)
+      total += HEAD_BYTES + Buffer.byteLength(c.text, wellFormed(c.text) ? 'utf8' : 'utf16le')
+    if (total > this.wbuf.length)
+      if (total > READ_BYTES) {
+        // A long chunk (a hit's replayed log) is written as it is, not copied.
+        for (const c of chunks) if (!this.append1(c)) return false
+        return true
+      } else
+        this.wbuf = Buffer.allocUnsafe(Math.min(READ_BYTES, Math.max(total, this.wbuf.length * 2)))
+    const buf = this.wbuf
+    let at = 0
+    for (const c of chunks) {
+      const wide = !wellFormed(c.text)
+      buf[at] = (c.err ? ERR : 0) | (wide ? WIDE : 0)
+      const n = buf.write(c.text, at + HEAD_BYTES, wide ? 'utf16le' : 'utf8')
+      buf.writeUInt32LE(n, at + 1)
+      at += HEAD_BYTES + n
+    }
+    return this.write(buf, total)
+  }
+
+  private append1(c: OutputChunk): boolean {
+    const wide = !wellFormed(c.text)
     const enc = wide ? 'utf16le' : 'utf8'
-    const n = Buffer.byteLength(text, enc)
-    const buf = this.buffer(HEAD_BYTES + n)
-    buf[0] = (err ? ERR : 0) | (wide ? WIDE : 0)
+    const n = Buffer.byteLength(c.text, enc)
+    const buf = Buffer.allocUnsafe(HEAD_BYTES + n)
+    buf[0] = (c.err ? ERR : 0) | (wide ? WIDE : 0)
     buf.writeUInt32LE(n, 1)
-    buf.write(text, HEAD_BYTES, enc)
+    buf.write(c.text, HEAD_BYTES, enc)
+    return this.write(buf, buf.length)
+  }
+
+  private write(buf: Buffer, n: number): boolean {
     try {
-      for (let at = 0; at < HEAD_BYTES + n;)
-        at += writeSync(this.fd, buf, at, HEAD_BYTES + n - at, this.size + at)
+      for (let at = 0; at < n;) at += fs.writeSync(this.fd, buf, at, n - at, this.size + at)
     } catch {
       try {
-        ftruncateSync(this.fd, this.size)
+        fs.ftruncateSync(this.fd, this.size)
       } catch {}
       return false
     }
-    this.size += HEAD_BYTES + n
+    this.size += n
     return true
   }
 
-  /** The chunks between two sizes this file had, each in pieces of at most `READ_BYTES`. */
+  /** The bytes `[from, to)` of `src` appended. False when either file refused. */
+  copy(src: RecordFile, from: number, to: number): boolean {
+    const buf = Buffer.allocUnsafe(Math.min(READ_BYTES, to - from))
+    for (let at = from; at < to;) {
+      const n = Math.min(buf.length, to - at)
+      try {
+        src.readAt(buf, n, at)
+      } catch {
+        return false
+      }
+      if (!this.write(buf, n)) return false
+      at += n
+    }
+    return true
+  }
+
+  /**
+   * The chunks between two sizes this file had, each in pieces of at most
+   * `READ_BYTES`, records and their heads read in as few reads as fit. A
+   * file that fails a read (EIO, cut short) ends the chunks with a line
+   * saying so: observability never breaks a run.
+   */
   *read(from: number, to: number): Generator<OutputChunk> {
+    // The shared buffer while no other read holds it: two reads of one file
+    // may be in flight at once.
+    const own = this.rbuf
+    this.rbuf = null
+    let buf = own ?? Buffer.allocUnsafe(Math.min(READ_BYTES, to - from))
+    let start = 0
+    let end = 0
+    const fill = (pos: number, need: number): void => {
+      const n = Math.min(READ_BYTES, Math.max(need, to - pos))
+      if (n > buf.length)
+        buf = Buffer.allocUnsafe(Math.min(READ_BYTES, Math.max(n, buf.length * 2)))
+      this.readAt(buf, Math.min(n, to - pos), pos)
+      start = pos
+      end = pos + Math.min(n, to - pos)
+    }
     let at = from
-    while (at < to) {
-      const head = this.buffer(HEAD_BYTES)
-      this.readAt(head, HEAD_BYTES, at)
-      at += HEAD_BYTES
-      const err = (head[0]! & ERR) !== 0
-      const wide = (head[0]! & WIDE) !== 0
-      const end = at + head.readUInt32LE(1)
-      // A record read in one piece decodes whole; a longer one through a
-      // decoder that holds a character cut between pieces. `ignoreBOM`: a
-      // chunk that starts with U+FEFF keeps it.
-      const utf8 =
-        wide || end - at <= READ_BYTES ? null : new TextDecoder('utf-8', { ignoreBOM: true })
-      while (at < end) {
-        const n = Math.min(READ_BYTES, end - at)
-        const buf = this.buffer(n)
-        this.readAt(buf, n, at)
-        at += n
-        const text =
-          utf8 !== null
-            ? utf8.decode(buf.subarray(0, n), { stream: at < end })
-            : buf.toString(wide ? 'utf16le' : 'utf8', 0, n)
+    try {
+      while (at < to) {
+        let text: string
+        let err: boolean
+        try {
+          if (at + HEAD_BYTES > end) fill(at, HEAD_BYTES)
+          const flags = buf[at - start]!
+          const len = buf.readUInt32LE(at - start + 1)
+          err = (flags & ERR) !== 0
+          const enc = (flags & WIDE) !== 0 ? 'utf16le' : 'utf8'
+          const body = at + HEAD_BYTES
+          const stop = body + len
+          if (stop > end && HEAD_BYTES + len <= READ_BYTES) fill(at, HEAD_BYTES + len)
+          if (stop <= end) {
+            text = buf.toString(enc, body - start, stop - start)
+            at = stop
+          } else {
+            // Longer than one read: in pieces, through a decoder that holds a
+            // character cut between them. `ignoreBOM`: a chunk that starts with
+            // U+FEFF keeps it.
+            const utf8 = enc === 'utf8' ? new TextDecoder('utf-8', { ignoreBOM: true }) : null
+            at = body
+            while (at < stop) {
+              const n = Math.min(READ_BYTES, stop - at)
+              if (n > buf.length) buf = Buffer.allocUnsafe(READ_BYTES)
+              this.readAt(buf, n, at)
+              at += n
+              const piece =
+                utf8 === null
+                  ? buf.toString('utf16le', 0, n)
+                  : utf8.decode(buf.subarray(0, n), { stream: at < stop })
+              end = 0
+              if (piece.length > 0) yield { text: piece, err }
+            }
+            continue
+          }
+        } catch (e) {
+          yield {
+            text: `\n[vx] the rest of this task's output could not be read back: ${(e as Error).message}\n`,
+            err: true,
+          }
+          return
+        }
         if (text.length > 0) yield { text, err }
       }
+    } finally {
+      if (own !== null) this.rbuf = buf.length <= READ_BYTES ? buf : own
     }
   }
 
   close(): void {
-    closeSync(this.fd)
+    fs.closeSync(this.fd)
   }
 
   /** Written from the start again: nothing in it is read any more. */
   reset(): void {
-    if (this.size > SHRINK_BYTES)
+    if (this.size > COMPACT_BYTES)
       try {
-        ftruncateSync(this.fd, 0)
+        fs.ftruncateSync(this.fd, 0)
       } catch {}
     this.size = 0
   }
 
-  /** A buffer of at least `n` bytes: the shared one, grown up to READ_BYTES. */
-  private buffer(n: number): Buffer {
-    if (n <= this.scratch.length) return this.scratch
-    if (n > READ_BYTES) return Buffer.allocUnsafe(n)
-    this.scratch = Buffer.allocUnsafe(Math.min(READ_BYTES, Math.max(n, this.scratch.length * 2)))
-    return this.scratch
-  }
-
-  private readAt(buf: Buffer, n: number, at: number): void {
+  readAt(buf: Buffer, n: number, at: number): void {
     for (let got = 0; got < n;) {
-      const r = readSync(this.fd, buf, got, n - got, at + got)
-      if (r === 0) throw new Error('vx: a task output file ended early')
+      const r = fs.readSync(this.fd, buf, got, n - got, at + got)
+      if (r === 0) throw new Error('the file ended early')
       got += r
     }
   }
@@ -134,29 +226,92 @@ class RecordFile {
 
 /**
  * The one file a logger's tasks write their output to, opened at the first
- * chunk (`none` and `hash-only` drop theirs, and open none), written from
- * its start again whenever no task's output is in it.
+ * write (`none` and `hash-only` drop their chunks, and open none). Each
+ * task holding records in it is a holder; with none it is written from its
+ * start again, and once the run is over (`end`) closed.
  */
 export class OutputSpool {
   private file: RecordFile | null | undefined
-  private held = 0
+  private readonly holders = new Set<TaskOutput>()
+  // Bytes of the file the holders' records take: the rest is released.
+  private live = 0
+  private ended = false
+  private dir: string | undefined
 
-  /** The file, held for a task until `free`; null where none can be opened. */
-  take(): RecordFile | null {
-    if (this.file === undefined) this.file = RecordFile.open()
-    if (this.file !== null) this.held++
+  /** Opens its file (and the deferred frames') in `dir`, from the next open. */
+  in(dir: string): void {
+    this.dir = dir
+  }
+
+  /** Where a new file opens. */
+  get where(): string | undefined {
+    return this.dir
+  }
+
+  /** The file, `task` a holder of it; null where none can be opened. */
+  hold(task: TaskOutput): RecordFile | null {
+    if (this.file === undefined) this.file = RecordFile.open(this.dir)
+    if (this.file !== null) this.holders.add(task)
     return this.file
   }
 
-  free(): void {
-    if (--this.held === 0) this.file!.reset()
+  /** The file a holder's records are in. */
+  get current(): RecordFile {
+    return this.file!
+  }
+
+  /** A holder wrote `n` bytes: past COMPACT_BYTES, a file at least half released is compacted. */
+  wrote(n: number): void {
+    this.live += n
+    const file = this.file!
+    if (file.size > COMPACT_BYTES && (file.size - this.live) * 2 >= file.size) this.compact()
+  }
+
+  free(task: TaskOutput): void {
+    if (!this.holders.delete(task)) return
+    this.live -= task.bytes
+    if (this.holders.size > 0) return
+    this.live = 0
+    if (!this.ended) this.file!.reset()
+    else this.close()
+  }
+
+  /** The run is over: the file closes now if no task holds it, else when the last lets go. */
+  end(): void {
+    this.ended = true
+    if (this.holders.size === 0) this.close()
+  }
+
+  private close(): void {
+    this.file?.close()
+    this.file = undefined
+  }
+
+  /** Each holder's records copied, back to back, into a new file that replaces this one. */
+  private compact(): void {
+    const next = RecordFile.open(this.dir)
+    if (next === null) return
+    const moved = new Map<TaskOutput, number[]>()
+    for (const t of this.holders) {
+      const at = next.size
+      for (let i = 0; i < t.runs.length; i += 2)
+        if (!next.copy(this.file!, t.runs[i]!, t.runs[i + 1]!)) {
+          next.close()
+          return
+        }
+      moved.set(t, at === next.size ? [] : [at, next.size])
+    }
+    for (const [t, runs] of moved) t.runs = runs
+    this.file!.close()
+    this.file = next
+    this.live = next.size
   }
 }
 
 /**
- * One task's output while it runs, in the spool: where its records lie,
- * runs of them back to back. What the frame needs to know before it reads
- * the output back is counted as it arrives.
+ * One task's output while it runs: a bounded write buffer, then the spool,
+ * where its records lie in runs back to back. What the frame needs to know
+ * before it reads the output back is counted as it arrives.
  */
 export class TaskOutput {
   /** Characters pushed. */
@@ -165,9 +320,13 @@ export class TaskOutput {
   content = false
   /** Whether the last chunk with an escape leaves a style on. */
   leaves = false
-  private file: RecordFile | null = null
-  // [start, end) of each run of this task's records in the file.
-  private runs: number[] = []
+  /** Bytes of its records in the spool. */
+  bytes = 0
+  /** [start, end) of each run of its records in the spool's file. */
+  runs: number[] = []
+  private pending: OutputChunk[] = []
+  private pendingChars = 0
+  private holding = false
   // What memory holds after the file: what a file that could not be opened
   // or written refused. A log is never dropped for want of disk.
   private after: OutputChunk[] | null = null
@@ -180,21 +339,13 @@ export class TaskOutput {
     // `\S` is what `trim` keeps: the same whitespace.
     if (!this.content && /\S/.test(text)) this.content = true
     if (hasEscape(text)) this.leaves = leavesStyle(text)
-    if (this.after === null) {
-      if (this.file === null) this.file = this.spool.take()
-      const file = this.file
-      if (file !== null) {
-        const at = file.size
-        if (file.append(text, err)) {
-          const n = this.runs.length
-          if (n > 0 && this.runs[n - 1] === at) this.runs[n - 1] = file.size
-          else this.runs.push(at, file.size)
-          return
-        }
-      }
-      this.after = []
+    if (this.after !== null) {
+      this.after.push({ text, err })
+      return
     }
-    this.after.push({ text, err })
+    this.pending.push({ text, err })
+    this.pendingChars += text.length
+    if (this.pendingChars >= WRITE_CHARS) this.flush()
   }
 
   /** Whether a chunk was pushed. */
@@ -217,9 +368,14 @@ export class TaskOutput {
       return { chunks: this.chunks(), content: this.content, leaves: () => this.leaves }
     const spans: [Array<[number, number]>, Array<[number, number]>] = [[], []]
     const finders = [mask.spanStream(), mask.spanStream()] as const
-    for (const c of this.read()) spans[c.err ? 1 : 0].push(...finders[c.err ? 1 : 0].push(c.text))
-    spans[0].push(...finders[0].end())
-    spans[1].push(...finders[1].end())
+    // Appended one by one: a spread of every span a piece holds passed
+    // 64 Ki arguments for a long log with a secret on every line.
+    const add = (k: 0 | 1, found: Array<[number, number]>): void => {
+      for (const f of found) spans[k].push(f)
+    }
+    for (const c of this.read()) add(c.err ? 1 : 0, finders[c.err ? 1 : 0].push(c.text))
+    add(0, finders[0].end())
+    add(1, finders[1].end())
     // A mask is never whitespace, so a masked value is content.
     const content = this.content || spans[0].length > 0 || spans[1].length > 0
     let leaves = false
@@ -243,16 +399,41 @@ export class TaskOutput {
     return mask === null ? all : maskStreams(all, mask)
   }
 
+  /** Its records released; what its buffer holds was never read, and is dropped unwritten. */
   release(): void {
-    if (this.file !== null) this.spool.free()
-    this.file = null
+    this.pending = []
+    this.pendingChars = 0
+    if (this.holding) this.spool.free(this)
+    this.holding = false
     this.runs = []
+    this.bytes = 0
     this.after = null
   }
 
+  private flush(): void {
+    if (this.pending.length === 0) return
+    const chunks = this.pending
+    this.pending = []
+    this.pendingChars = 0
+    const file = this.spool.hold(this)
+    this.holding ||= file !== null
+    const at = file?.size ?? 0
+    if (file === null || !file.append(chunks)) {
+      this.after = chunks
+      return
+    }
+    const n = this.runs.length
+    if (n > 0 && this.runs[n - 1] === at) this.runs[n - 1] = file.size
+    else this.runs.push(at, file.size)
+    this.bytes += file.size - at
+    this.spool.wrote(file.size - at)
+  }
+
   private *read(): Generator<OutputChunk> {
-    for (let i = 0; i < this.runs.length; i += 2)
-      yield* this.file!.read(this.runs[i]!, this.runs[i + 1]!)
+    this.flush()
+    // Read off the runs as they are now: none is written while a read runs.
+    const runs = this.runs
+    for (let i = 0; i < runs.length; i += 2) yield* this.spool.current.read(runs[i]!, runs[i + 1]!)
     if (this.after !== null) yield* this.after
   }
 }
@@ -347,13 +528,15 @@ export class DeferredFrames {
     note: string
   }[] = []
 
+  constructor(private readonly spool: OutputSpool) {}
+
   get size(): number {
     return this.entries.length
   }
 
   /** A frame `render` writes, and the annotation that heads it. */
   add(note: string, render: (write: (piece: string) => void) => void): void {
-    if (this.file === undefined) this.file = RecordFile.open()
+    if (this.file === undefined) this.file = RecordFile.open(this.spool.where)
     const file = this.file
     const entry: (typeof this.entries)[number] = {
       from: file?.size ?? 0,
@@ -361,15 +544,24 @@ export class DeferredFrames {
       chars: 0,
       note,
     }
+    // Pieces gather to WRITE_CHARS, one write each: a frame is written a line at a time.
+    let pending: OutputChunk[] = []
+    let pendingChars = 0
+    const flush = (): void => {
+      if (pending.length === 0) return
+      if (entry.after === undefined && file !== null && file.append(pending)) entry.to = file.size
+      else for (const c of pending) (entry.after ??= []).push(c.text)
+      pending = []
+      pendingChars = 0
+    }
     render((piece) => {
       if (piece.length === 0) return
       entry.chars += piece.length
-      if (entry.after === undefined && file !== null && file.append(piece, false)) {
-        entry.to = file.size
-        return
-      }
-      ;(entry.after ??= []).push(piece)
+      pending.push({ text: piece, err: false })
+      pendingChars += piece.length
+      if (pendingChars >= WRITE_CHARS) flush()
     })
+    flush()
     this.entries.push(entry)
   }
 
@@ -383,8 +575,13 @@ export class DeferredFrames {
       })()
       each({ note: e.note, chars: e.chars, pieces })
     }
+    this.close()
+  }
+
+  /** Its file closed, frames never printed dropped. */
+  close(): void {
     this.entries = []
-    file?.close()
+    this.file?.close()
     this.file = undefined
   }
 }

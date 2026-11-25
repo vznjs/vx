@@ -549,6 +549,7 @@ async function runOnBus(
     await heldLock?.()
     throw err
   }
+  terminal?.spoolIn(prepared.cacheDir)
   const releaseRunLock: RunLockRelease =
     heldLock ?? Object.assign(async () => {}, { path: runLockPath(prepared.workspaceRoot) })
   mark('plugin stages')
