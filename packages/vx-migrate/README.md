@@ -372,16 +372,11 @@ Rules:
 
 </details>
 
-**Gitignored inputs.** A gitignored file an input names is keyed, as Turbo hashes it.
+**Gitignored inputs.** A gitignored file an input names by path is keyed by a probe, as Turbo hashes it.
 
-- Turbo walks an explicit glob on disk; `$TURBO_DEFAULT$` alone skips ignored files.
-- A literal path is keyed by a probe.
-- Each ignored file an explicit task or `globalDependencies` glob matches is named beside the glob (`src/**` over an ignored `src/gen.ts`).
-- So is a directory ignored whole, as the glob's rest under it (`src/out/**`). Core reads both from disk.
-- A path a `!` entry takes back stays out.
-- Nothing under `node_modules` or `.vx/` is named. The lockfile plugin keys an install.
-- The paths are listed when the mapping is made (one `git ls-files`).
-- A new ignored file, or a `.gitignore` edit, is keyed from the next `vx lock`. Until then a run keys the files listed before.
+- An ignored file under a glob is not an input. Turbo walks an explicit glob on disk, ignored files and all; vx's globs skip them, as core's do.
+- The lock is committed and an ignored file is on one machine only, so the lock never names one.
+- To key one, name it in the input (`src/env.local`) or commit it. `vx lock` names one a glob's last segment matches.
 
 **A glued `**`.** A `**` glued to text in an input, output or `globalDependencies` glob is read as Turbo reads it.
 

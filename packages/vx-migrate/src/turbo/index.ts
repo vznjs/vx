@@ -272,8 +272,9 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
     textOf(path.join(root, 'package.json')),
     // Whether the manager runs `pre` / `post` hooks, so whether they fold.
     Promise.all(['.npmrc', 'pnpm-workspace.yaml'].map((f) => textOf(path.join(root, f)))),
-    // An explicit glob keys the ignored files it matches, named when mapped:
-    // a new one, or a `.gitignore` line, is read by no other part of the key.
+    // A literal input git ignores is keyed by a probe: a `.gitignore` line
+    // over one is read by no other part of the key, and a kept mapping that
+    // missed it locked what a fresh clone maps differently.
     gitIgnoredUnder(root, ['**']),
   ])
   const envNames = envNamesThatMap(configs, envNamesNow())
@@ -340,7 +341,6 @@ async function mapAll(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: (rel) => configs.get(rel === '.' ? '' : rel) ?? null,
     ignored: (rels) => gitIgnored(root, rels),
-    ignoredUnder: (globs) => gitIgnoredUnder(root, globs),
     buildInfo: (rel, command) => tscBuildInfo(read, path.join(root, rel), command),
     ownBuildInfo: (rel) => ownBuildInfo(read, path.join(root, rel)),
     tscReach: (rel, command) => {
