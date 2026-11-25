@@ -44,6 +44,16 @@ describe('vx-migrate (vite-task): nested `vp run`', () => {
         JSON.stringify({ name, scripts }),
       )
     }
+    // Cached entries that are only a `vp run`: no command is left to cache.
+    await writeFile(
+      path.join(root, 'packages', 'lib', 'vite.config.ts'),
+      `export default { run: { tasks: {
+  all: { command: 'vp run build', cache: { input: ['src/**'], env: ['MODE'], output: ['dist/**'] } },
+  bare: { command: 'vp run build', cache: { input: [], output: [] } },
+  traced: { command: 'vp run build' },
+} } }
+`,
+    )
     const proc = Bun.spawn([process.execPath, BIN, '--no-install'], {
       cwd: root,
       stdout: 'pipe',
@@ -66,6 +76,21 @@ describe('vx-migrate (vite-task): nested `vp run`', () => {
     })
     const app = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))).tasks!
     expect(app['test']).toEqual({ dependsOn: ['lib#build'], exec: { command: 'vitest' } })
+  })
+
+  // Written with its `cache: true` and outputs, the config vx refused:
+  // `cache` needs `exec`. Its inputs make it a no-op task (M 2026-11-25),
+  // and with none it is a group.
+  it('a cached chain is a no-op task of its inputs, or a group with none', async () => {
+    const lib = (await loadProjectConfig(path.join(root, 'packages', 'lib', 'vx.config.ts'))).tasks!
+    expect(lib['all']).toEqual({
+      dependsOn: ['build'],
+      inputs: { files: ['src/**'], env: ['MODE'] },
+    })
+    expect(lib['bare']).toEqual({ dependsOn: ['build'] })
+    // Its trace TODO asked for \`cache: true\` there, which vx refuses.
+    expect(lib['traced']).toEqual({ dependsOn: ['build'] })
+    expect(out).not.toContain('lib#traced: cache')
   })
 
   it('a form with no edge spelling stays verbatim with a TODO', async () => {

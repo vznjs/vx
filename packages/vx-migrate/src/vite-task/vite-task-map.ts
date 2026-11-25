@@ -250,7 +250,7 @@ export async function mapViteTaskWorkspace(
     const deps = (t.task!['dependsOn'] as string[] | undefined) ?? []
     t.task!['dependsOn'] = [...new Set([...deps, ...edges])]
     const rest = parts.slice(i).join(' && ')
-    if (rest === '') delete t.task!['exec']
+    if (rest === '') noCommand(t)
     else exec.command = rest
   }
 
@@ -364,11 +364,30 @@ export async function mapViteTaskWorkspace(
   return { projects, notes: [] }
 }
 
+/**
+ * A task whose command was only `vp run`s: nothing of its own runs, so
+ * nothing is cached. Its inputs keep it a no-op task, a key its dependants
+ * fold; with none it is a group of its edges.
+ */
+function noCommand(t: GeneratedTask): void {
+  const task = t.task!
+  // Its trace TODO asked for `cache: true`, which a task with no `exec` refuses.
+  t.todos = t.todos.filter((x) => !x.startsWith(AUTO_TODO))
+  delete task['exec']
+  delete task['cache']
+  delete task['outputs']
+  const inputs = task['inputs'] as Record<string, unknown> | undefined
+  if (inputs !== undefined && !Object.values(inputs).some((v) => Array.isArray(v) && v.length > 0))
+    delete task['inputs']
+}
+
+const AUTO_TODO = "cache: Vite Task traced this task's "
+
 /** The TODO for what Vite Task traces and vx declares. */
 function autoTodo(what: string, known?: Record<string, unknown>): string {
   const have = known === undefined ? '' : ` (declared so far: \`${JSON.stringify(known)}\`)`
   return (
-    `cache: Vite Task traced this task's ${what} and vx infers none — add ` +
+    `${AUTO_TODO}${what} and vx infers none — add ` +
     `\`inputs: { files: [...] }, outputs: { files: [...] }, cache: true\` with the real ones${have}; ` +
     'without it the task always runs'
   )

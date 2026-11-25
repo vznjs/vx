@@ -1349,7 +1349,7 @@ There is no live plugin, so `--keep` is refused.
 - A command that opens with `vp run` (or `vpr`) is inlined as Vite Task inlines it.
 - `vp run x`, `pkg#x`, `-r x`, `-w x` and `-F <name> x` are `dependsOn` edges.
 - `-r` is an edge to each package with `x`, the task's own reference pruned.
-- The task is a group when nothing follows them.
+- The task runs nothing when nothing follows them: a no-op task of its `cache.input`, or a group with none. Its `cache` and outputs are dropped.
 - The edges run in parallel where Vite Task ran a chain in order.
 - Any other form stays in the command with a TODO: `--parallel`, `-t`, forwarded arguments, or a `vp run` after another command.
 
