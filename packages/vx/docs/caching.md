@@ -347,8 +347,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     gets a `vx lock` note too: Vite, Next and Bun load those on their own.
     `'!.env*'` says the task reads none. A file a runtime probe of the
     task prints the path of (turbo()'s `.env` probe) is keyed, so neither
-    note names it. `vx lock` waits 5 s for the probes; one that fails or is
-    slower costs only that note, and no probe output is locked.
+    note names it. `vx lock` asks the probes at once and waits 5 s; one
+    that fails or is slower costs only that note, and no probe output is
+    locked.
     A **glob** matching nothing stays silent while another glob of the
     task matches a file, and so does a literal naming a path that does
     not exist, until it does. When no glob matches (a literal does not

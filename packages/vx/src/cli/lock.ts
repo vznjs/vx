@@ -800,7 +800,7 @@ async function writeLock(
  * Only these: `passThrough` exists for values that do not change the output
  * (`CI`, a region, a token).
  */
-/** How long `vx lock` waits on a task's runtime probes, all of them together. */
+/** How long `vx lock` waits on every task's runtime probes, asked at once. */
 const PROBE_ANSWER_MS = 5_000
 
 const INLINED_ENV =
@@ -853,9 +853,15 @@ async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> 
   // vx's exit kills the probes still running.
   let probeDeadline: Promise<string> | undefined
   const probedOf = new Map<string, Promise<Set<string>>>()
-  for (const m of check.all) {
-    for (const [name, t] of Object.entries(check.resolved.get(m.name)?.tasks ?? {})) {
+  type Found = (typeof found)[number]
+  // Each task's notes in its own lists, merged in task order below: the
+  // tasks run at once, so every probe starts before the one deadline counts
+  // (one after another, a third 2 s probe got 1 s).
+  const steps = check.all.flatMap((m) =>
+    Object.entries(check.resolved.get(m.name)?.tasks ?? {}).map(async ([name, t]) => {
       const task = `${m.name}#${name}`
+      const lines: string[] = []
+      const taskFound: Found[] = []
       // The workspace-relative paths a line of the task's probe output names.
       const probed = (): Promise<Set<string>> => {
         let got = probedOf.get(task)
@@ -902,9 +908,9 @@ async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> 
         if (glob.includes('**') && t.cache !== true) continue
         if (own(relPosix(m.dir, abs)) || ownWs(ws)) continue
         if (hasProbes && (await probed()).has(ws)) continue
-        found.push({ task, ws, rel, glob })
+        taskFound.push({ task, ws, rel, glob })
       }
-      if (t.cache !== true) continue
+      if (t.cache !== true) return { task, lines, found: taskFound }
       // A build that leaves a `.env` beside its config out of its inputs
       // replays the old bundle after an edit to it: Vite inlines its values.
       const outputs = (t.outputs?.files?.length ?? 0) + (t.outputs?.workspaceFiles?.length ?? 0)
@@ -921,8 +927,7 @@ async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> 
           unread = unread.filter((f) => !seen.has(relPosix(root, path.join(m.dir, f))))
         }
         if (unread.length > 0)
-          said(
-            task,
+          lines.push(
             `${unread.join(', ')} beside its config ${unread.length === 1 ? 'is' : 'are'} in no input, and Vite, Next and Bun load ${unread.length === 1 ? 'it' : 'them'} on their own — add '.env*' to inputs.files, or '!.env*' if the task reads none`,
           )
       }
@@ -931,8 +936,7 @@ async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> 
         (v) => INLINED_ENV.test(v) && !quiet.has(v) && !secretNamed(v),
       )
       if (unkeyed.length > 0)
-        said(
-          task,
+        lines.push(
           `exec.env.passThrough forwards ${unkeyed.join(', ')}, which a bundler writes into its output, and the key does not see ${unkeyed.length === 1 ? 'it' : 'them'} — add ${unkeyed.length === 1 ? 'it' : 'them'} to inputs.env`,
         )
       // The reverse: the key moves with the value, but the build never sees it.
@@ -942,11 +946,15 @@ async function unkeyedReads(root: string, check: GraphCheck): Promise<string[]> 
       ])
       const unseen = (t.inputs?.env ?? []).filter((v) => INLINED_ENV.test(v) && !given.has(v))
       if (unseen.length > 0)
-        said(
-          task,
+        lines.push(
           `inputs.env keys ${unseen.join(', ')}, which a bundler writes into its output, but the command never gets ${unseen.length === 1 ? 'it' : 'them'} — add ${unseen.length === 1 ? 'it' : 'them'} to exec.env.passThrough`,
         )
-    }
+      return { task, lines, found: taskFound }
+    }),
+  )
+  for (const step of await Promise.all(steps)) {
+    found.push(...step.found)
+    for (const line of step.lines) said(step.task, line)
   }
   const ignored =
     found.length === 0 ? null : checkIgnoreSync(root, [...new Set(found.map((f) => f.ws))])

@@ -185,6 +185,22 @@ describe('vx lock and what a key never sees', () => {
     expect(r.locked).not.toContain('PROBE_JUNK')
   }, 60_000)
 
+  // The probes shared one deadline but ran one task after another: a third
+  // 2 s probe started at 4 s and got 1 s, so a probe that keys `.env` still
+  // left the note on its task.
+  it('asks every probe under the one deadline at once', async () => {
+    const r = await lock(
+      ['a', 'b', 'c']
+        .map((n) => task(n, { files: ['src/**'], runtime: [`sleep 2; echo .env # ${n}`] }))
+        .join(', '),
+    )
+    expect(r.code).toBe(0)
+    expect(r.err).toContain(
+      'packages/app#a, packages/app#b, packages/app#c: .env.production.local beside its config is in no input',
+    )
+    expect(r.err).not.toContain('.env, .env.production.local')
+  }, 30_000)
+
   it('names Bun and Nx public variables only passThrough names', async () => {
     const r = await lock(
       task(
