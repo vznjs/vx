@@ -131,7 +131,7 @@ describe('vx init in a JS workspace', () => {
       path.join(root, 'node_modules', '@vzn', 'vx-lockfile'),
     )
     const note =
-      ".vx/workspace.ts declares no @vzn/vx-lockfile plugin: beside bun.lock, add bun() from '@vzn/vx-lockfile' so ^build has project edges, or run vx init --force"
+      ".vx/workspace.ts declares no @vzn/vx-lockfile plugin: beside bun.lock, add bun() from '@vzn/vx-lockfile' so a dependency change re-runs its tasks and ^build has project edges, or run vx init --force"
     const r = await vx(root, ['init', '--dry', '--format', 'json'])
     expect([r.code, r.err]).toEqual([0, ''])
     expect((JSON.parse(r.out) as { notes: string[] }).notes).toEqual([note])
@@ -142,5 +142,12 @@ describe('vx init in a JS workspace', () => {
     )
     const ok = await vx(root, ['init', '--dry', '--format', 'json'])
     expect((JSON.parse(ok.out) as { notes: string[] }).notes).toEqual([])
+    // Not installed yet, with npm: "in a npm workspace".
+    await rm(path.join(root, 'bun.lock'))
+    await writeFile(path.join(root, '.vx', 'workspace.ts'), 'export default { plugins: [] }\n')
+    const npm = await vx(root, ['init', '--dry', '--format', 'json'])
+    expect((JSON.parse(npm.out) as { notes: string[] }).notes).toEqual([
+      ".vx/workspace.ts declares no @vzn/vx-lockfile plugin: in an npm workspace, add npm() from '@vzn/vx-lockfile' so a dependency change re-runs its tasks and ^build has project edges, or run vx init --force",
+    ])
   })
 })

@@ -734,9 +734,13 @@ function keptWithoutPluginNotes(
   if (file === undefined || plugin === null || pkgRoot === null) return []
   if (readFileSync(path.join(root, file), 'utf8').includes('@vzn/vx-lockfile')) return []
   const lockfile = LOCKFILES.find((f) => existsSync(path.join(pkgRoot, f)))
-  const where = lockfile === undefined ? `in a ${plugin} workspace` : `beside ${lockfile}`
+  const where =
+    lockfile === undefined
+      ? `in ${plugin === 'npm' ? 'an' : 'a'} ${plugin} workspace`
+      : `beside ${lockfile}`
+  // A single package has no project edges; its keys still follow its dependencies.
   return [
-    `${file} declares no @vzn/vx-lockfile plugin: ${where}, add ${plugin}() from '@vzn/vx-lockfile' so ^build has project edges, or run vx init --force`,
+    `${file} declares no @vzn/vx-lockfile plugin: ${where}, add ${plugin}() from '@vzn/vx-lockfile' so a dependency change re-runs its tasks and ^build has project edges, or run vx init --force`,
   ]
 }
 
