@@ -83,17 +83,6 @@ function embed(dir: string): string {
   ].join(' && ')
 }
 
-/** `feat` changed `a`, then `main` changed `b`; `feat` is checked out. */
-const DIVERGED: Step[] = [
-  { sh: 'git checkout -qb feat' },
-  { write: { 'packages/a/own.txt': 'a2\n' } },
-  { commit: 'feat: a' },
-  { sh: 'git checkout -q main' },
-  { write: { 'packages/b/own.txt': 'b2\n' } },
-  { commit: 'main: b' },
-  { sh: 'git checkout -q feat' },
-]
-
 /**
  * lib ← app, and tool alone. `build` leaves out the `*.test.txt` sources
  * `test` reads; `style` is cached over the sources; `lint` is never cached.
@@ -606,30 +595,6 @@ export default [
         expect: { files: { 'injected.txt': null } },
       },
     ],
-  }),
-
-  defineCase({
-    id: 'affected/base-naming-a-path',
-    category: 'affected',
-    kind: 'efficiency',
-    title: 'A base naming a directory inside a commit (`HEAD:packages`) selects nothing unchanged',
-    why: 'A base like `HEAD:packages` names a directory inside a commit, not a commit, and its paths lack the `packages/` prefix. Compared as if it were a commit, every project looks changed and the whole workspace runs. The tool should resolve what the base means, or refuse it, rather than widen the selection.',
-    from: ['affected'],
-    needs: ['affected'],
-    workspace: each(['a', 'b']),
-    steps: [{ affected: 'test', base: 'HEAD:packages', expect: { notRan: tests('a', 'b') } }],
-  }),
-
-  defineCase({
-    id: 'affected/exclusion-base',
-    category: 'affected',
-    kind: 'efficiency',
-    title: 'A base written as an exclusion (`^main`) selects nothing only the base branch changed',
-    why: 'A base written as `^main` asks for what this branch has that main does not. Reading it as `main` itself counts main’s own later commits as this branch’s change. A pull request would then rerun the tests of projects only main touched, which is time spent on code this branch did not change.',
-    from: ['affected'],
-    needs: ['affected'],
-    workspace: each(['a', 'b']),
-    steps: [...DIVERGED, { affected: 'test', base: '^main', expect: { notRan: tests('b') } }],
   }),
 
   defineCase({

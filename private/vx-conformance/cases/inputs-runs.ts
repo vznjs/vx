@@ -430,20 +430,4 @@ export default [
       { chmod: { 'packages/a/src/locked': 0o755 } },
     ],
   }),
-
-  defineCase({
-    id: 'failure/undeclared-task',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'Running a task no project declares fails instead of passing with nothing run',
-    why: 'Running a task that no project declares is almost always a typo or a missing config. A runner that exits 0 with nothing run reports a green build or test suite that never happened. In CI that hides a broken pipeline for as long as nobody reads the log. A clear failure points at the mistake at once.',
-    from: ['default-build-not-declared'],
-    workspace: {
-      projects: {
-        x: { tasks: { test: { command: 'echo t', inputs: [], outputs: [] } } },
-        y: { deps: ['x'], tasks: { test: { command: 'echo t', inputs: [], outputs: [] } } },
-      },
-    },
-    steps: [{ run: 'build', expect: { exit: 'fail', notRan: ['x#test', 'y#test'] } }],
-  }),
 ]

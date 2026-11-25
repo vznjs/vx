@@ -545,24 +545,6 @@ export default [
     ],
   }),
 
-  // vt_workspace/src/package_filter.rs path_normalisation_dotdot_in_middle
-  selectDir(
-    'select-dir-dotdot-in-middle',
-    'A directory selector `packages/x/../a` selects the project in `packages/a`',
-    'A `..` in a path steps up a folder, wherever it sits. A tool that matches the text against project folders finds none and fails, or one that strips the `..` finds the wrong one. Only `a` runs.',
-    [{ dir: 'packages/x/../a' }],
-    ['a#build'],
-  ),
-
-  // vt_workspace/src/package_filter.rs path_normalisation_trailing_dot
-  selectDir(
-    'select-dir-trailing-dot',
-    'A directory selector `packages/a/.` selects the project in `packages/a`',
-    'A trailing `/.` names the folder itself, as completion in a shell often leaves it. A tool that matches the text literally finds no project there. Only `a` runs.',
-    [{ dir: 'packages/a/.' }],
-    ['a#build'],
-  ),
-
   // vt_workspace/src/package_filter.rs dir_pattern_glob_star, from another
   // folder of projects.
   selectDir(

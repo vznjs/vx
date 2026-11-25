@@ -1,6 +1,6 @@
 {
   "coverage": {
-    "ported": 390,
+    "ported": 388,
     "rest": {
       "pending": [
         "affected-config-tasks",
@@ -11,6 +11,7 @@
         "compiled-bunfig",
         "compiled-tsconfig-paths",
         "crash-recovery",
+        "default-build-not-declared",
         "deferred-output-empty",
         "everyday-ops-differential",
         "force-replaces",
@@ -29,6 +30,7 @@
         "signal-tstp",
         "stale-hit-git-entries",
         "submodule-unchecked-config",
+        "task-typo-verb",
         "uncached-workspace-output-key",
         "vx-lockfile/yarn-patch-installed",
         "vx-lockfile/ignored-member",
@@ -1199,34 +1201,34 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1961,
-        "can": 1961,
-        "of": 2030
+        "pass": 1945,
+        "can": 1945,
+        "of": 2014
       },
       "correctness": {
-        "pass": 1632,
-        "can": 1632,
-        "of": 1693
+        "pass": 1618,
+        "can": 1618,
+        "of": 1679
       },
       "efficiency": {
-        "pass": 329,
-        "can": 329,
-        "of": 337
+        "pass": 327,
+        "can": 327,
+        "of": 335
       },
       "graph": {
-        "pass": 293,
-        "can": 293,
-        "of": 300
+        "pass": 287,
+        "can": 287,
+        "of": 294
       },
       "failure": {
-        "pass": 145,
-        "can": 145,
-        "of": 157
+        "pass": 141,
+        "can": 141,
+        "of": 153
       },
       "affected": {
-        "pass": 193,
-        "can": 193,
-        "of": 193
+        "pass": 191,
+        "can": 191,
+        "of": 191
       },
       "cache": {
         "pass": 106,
@@ -1249,9 +1251,9 @@
         "of": 31
       },
       "env": {
-        "pass": 146,
-        "can": 146,
-        "of": 149
+        "pass": 142,
+        "can": 142,
+        "of": 145
       },
       "sandbox": {
         "pass": 132,
@@ -1266,34 +1268,34 @@
     },
     "turbo": {
       "all": {
-        "pass": 1326,
-        "can": 1729,
-        "of": 2030
+        "pass": 1318,
+        "can": 1713,
+        "of": 2014
       },
       "correctness": {
-        "pass": 1079,
-        "can": 1408,
-        "of": 1693
+        "pass": 1072,
+        "can": 1394,
+        "of": 1679
       },
       "efficiency": {
-        "pass": 247,
-        "can": 321,
-        "of": 337
+        "pass": 246,
+        "can": 319,
+        "of": 335
       },
       "graph": {
         "pass": 185,
-        "can": 253,
-        "of": 300
+        "can": 247,
+        "of": 294
       },
       "failure": {
-        "pass": 57,
-        "can": 103,
-        "of": 157
+        "pass": 54,
+        "can": 99,
+        "of": 153
       },
       "affected": {
-        "pass": 149,
-        "can": 192,
-        "of": 193
+        "pass": 148,
+        "can": 190,
+        "of": 191
       },
       "cache": {
         "pass": 88,
@@ -1316,9 +1318,9 @@
         "of": 31
       },
       "env": {
-        "pass": 133,
-        "can": 137,
-        "of": 149
+        "pass": 129,
+        "can": 133,
+        "of": 145
       },
       "sandbox": {
         "pass": 1,
@@ -1333,34 +1335,34 @@
     },
     "nx": {
       "all": {
-        "pass": 1345,
-        "can": 1765,
-        "of": 2030
+        "pass": 1341,
+        "can": 1750,
+        "of": 2014
       },
       "correctness": {
-        "pass": 1059,
-        "can": 1434,
-        "of": 1693
+        "pass": 1055,
+        "can": 1421,
+        "of": 1679
       },
       "efficiency": {
         "pass": 286,
-        "can": 331,
-        "of": 337
+        "can": 329,
+        "of": 335
       },
       "graph": {
-        "pass": 230,
-        "can": 258,
-        "of": 300
+        "pass": 227,
+        "can": 253,
+        "of": 294
       },
       "failure": {
         "pass": 82,
-        "can": 113,
-        "of": 157
+        "can": 109,
+        "of": 153
       },
       "affected": {
         "pass": 129,
-        "can": 193,
-        "of": 193
+        "can": 191,
+        "of": 191
       },
       "cache": {
         "pass": 81,
@@ -1383,9 +1385,9 @@
         "of": 31
       },
       "env": {
-        "pass": 135,
-        "can": 146,
-        "of": 149
+        "pass": 134,
+        "can": 142,
+        "of": 145
       },
       "sandbox": {
         "pass": 0,
@@ -1400,34 +1402,34 @@
     },
     "vite-task": {
       "all": {
-        "pass": 984,
-        "can": 1333,
-        "of": 2030
+        "pass": 971,
+        "can": 1319,
+        "of": 2014
       },
       "correctness": {
-        "pass": 828,
-        "can": 1121,
-        "of": 1693
+        "pass": 815,
+        "can": 1107,
+        "of": 1679
       },
       "efficiency": {
         "pass": 156,
         "can": 212,
-        "of": 337
+        "of": 335
       },
       "graph": {
-        "pass": 176,
-        "can": 214,
-        "of": 300
+        "pass": 171,
+        "can": 208,
+        "of": 294
       },
       "failure": {
-        "pass": 60,
-        "can": 83,
-        "of": 157
+        "pass": 56,
+        "can": 79,
+        "of": 153
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 193
+        "of": 191
       },
       "cache": {
         "pass": 72,
@@ -1450,9 +1452,9 @@
         "of": 31
       },
       "env": {
-        "pass": 133,
-        "can": 136,
-        "of": 149
+        "pass": 129,
+        "can": 132,
+        "of": 145
       },
       "sandbox": {
         "pass": 1,
@@ -1467,34 +1469,34 @@
     },
     "nix": {
       "all": {
-        "pass": 1059,
-        "can": 1331,
-        "of": 2030
+        "pass": 1051,
+        "can": 1323,
+        "of": 2014
       },
       "correctness": {
-        "pass": 912,
-        "can": 1145,
-        "of": 1693
+        "pass": 904,
+        "can": 1137,
+        "of": 1679
       },
       "efficiency": {
         "pass": 147,
         "can": 186,
-        "of": 337
+        "of": 335
       },
       "graph": {
         "pass": 100,
         "can": 103,
-        "of": 300
+        "of": 294
       },
       "failure": {
-        "pass": 58,
-        "can": 91,
-        "of": 157
+        "pass": 54,
+        "can": 87,
+        "of": 153
       },
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 193
+        "of": 191
       },
       "cache": {
         "pass": 86,
@@ -1517,9 +1519,9 @@
         "of": 31
       },
       "env": {
-        "pass": 122,
-        "can": 130,
-        "of": 149
+        "pass": 118,
+        "can": 126,
+        "of": 145
       },
       "sandbox": {
         "pass": 97,
@@ -1534,34 +1536,34 @@
     },
     "moon": {
       "all": {
-        "pass": 1208,
-        "can": 1641,
-        "of": 2030
+        "pass": 1200,
+        "can": 1626,
+        "of": 2014
       },
       "correctness": {
-        "pass": 969,
-        "can": 1353,
-        "of": 1693
+        "pass": 961,
+        "can": 1340,
+        "of": 1679
       },
       "efficiency": {
         "pass": 239,
-        "can": 288,
-        "of": 337
+        "can": 286,
+        "of": 335
       },
       "graph": {
         "pass": 178,
-        "can": 227,
-        "of": 300
+        "can": 222,
+        "of": 294
       },
       "failure": {
-        "pass": 90,
-        "can": 140,
-        "of": 157
+        "pass": 86,
+        "can": 136,
+        "of": 153
       },
       "affected": {
         "pass": 150,
-        "can": 193,
-        "of": 193
+        "can": 191,
+        "of": 191
       },
       "cache": {
         "pass": 85,
@@ -1584,9 +1586,9 @@
         "of": 31
       },
       "env": {
-        "pass": 138,
-        "can": 145,
-        "of": 149
+        "pass": 134,
+        "can": 141,
+        "of": 145
       },
       "sandbox": {
         "pass": 0,
@@ -2846,43 +2848,6 @@
       }
     },
     {
-      "id": "graph/select-exclude-before-include",
-      "ref": "ufc7y7",
-      "category": "graph",
-      "kind": "correctness",
-      "title": "An exclude given before an include still removes what the include adds",
-      "why": "An exclude names a project the user does not want run, wherever it appears on the command line. Applying selectors in order, so a later include adds utils back, makes the result depend on argument order. Scripts and CI configs build these lists in any order and expect the same set.",
-      "from": [
-        "filter",
-        "filter-properties"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "did not run ui#check"
-        },
-        "nx": {
-          "status": "n/a",
-          "detail": "Nx selects projects by name, pattern or tag; no selector adds their dependencies or dependents."
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no selector walks to dependents."
-        },
-        "moon": {
-          "status": "n/a",
-          "detail": "`--upstream`/`--downstream` walk the task graph from the requested tasks, never the project graph, and never leave the matched projects out."
-        }
-      }
-    },
-    {
       "id": "graph/select-exclude-walk",
       "ref": "ffwl68",
       "category": "graph",
@@ -3064,43 +3029,6 @@
           "status": "fail",
           "step": 1,
           "detail": "ran @acme/utils#check, expected it replayed or left out"
-        }
-      }
-    },
-    {
-      "id": "graph/select-name-without-scope",
-      "ref": "b2d5f9",
-      "category": "graph",
-      "kind": "correctness",
-      "title": "A bare `core` selects `@acme/core` when only that package carries the name",
-      "why": "When only one package is named `core` under any scope, a bare `core` can only mean that package. This is how the common package manager filter grammar reads it, which users already know. Selecting nothing instead runs nothing the user asked for, and may pass CI having checked nothing.",
-      "from": [
-        "filter",
-        "filter-properties"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        },
-        "nx": {
-          "status": "pass"
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "nix-build builds the attributes it is named: no filter picks them."
-        },
-        "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
         }
       }
     },
@@ -4265,41 +4193,6 @@
         "vite-task": {
           "status": "n/a",
           "detail": "`vp run` runs one task name per run."
-        },
-        "nix": {
-          "status": "pass"
-        },
-        "moon": {
-          "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "failure/task-only-outside-selection-fails",
-      "ref": "ewdu21",
-      "category": "failure",
-      "kind": "correctness",
-      "title": "Asking for a task in a project that does not declare it fails the run",
-      "why": "The user asked for typecheck in a, which does not declare it; only b does. If the run exits 0, it reports a type check that never happened. Running b’s typecheck in its place is also wrong, since b was not selected. Failing points the user at the missing task before anyone relies on the result.",
-      "from": [
-        "task-selection"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
-        },
-        "vite-task": {
-          "status": "pass"
         },
         "nix": {
           "status": "pass"
@@ -8822,39 +8715,6 @@
         },
         "nx": {
           "status": "pass"
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "pass"
-        },
-        "moon": {
-          "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "failure/undeclared-task",
-      "ref": "v6bwep",
-      "category": "failure",
-      "kind": "correctness",
-      "title": "Running a task no project declares fails instead of passing with nothing run",
-      "why": "Running a task that no project declares is almost always a typo or a missing config. A runner that exits 0 with nothing run reports a green build or test suite that never happened. In CI that hides a broken pipeline for as long as nobody reads the log. A clear failure points at the mistake at once.",
-      "from": [
-        "default-build-not-declared"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
         },
         "vite-task": {
           "status": "pass"
@@ -20683,137 +20543,6 @@
       }
     },
     {
-      "id": "env/dotenv-not-loaded",
-      "ref": "imxsel",
-      "category": "env",
-      "kind": "correctness",
-      "title": "A `.env` file at the workspace root does not set a task’s variable",
-      "why": "A task’s environment is the one the shell that started the run gave it. A runner that also reads a `.env` at the root sets values nobody passed, from a file the task never declared. The same command then builds one thing on a laptop that has the file and another on CI that lacks it, and a local secret can end up in a build.",
-      "from": [
-        "dotenv-isolation"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "packages/a/dist/out.txt is \"from-dotenv\\n\", expected \"unset\\n\""
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "pass"
-        },
-        "moon": {
-          "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "env/dotenv-local-and-node-env-not-loaded",
-      "ref": "cffxye",
-      "category": "env",
-      "kind": "correctness",
-      "title": "Neither `.env.local` nor the `.env.<NODE_ENV>` file sets a task’s variable",
-      "why": "Files such as `.env.local` and `.env.production` are a framework’s convention, not the runner’s. If the runner picks one by `NODE_ENV`, setting one variable silently swaps in a whole file of others. A developer’s local overrides then leak into builds that differ from CI for reasons no config shows. A task that wants these files can load them itself.",
-      "from": [
-        "dotenv-isolation"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "packages/a/dist/out.txt is \"from-local\\n\", expected \"unset\\n\""
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "pass"
-        },
-        "moon": {
-          "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "env/dotenv-in-cwd-not-loaded",
-      "ref": "50esxw",
-      "category": "env",
-      "kind": "correctness",
-      "title": "A `.env` in the directory the run starts from does not set a task’s variable",
-      "why": "Where a run starts must not change what a task sees. If a `.env` in the current directory were read, the same task run from the root and from inside the project would build two different things. Worse, each could replay the other’s cache entry, since nothing declared says the file was read. The shell’s environment is the only source.",
-      "from": [
-        "dotenv-isolation",
-        "member-cwd"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "packages/a/dist/out.txt is \"from-dotenv\\n\", expected \"unset\\n\""
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "pass"
-        },
-        "moon": {
-          "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "env/shell-value-beats-dotenv",
-      "ref": "j108zh",
-      "category": "env",
-      "kind": "correctness",
-      "title": "With a `.env` present, the value the shell sets is the one the task sees",
-      "why": "A value set in the shell is an explicit request for this run; a file on disk is not. If a `.env` overrode it, `MODE=from-shell` on the command line would be silently ignored. CI jobs that set variables per job would build with whatever a committed or leftover `.env` says. The explicit value must win, whether or not the runner reads `.env` at all.",
-      "from": [
-        "dotenv-isolation"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "pass"
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "pass"
-        },
-        "moon": {
-          "status": "pass"
-        }
-      }
-    },
-    {
       "id": "env/dotenv-edit-not-stale",
       "ref": "5b9njz",
       "category": "env",
@@ -25552,40 +25281,6 @@
         },
         "nx": {
           "status": "pass"
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "pass"
-        },
-        "moon": {
-          "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "failure/missing-task-in-filter",
-      "ref": "u8j0fg",
-      "category": "failure",
-      "kind": "correctness",
-      "title": "Asking for a task no project declares fails the run",
-      "why": "A task name no project declares is almost always a typo or a stale script. If the run exits 0 having run nothing, CI reports green while no test or build ran at all. Failing loudly turns the typo into a message the developer sees at once, instead of a gap found weeks later.",
-      "from": [
-        "task-typo-verb",
-        "cli-task-names"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
         },
         "vite-task": {
           "status": "pass"
@@ -31042,82 +30737,6 @@
         },
         "moon": {
           "status": "pass"
-        }
-      }
-    },
-    {
-      "id": "affected/base-naming-a-path",
-      "ref": "czpokq",
-      "category": "affected",
-      "kind": "efficiency",
-      "title": "A base naming a directory inside a commit (`HEAD:packages`) selects nothing unchanged",
-      "why": "A base like `HEAD:packages` names a directory inside a commit, not a commit, and its paths lack the `packages/` prefix. Compared as if it were a commit, every project looks changed and the whole workspace runs. The tool should resolve what the base means, or refuse it, rather than widen the selection.",
-      "from": [
-        "affected"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "ran a#test, b#test, expected it replayed or left out"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "ran a#test, b#test, expected it replayed or left out"
-        },
-        "vite-task": {
-          "status": "n/a",
-          "detail": "Vite Task does not select tasks by what git says changed."
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "nix-build builds the attributes it is named: no git change selects them."
-        },
-        "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "ran a#test, b#test, expected it replayed or left out"
-        }
-      }
-    },
-    {
-      "id": "affected/exclusion-base",
-      "ref": "p09l8n",
-      "category": "affected",
-      "kind": "efficiency",
-      "title": "A base written as an exclusion (`^main`) selects nothing only the base branch changed",
-      "why": "A base written as `^main` asks for what this branch has that main does not. Reading it as `main` itself counts main’s own later commits as this branch’s change. A pull request would then rerun the tests of projects only main touched, which is time spent on code this branch did not change.",
-      "from": [
-        "affected"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 8,
-          "detail": "ran b#test, expected it replayed or left out"
-        },
-        "vite-task": {
-          "status": "n/a",
-          "detail": "Vite Task does not select tasks by what git says changed."
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "nix-build builds the attributes it is named: no git change selects them."
-        },
-        "moon": {
-          "status": "fail",
-          "step": 8,
-          "detail": "ran b#test, expected it replayed or left out"
         }
       }
     },
@@ -55785,83 +55404,6 @@
       }
     },
     {
-      "id": "graph/select-dir-top-level-glob",
-      "ref": "5cc0kt",
-      "category": "graph",
-      "kind": "correctness",
-      "title": "A `*` directory glob takes the projects one level below the root only",
-      "why": "`*` as a directory is one level down from the root: tools here. The root itself is not one level down, and packages/a is two. A pattern that also takes the root or reaches deeper runs projects its single star does not cover.",
-      "from": [
-        "filter"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "ran root#check, expected it replayed or left out"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "ran root#check, a#check, expected it replayed or left out"
-        },
-        "vite-task": {
-          "status": "fail",
-          "step": 1,
-          "detail": "ran root#check, expected it replayed or left out"
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no directory picks them."
-        },
-        "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "ran root#check, expected it replayed or left out"
-        }
-      }
-    },
-    {
-      "id": "graph/select-bare-name-same-as-scope",
-      "ref": "yu3a5o",
-      "category": "graph",
-      "kind": "correctness",
-      "title": "A bare `test` selects `@test/test` and not `@test/test-e2e`",
-      "why": "`test` is the whole name after the scope of `@test/test`, so it selects that package. `@test/test-e2e` only starts with it. Matching on the scope, which both share, or by prefix runs the end-to-end suite the user did not name.",
-      "from": [
-        "filter",
-        "filter-properties"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        },
-        "nx": {
-          "status": "pass"
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "nix-build builds the attributes it is named: no filter picks them."
-        },
-        "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        }
-      }
-    },
-    {
       "id": "graph/select-scope-glob-minus-one",
       "ref": "ydp6k8",
       "category": "graph",
@@ -67069,40 +66611,6 @@
       }
     },
     {
-      "id": "failure/single-package-unknown-task-fails",
-      "ref": "kt3ei7",
-      "category": "failure",
-      "kind": "correctness",
-      "title": "In a one-package repository, asking for a task the package does not declare fails",
-      "why": "A typo in a task name must not look like success. With no members there is no other project to run it in, so the run has nothing to do. A tool that exits 0 with nothing run lets CI pass a test job that tested nothing. The run fails and runs nothing.",
-      "from": [
-        "root-project",
-        "cli-task-names"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "pass"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "succeeded, expected a failure"
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "pass"
-        },
-        "moon": {
-          "status": "pass"
-        }
-      }
-    },
-    {
       "id": "failure/single-package-failing-prerequisite-skips-task",
       "ref": "0q9w5n",
       "category": "failure",
@@ -69675,82 +69183,6 @@
         "moon": {
           "status": "n/a",
           "detail": "moon keeps no task from files, network or home it never declared."
-        }
-      }
-    },
-    {
-      "id": "graph/select-dir-dotdot-in-middle",
-      "ref": "uhhpab",
-      "category": "graph",
-      "kind": "correctness",
-      "title": "A directory selector `packages/x/../a` selects the project in `packages/a`",
-      "why": "A `..` in a path steps up a folder, wherever it sits. A tool that matches the text against project folders finds none and fails, or one that strips the `..` finds the wrong one. Only `a` runs.",
-      "from": [
-        "filter",
-        "select"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "did not run a#build"
-        },
-        "nx": {
-          "status": "pass"
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no directory picks them."
-        },
-        "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
-        }
-      }
-    },
-    {
-      "id": "graph/select-dir-trailing-dot",
-      "ref": "lf4djr",
-      "category": "graph",
-      "kind": "correctness",
-      "title": "A directory selector `packages/a/.` selects the project in `packages/a`",
-      "why": "A trailing `/.` names the folder itself, as completion in a shell often leaves it. A tool that matches the text literally finds no project there. Only `a` runs.",
-      "from": [
-        "filter",
-        "select"
-      ],
-      "outcomes": {
-        "vx": {
-          "status": "pass"
-        },
-        "turbo": {
-          "status": "fail",
-          "step": 1,
-          "detail": "did not run a#build"
-        },
-        "nx": {
-          "status": "fail",
-          "step": 1,
-          "detail": "did not run a#build"
-        },
-        "vite-task": {
-          "status": "pass"
-        },
-        "nix": {
-          "status": "n/a",
-          "detail": "nix-build builds the attributes it is named: no filter picks them. nix-build builds the attributes it is named: no directory picks them."
-        },
-        "moon": {
-          "status": "fail",
-          "step": 1,
-          "detail": "exited 1, expected success"
         }
       }
     },

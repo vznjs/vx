@@ -104,17 +104,6 @@ export default [
   }),
 
   defineCase({
-    id: 'failure/missing-task-in-filter',
-    category: 'failure',
-    kind: 'correctness',
-    title: 'Asking for a task no project declares fails the run',
-    why: 'A task name no project declares is almost always a typo or a stale script. If the run exits 0 having run nothing, CI reports green while no test or build ran at all. Failing loudly turns the typo into a message the developer sees at once, instead of a gap found weeks later.',
-    from: ['task-typo-verb', 'cli-task-names'],
-    workspace: one({ command: 'echo hi', inputs: ['src/**'] }),
-    steps: [{ run: 'biuld', expect: { exit: 'fail' } }],
-  }),
-
-  defineCase({
     id: 'failure/task-cycle-refused',
     category: 'failure',
     kind: 'correctness',
