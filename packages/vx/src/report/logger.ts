@@ -45,6 +45,7 @@ import {
   tailText,
   type Tail,
   ciProvider,
+  noteWrite,
   relPosix,
 } from '../util/index.js'
 import * as ui from '../ui/index.js'
@@ -541,7 +542,7 @@ export function defaultLogger(
         const escape = progressEscape(progressShown, progressRed)
         // In turn: an escape between two pieces of a paced frame could cut a
         // task's own escape in two.
-        pace.put(once(() => out.write(escape)))
+        pace.put(once(() => noteWrite(out, out.write(escape))))
       }
     }
     let running = 0
@@ -641,7 +642,7 @@ export function defaultLogger(
     }
     if (progressShown >= 0) {
       progressShown = -1
-      pace.put(once(() => out.write(PROGRESS_CLEAR)))
+      pace.put(once(() => noteWrite(out, out.write(PROGRESS_CLEAR))))
     }
     if (statusDead) return
     statusDead = true
@@ -1044,7 +1045,7 @@ export function defaultLogger(
             ? `vx: ${failed} of ${total} task${total === 1 ? '' : 's'} failed`
             : `vx: ${total} task${total === 1 ? '' : 's'} done`,
         )
-        pace.put(once(() => out.write(escape)))
+        pace.put(once(() => noteWrite(out, out.write(escape))))
       }
       if (!tail && !statusDead) {
         tail = true
@@ -1105,8 +1106,8 @@ export function defaultLogger(
         pace.put(once(() => deferredFailures.close()))
       }
       panelOpen = undefined
-      // The summary and the CLI's own lines follow on the stream directly:
-      // nothing may still be held, and nothing after this is.
+      // Nothing is held after this; frames may still wait on a slow reader,
+      // so a caller writing to the stream itself awaits `drained()` first.
       writer.settle()
     },
     taskStdout: (node, chunk) => taskChunk(node, chunk, false),
