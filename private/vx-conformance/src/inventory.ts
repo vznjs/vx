@@ -1094,6 +1094,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'cli-verb-sections',
     'closure-search',
     'colors',
+    'command-windows-scale',
     'consumer-types.unsafe',
     'core-source-key.unsafe',
     'dead-shell-group',
