@@ -5759,7 +5759,8 @@ its status, how it ended and its key.
 **What to do and root cause.** `What to do` gives one line per kind that
 changed: what moves it, and how to stop a move the task does not need.
 
-An `env` line says whether a value moved or a name joined or left `inputs.env`.
+An `env` line says whether a value moved, a name joined or left `inputs.env`,
+or, the config unchanged, a variable a pattern matches was set or unset.
 
 An `upstream` row only carries a change. `vx why` follows it down to the
 tasks whose own inputs moved, and prints each chain under `Root cause`:

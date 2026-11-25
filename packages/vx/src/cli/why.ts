@@ -672,13 +672,24 @@ async function fingerprintFiles(at: VerbWorkspace): Promise<Map<string, string[]
   }
 }
 
-/** The env row: a value that moved, or a name that joined or left `inputs.env`. */
+/**
+ * The env row: a value that moved, or a name that joined or left the keyed
+ * names. With the config unchanged, only a pattern (`VITE_*`) gains or loses
+ * a name: a variable it matches was set or unset, and no name joined.
+ */
 function envTodo(entries: readonly { kind: string; change: string }[]): string {
   const changes = new Set(entries.filter((e) => e.kind === 'env').map((e) => e.change))
+  const edited = entries.some((e) => e.kind === 'config')
+  const joined = edited
+    ? 'a name joined inputs.env'
+    : 'a variable an inputs.env pattern matches is set now'
+  const left = edited
+    ? 'a name left inputs.env'
+    : 'a variable an inputs.env pattern matched is unset now'
   return [
     ...(changes.has('changed') ? [WHAT_TO_DO['env']!] : []),
-    ...(changes.has('added') ? ['a name joined inputs.env, which re-keys the task by design'] : []),
-    ...(changes.has('removed') ? ['a name left inputs.env, which re-keys the task by design'] : []),
+    ...(changes.has('added') ? [`${joined}, which re-keys the task by design`] : []),
+    ...(changes.has('removed') ? [`${left}, which re-keys the task by design`] : []),
   ].join('; ')
 }
 

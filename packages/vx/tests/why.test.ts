@@ -1574,4 +1574,29 @@ describe('vx why — what to do names who keyed the component', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    'a variable an unchanged pattern now matches is said to be set, not to have joined',
+    async () => {
+      const root = await setup()
+      try {
+        await writeFile(
+          path.join(root, 'packages', 'app', 'vx.config.mjs'),
+          APP_CONFIG.replace("files: ['src/**'] }", "files: ['src/**'], env: ['VXWHYP_*'] }"),
+        )
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+        expect((await vx(root, ['run', 'build', '--all'], { VXWHYP_MODE: 'x' })).code).toBe(0)
+        expect((await todo(root, 'app#build')).find((l) => l.startsWith('  env'))).toBe(
+          '  env       a variable an inputs.env pattern matches is set now, which re-keys the task by design',
+        )
+        expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+        expect((await todo(root, 'app#build')).find((l) => l.startsWith('  env'))).toBe(
+          '  env       a variable an inputs.env pattern matched is unset now, which re-keys the task by design',
+        )
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
