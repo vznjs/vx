@@ -582,8 +582,8 @@ vx sets these for itself and removes them at start; do not set them: `VX_HANDED_
 
 <Deeper level="details" title="When it goes wrong">
 
-- **A variable is empty inside the command.** Past a few essentials
-  (`PATH`, `HOME`, `CI` and some more), vx passes only what you list.
+- **A variable is empty inside the command.** Past a small essential allowlist
+  (`PATH`, `HOME`, `CI` and a few more), vx passes only what you list.
 
   Add the name to `inputs.env`, or to `exec.env.passThrough` when it
   does not change the result.

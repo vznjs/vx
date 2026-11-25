@@ -119,6 +119,7 @@ function isMerge(workspaceRoot: string): boolean {
       stderr: 'ignore',
     })
   } catch {
+    // quiet: a local git, no remote: no git reads as no merge
     return false
   }
   if (proc.exitCode !== 0) return false

@@ -105,7 +105,6 @@
 @vzn/vx-migrate NX_VERBOSE_LOGGING
 @vzn/vx-migrate NX_WORKSPACE_DATA_DIRECTORY
 @vzn/vx-migrate TURBO_API
-@vzn/vx-migrate TURBO_CI_VENDOR_ENV_KEY
 @vzn/vx-migrate TURBO_CONCURRENCY
 @vzn/vx-migrate TURBO_ENV_MODE
 @vzn/vx-migrate TURBO_FORCE
