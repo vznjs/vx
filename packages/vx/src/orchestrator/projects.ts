@@ -205,9 +205,9 @@ function lockedProject(root: string, name: string, dir: string): string {
 
 /**
  * The refusal for a locked project whose directory is gone: the load stats
- * the config of each project it reads from the lock, and its directory once
- * that is missing; a config-less one is asked only when a spawn into it
- * failed, so a run pays no stat per project.
+ * the config of each project it reads from the lock (its directory once that
+ * is missing), or a config-less one's directory; a task whose spawn there
+ * failed says it too.
  */
 export function lockedDirGone(root: string, name: string, dir: string): string {
   return `${LOCKFILE_NAME} locks ${lockedProject(root, name, dir)}, but its directory is gone — run \`vx lock\``
@@ -513,35 +513,43 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     )
     // A run reads the lock, never a config, the workspace file or a file a
     // `project` plugin mapped from: an edit runs as locked until `vx lock`
-    // (2026-11-25). Only whether the project is still there is asked, by a
-    // stat of its config (its directory too once that is missing): a project
-    // deleted with no `vx lock` would have its outputs restored into a
-    // directory made for them.
+    // (2026-11-25). Only whether each project is still there is asked, one
+    // stat each: its config's (its directory's once that is missing), or a
+    // config-less project's directory. One deleted with no `vx lock` would
+    // have its outputs restored into a directory made for them.
+    const bare = hooks
+      ? []
+      : round.filter((m) => m.configPath === null && args.staged?.get(m.name) === undefined)
     const denied = new Map<ProjectMeta, string>()
-    const there = await Promise.all(
-      withFile.map((m) =>
+    const refused = (m: ProjectMeta, err: NodeJS.ErrnoException): boolean => {
+      if (err.code === 'EACCES' || err.code === 'EPERM') denied.set(m, err.code)
+      return false
+    }
+    const dirThere = (m: ProjectMeta): Promise<boolean> =>
+      stat(m.dir).then(
+        (st) => st.isDirectory(),
+        (err: NodeJS.ErrnoException) => refused(m, err),
+      )
+    const there = await Promise.all([
+      ...withFile.map((m) =>
         stat(m.configPath).then(
           () => true,
-          (err: NodeJS.ErrnoException) => {
-            if (err.code === 'EACCES' || err.code === 'EPERM') {
-              denied.set(m, err.code)
-              return false
-            }
-            return stat(m.dir).then(
-              (st) => st.isDirectory(),
-              () => false,
-            )
-          },
+          (err: NodeJS.ErrnoException) =>
+            err.code === 'EACCES' || err.code === 'EPERM' ? refused(m, err) : dirThere(m),
         ),
       ),
-    )
-    const goneAll = withFile.filter((_, i) => !there[i])
+      ...bare.map(dirThere),
+    ])
+    const goneAll = [...withFile, ...bare].filter((_, i) => !there[i])
     const gone = goneAll[0]
     if (gone !== undefined) {
       // A sparse checkout left it out, not deleted: `vx lock` there
       // refuses too. Asked only on this failure path, of every gone project
       // of the round, so one command brings them all back.
       const sparse = goneAll.flatMap((m) => {
+        const dir = relPosix(workspaceRoot, m.dir)
+        if (m.configPath === null)
+          return skipWorktreeSync(workspaceRoot, dir) === null ? [] : [{ meta: m, add: dir }]
         const at = skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, m.configPath))
         return at === null ? [] : [{ meta: m, add: path.posix.dirname(at) }]
       })
@@ -575,11 +583,12 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
               )} are in submodules not checked out, but this run needs them — run \`${init}\``,
         )
       }
-      // A directory this user may not search stats EACCES: `vx lock` cannot help.
+      // A directory this user may not search, or one above it, stats EACCES:
+      // `vx lock` cannot help.
       const code = denied.get(gone)
       throw code !== undefined
         ? new UserError(
-            `${LOCKFILE_NAME} locks ${lockedProject(workspaceRoot, gone.name, gone.dir)}, but its directory is not readable by this user (${code}) — give this user read access to it, then re-run`,
+            `${LOCKFILE_NAME} locks ${lockedProject(workspaceRoot, gone.name, gone.dir)}, but this user cannot reach its directory (${code}) — give this user access to it and the directories above it, then re-run`,
             'VX_E_FS',
           )
         : new UserError(lockedDirGone(workspaceRoot, gone.name, gone.dir), 'VX_E_LOCK')

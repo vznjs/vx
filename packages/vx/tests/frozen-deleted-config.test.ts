@@ -3,7 +3,8 @@
 // DIRECTORY is gone is refused, naming `vx lock`: its locked tasks have
 // nowhere to run, and a hit would restore outputs into a directory made for
 // them.
-import { rename, rm, unlink } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { rm, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
@@ -87,8 +88,8 @@ it('the root project is named as the root, not as `.`', async () => {
 
 it('a locked config-less project whose directory is gone is refused with the same way out', async () => {
   // A `project` plugin's tasks (turbo()'s) for a package with no config
-  // file: moved away after `vx lock`, its build said only that the spawn's
-  // working directory does not exist.
+  // file. Removed after a run saved its output, the next run hit and
+  // restored that output into a directory made for it, exit 0.
   await addProject(root, 'svc', {})
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
@@ -96,16 +97,22 @@ it('a locked config-less project whose directory is gone is refused with the sam
       pluginSource(
         'gen',
         `{ project(config, ctx) {
-          if (ctx.name === 'svc') config.tasks.build = { exec: { command: 'echo SVC' } }
+          if (ctx.name === 'svc') config.tasks.build = {
+            exec: { command: 'mkdir -p dist && echo SVC > dist/out.txt' },
+            inputs: { files: ['**'] }, outputs: { files: ['dist/**'] }, cache: true,
+          }
         } }`,
       ),
     ]),
   )
   expect((await vx(root, ['lock'])).code).toBe(0)
-  await rename(path.join(root, 'packages', 'svc'), path.join(root, 'packages', 'moved'))
-  const r = await vx(root, ['run', 'build', '--filter', 'svc', '--output-logs=full'])
-  expect(r.code).toBe(1)
-  expect(r.out + r.err).toContain(
-    '[vx] svc#build: .vx/projects.lock locks packages/svc ("svc"), but its directory is gone — run `vx lock`',
-  )
+  const svc = path.join(root, 'packages', 'svc')
+  expect((await vx(root, ['run', 'build', '--filter', 'svc'])).code).toBe(0)
+  await rm(svc, { recursive: true })
+  const r = await vx(root, ['run', 'build', '--filter', 'svc'])
+  expect([r.code, r.err.trim(), existsSync(svc)]).toEqual([
+    1,
+    '✗ vx run  .vx/projects.lock locks packages/svc ("svc"), but its directory is gone — run `vx lock`',
+    false,
+  ])
 }, 30_000)

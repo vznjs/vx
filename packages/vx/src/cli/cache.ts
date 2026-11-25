@@ -258,7 +258,8 @@ async function cleanCmd(args: readonly string[]): Promise<number> {
   // `*`.gitignore that hid the user's files from git.
   const dry = parsed.dry === true
   const json = parsed.format === 'json'
-  const prunable = vxCacheEntries(dir)
+  // An old `vx lock`'s config stamps alone are no cache to prune.
+  const prunable = vxCacheEntries(dir).filter((name) => !name.startsWith('config-stamps.json'))
   if (prunable.length === 0 && (storeRoot === null || !existsSync(storeRoot))) {
     printPruned({ evicted: 0, bytesFreed: 0, orphans: 0, orphanBytes: 0 }, dry, json)
     return 0

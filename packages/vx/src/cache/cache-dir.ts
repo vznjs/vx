@@ -37,6 +37,12 @@ export const VX_ARTIFACT_NAME = /^([0-9a-f]{16})\.(?:tar\.zst|tree)(\.tmp-\d+-\d
 /** The file in a cache directory with no store that its runs hold shared and a clean alone (`holdCacheDir`). */
 const DIR_LOCK = 'cache.lock'
 
+/**
+ * `vx lock`'s config stamps, which no vx writes since 2026-11-25, and a temp
+ * of them a crash left: still vx's, so a clear of a named dir removes them.
+ */
+const OLD_STAMPS = /^config-stamps\.json(\.\d+\.tmp)?$/
+
 /** What vx writes in a cache directory besides its artifacts. */
 const VX_CACHE_NAMES = new Set([
   'cache.db',
@@ -64,7 +70,8 @@ export function vxCacheEntries(cacheDir: string): string[] {
   }
   const own = names.filter((name) => {
     if (name === DIR_LOCK) return false
-    if (VX_CACHE_NAMES.has(name) || VX_ARTIFACT_NAME.test(name)) return true
+    if (VX_CACHE_NAMES.has(name) || VX_ARTIFACT_NAME.test(name) || OLD_STAMPS.test(name))
+      return true
     if (name !== '.gitignore') return false
     try {
       return readFileSync(path.join(cacheDir, name), 'utf8') === IGNORE_ALL

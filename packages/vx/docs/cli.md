@@ -3529,15 +3529,13 @@ For review, it also writes each project's resolved config, pretty, to
   never the steps. A project with no `vx.config.*` is included.
 - A run reads that record and calls no hook, so a run never maps.
 - So an edited `turbo.json` or `package.json` script runs only after the
-  next `vx lock`. Until then a run on this machine refuses, naming the file.
+  next `vx lock`. Until then a run runs what the lock holds, unrefused.
 - `--check` names a project the plugins now map otherwise, a plugin added
   or dropped since included:
   `packages/ui: the plugins map it differently from the lock here`.
-- An edited `.vx/workspace.*` is evaluated. When its plugins now map,
-  discover or digest the dependencies otherwise, a run refuses, naming the
-  file.
-- That is an option such as `bun({ scope })`, or a plugin added or
-  dropped. An edit that changes none of them runs.
+- An edited `.vx/workspace.*` (an option such as `bun({ scope })`, a
+  plugin added or dropped) maps, discovers and digests nothing until
+  `vx lock`; a run keeps the lock's projects, edges and tasks.
 - When a plugin fails before the stage ran (a `discover` refusal),
   `--check` names that failure alone: no config is compared with what
   the stage recorded.

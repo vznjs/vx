@@ -382,7 +382,7 @@ describe('scoped config loading', () => {
       await lock(root)
       const cacheDir = path.join(root, '.vx', 'cache')
       expect([...(await loadResolvedProjects(root)).keys()]).toEqual(['app'])
-      // `vx lock` keeps its config stamps in the cache dir; the index is the reader's to leave unmade.
+      // The index is the reader's to leave unmade.
       expect(existsSync(path.join(cacheDir, 'cache.db'))).toBe(false)
 
       await mkdir(cacheDir, { recursive: true })
