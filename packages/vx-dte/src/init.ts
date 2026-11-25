@@ -86,23 +86,35 @@ function nextSteps(relay: string | undefined, allow: string, files: readonly str
 const TASKS = /^[\w@/#.:*-]+( [\w@/#.:*-]+)*$/
 
 /**
- * Asks, in a terminal, what main runs and what a change request runs (main's
- * by default). Elsewhere none are named, and the written run fails until
- * its owner names them.
+ * Asks, in a terminal, what main runs (`declared`, the workspace's
+ * `pipelines.main`, by default) and what a change request runs (main's by
+ * default). No tasks is refused: `vx run --all` alone fails. Elsewhere
+ * `declared` is the answer; with none, the written run fails until its
+ * owner names them.
  */
-export function askTasks(): { main: string; change: string } {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return { main: '', change: '' }
-  const ask = (q: string, fallback: string): string => {
-    const a = (prompt(q) ?? '').trim().replace(/\s+/g, ' ') || fallback
-    if (a !== '' && !TASKS.test(a))
+export function askTasks(
+  declared: string | undefined,
+  tty = process.stdin.isTTY && process.stdout.isTTY,
+  ask: (question: string) => string | null = prompt,
+): { main: string; change: string } {
+  if (!tty) return { main: declared ?? '', change: declared ?? '' }
+  const answer = (q: string, fallback: string): string => {
+    const a = (ask(q) ?? '').trim().replace(/\s+/g, ' ') || fallback
+    if (a === '')
+      throw new UserError(
+        'vx dte init: name the tasks main runs, such as build test: a ci.yml that runs none fails',
+      )
+    if (!TASKS.test(a))
       throw new UserError(`vx dte init: ${JSON.stringify(a)} is not a list of task names`)
     return a
   }
-  const main = ask('Tasks to run on main (such as build test):', '')
-  const change = ask(
-    `Tasks to run on a pull or merge request${main === '' ? '' : ` [${main}]`}:`,
-    main,
+  const main = answer(
+    declared === undefined
+      ? 'Tasks to run on main (such as build test):'
+      : `Tasks to run on main [${declared}]:`,
+    declared ?? '',
   )
+  const change = answer(`Tasks to run on a pull or merge request [${main}]:`, main)
   return { main, change }
 }
 

@@ -379,6 +379,8 @@ export function dte(options: DteOptions = {}) {
   let ran: ReadonlyMap<string, TaskNode> | undefined
   /** The workspace names its cache dir (`cache.dir`): `config` reads it. */
   let namesCache = false
+  // `pipelines.main`'s tasks: what `vx dte init` offers main to run.
+  let mainTasks: string | undefined
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
   /** `measures.ts`, loaded with the orchestrator: a run that is not distributed loads none of it. */
   let measures: typeof import('./measures.js') | undefined
@@ -489,7 +491,7 @@ export function dte(options: DteOptions = {}) {
         ...(s.runsOn === undefined ? {} : { runsOn: s.runsOn }),
       })),
       manager: managerOf(root),
-      tasks: askTasks(),
+      tasks: askTasks(mainTasks),
       ...originOf(root),
     })
     const out = (line: string): void => ui.say('info', line, 'out')
@@ -586,6 +588,8 @@ export function dte(options: DteOptions = {}) {
 
     config(workspace) {
       namesCache = workspace.cache?.dir !== undefined
+      const main = workspace.pipelines?.['main']?.tasks
+      mainTasks = main === undefined || main.length === 0 ? undefined : main.join(' ')
     },
 
     measures(graph) {

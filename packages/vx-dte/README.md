@@ -382,10 +382,11 @@ workers' below. Then it prints what is left to do:
 
 What `vx dte init` writes:
 
-- In a terminal it asks what main runs and what a pull request runs (main's
-  by default).
-- Without a terminal it names none, and the run fails, listing the tasks,
-  until you do.
+- In a terminal it asks what main runs (`pipelines.main`'s tasks by
+  default) and what a pull request runs (main's by default). No tasks is
+  refused.
+- Without a terminal it writes `pipelines.main`'s tasks. With none
+  declared it names none, and the run fails, listing the tasks, until you do.
 - A workspace in a subdirectory of its repository gets the files at the
   repository's root, its jobs running in that directory.
 - Each size runs on its platform's GitHub-hosted runner: `ubuntu-latest`
