@@ -935,6 +935,31 @@ describe('vx run with vxHistory({ url })', () => {
     })
   })
 
+  // A persistent task's "duration" is its time to ready, and local history
+  // keeps no row of one; the server got it as the task's timing (2 ms).
+  it('sends no timing for a persistent task, as local history keeps none', async () => {
+    const cfg = path.join(root, 'pkg', 'vx.config.mjs')
+    const was = await Bun.file(cfg).text()
+    await writeFile(
+      cfg,
+      `export default { tasks: {
+  serve: { exec: { command: 'sleep 30', persistent: {} } },
+  e2e: { exec: { command: 'true' }, dependsOn: ['serve'] },
+} }
+`,
+    )
+    try {
+      const before = seen.length
+      const r = await run({ cwd: root, tasks: ['e2e'], handleSignals: false })
+      expect(r.ok).toBe(true)
+      const uploads = seen.slice(before).filter((q) => q.path === '/v1/timings/upload')
+      const sent = uploads.flatMap((u) => (JSON.parse(u.body) as { timings: unknown[] }).timings)
+      expect(sent).toHaveLength(1)
+    } finally {
+      await writeFile(cfg, was)
+    }
+  })
+
   // A token in a shell off CI (a copied VX_HISTORY_TOKEN) wrote that
   // machine's timings into CI's ref: a local run only reads.
   it('sends nothing from a run off CI, whatever token it holds', async () => {

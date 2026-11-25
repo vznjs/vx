@@ -111,6 +111,8 @@ A query that fails is said even when the run has already ended. One with no answ
 
 The run sends the timings of the tasks it ran while it goes, each task once (the server counts every report).
 
+A persistent task sends none: its time is to ready, and local history keeps no row of it either.
+
 It uploads once 50 tasks have finished, or 10 s after the first of them, one upload at a time.
 
 Under DTE the orchestrator sends them. Each worker's measurements go with the last upload, as the last task ends, beside core's own end of run.
