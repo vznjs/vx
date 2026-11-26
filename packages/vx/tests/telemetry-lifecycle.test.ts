@@ -274,6 +274,37 @@ describe('a hook that never settles', () => {
     ])
   }, 30_000)
 
+  // One that waits on a live timer (a network call with no deadline) keeps
+  // the loop up, so nothing names it; a Ctrl-C then left vx silent.
+  it.each(['setup', 'key'])(
+    'in %s, still waiting at a Ctrl-C: the plugin is named',
+    async (hook) => {
+      const root = await fixture(
+        `{ ${hook}() { return new Promise((r) => setTimeout(r, 600_000)) } }`,
+      )
+      const proc = Bun.spawn({
+        cmd: [
+          process.execPath,
+          path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
+          'run',
+          'boom',
+          '--all',
+        ],
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'ignore',
+        stderr: 'pipe',
+      })
+      await Bun.sleep(3_000)
+      proc.kill('SIGINT')
+      await proc.exited
+      expect(await new Response(proc.stderr).text()).toContain(
+        `vx: the run stopped on SIGINT: plugin 'org/hang' never settled its ${hook} hook\n`,
+      )
+    },
+    30_000,
+  )
+
   it("in an executor's execute: the plugin is named", async () => {
     const root = await fixture(
       `{ executor() { return { name: 'pool', execute() { return new Promise(() => {}) } } } }`,
