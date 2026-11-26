@@ -1115,7 +1115,7 @@ function validateInputs(inputs: unknown, task: TaskConfig, where: string): void 
   // gitignore-trained reader parses `['!**/*.spec.ts']` as everything except
   // specs. Refusing changes no working key.
   assertNotNegationOnly((inputs as { files: string[] }).files, `${where}.inputs.files`)
-  assertNoneTakenBack((inputs as { files: string[] }).files, `${where}.inputs.files`)
+  assertNoLiteralTakenBack((inputs as { files: string[] }).files, `${where}.inputs.files`)
   // The only InputsConfig field that reached the run unvalidated: a
   // non-string entry crashes deep in `filterUpstreamHashes` /
   // `parseDependencySpec` with a raw TypeError naming neither the task
@@ -1250,7 +1250,7 @@ function validateOutputs(
     }
   }
   assertOutputsNotNegationOnly(outFiles as string[], `${where}.outputs.files`)
-  assertNoneTakenBack(outFiles as string[], `${where}.outputs.files`, OUTPUT_LOST, OUTPUT_GLOB_LOST)
+  assertNoLiteralTakenBack(outFiles as string[], `${where}.outputs.files`, OUTPUT_LOST)
   const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
   if (wsOutputs !== undefined) {
     validateWorkspaceGlobs(wsOutputs, `${where}.outputs.workspaceFiles`, false)
@@ -2142,17 +2142,14 @@ function assertTaskFiltersNotNegationOnly(filters: readonly string[], where: str
 /**
  * A `!` entry subtracts wherever it sits in the list, so a file named
  * outright after it (`['src/**', '!src/gen/**', 'src/gen/keep.ts']`) never
- * entered the key, and an edit to it replayed the old output. A glob wholly
- * inside a negated tree (`['src/**', '!src/**']`) is the same: it keyed
- * nothing, and an edit replayed a stale hit. Refusing is free: the entry
- * already selected nothing.
+ * entered the key, and an edit to it replayed the old output. Refusing is
+ * free: the literal already selected nothing.
  */
-function assertNoneTakenBack(
+function assertNoLiteralTakenBack(
   globs: readonly string[],
   where: string,
   // An output's literal is never saved: a hit left it missing and said up-to-date.
   lost = 'the file never enters the key',
-  lostGlob = 'none of its files enters the key',
 ): void {
   const negative = globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
   if (negative.length === 0) return
@@ -2160,31 +2157,13 @@ function assertNoneTakenBack(
   for (const g of globs) {
     if (g.startsWith('!')) continue
     const lit = normalizeGlob(g).replace(/\/+$/, '')
-    const literal = isLiteralPattern(lit)
-    const by = literal
-      ? taken(lit)
-        ? negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
-        : undefined
-      : negative.find((n) => treeHolds(n, lit))
-    if (by === undefined) continue
+    if (!isLiteralPattern(lit) || !taken(lit)) continue
+    const by = negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
     throw new UserError(
       `${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
-        `the list, so ${literal ? lost : lostGlob}. Narrow the negation so it leaves "${g}".`,
+        `the list, so ${lost}. Narrow the negation so it leaves "${g}".`,
     )
   }
-}
-
-/**
- * Whether negation `n` takes back every path glob `g` can match: `n` is a
- * whole tree (`**`, `src`, `src/**`) and `g`'s literal head lies inside it.
- * `**` matches dotfiles too, so nothing under the tree escapes it.
- */
-function treeHolds(n: string, g: string): boolean {
-  const tree = normalizeGlob(n)
-    .replace(/\/+$/, '')
-    .replace(/(^|\/)\*\*(\/\*)?$/, '')
-  if (tree === '') return true
-  return isLiteralPattern(tree) && g.startsWith(`${tree}/`)
 }
 
 /**
@@ -2224,15 +2203,14 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
   }
   if (negation) {
     assertNotNegationOnly(v as string[], where)
-    assertNoneTakenBack(v as string[], where)
+    assertNoLiteralTakenBack(v as string[], where)
   } else {
     assertOutputsNotNegationOnly(v as string[], where)
-    assertNoneTakenBack(v as string[], where, OUTPUT_LOST, OUTPUT_GLOB_LOST)
+    assertNoLiteralTakenBack(v as string[], where, OUTPUT_LOST)
   }
 }
 
 const OUTPUT_LOST = 'the file is never saved or restored'
-const OUTPUT_GLOB_LOST = 'none of its files is saved or restored'
 
 /**
  * An output list of only `!` entries selects nothing: the task saves and
