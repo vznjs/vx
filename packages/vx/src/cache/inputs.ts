@@ -119,8 +119,11 @@ export interface ResolveInputsArgs {
   projectDir: string
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
-  /** The PATH `exec.env.define` sets: the task's, so its probes resolve tools on it too. */
-  definedPath?: string | undefined
+  /**
+   * `exec.env.define`: what the task sees over the host. An `inputs.env` name
+   * it sets keys nothing of the host, and a PATH it sets is the probes' too.
+   */
+  define?: Readonly<Record<string, string>> | undefined
   inputs: InputsConfig | undefined
   /** Project-relative output globs to exclude from inputs. */
   ownOutputs: readonly string[]
@@ -342,7 +345,11 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
   const runtimeDecl = args.inputs?.runtime ?? []
   const wsRuntimeDecl = args.inputs?.workspaceRuntime ?? []
   // A probe under a defined PATH answers for that PATH alone.
-  const pathScope = args.definedPath === undefined ? '' : `\0PATH=${args.definedPath}\0`
+  const definedPath =
+    args.define !== undefined && Object.hasOwn(args.define, 'PATH')
+      ? args.define['PATH']
+      : undefined
+  const pathScope = definedPath === undefined ? '' : `\0PATH=${definedPath}\0`
   const [runtimeValues, workspaceRuntimeValues] =
     runtimeDecl.length === 0 && wsRuntimeDecl.length === 0
       ? [[], []]
@@ -355,7 +362,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             args.runtimeCache,
             `${args.runtimeScope === undefined ? `${args.projectDir}\0` : `${args.projectDir}\0${args.runtimeScope}\0`}${pathScope}`,
             'runtime',
-            args.definedPath,
+            definedPath,
           ),
           resolveRuntimeValues(
             wsRuntimeDecl,
@@ -365,13 +372,20 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             args.workspaceRuntimeCache,
             `${args.runtimeScope === undefined ? '' : `\0${args.runtimeScope}\0`}${pathScope}`,
             'workspaceRuntime',
-            args.definedPath,
+            definedPath,
           ),
         ])
   return {
     files,
     listings,
-    envValues: resolveEnvValues(expandEnvNames(args.inputs?.env ?? []), args.envSource),
+    // A name define sets is the define's value, which the config already
+    // keys: the host's value, or whether the host has it, the task never sees.
+    envValues: resolveEnvValues(
+      expandEnvNames(args.inputs?.env ?? []).filter(
+        (n) => args.define === undefined || !Object.hasOwn(args.define, n),
+      ),
+      args.envSource,
+    ),
     runtimeValues,
     workspaceRuntimeValues,
   }

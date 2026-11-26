@@ -164,9 +164,12 @@ describe('computeTaskHash — what the config contributes', () => {
   // The task sees define's value over the host's, so a host value under the
   // same name keyed nothing it reads: every change to it was a miss.
   it("an inputs.env name define sets keys define's value, not the host's", async () => {
-    const at = async (host: string, fixed = 'fixed') => {
+    const at = async (host: string | undefined, fixed = 'fixed') => {
       const before = process.env['VX_T_DEF']
-      process.env['VX_T_DEF'] = host
+      if (host === undefined) delete process.env['VX_T_DEF']
+      else process.env['VX_T_DEF'] = host
+      // Each run matches a pattern afresh.
+      forgetEnvMatches()
       try {
         return await key({
           node: node(
@@ -183,6 +186,8 @@ describe('computeTaskHash — what the config contributes', () => {
       }
     }
     expect(await at('1')).toBe(await at('2'))
+    // The wildcard finds the name only when the host has it: still one key.
+    expect(await at('1')).toBe(await at(undefined))
     expect(await at('1')).not.toBe(await at('1', 'other'))
   })
 
