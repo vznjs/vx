@@ -1218,7 +1218,10 @@ incremental one whose every root file is still pending emit, as a
 `noEmit` build leaves it (create-vue's `vue-tsc --build`). An undeclared file a task of the same
 project running alongside may have written still withholds the save (an
 unsandboxed task's write cannot be told from it); the line names that
-task, and declaring the file in its outputs ends it.
+task, and declaring the file in its outputs ends it. A file reached
+through a linked output head (`dist -> build` under `dist/**`) is
+declared too, though git lists it by its real name (`build/a.js`): taken
+for state, every save after the first was withheld.
 
 **The outputs are what exists when the task's command exits.** The run
 waits for the command's own process, not for everything it started — a
