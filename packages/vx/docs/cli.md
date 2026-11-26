@@ -6006,6 +6006,8 @@ vx last --sql "SELECT task, AVG(peak_rss_bytes) FROM runs GROUP BY task"
 <div class="vx-deeper-body">
 
 - `--log` does not combine with `--list` or `--failed`.
+- `--log build` reads the one project that ran `build`, or the cwd's.
+  A project that only skipped it (a dependency failed) does not count.
 - `--stats` does not combine with `--list`, `--failed`, `--log` or a run id.
 - `--branch` combines only with `--stats`.
 
