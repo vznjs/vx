@@ -6458,6 +6458,8 @@ milliseconds.
 - A query SQLite cannot run is refused with its reason.
 - A second statement after the first is refused: SQLite would run the
   first alone.
+- A parameter (`?`, `:name`) is refused: nothing binds it, so it would
+  read `NULL`. Write the value into the query.
 - `--sql` combines only with `--format` and `--cache-dir`.
 
 </div>

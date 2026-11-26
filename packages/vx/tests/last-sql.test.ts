@@ -254,3 +254,16 @@ it('a query that opens with a comment reads', () => {
   expect(w.code).toBe(1)
   expect(w.err).toContain('--sql reads only')
 })
+
+// Nothing binds a parameter: `?` read NULL, and its expansion in the
+// statement's text hid a second statement, which was dropped unread.
+it('a query with a parameter is refused', () => {
+  for (const sql of ['SELECT ? AS a; SELECT 2 AS b', 'SELECT :x AS a']) {
+    const r = vx('last', '--sql', sql)
+    expect([r.code, r.out]).toEqual([1, ''])
+    expect(r.err).toContain('--sql takes no parameters (?, :name)')
+  }
+  // A `?` in a string is no parameter (control).
+  const ok = vx('last', '--sql', "SELECT '?' AS a", '--format', 'json')
+  expect([ok.code, ok.out]).toEqual([0, '{"rows":[{"a":"?"}]}\n'])
+})
