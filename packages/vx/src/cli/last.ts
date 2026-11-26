@@ -535,8 +535,15 @@ async function printQuery(db: Database, sql: string, format: 'pretty' | 'json'):
   } catch (err) {
     return refused(err)
   }
-  // SQLite prepares the first statement and drops the rest unread. Its
-  // text is the statement's own (a bound `?` expanded, hence the guard).
+  // Nothing binds a parameter: `?` read NULL, and its expansion in the
+  // statement's text hid a second statement from the check below.
+  if (stmt.paramsCount > 0) {
+    throw new UserError(
+      `vx last: --sql takes no parameters (?, :name): write each value into the query`,
+      'VX_E_USAGE',
+    )
+  }
+  // SQLite prepares the first statement and drops the rest unread.
   const own = stmt.toString()
   const tail = sql.startsWith(own) ? sql.slice(own.length) : ''
   if (tail.replace(/--[^\n]*|\/\*[^]*?\*\/|[\s;]/g, '') !== '') {
