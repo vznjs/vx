@@ -3,7 +3,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
-import { lstatSync, readFileSync, statSync } from 'node:fs'
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import type { SandboxViolation } from '../exec/index.js'
 import { procfsIsOwn, relPosix, taskGlobOf } from '../util/index.js'
 import { bindableWrites } from './binds.js'
@@ -643,6 +643,7 @@ function statedHiddenHint(
     !declared.some((g) => atOrUnder(toRealPath(g), project))
       ? " (or its whole project, `read: ['.']`)"
       : ''
+  const leaving = leavingLinks(grantable, within, deny, key)
   const said =
     `vx: the task failed naming paths the sandbox hides that exist on this machine: ` +
     `${found.slice(0, 5).join(', ')}${found.length > 5 ? ` and ${found.length - 5} more` : ''}. ` +
@@ -654,9 +655,46 @@ function statedHiddenHint(
       grantable === undefined
         ? `${said} They are walled on purpose, so vx suggests no grant for them.`
         : `${said} If the task reads one, grant it, e.g. ` +
-          `\`allow: { read: [${jsString(grantSpelling(grantable, walled, within))}] }\`${whole}` +
-          `${keyEntryHint(grantable, within, key)}.`,
+          `\`allow: { read: [${grantsOf(grantable, leaving, walled, within)}] }\`${whole}` +
+          `${keyEntryHint(grantable, within, key, leaving)}.`,
   }
+}
+
+/**
+ * The links in a hidden directory of the project that leave it, each
+ * with its target, as the hint grants and keys them: a target in the
+ * workspace, not holding the project, and not walled.
+ */
+function leavingLinks(
+  grantable: string | undefined,
+  within: string,
+  deny: readonly string[],
+  key: KeyScope | undefined,
+): Array<[link: string, target: string]> {
+  if (grantable === undefined) return []
+  const project = toRealPath(within)
+  if (grantable === project || !atOrUnder(grantable, project)) return []
+  if (statSync(grantable, { throwIfNoEntry: false })?.isDirectory() !== true) return []
+  const root = key === undefined ? undefined : toRealPath(key.root)
+  const nested = (key?.nested ?? []).map(toRealPath)
+  return linksLeaving(grantable, project, nested).filter(
+    ([, t]) =>
+      !atOrUnder(project, t) &&
+      (root === undefined || atOrUnder(t, root)) &&
+      !deny.some((w) => atOrUnder(t, w) && !atOrUnder(project, w)),
+  )
+}
+
+/** The read grants a hint names: the path, then each leaving link's target, which bwrap does not follow into. */
+function grantsOf(
+  p: string,
+  leaving: ReadonlyArray<[string, string]>,
+  walled: readonly string[],
+  within: string,
+): string {
+  return [p, ...leaving.map(([, t]) => t)]
+    .map((g) => jsString(grantSpelling(g, walled, within)))
+    .join(', ')
 }
 
 /** A cached task's key scope: the workspace root, and the projects nested in its own. */
@@ -677,7 +715,12 @@ const keyOf = (args: Pick<SandboxedRunArgs, 'keyRoot' | 'keyNested'>): KeyScope 
  * `vx lock` refuses a `files` glob into one. A directory whole. Nothing
  * outside the workspace: no glob can name it.
  */
-function keyEntryHint(p: string, within: string, key: KeyScope | undefined): string {
+function keyEntryHint(
+  p: string,
+  within: string,
+  key: KeyScope | undefined,
+  leaving: ReadonlyArray<[link: string, target: string]> = [],
+): string {
   if (key === undefined) return ''
   const root = toRealPath(key.root)
   if (!atOrUnder(p, root)) return ''
@@ -687,7 +730,70 @@ function keyEntryHint(p: string, within: string, key: KeyScope | undefined): str
   const rel = relPosix(base, p)
   const dir = statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
   const glob = rel === '' ? '**' : dir ? `${taskGlobOf(rel)}/**` : taskGlobOf(rel)
-  return `, and, if the output depends on it, key it: \`inputs: { ${field}: [${jsString(glob)}] }\``
+  const entries = [jsString(glob)]
+  let through = ''
+  if (own && dir && leaving.length > 0) {
+    // `dir/**` follows a link in it, and a run refuses one into another
+    // project (VX_E_NESTED_INPUT): the hint's own entry failed. Each link
+    // out of the project is taken back and its target keyed where it lies.
+    const targets: string[] = []
+    for (const [link, target] of leaving) {
+      entries.push(jsString(`!${taskGlobOf(relPosix(project, link))}`))
+      const t = relPosix(root, target)
+      const tDir = statSync(target, { throwIfNoEntry: false })?.isDirectory() === true
+      targets.push(jsString(tDir ? `${taskGlobOf(t)}/**` : taskGlobOf(t)))
+    }
+    through = `, workspaceFiles: [${targets.join(', ')}]`
+  }
+  return `, and, if the output depends on it, key it: \`inputs: { ${field}: [${entries.join(', ')}]${through} }\``
+}
+
+const WALK_SKIPPED = new Set(['node_modules', '.git', '.vx', '.yarn'])
+
+/** Entries a hint's walk of a directory looks at, at most: it runs on a failure only. */
+const LINK_WALK_ENTRIES = 10_000
+
+/**
+ * The links under `dir` whose real target lies outside `project` or in a
+ * project nested in it, with that target: a walk that never enters a link
+ * or `WALK_SKIPPED`, bounded.
+ */
+function linksLeaving(
+  dir: string,
+  project: string,
+  nested: readonly string[],
+): Array<[link: string, target: string]> {
+  const found: Array<[string, string]> = []
+  const stack = [dir]
+  let seen = 0
+  while (stack.length > 0 && seen < LINK_WALK_ENTRIES) {
+    const at = stack.pop()!
+    let names
+    try {
+      names = readdirSync(at, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const e of names) {
+      if (++seen > LINK_WALK_ENTRIES) break
+      const abs = path.join(at, e.name)
+      if (e.isDirectory()) {
+        // As the run's linked walk skips them (cache/linked-inputs.ts).
+        if (!WALK_SKIPPED.has(e.name)) stack.push(abs)
+        continue
+      }
+      if (!e.isSymbolicLink()) continue
+      let target: string
+      try {
+        target = realpathSync(abs)
+      } catch {
+        continue
+      }
+      if (!atOrUnder(target, project) || nested.some((n) => atOrUnder(target, n)))
+        found.push([abs, target])
+    }
+  }
+  return found.sort((a, b) => (a[0] < b[0] ? -1 : 1))
 }
 
 /**

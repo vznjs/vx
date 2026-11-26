@@ -638,7 +638,13 @@ there, a failed run per file) (`statedHiddenHint`,
 `sandbox-hidden-reads.unsafe.test.ts`). A path named through a link the
 sandbox does not hold (`shared -> ../lib/shared`, its project not granted)
 is hidden though its target is granted: the hint names the directory
-holding the link. A task that passes on its
+holding the link. Beside a cached task, the key entry for such a
+directory (`lk/**`) takes back each link in it that leaves the project
+(`!lk/lnk`) and keys the target in `inputs.workspaceFiles`: `lk/**` alone
+followed the link, and the run refused it (`VX_E_NESTED_INPUT`). The read
+grant names the target too: bwrap does not follow a link into a path it
+does not hold. A target holding the project, outside the workspace or
+walled is left out. A task that passes on its
 fallback (`existsSync('build.json')` false) is not caught: hidden, the
 file answers the same `ENOENT` every run, so the cache replays what the
 sandbox built, but the build differs from an unsandboxed one. macOS
