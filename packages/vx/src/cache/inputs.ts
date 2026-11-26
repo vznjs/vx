@@ -1086,7 +1086,13 @@ async function scanOutputs(
   if (positive.length === 0) return { files: [], absent: new Set() }
   const excluded = outputExcludes(positive, negative, 'project')
   const trees = asTrees(positive)
-  const absent = refuseDirLinkedOut(args.projectDir, trees, 'project', args.inputs)
+  const absent = refuseDirLinkedOut(
+    args.projectDir,
+    trees,
+    'project',
+    args.inputs,
+    args.nestedProjectDirs,
+  )
   const scanned = [
     ...(await scanUnion(
       trees,
@@ -1123,13 +1129,15 @@ export function committedFiles(
  * link. Refused in either scope: a head linked into `.git` or `.vx` (a clean
  * through `dist -> .git` deleted the repository), out of the root, or onto an
  * entry of the task's own `inputs` (`dist -> src` would clean every untracked
- * source).
+ * source). In project scope, also a head linked into a nested project, whose
+ * files the scan never walks.
  */
 function refuseDirLinkedOut(
   root: string,
   trees: readonly string[],
   scope: 'project' | 'workspace',
   inputs?: OwnInputs,
+  nestedDirs: readonly string[] = [],
 ): Set<string> {
   // The heads found absent: the scan skips them without asking again.
   const absent = new Set<string>()
@@ -1171,6 +1179,16 @@ function refuseDirLinkedOut(
           `${at} is a symbolic link to ${real}, Git's or vx's metadata — vx never cleans, ` +
             'saves or restores declared outputs through a link into .git or .vx. Remove the ' +
             'link and re-run, or stop declaring outputs under it.',
+        )
+      }
+      // The scan never walks a nested project's files: the outputs would be
+      // saved empty and a hit would call the task done with them missing.
+      const nested = nestedDirs.find((d) => isInside(realOr(d), real))
+      if (nested !== undefined) {
+        throw new UserError(
+          `${at} is a symbolic link to ${real}, in the nested project ${nested} — vx never ` +
+            'cleans, saves or restores declared outputs through a link into another project. ' +
+            'Remove the link and re-run, or stop declaring outputs under it.',
         )
       }
       if (inputs !== undefined) refuseLinkedIntoInputs(at, real, inputs)
