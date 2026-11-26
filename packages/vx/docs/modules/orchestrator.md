@@ -3509,7 +3509,7 @@ a run explorer's record on this API and reads it back through a verb.
   teardowns end. A hook waiting on a live timer keeps the loop up, so
   that drain never comes: any signal exit names each stage hook still
   awaited (`vx: the run stopped on SIGINT while it waited on plugin 'p'
-  (key)`), never a task's `execute` or a remote cache call in flight. A plugin whose own `setup` threw is not
+(key)`), never a task's `execute` or a remote cache call in flight. A plugin whose own `setup` threw is not
   torn down. Its `ctx.on` handlers and telemetry
   sinks are released just before `teardown()`, so it hears nothing after
   it, a server vx keeps in the foreground included (C-66). (The older `eventSink` seam is gone since
