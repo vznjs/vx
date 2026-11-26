@@ -612,10 +612,17 @@ function splitDirs(
   for (const d of emptyDirs) {
     const rel = relPosix(root, d)
     if (heldKeys.has(fold(`${rel}/`))) continue
-    if (heldKeys.has(fold(rel))) blocking.push(rel)
+    if (heldKeys.has(fold(rel)) || underHeldFile(fold(rel), heldKeys)) blocking.push(rel)
     else stale.push(rel)
   }
   return { blocking, stale }
+}
+
+/** Whether a path the entry holds as a file is a proper ancestor of `key`: `dist/out/x` under `dist/out`. */
+function underHeldFile(key: string, heldKeys: ReadonlySet<string>): boolean {
+  for (let i = key.indexOf('/'); i !== -1; i = key.indexOf('/', i + 1))
+    if (heldKeys.has(key.slice(0, i))) return true
+  return false
 }
 
 function notHeld(found: readonly string[], held: readonly string[]): string[] {
