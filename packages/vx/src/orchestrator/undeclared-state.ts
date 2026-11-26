@@ -11,11 +11,19 @@
 // exempt (`eslint --cache`, `tsc --noEmit --incremental`), and a file any
 // task of the project declares as its output is that task's.
 
-import { lstatSync, readFileSync, type Stats } from 'node:fs'
+import { lstatSync, readFileSync, realpathSync, type Stats } from 'node:fs'
 import path from 'node:path'
 import type { TaskConfig } from '../config.js'
 import { declaresInput, type GitFilesCache } from '../cache/index.js'
-import { outputMatcher, printable, relPosix, splitNegations, taskGlobOf } from '../util/index.js'
+import {
+  asTrees,
+  outputMatcher,
+  printable,
+  relPosix,
+  splitNegations,
+  staticPrefix,
+  taskGlobOf,
+} from '../util/index.js'
 
 /**
  * The files a miss stamped before its command, absolute: each one's stamp,
@@ -81,6 +89,18 @@ export function stampUndeclaredState(args: {
     ws: outputMatcher(splitNegations(c.outputs?.workspaceFiles ?? []).positive),
   }))
   const dir = relPosix(workspaceRoot, projectDir)
+  // Through a linked output head (`dist -> build` under `dist/**`), git
+  // lists the task's own output by its real name (`build/a.js`): stamped
+  // as state, every save but the first was withheld.
+  const heads = linkedHeads(
+    projectDir,
+    [config, ...args.projectTasks].flatMap((c) => c.outputs?.files ?? []),
+  )
+  const asOutput = (rel: string): string | undefined => {
+    for (const [real, link] of heads)
+      if (rel.startsWith(`${real}/`)) return `${link}${rel.slice(real.length)}`
+    return undefined
+  }
   const nested = new Set(args.nestedProjectDirs)
   const inNested = (abs: string): boolean => {
     for (let d = path.dirname(abs); d.length > projectDir.length; d = path.dirname(d))
@@ -102,6 +122,8 @@ export function stampUndeclaredState(args: {
     if (isDotenv(path.basename(abs))) continue
     const wsRel = relPosix(workspaceRoot, abs)
     if (outs.some((o) => o.own(rel) || o.ws(wsRel))) continue
+    const named = heads.length === 0 ? undefined : asOutput(rel)
+    if (named !== undefined && outs.some((o) => o.own(named))) continue
     if (declaresInput(config, rel, wsRel, false, true, dir)) continue
     const isIgnored = i < ignored.length
     const st = lstatOf(abs)
@@ -111,6 +133,41 @@ export function stampUndeclaredState(args: {
     out.set(abs, { at: stampFrom(st), ignored: isIgnored })
   }
   return out
+}
+
+/**
+ * Each link on a positive output glob's static prefix that lands on a
+ * directory in the project, as `[real, link]` project-relative paths.
+ */
+function linkedHeads(projectDir: string, outputs: readonly string[]): Array<[string, string]> {
+  const heads: Array<[string, string]> = []
+  let realProject: string
+  try {
+    realProject = realpathSync(projectDir)
+  } catch {
+    return heads
+  }
+  for (const tree of asTrees(splitNegations(outputs).positive)) {
+    let rel = ''
+    for (const part of staticPrefix(tree).split('/')) {
+      if (part === '' || part === '.') continue
+      rel = rel === '' ? part : `${rel}/${part}`
+      const st = lstatOf(path.join(projectDir, rel))
+      if (st?.isSymbolicLink() === true) {
+        let real: string
+        try {
+          real = realpathSync(path.join(projectDir, rel))
+        } catch {
+          break
+        }
+        const to = relPosix(realProject, real)
+        if (to !== '' && !to.startsWith('../') && !path.isAbsolute(to)) heads.push([to, rel])
+        break
+      }
+      if (st?.isDirectory() !== true) break
+    }
+  }
+  return heads
 }
 
 /** `.env`, `.env.local`, `.env.production.local` and the like; not code (`.env.d.ts`). */

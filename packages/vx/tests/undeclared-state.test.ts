@@ -7,7 +7,7 @@
 // stand-in: it emits a source only when the state's record of it differs,
 // and rewrites the state only when it emitted.
 
-import { readdir, rm, writeFile } from 'node:fs/promises'
+import { readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { run } from './helpers/orchestrator.js'
@@ -426,6 +426,38 @@ it.each([
     expect(await readdir(path.join(app, 'dist'))).toEqual(['a.txt'])
     expect(second.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', undefined]])
     expect(fx.log.join('\n')).toContain(`app#build: ${state} changed while the task ran`)
+  },
+  TIMEOUT,
+)
+
+// Through a linked output head (`dist -> build` under `dist/**`), git lists
+// the task's own output as `build/a.js`: stamped as undeclared state, every
+// miss after the first was not saved, so the task never cached again.
+it(
+  'a task writing its outputs through a linked output head is saved on every miss',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-undeclared-link-' })
+    made.push(root)
+    const app = await addProject(root, 'app', {
+      files: { 'src/a.txt': 'a', '.gitignore': 'build/a.txt\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'mkdir -p build && cp src/a.txt build/a.txt' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true,
+      } } }`,
+    })
+    await symlink('build', path.join(app, 'dist'))
+    gitInitCommit(root)
+    const fx = { root, log: [] as string[], err: [] as string[] }
+    const opts = { cwd: root, tasks: ['build'], log: silentLogger(fx) }
+    for (const v of ['a', 'b', 'c']) {
+      await writeFile(path.join(app, 'src/a.txt'), v)
+      const r = await run(opts)
+      expect([v, r.outcomes.map((o) => [o.status, o.cache?.saved])]).toEqual([
+        v,
+        [['success', true]],
+      ])
+    }
+    expect(fx.log.join('\n')).not.toContain('neither input nor output')
   },
   TIMEOUT,
 )
