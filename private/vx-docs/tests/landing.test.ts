@@ -195,44 +195,26 @@ describe('the landing page', () => {
   })
 
   // What matters (M 2026-11-25: Distributed task execution, cache,
-  // history, speed, conformance), each figure read from the site's data
-  // and linked to its proof; never a speed multiple (2026-10-12).
-  it('leads with the five things that matter, each linked to its proof', () => {
+  // history, speed, conformance), each linked to its proof; words only,
+  // no figure (M 2026-11-26: "No number on strip").
+  it('leads with the five things that matter, in words, each linked to its proof', () => {
     const specs = [
       ...stage.matchAll(
-        /<li[^>]*>\s*<a href="([^"]*)">\s*<small>([\s\S]*?)<\/small>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g,
+        /<li[^>]*>\s*<a href="([^"]*)">\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g,
       ),
     ]
-    const vx = RESULTS.scores['vx']!
-    const n = (x: number): string => x.toLocaleString('en-US')
-    expect(specs.map((m) => [m[1], text(m[2]!), text(m[3]!), text(m[4]!)])).toEqual([
+    expect(specs.map((m) => [m[1], text(m[2]!), text(m[3]!)])).toEqual([
       [
         `${BASE}docs/distributed-task-execution/`,
         'Distributed task execution',
-        '1 run',
-        'over every worker your CI starts',
+        'one run over every worker your CI starts',
       ],
-      [
-        `${BASE}docs/caching/`,
-        'Cache',
-        n(vx['cache']!.can - vx['cache']!.pass),
-        `issues in ${n(vx['cache']!.of)} cache cases`,
-      ],
-      [`${BASE}cli/why/`, 'History', 'vx why', 'names what made a task run again'],
-      [
-        `${BASE}benchmarks/`,
-        'Speed',
-        FIGURES.get('vx.warm')!,
-        `${FIGURES.get('tasks')!} tasks, nothing changed`,
-      ],
-      [
-        `${BASE}conformance/`,
-        'Conformance',
-        n(vx['all']!.pass),
-        `of ${n(vx['all']!.of)} cases pass, ${n(vx['all']!.can - vx['all']!.pass)} issues`,
-      ],
+      [`${BASE}docs/caching/`, 'Cache', 'a hit leaves the disk as the real run would'],
+      [`${BASE}cli/why/`, 'History', 'vx why names what made a task run again'],
+      [`${BASE}benchmarks/`, 'Speed', 'nothing boots between vx and your command'],
+      [`${BASE}conformance/`, 'Conformance', 'every tool’s tests, run on every tool'],
     ])
-    expect(specs.map((m) => text(m[4]!)).join(' ')).not.toMatch(/\d\s*[×x]\b|fastest|faster/i)
+    expect(specs.map((m) => `${text(m[2]!)} ${text(m[3]!)}`).join(' ')).not.toMatch(/\d/)
   })
 
   // The graph is drawn once per layout, and every hook group is in the
