@@ -43,7 +43,7 @@ const names = metas.map((m) => m.name)
 /** The broken edges' first lines, or [] when the rules hold. */
 function broken(rules: DependencyRule[]): string[] {
   try {
-    checkDependencyRules(rules, names, tags, graph)
+    checkDependencyRules(rules, names, tags, graph, () => {})
     return []
   } catch (err) {
     const e = err as { code: string; message: string }
@@ -79,6 +79,29 @@ describe('checkDependencyRules', () => {
     expect(broken([{ from: 'tag:scope:shared', allow: ['tag:*'] }])).toEqual([
       "lib depends on util, which run.rules.dependencies[0] (from 'tag:scope:shared') does not allow",
     ])
+  })
+
+  it('a selector that selects no project is warned about, naming its field', () => {
+    // A typo (`tag:ap`) in a deny passed every edge and in a from checked
+    // nothing, with no word.
+    const said = (rules: DependencyRule[]): string[] => {
+      const out: string[] = []
+      checkDependencyRules(rules, names, tags, graph, (m) => out.push(m))
+      return out
+    }
+    expect(said([{ from: 'tag:type:app', deny: ['tag:type:ap'] }])).toEqual([
+      "run.rules.dependencies[0].deny[0] 'tag:type:ap' selects no project",
+    ])
+    expect(said([{ from: 'tag:type:ap', deny: ['tag:type:lib'] }])).toEqual([
+      "run.rules.dependencies[0].from 'tag:type:ap' selects no project",
+    ])
+    expect(
+      said([
+        { from: 'tag:type:ui', deny: ['*'] },
+        { from: 'app', allow: ['lib', 'ui', 'uti'] },
+      ]),
+    ).toEqual(["run.rules.dependencies[1].allow[2] 'uti' selects no project"])
+    expect(said([{ from: 'tag:type:*', deny: ['tool'] }])).toEqual([])
   })
 
   it('a name glob selects by project name', () => {

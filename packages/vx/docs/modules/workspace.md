@@ -939,6 +939,7 @@ export function checkDependencyRules(
   projects: readonly string[],
   tags: ReadonlyMap<string, readonly string[]>, // each project's config tags
   graph: PackageGraph, // built with the task edges
+  warn: (message: string) => void, // a selector that selects no project
 ): void
 ```
 
@@ -946,7 +947,8 @@ export function checkDependencyRules(
 (lock-only, 2026-10-13): for each project a rule's `from` selects,
 each `directDeps` entry must match an `allow` selector when `allow` is
 given, and no `deny` one. A selector is `tag:<glob>` or a name glob
-(`compileNameGlob`, `--filter`'s matcher).
+(`compileNameGlob`, `--filter`'s matcher). A selector that selects no
+project is passed to `warn`, not refused.
 
 `directDeps` is the adjacency `buildTaskGraph` walks for `'^name'`
 frontier expansion; `depsOf` / `dependentsOf` serve

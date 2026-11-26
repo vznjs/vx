@@ -362,6 +362,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         [...projects.keys()],
         new Map([...projects.values()].map((p) => [p.name, p.config.tags ?? []])),
         buildPackageGraph(out.all, taskEdgesFrom(projects)),
+        warn,
       )
     const rules = runRules(workspaceConfig)
     const nameOf = new Map(out.all.map((m) => [m.dir, m.name]))

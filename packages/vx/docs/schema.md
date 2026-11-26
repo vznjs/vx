@@ -3135,7 +3135,7 @@ interface CacheSettings {
 
 - `exclusiveOutputs: false`: the dependant adds to its upstream's tree (`caching.md` § Additive outputs). Two overlapping tasks with no edge are refused either way.
 - `dependencies: [{ from: 'tag:lib', deny: ['tag:app'] }]`: which workspace projects a project may depend on. Each rule is `{ from, allow?, deny? }`.
-- `dependencies` reads each project's direct dependencies: its `package.json` buckets and its tasks' cross-project `dependsOn`.
+- `dependencies` reads each project's direct dependencies: its tasks' cross-project `dependsOn`, and the `package.json` buckets a lockfile plugin (`@vzn/vx-lockfile`) reads.
 - `'tag:lib'` selects projects carrying the tag; `'web'` is a project name.
 - `'tag:scope:*'`, `'@acme/*'`: `*` matches any characters in either form.
 - `'./apps/*'`, `'{apps/web}'`, `'!x'`, `'x...'`, `'...x'`, `'x[main]'` or `' web '` is refused, naming the field (`run.rules.dependencies[0].deny[1]`).
@@ -3144,6 +3144,8 @@ interface CacheSettings {
 - A project no rule selects is free. An untagged dependency matches no `tag:` selector.
 - `{ from: 'tag:lib' }` with neither `allow` nor `deny`, or with `deny: []` and no `allow`, is refused: it checks nothing.
 - `allow: []` allows no dependency.
+- A selector that selects no project gets a `vx lock` warning naming its field: `run.rules.dependencies[0].deny[0] 'tag:ap' selects no project`.
+- Why: a typo in a `deny` would pass every edge. It is not refused, since a rule may name a tag no project carries yet.
 - A broken edge refuses the lock with `VX_E_DEPENDENCY_RULE`, every broken edge on its own line: `lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies`.
 
 </div>
