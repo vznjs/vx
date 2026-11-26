@@ -215,19 +215,23 @@ async function resolveTarget(
     // A bare name reads only its own task's rows: the DISTINCT over every
     // pair sorted the whole history (24 of 26 ms at 58k rows), and its list
     // serves only the miss's suggestions below.
-    const matches = (
-      db
-        .query('SELECT DISTINCT project FROM main.runs WHERE task = ? ORDER BY project')
-        .all(target) as {
-        project: string
-      }[]
-    ).map((r) => `${r.project}#${target}`)
+    // A project whose rows are all skipped never ran it: `b#build`, blocked
+    // by a failed `a#build`, made "build" read as run in both.
+    const rows = db
+      .query(
+        `SELECT project, MAX(status <> 'skipped') AS ran FROM main.runs WHERE task = ?
+         GROUP BY project ORDER BY project`,
+      )
+      .all(target) as { project: string; ran: number }[]
+    const all = rows.map((r) => `${r.project}#${target}`)
+    const ran = rows.filter((r) => r.ran === 1).map((r) => `${r.project}#${target}`)
+    const matches = ran.length > 0 ? ran : all
     // Asked even when no project ran it: the cwd project's own that never
     // ran read as a name nobody declares.
     const here = await cwdProject()
     if (here !== null) {
       const own = `${here}#${target}`
-      if (matches.includes(own)) return own
+      if (all.includes(own)) return own
       // `vx run build` here runs this project's own: another project's
       // runs were explained in its place, unsaid.
       const kind = await declaresId(own)
