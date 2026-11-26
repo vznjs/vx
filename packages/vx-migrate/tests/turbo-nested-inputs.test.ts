@@ -42,13 +42,18 @@ describe('turbo(): a nested workspace package', () => {
 })
 
 describe('turbo-map: a nested workspace package', () => {
-  it('re-anchors each glob that reaches it, its negations with it', async () => {
+  it('re-anchors each glob that reaches it, its negations with it, and takes it back', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'vx-turbo-nested-'))
     try {
       await writeFile(
         path.join(dir, 'turbo.json'),
         JSON.stringify({
-          tasks: { a: {}, b: { inputs: ['src/**', '!**/*.md'] }, c: { inputs: ['lib/*.ts'] } },
+          tasks: {
+            a: {},
+            b: { inputs: ['src/**', '!**/*.md'] },
+            c: { inputs: ['lib/*.ts'] },
+            d: { inputs: ['src/n/x.ts', 'm/*.ts', 'y.ts'] },
+          },
         }),
       )
       const meta = (rel: string, scripts: object): PackageMeta => ({
@@ -60,26 +65,28 @@ describe('turbo-map: a nested workspace package', () => {
       const m = await mapTurboWorkspace(
         dir,
         [
-          meta('p', { a: 'a', b: 'b', c: 'c' }),
+          meta('p', { a: 'a', b: 'b', c: 'c', d: 'd' }),
           meta('p/src/n', {}),
           meta('p/src/n/deep', {}),
           meta('p/m', {}),
         ],
         { splice: (_k, v) => v, persistentTodo: 'PERSIST' },
       )
-      const ws = Object.fromEntries(
+      const inputs = Object.fromEntries(
         m.projects
           .find((p) => p.name === 'p')!
-          .tasks.map((t) => [
-            t.name,
-            (t.task as { inputs: { workspaceFiles?: unknown } }).inputs.workspaceFiles,
-          ]),
+          .tasks.map((t) => [t.name, (t.task as { inputs: object }).inputs]),
       )
-      expect(ws).toEqual({
-        a: ['p/**/*'],
-        b: ['p/src/n/**', '!p/**/*.md'],
-        c: undefined,
+      expect(inputs).toMatchObject({
+        a: { workspaceFiles: ['p/**/*'] },
+        b: {
+          files: ['src/**', '!**/*.md', 'package.json', '!src/n/**'],
+          workspaceFiles: ['p/src/n/**', '!p/**/*.md'],
+        },
+        c: { files: ['lib/*.ts', 'package.json'] },
+        d: { files: ['y.ts', 'package.json'], workspaceFiles: ['p/src/n/x.ts', 'p/m/*.ts'] },
       })
+      expect(inputs['c']).not.toHaveProperty('workspaceFiles')
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
