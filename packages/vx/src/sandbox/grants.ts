@@ -83,6 +83,37 @@ export function readGrantLinks(
 }
 
 /**
+ * Linux: the links the dependencies' output reads are spelled through in
+ * the workspace (`out -> real` under `out/**`), hop by hop, for
+ * `readGrantLinks`. SRT binds a read at the path it resolves to, and the
+ * link lay in the walled project, so the dependant met ENOENT at the
+ * outputs it depends on. Only the directories are walked: a file that is
+ * a link is never bound alone (`outputBinds`).
+ */
+export function dependencyReadLinks(
+  reads: readonly string[],
+  workspaceRoot: string,
+): Array<{ at: string; text: string }> {
+  if (process.platform !== 'linux' || reads.length === 0) return []
+  const out: Array<{ at: string; text: string }> = []
+  const seen = new Set<string>()
+  for (const read of reads) {
+    const rel = path.relative(workspaceRoot, path.dirname(read))
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) continue
+    let at = workspaceRoot
+    for (const part of rel.split(path.sep)) {
+      at = path.join(at, part)
+      if (seen.has(at)) continue
+      seen.add(at)
+      if (lstatSync(at, { throwIfNoEntry: false })?.isSymbolicLink() !== true) continue
+      for (const l of readLinkSpellings(path.relative(workspaceRoot, at), workspaceRoot, false))
+        if (!out.some((o) => o.at === l.at)) out.push(l)
+    }
+  }
+  return out
+}
+
+/**
  * Linux: the links a read grant passes through, hop by hop (`src -> lib2
  * -> lib` is both), each at its real spelling: those inside the project,
  * and under `hermetic` those outside it too, where the host's root is

@@ -4,7 +4,7 @@
 // (through the executor) and the persistent path (spawned in execute-task).
 
 import { existsSync, readdirSync } from 'node:fs'
-import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { repoFacts, repoRootOf } from '../cache/index.js'
@@ -21,7 +21,7 @@ import {
   nameDir,
 } from './paths.js'
 import { initSandbox, probeSandbox, resetSandbox } from './session.js'
-import { resolveSandboxConfig } from './grants.js'
+import { dependencyReadLinks, resolveSandboxConfig } from './grants.js'
 import { thrownReason } from './probe.js'
 import type { TaskNode } from '../graph/index.js'
 import {
@@ -298,6 +298,11 @@ export async function sandboxRequestFor(
     await sweepPlaceholders(placeholders)
     throw err
   }
+  const depLinks = dependencyReadLinks(dependencyOutputs, workspaceRoot).filter(
+    (l) => !config.linkedReads?.some((o) => o.at === l.at),
+  )
+  if (depLinks.length > 0)
+    config = { ...config, linkedReads: [...(config.linkedReads ?? []), ...depLinks] }
   const request: NonNullable<ExecuteRequest['sandbox']> = {
     // Only what the task declared, plus node_modules and the outputs of
     // the tasks its key folds (`dependencyReads`). Write paths are
@@ -403,7 +408,7 @@ export async function dependencyReads(
           continue
         }
         const abs = path.join(base, head)
-        const found = await outputBinds(abs, head, isOutput)
+        const found = await outputBinds(abs, head, isOutput, base)
         if (found === undefined) continue
         found.binds.forEach(add)
         if (found.dir) reported.add(abs)
@@ -460,18 +465,32 @@ export interface DependencyReads {
  * directory every file under it is, else its children's binds. `whole`
  * says it was bound itself; `undefined` is a missing path. A link is a
  * leaf: bound alone it would grant its target, which may be no output, so
- * it is granted only inside a directory bound whole.
+ * it is granted only inside a directory bound whole. The glob's head is the
+ * exception: `out -> real` under `out/**` makes every file in `real` an
+ * output, so a head linked to a directory inside `base` is walked as one.
  */
 async function outputBinds(
   abs: string,
   rel: string,
   isOutput: (rel: string) => boolean,
+  base: string,
 ): Promise<{ binds: string[]; whole: boolean; dir: boolean } | undefined> {
   const st = await lstat(abs).catch(() => undefined)
   if (st === undefined) return undefined
-  if (st.isDirectory()) return { ...outputDirBinds(abs, rel, isOutput), dir: true }
+  if (st.isDirectory() || (st.isSymbolicLink() && (await linkedDirIn(abs, base))))
+    return { ...outputDirBinds(abs, rel, isOutput), dir: true }
   const whole = isOutput(rel)
   return { binds: whole && !st.isSymbolicLink() ? [abs] : [], whole, dir: false }
+}
+
+/** Whether the link at `abs` leads to a directory strictly inside `base`. */
+async function linkedDirIn(abs: string, base: string): Promise<boolean> {
+  // quiet: a dangling link or a loop leads nowhere to read
+  const real = await realpath(abs).catch(() => undefined)
+  if (real === undefined) return false
+  const home = toRealPath(base)
+  if (real === home || !atOrUnder(real, home)) return false
+  return (await stat(real).catch(() => undefined))?.isDirectory() === true
 }
 
 /** `outputBinds` for a directory. */

@@ -5,7 +5,7 @@
 // dependency's sources, and the outputs of a task it does not depend on,
 // stay behind the project wall.
 import { realpathSync, statSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { mkdir, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { taskShell } from '../src/util/index.js'
@@ -162,6 +162,53 @@ describe.skipIf(!available)('a sandboxed task reads the outputs it depends on', 
         ...(r.ok ? {} : { refused, log: fixture.log }),
       }).toEqual({ ok: true, hinted: false })
       expect(statSync(tool).mtimeMs).toBe(before)
+    },
+    TIMEOUT,
+  )
+
+  // `out -> real` under `out/**`: the walk met the link and bound nothing
+  // (a link is a leaf), and the link itself lay in the walled project, so
+  // the dependant met ENOENT at the outputs it depends on.
+  it(
+    'outputs declared through a linked directory are readable',
+    async () => {
+      await mkdir(path.join(fixture.root, 'packages', 'tools', 'real'), { recursive: true })
+      await symlink('real', path.join(fixture.root, 'packages', 'tools', 'out'))
+      expect(await peek(`dependsOn: ['tools#node'],`)).toEqual(['OUT', 'NOSRC', 'ROOT'])
+    },
+    TIMEOUT,
+  )
+
+  // Bound file by file (a file beside them is no output), the link above
+  // them is laid on its own: SRT bound only `real/bin/tool.txt`.
+  it(
+    'outputs bound one by one through a linked directory are readable',
+    async () => {
+      const tools = path.join(fixture.root, 'packages', 'tools')
+      await mkdir(path.join(tools, 'real'), { recursive: true })
+      await symlink('real', path.join(tools, 'out'))
+      await addProject(fixture.root, 'tools', {
+        files: { 'src/s.txt': 'SRC\n' },
+        config: `export default { tasks: { node: {
+          exec: { command: 'mkdir -p out/bin && echo OUT > out/bin/tool.txt && echo N > out/bin/n.md' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['out/**/*.txt'] }, cache: true,
+        } } }`,
+      })
+      const read = 'read t < ../tools/out/bin/tool.txt && echo "$t"'
+      await addProject(fixture.root, 'app', {
+        files: { 'src/a.txt': 'A\n' },
+        config: `export default { tasks: { use: {
+          exec: { command: ${JSON.stringify(read)}, sandbox: { allow: { read: ['.'] } } },
+          dependsOn: ['tools#node'],
+        } } }`,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['node', 'use'],
+        log: collectingLogger(fixture),
+      })
+      const said = fixture.log.flatMap((l) => l.split('\n')).map((l) => l.trim())
+      expect({ ok: r.ok, out: said.includes('OUT') }).toEqual({ ok: true, out: true })
     },
     TIMEOUT,
   )

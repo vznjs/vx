@@ -1432,6 +1432,18 @@ describe('dependencyReads binds only what the outputs take', () => {
     expect((await reads(['gen/**/*.js'])).reads).toEqual(['gen/js', 'gen/out.js', 'gen/sub/a.js'])
   })
 
+  // `out -> gen` under `out/**`: every file in `gen` is an output, and the
+  // dependant reads it as `out/...`. Out of the project, the link grants nothing.
+  it('a head linked to a directory in the project is walked; one leading out is not', async () => {
+    await symlink('gen', path.join(dir, 'out'))
+    expect(await reads(['out/**/*.js'])).toEqual({
+      reads: ['out/js', 'out/out.js', 'out/sub/a.js'],
+      reported: ['out'],
+    })
+    await symlink(path.dirname(dir), path.join(dir, 'up'))
+    expect(await reads(['up/**'])).toEqual({ reads: [], reported: [] })
+  })
+
   it('more one-by-one binds than the wrap holds is refused, naming the dependency', async () => {
     const many = path.join(dir, 'gen', 'many')
     await mkdir(many)

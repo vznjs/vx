@@ -1667,7 +1667,12 @@ export function mayWriteFingerprint(
   matches, so `*.tsbuildinfo` never grants the dependency's whole project.
   `reported` is each head walked, added to the request's `reportLinked`:
   a refused read there is a file beside the outputs. A link is bound only
-  inside a directory bound whole (alone, its target would be bound). Past
+  inside a directory bound whole (alone, its target would be bound),
+  save a glob's head linked to a directory in the dependency's project
+  (`out -> real` under `out/**`), walked as one. Each link the reads are
+  spelled through in the workspace is laid as a link
+  (`dependencyReadLinks`, through `readGrantLinks`): SRT bound `real`
+  alone, and the dependant met ENOENT at `out/`. Past
   `DEPENDENCY_BIND_BYTES` (64 KiB) of binds it throws a `UserError`
   naming the dependencies: each bind is two paths on the wrap, one
   argument to `sh -c` that holds 128 KiB on Linux, and 1,000 one-by-one
