@@ -5,7 +5,7 @@
 // run (an uncommitted workspace config: the next run found no workspace),
 // and a hit restored saved bytes over the current ones: the ignore and
 // attributes files and the lock are outside the key (#3532), so an edit to
-// them was reverted.
+// them was reverted. vx lock refuses `.vx/**` itself; `.v*/**` still reaches it.
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
@@ -23,7 +23,7 @@ it(
           tasks: {
             gen: {
               exec: { command: 'mkdir -p out && echo x > out/x' },
-              inputs: { files: ['package.json'] }, outputs: { files: ['out/**', '.vx/**'] }, cache: true,
+              inputs: { files: ['package.json'] }, outputs: { files: ['out/**', '.v*/**'] }, cache: true,
             },
           },
         }\n`,

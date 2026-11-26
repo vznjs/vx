@@ -4873,12 +4873,12 @@
       "cache": true
     },
     "test.bun.platform.shard-1": {
-      "description": "bun test --platform, shard 1 of 6 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --platform, shard 1 of 8 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 1 6 --platform)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 1 8 --platform)",
         "platforms": [
           "darwin-arm64"
         ],
@@ -4934,12 +4934,12 @@
       "cache": true
     },
     "test.bun.platform.shard-2": {
-      "description": "bun test --platform, shard 2 of 6 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --platform, shard 2 of 8 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 2 6 --platform)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 2 8 --platform)",
         "platforms": [
           "darwin-arm64"
         ],
@@ -4995,12 +4995,12 @@
       "cache": true
     },
     "test.bun.platform.shard-3": {
-      "description": "bun test --platform, shard 3 of 6 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --platform, shard 3 of 8 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 3 6 --platform)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 3 8 --platform)",
         "platforms": [
           "darwin-arm64"
         ],
@@ -5056,12 +5056,12 @@
       "cache": true
     },
     "test.bun.platform.shard-4": {
-      "description": "bun test --platform, shard 4 of 6 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --platform, shard 4 of 8 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 4 6 --platform)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 4 8 --platform)",
         "platforms": [
           "darwin-arm64"
         ],
@@ -5117,12 +5117,12 @@
       "cache": true
     },
     "test.bun.platform.shard-5": {
-      "description": "bun test --platform, shard 5 of 6 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --platform, shard 5 of 8 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 5 6 --platform)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 5 8 --platform)",
         "platforms": [
           "darwin-arm64"
         ],
@@ -5178,12 +5178,134 @@
       "cache": true
     },
     "test.bun.platform.shard-6": {
-      "description": "bun test --platform, shard 6 of 6 (dealt by scripts/test-shard.ts)",
+      "description": "bun test --platform, shard 6 of 8 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 6 6 --platform)",
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 6 8 --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache",
+            "CI": ""
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.platform.shard-7": {
+      "description": "bun test --platform, shard 7 of 8 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 7 8 --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_CLANG"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache",
+            "CI": ""
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ],
+            "unixSockets": true
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
+      "outputs": {
+        "files": []
+      },
+      "cache": true
+    },
+    "test.bun.platform.shard-8": {
+      "description": "bun test --platform, shard 8 of 8 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "BUN_RUNTIME_TRANSPILER_CACHE_PATH=\"${TMPDIR:-/tmp}/bun-transpiler\" bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 8 8 --platform)",
         "platforms": [
           "darwin-arm64"
         ],

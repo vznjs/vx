@@ -99,7 +99,8 @@ const OTHER_OUTPUTS = [
 ].map((g) => `!${g}`)
 // The macOS run's share: only the files whose outcome is the platform's
 // (`PLATFORM_TESTS` in scripts/test-shard.ts), a fifth of the suite's weight.
-export const PLATFORM_SHARD_COUNT = 6
+// Six ran about 95 s each on a Mac worker, and one passed the run's 2 min timeout.
+export const PLATFORM_SHARD_COUNT = 8
 export const PLATFORM_UNSAFE_SHARD_COUNT = 3
 // Bun's per-test 5 s default is a wall-clock budget: a test that spawns vx
 // and git took 457 ms idle and passed 5 s on a packed, traced DTE worker

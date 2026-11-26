@@ -524,6 +524,43 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     }
   })
 
+  // vx never saves, cleans or restores these (`OUTPUT_NEVER`): `.vx/x`
+  // loaded, the command wrote it, and the task passed saving an empty entry;
+  // `vx.lock.json` overwrote the lock's review copy.
+  it('.git/, .vx/ and vx.lock.json as outputs are refused', () => {
+    const out = (files: string[], workspaceFiles?: string[]) =>
+      taskRefusal({
+        exec: { command: 'x' },
+        inputs: { files: [] },
+        outputs: { files, ...(workspaceFiles ? { workspaceFiles } : {}) },
+        cache: true,
+      })
+    const why = (field: string, g: string, own: string) =>
+      `${CFG}: tasks.t.outputs.${field}: "${g}" is ${own}, which vx never saves, cleans or ` +
+      `restores, so the task would save nothing — write its files to another directory`
+    for (const [g, own] of [
+      ['.vx/x', 'under .vx/'],
+      ['./.vx/**', 'under .vx/'],
+      ['.git/hooks/pre-commit', 'under .git/'],
+      ['.git', 'under .git/'],
+      ['{out,.vx}/**', 'under .vx/'],
+      ['vx.lock.json', "vx.lock.json, the lock's review copy"],
+    ] as const) {
+      expect(out(['dist/**', g])).toBe(why('files', g, own))
+    }
+    for (const [g, own] of [
+      ['.vx/out', 'under .vx/'],
+      ['packages/a/vx.lock.json', "vx.lock.json, the lock's review copy"],
+    ] as const) {
+      expect(out(['dist/**'], [g])).toBe(why('workspaceFiles', g, own))
+    }
+    // Controls: a build's own .git or lock deeper down, neighbours, a take-back.
+    for (const g of ['dist/.git/**', 'dist/vx.lock.json', '.vxrc', '.github/x', '!.vx/**']) {
+      expect(out(['dist/**', g])).toBeNull()
+    }
+    expect(out(['dist/**'], ['packages/a/.vx/x', 'out/**'])).toBeNull()
+  })
+
   // `outputs: ['**']` loaded, and the clean before the run deleted the
   // project's source, package.json and vx.config while the run reported
   // success; the message for '.' had suggested `**` (item 1002).

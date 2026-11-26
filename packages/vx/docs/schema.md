@@ -1846,6 +1846,8 @@ each path.
   fails saying a folder was declared and a file was written.
 - `./dist/**` is `dist/**`: a leading `./` is dropped.
 - `.` alone is refused: write `**`.
+- `.vx/x`, `.git/x` and `vx.lock.json` are refused: vx never saves, cleans
+  or restores them, so the task would save nothing.
 - `dist/`, `coverage/`, `.next/`: outputs ignore `.gitignore`, so
   gitignored build folders are saved as usual.
 - `**/*.js` never saves, restores or cleans the project's installed

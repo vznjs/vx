@@ -1233,6 +1233,7 @@ function validateOutputs(
           `artifacts reserve for outputs.workspaceFiles — write the task's files to another directory`,
       )
     }
+    assertNotVxOwned(g, `${where}.outputs.files`, 'project')
     // A `!` entry takes a path back from the outputs: it is not cleaned, saved
     // or restored, and it stays an input.
     assertNotDoubleNegated(g, `${where}.outputs.files`)
@@ -2194,6 +2195,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
     assertPosixGlob(g, where, 'workspace-root')
     assertNoForeignToken(g, where)
     if (negation) assertInputGlob(g, where)
+    else assertNotVxOwned(g, where, 'workspace')
     if (namesDirItself(g)) {
       throw new UserError(
         `${where}: "${g}" names the workspace root itself and selects nothing — use "**" for everything under it`,
@@ -2211,6 +2213,30 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
 }
 
 const OUTPUT_LOST = 'the file is never saved or restored'
+
+/**
+ * Refuse an output rooted where vx never saves, cleans or restores
+ * (`OUTPUT_NEVER` in util/paths.ts): `.vx/x` loaded, the command wrote it,
+ * and the task passed saving an empty entry; `vx.lock.json` overwrote the
+ * lock's review copy. A workspace output reaches every project's lock.
+ */
+function assertNotVxOwned(g: string, where: string, scope: 'project' | 'workspace'): void {
+  if (g.startsWith('!')) return
+  const own = braceAlternatives(normalizeGlob(g))
+    .map((alt) => {
+      const segs = alt.replace(/^\.\//, '').split('/')
+      if (segs[0] === '.vx' || segs[0]!.toLowerCase() === '.git') return `under ${segs[0]}/`
+      return segs.at(-1) === 'vx.lock.json' && (scope === 'workspace' || segs.length === 1)
+        ? "vx.lock.json, the lock's review copy"
+        : undefined
+    })
+    .find((o) => o !== undefined)
+  if (own === undefined) return
+  throw new UserError(
+    `${where}: "${g}" is ${own}, which vx never saves, cleans or restores, so the task would ` +
+      `save nothing — write its files to another directory`,
+  )
+}
 
 /**
  * An output list of only `!` entries selects nothing: the task saves and
