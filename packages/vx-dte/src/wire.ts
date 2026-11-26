@@ -348,6 +348,8 @@ export async function join(
    * closed and says so.
    */
   const heard = new Map<string, number>()
+  /** When `listen` last ran: a longer gap than its interval is this process's own stall. */
+  let listenedAt = performance.now()
   /** Workers the orchestrator lost for their silence (`listen`). */
   const silenced = new Set<string>()
   /** `quiet`: a beat or a resend, which waits on no answer: the relay says only a failure. */
@@ -455,10 +457,16 @@ export async function join(
    * answers with orders and acks only. Either loses a peer quiet `LOST_BEATS`.
    */
   const listen = (): void => {
+    const now = performance.now()
+    // Time this process did not run (a GC, a long synchronous call, a starved
+    // CPU) is not its peers' silence: their frames wait unread in its socket.
+    // A 2 s stall on a 500 ms heartbeat lost every peer at once.
+    const paused = now - listenedAt - heartbeatMs / 10
+    listenedAt = now
+    if (paused > heartbeatMs / 2) for (const [peer, at] of heard) heard.set(peer, at + paused)
     // With no socket nobody is heard: the redial or rejoin decides.
     if (socket?.open !== true) return
     resend(RESEND_BEATS * heartbeatMs)
-    const now = performance.now()
     // With no peer, the relay is asked instead: a frame it answers.
     if (heard.size === 0 && socket?.open === true && now - socket.heardAt >= heartbeatMs)
       socket.ask()
@@ -659,6 +667,7 @@ export async function join(
   // Every tenth of a heartbeat, so a peer quiet `LOST_BEATS` is lost within
   // two heartbeats (4 s on the default) of its last word, and a quiet
   // worker speaks within a tenth of its heartbeat.
+  listenedAt = performance.now()
   const listening = setInterval(listen, heartbeatMs / 10)
   listening.unref()
   if (role === 'worker') heard.set('orchestrator', performance.now())

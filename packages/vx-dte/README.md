@@ -1024,6 +1024,8 @@ a worker's when it is done.
   over.
 - Either side hearing nothing from the other for 3 heartbeats (6 s on the
   default) loses it. The rest follows from that.
+- Time its own process did not run (a GC, a long synchronous call, a
+  starved CPU) does not count: the other's frames wait unread meanwhile.
 - A worker that said nothing for half of that (3 s) sends its report.
 - The orchestrator never speaks on a timer: only orders, and the acks of
   what it heard.
