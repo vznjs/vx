@@ -1618,6 +1618,12 @@ function nestedInputs(root: string, projects: readonly TurboMappedProject[]): vo
       const files = inputs?.['files']
       if (inputs === undefined || !Array.isArray(files)) continue
       const extra: string[] = []
+      // Core refuses a file glob that reaches a nested package unless it opens
+      // on `**` (better-auth's smoke `test/**` over its `test/fixtures/*`
+      // packages): one wholly inside it moves to workspaceFiles, any other
+      // takes the package back.
+      const inside = new Set<string>()
+      const back = new Set<string>()
       for (const g of files) {
         if (typeof g !== 'string') continue
         const neg = g.startsWith('!')
@@ -1627,12 +1633,18 @@ function nestedInputs(root: string, projects: readonly TurboMappedProject[]): vo
         else
           for (const n of nested) {
             const under = reanchor(body, n)
-            if (under !== null) extra.push(`${neg ? '!' : ''}${own}/${n}/${under}`)
+            if (under === null) continue
+            extra.push(`${neg ? '!' : ''}${own}/${n}/${under}`)
+            if (neg) continue
+            const lit = body.split('/').slice(0, n.split('/').length)
+            if (lit.every(isLiteral) && lit.join('/') === n) inside.add(g)
+            else back.add(`!${n}/**`)
           }
       }
       if (!extra.some((g) => !g.startsWith('!'))) continue
       const ws = inputs['workspaceFiles']
       inputs['workspaceFiles'] = uniq([...(Array.isArray(ws) ? ws : []), ...extra])
+      inputs['files'] = uniq([...files.filter((g) => !inside.has(g as string)), ...back])
     }
   })
 }
