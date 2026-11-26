@@ -700,10 +700,35 @@ describe('a literal input a negation takes back (X-31)', () => {
     )
     expect(cacheRefusal({ files: [] }, { files: ['dist/', '!dist/cache/**'] })).toBeNull()
   })
+  // `['src/**', '!src/**']` keyed no file, yet only a list of negations
+  // alone was refused: an edit to src replayed a stale hit.
+  it('is refused for a glob wholly inside a negated tree', () => {
+    const glob = (g: string, by: string, where = 'tasks.t.inputs.files') =>
+      `${CFG}: ${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
+      `the list, so none of its files enters the key. Narrow the negation so it leaves "${g}".`
+    expect(cacheRefusal({ files: ['src/**', '!src/**'] })).toBe(glob('src/**', 'src/**'))
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/**', 'src/gen/**/k.ts'] })).toBe(
+      glob('src/gen/**/k.ts', 'src/gen/**'),
+    )
+    expect(cacheRefusal({ files: ['./src/*.ts', '!src'] })).toBe(glob('./src/*.ts', 'src'))
+    expect(cacheRefusal({ files: ['**/*.ts', '!**'] })).toBe(glob('**/*.ts', '**'))
+    expect(cacheRefusal({ files: [], workspaceFiles: ['cfg/*.json', '!cfg/**'] })).toBe(
+      glob('cfg/*.json', 'cfg/**', 'tasks.t.inputs.workspaceFiles'),
+    )
+    expect(cacheRefusal({ files: [] }, { files: ['dist/**', '!dist/**'] })).toBe(
+      `${CFG}: tasks.t.outputs.files: "dist/**" is taken back by "!dist/**" — a \`!\` entry ` +
+        `subtracts wherever it sits in the list, so none of its files is saved or restored. ` +
+        `Narrow the negation so it leaves "dist/**".`,
+    )
+  })
   it('CONTROL: a directory literal a negation trims, and a glob, load', () => {
     expect(cacheRefusal({ files: ['src', '!src/gen/**'] })).toBeNull()
     expect(cacheRefusal({ files: ['src/**/*.ts', '!src/gen/**'] })).toBeNull()
     expect(cacheRefusal({ files: ['src/gen/keep.ts', '!src/gen/other.ts'] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/**', '!src/*'] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/*.ts'] })).toBeNull()
+    expect(cacheRefusal({ files: ['srcx/**', '!src/**'] })).toBeNull()
+    expect(cacheRefusal({ files: ['{src,lib}/**', '!src/**'] })).toBeNull()
   })
 })
 
