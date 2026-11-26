@@ -51,23 +51,32 @@ const faults = { on: false, next: rng(SEED), seen: [] as string[] }
  * Jobs that miss "at once": while `jobs` is set, a PUT waits until each of
  * that many jobs has asked for its hash, by GET and by check. Unheld, a job
  * slow to start on a loaded machine asked after another had uploaded, and hit.
+ * A job is told by its `vx-test-job` header: counted by asks, one job's retried
+ * GET (a 500 ms timeout on a loaded runner) stood in for a job yet to ask, and
+ * that job hit what the early PUT stored.
  */
 const race = {
   jobs: 0,
-  asked: new Map<string, number>(),
+  asked: new Map<string, Map<string, Set<string>>>(),
   waiting: [] as { hash: string; go: () => void }[],
 }
 
-function asked(hash: string): void {
-  race.asked.set(hash, (race.asked.get(hash) ?? 0) + 1)
-  // Each job asks for a hash twice: its prefetch's GET and its check.
-  const ready = (h: string) => (race.asked.get(h) ?? 0) >= race.jobs * 2
+const ready = (hash: string): boolean => {
+  const by = race.asked.get(hash)
+  if (by === undefined || by.size < race.jobs) return false
+  return [...by.values()].every((kinds) => kinds.size === 2)
+}
+
+function asked(hash: string, job: string, kind: string): void {
+  const by = race.asked.get(hash) ?? new Map<string, Set<string>>()
+  race.asked.set(hash, by)
+  by.set(job, (by.get(job) ?? new Set()).add(kind))
   for (const w of race.waiting.filter((w) => ready(w.hash))) w.go()
   race.waiting = race.waiting.filter((w) => !ready(w.hash))
 }
 
 function heard(hash: string): Promise<void> {
-  if ((race.asked.get(hash) ?? 0) >= race.jobs * 2) return Promise.resolve()
+  if (ready(hash)) return Promise.resolve()
   return new Promise((go) => race.waiting.push({ hash, go }))
 }
 const saved = { ...Bun.env }
@@ -116,9 +125,11 @@ beforeAll(async () => {
       faults.seen.push(`${kind}:${fault}`)
       if (race.jobs > 0) {
         const hash = p.slice('/v1/artifacts/'.length)
-        if (kind === 'get' && p.startsWith('/v1/artifacts/')) asked(hash)
+        const job = req.headers.get('vx-test-job') ?? ''
+        if (kind === 'get' && p.startsWith('/v1/artifacts/')) asked(hash, job, 'get')
         if (kind === 'check')
-          for (const h of ((await req.clone().json()) as { hashes: string[] }).hashes) asked(h)
+          for (const h of ((await req.clone().json()) as { hashes: string[] }).hashes)
+            asked(h, job, 'check')
         if (kind === 'put') await heard(hash)
       }
       if (fault === '500' || fault === '503' || fault === '429') {
@@ -232,11 +243,12 @@ afterAll(async () => {
 })
 
 /** The workspace's plugin: short deadlines, so a stalled fault costs the fuzz little. */
-function writeWorkspace(dir: string, uploadTimeoutMs: number): Promise<number> {
+function writeWorkspace(dir: string, uploadTimeoutMs: number, job = ''): Promise<number> {
+  const headers = job === '' ? '' : `, headers: { 'vx-test-job': ${JSON.stringify(job)} }`
   return Bun.write(
     path.join(dir, '.vx/workspace.mjs'),
     `import { vxCache } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
-      `export default { plugins: [vxCache({ url: ${JSON.stringify(url)}, issuer: ${JSON.stringify(GITHUB)}, repository: ${JSON.stringify(REPO)}, timeoutMs: 500, uploadTimeoutMs: ${uploadTimeoutMs}, retries: 1 })] }\n`,
+      `export default { plugins: [vxCache({ url: ${JSON.stringify(url)}, issuer: ${JSON.stringify(GITHUB)}, repository: ${JSON.stringify(REPO)}, timeoutMs: 500, uploadTimeoutMs: ${uploadTimeoutMs}, retries: 1${headers} })] }\n`,
   )
 }
 
@@ -338,7 +350,7 @@ it('jobs that miss the same keys at once all upload; a later job restores one wh
     await writeFile(path.join(root, p, 'src', 'in.txt'), `${p} racing\n`)
   const racers = await jobs(6)
   // A held upload waits on the slowest job's lookups, not on its own deadline.
-  for (const d of racers) await writeWorkspace(d, 60_000)
+  for (const [i, d] of racers.entries()) await writeWorkspace(d, 60_000, String(i))
   const before = blobs.size
   try {
     race.jobs = racers.length
