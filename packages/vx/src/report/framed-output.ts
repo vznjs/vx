@@ -1063,19 +1063,25 @@ export function formatTaskSkippedLine(
   blocks?: number,
 ): string {
   const why = skippedReason(skip)
-  const suffix = why === '' ? '' : ` ${paint('muted', `• ${why}`, colors)}`
-  return (
-    formatTaskRow(
-      null,
-      'skipped',
-      'warn',
-      '',
-      '',
-      paintTaskId(node, colors),
-      colors,
-      blocks === undefined ? {} : { blocks: String(blocks) },
-    ) + suffix
+  const row = formatTaskRow(
+    null,
+    'skipped',
+    'warn',
+    '',
+    '',
+    paintTaskId(node, colors),
+    colors,
+    blocks === undefined ? {} : { blocks: String(blocks) },
   )
+  if (why === '') return row
+  // Beside a row a narrow terminal already fit, `• blocked by …` ran past its
+  // edge and wrapped: there it goes under the row, as a dim note does.
+  const last = row.slice(row.lastIndexOf('\n') + 1)
+  const width = Bun.stringWidth(Bun.stripANSI(last))
+  const note = `• ${why}`
+  if (colors.columns === undefined || width + 1 + Bun.stringWidth(note) <= colors.columns)
+    return `${row} ${paint('muted', note, colors)}`
+  return `${row}\n${ROW_LEAD}${paint('muted', note, colors)}`
 }
 
 /**

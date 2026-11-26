@@ -319,6 +319,25 @@ describe('the compact one-liners', () => {
     const emptyDim = '\x1b[2m\x1b[0m' // counted by split: a regex literal here trips no-control-regex
     expect(skipped.split(emptyDim).length - 1).toBe(0)
   })
+
+  // At 50 columns the row fit by cutting the name, then `• blocked by …` ran
+  // past the edge and the terminal wrapped it mid-word.
+  it('a skipped note too wide beside its row goes under it', () => {
+    const at = (columns: number | undefined) =>
+      formatTaskSkippedLine(
+        node('packages/b#build', 'true'),
+        { enabled: false, columns },
+        {
+          blockedBy: 'packages/a#build',
+        },
+      ).split('\n')
+    for (const line of at(50)) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(50)
+    expect(at(50)).toEqual([
+      expect.stringMatching(/^ {12}skipped .*packa…build$/),
+      '            • blocked by packages/a#build',
+    ])
+    expect(at(undefined)).toEqual([expect.stringMatching(/build • blocked by packages\/a#build$/)])
+  })
 })
 
 describe('formatTaskBlock', () => {

@@ -130,7 +130,8 @@ the mode; `ci: true` whenever `CI` is truthy.
 - **`focused`** — requested non-group nodes stream stdout/stderr raw
   and live (cache-hit replay included); a quiet hit prints a full
   frame; a skipped requested task prints the skipped one-liner
-  with its blocker (`• blocked by lib#build`). Dependency-pulled
+  with its blocker (`• blocked by lib#build`; under the row when a
+  narrow terminal has no room beside it). Dependency-pulled
   nodes are silent on success/hit and fully framed on failure.
 - **`broad`** — executed tasks print one
   `success miss … <id>` row (`no-cache` for a task no cache
