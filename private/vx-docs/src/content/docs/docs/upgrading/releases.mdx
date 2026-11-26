@@ -18,6 +18,10 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
+### `WorkerRuntime.probe` takes the task's own PATH
+
+`WorkerRuntime.probe` takes an optional fourth argument, path; answerRuntime an optional definedPath.
+
 ### Runs read the lock only, never a config
 
 A run reads only the lock. A vx.config, or a package.json name, added since `vx lock` is not refused: the run ignores it until you run `vx lock`.
