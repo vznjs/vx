@@ -46,7 +46,7 @@ import { Usage } from './usage.js'
 import { leaves, MIN_CORES, Planner, wholeCores, type Need } from './plan/index.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
-import { leftUnder, names, outputFiles } from './outputs.js'
+import { leftUnder, names, outputFiles, trackedPastLinks } from './outputs.js'
 import { repoEnv } from './local.js'
 import { type Declared, LEARN_MS, type RecordedWorker, RunReport } from './report.js'
 
@@ -1864,7 +1864,8 @@ export class Orchestrator extends RunReport<Worker> {
     const project = path.relative(this.o.root, node?.projectDir ?? job.req.cwd)
     const nested = node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root)
     const under = await outputFiles(this.o.root, project, job.req.outputs)
-    for (const f of leftUnder(under, tree.files, nested, held).cleared)
+    for (const f of leftUnder(under, trackedPastLinks(this.o.root, tree.files), nested, held)
+      .cleared)
       await rm(path.join(this.o.root, f), { force: true })
   }
 

@@ -2,6 +2,7 @@
 // clears before it runs the task, so an earlier task's files under them
 // are not saved as this one's.
 
+import { realpathSync } from 'node:fs'
 import { lstat, readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { outputDirPrefixes, restorableOutput } from '@vzn/vx'
@@ -102,6 +103,49 @@ export function leftUnder(
     else cleared.push(f)
   }
   return { cleared, held, committed }
+}
+
+/**
+ * `tracked`, asked past links too: through `dist -> build`, the walk names
+ * `dist/logo.txt` and git lists `build/logo.txt`, so a committed file was
+ * cleared as an earlier task's, on the worker and on this machine (core's
+ * `committedPastLinks`). A link out of `root` names no tracked file.
+ */
+export function trackedPastLinks(
+  root: string,
+  tracked: { has(file: string): boolean },
+): { has(file: string): boolean } {
+  const realRoot = realOf(root)
+  const dirs = new Map<string, string | undefined>()
+  const realDir = (dir: string): string | undefined => {
+    if (dirs.has(dir)) return dirs.get(dir)
+    const real = realOf(path.join(root, dir))
+    const rel =
+      real === undefined || realRoot === undefined || real === path.join(realRoot, dir)
+        ? undefined
+        : path.relative(realRoot, real)
+    const inside = rel !== undefined && rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+    const named = inside ? rel.split(path.sep).join('/') : undefined
+    dirs.set(dir, named)
+    return named
+  }
+  return {
+    has(file) {
+      if (tracked.has(file)) return true
+      const dir = path.posix.dirname(file)
+      const real = dir === '.' ? undefined : realDir(dir)
+      return real !== undefined && tracked.has(`${real}/${path.posix.basename(file)}`)
+    },
+  }
+}
+
+const realOf = (p: string): string | undefined => {
+  try {
+    return realpathSync(p)
+  } catch {
+    // quiet: a path that will not resolve names no tracked file
+    return undefined
+  }
 }
 
 /** Whether declared outputs name `file` (workspace-relative), as `outputFiles` would find it. */

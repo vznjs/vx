@@ -821,8 +821,9 @@ every task the one it runs depends on.
   fault fails the run.
 - Before a task runs, its worker removes the files under its outputs that
   an earlier task left.
-- It keeps committed files, nested projects' files, and its dependencies'
-  outputs (an additive task builds on its upstream's tree).
+- It keeps committed files (one reached through a linked output
+  directory, `dist -> build`, too), nested projects' files, and its
+  dependencies' outputs (an additive task builds on its upstream's tree).
 - Before laying what the task left, this machine removes the same, cached
   task or not. So its outputs end as the worker's did.
 - An upstream's file the task leaves as it found it is not saved in its

@@ -12,7 +12,7 @@ await mock.module('node:fs/promises', () => ({
     return realReaddir(dir, opts)
   },
 }))
-const { leftUnder, outputFiles } = await import('../src/outputs.js')
+const { leftUnder, outputFiles, trackedPastLinks } = await import('../src/outputs.js')
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vx-dte-outputs-'))
 afterAll(() => fs.rm(root, { recursive: true, force: true }))
@@ -94,4 +94,23 @@ it('names no file through a link out of the project, or into .git', async () => 
   } finally {
     await fs.rm(away, { recursive: true, force: true })
   }
+})
+
+// Through `dist -> build`, the walk names `dist/logo.txt` and git lists
+// `build/logo.txt`: the committed file was cleared as an earlier task's,
+// on the worker and here, and the run deleted it from the checkout.
+it('keeps a committed file reached through a linked output directory', async () => {
+  await fs.mkdir(path.join(root, 'k/build'), { recursive: true })
+  await fs.writeFile(path.join(root, 'k/build/logo.txt'), 'v1\n')
+  await fs.writeFile(path.join(root, 'k/build/a.js'), '')
+  await fs.symlink('build', path.join(root, 'k/dist'))
+  await fs.mkdir(path.join(root, 'out'), { recursive: true })
+  await fs.writeFile(path.join(root, 'out/x'), '')
+  await fs.symlink('../out', path.join(root, 'k/build/away'))
+  const under = await outputFiles(root, 'k', { files: ['dist/**'], workspaceFiles: [] })
+  expect(under).toEqual(['k/dist/a.js', 'k/dist/away', 'k/dist/logo.txt'])
+  const tracked = trackedPastLinks(root, new Set(['k/build/logo.txt', 'out/x', 'k/build/away']))
+  const { cleared, committed } = leftUnder(under, tracked, [], [])
+  expect(committed).toEqual(['k/dist/away', 'k/dist/logo.txt'])
+  expect(cleared).toEqual(['k/dist/a.js'])
 })
