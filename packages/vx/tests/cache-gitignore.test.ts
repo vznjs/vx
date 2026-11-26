@@ -108,4 +108,32 @@ describe('the cache directory is git-ignored by construction', () => {
     new Cache(sibling, undefined, ws).close()
     expect(await Bun.file(path.join(sibling, 'cache.db')).exists()).toBe(true)
   })
+
+  // `--cache-dir src` over a folder of sources put a `*` .gitignore in it:
+  // `src/**` matched nothing and an edit there replayed the old output.
+  it('a first index in a workspace folder that holds files is refused', async () => {
+    const src = path.join(root, 'src')
+    await Bun.write(path.join(src, 'a.txt'), '1')
+    expect(() => new Cache(src, undefined, root)).toThrow(
+      `cache directory ${src} holds a.txt: a \`*\` .gitignore there would hide it from git and from the cache keys.`,
+    )
+    expect(await Bun.file(path.join(src, '.gitignore')).exists()).toBe(false)
+    expect(await Bun.file(path.join(src, 'cache.db')).exists()).toBe(false)
+    // Controls: an empty folder, one with its own .gitignore, and one outside the workspace open.
+    const empty = path.join(root, 'empty')
+    await Bun.write(path.join(empty, '.keep-dir'), '')
+    await rm(path.join(empty, '.keep-dir'))
+    new Cache(empty, undefined, root).close()
+    const owned = path.join(root, 'owned')
+    await Bun.write(path.join(owned, '.gitignore'), '*\n')
+    await Bun.write(path.join(owned, 'old.db'), 'x')
+    new Cache(owned, undefined, root).close()
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-outside-'))
+    try {
+      await Bun.write(path.join(outside, 'notes.txt'), 'x')
+      new Cache(outside, undefined, root).close()
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
 })

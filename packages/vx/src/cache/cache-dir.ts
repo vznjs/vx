@@ -282,6 +282,27 @@ function refuseManifestDir(cacheDir: string, workspaceRoot: string | undefined):
       }
     }
   }
+  // A folder of the workspace's own files (`--cache-dir src`): its `*` would
+  // hide them as surely. One that already holds a .gitignore is the user's
+  // or vx's own choice, and one outside the workspace hides nothing a key reads.
+  if (
+    held === undefined &&
+    workspaceRoot !== undefined &&
+    ignoreFileFor(cacheDir)[1] === IGNORE_ALL
+  ) {
+    const rel = path.relative(workspaceRoot, cacheDir)
+    if (rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+      const all = readdirSync(cacheDir)
+      const names = all.filter((n) => !VX_OWN.has(n))
+      if (names.length > 0 && !all.includes('.gitignore')) {
+        const shown = names.sort().slice(0, 3).join(', ') + (names.length > 3 ? ', …' : '')
+        throw new UserError(
+          `cache directory ${cacheDir} holds ${shown}: a \`*\` .gitignore there would hide ` +
+            `${names.length === 1 ? 'it' : 'them'} from git and from the cache keys. ${OWN_DIR_HINT}`,
+        )
+      }
+    }
+  }
   if (held !== undefined) {
     throw new UserError(
       `cache directory ${cacheDir} holds ${held}, a project or workspace directory, and vx would keep ` +
@@ -290,6 +311,9 @@ function refuseManifestDir(cacheDir: string, workspaceRoot: string | undefined):
     )
   }
 }
+
+// What vx itself leaves in a cache directory before or beside its index.
+const VX_OWN = new Set([DIR_LOCK, 'cache.db', 'cache.db-wal', 'cache.db-shm', 'compiled'])
 
 // What marks a project or workspace directory: a vx config, the workspace file,
 // or a package manifest.
