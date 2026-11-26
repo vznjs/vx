@@ -119,6 +119,8 @@ export interface ResolveInputsArgs {
   projectDir: string
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
+  /** The PATH `exec.env.define` sets: the task's, so its probes resolve tools on it too. */
+  definedPath?: string | undefined
   inputs: InputsConfig | undefined
   /** Project-relative output globs to exclude from inputs. */
   ownOutputs: readonly string[]
@@ -339,6 +341,8 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
   // A task declaring neither skips the fan-out.
   const runtimeDecl = args.inputs?.runtime ?? []
   const wsRuntimeDecl = args.inputs?.workspaceRuntime ?? []
+  // A probe under a defined PATH answers for that PATH alone.
+  const pathScope = args.definedPath === undefined ? '' : `\0PATH=${args.definedPath}\0`
   const [runtimeValues, workspaceRuntimeValues] =
     runtimeDecl.length === 0 && wsRuntimeDecl.length === 0
       ? [[], []]
@@ -349,10 +353,9 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             projectBinDirs(args.projectDir, args.workspaceRoot),
             args.workspaceRoot,
             args.runtimeCache,
-            args.runtimeScope === undefined
-              ? `${args.projectDir}\0`
-              : `${args.projectDir}\0${args.runtimeScope}\0`,
+            `${args.runtimeScope === undefined ? `${args.projectDir}\0` : `${args.projectDir}\0${args.runtimeScope}\0`}${pathScope}`,
             'runtime',
+            args.definedPath,
           ),
           resolveRuntimeValues(
             wsRuntimeDecl,
@@ -360,8 +363,9 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
             [path.join(args.workspaceRoot, 'node_modules', '.bin')],
             args.workspaceRoot,
             args.workspaceRuntimeCache,
-            args.runtimeScope === undefined ? '' : `\0${args.runtimeScope}\0`,
+            `${args.runtimeScope === undefined ? '' : `\0${args.runtimeScope}\0`}${pathScope}`,
             'workspaceRuntime',
+            args.definedPath,
           ),
         ])
   return {
@@ -707,6 +711,7 @@ export function answerRuntime(
   projectDir: string,
   workspaceRoot: string,
   workspace = false,
+  definedPath?: string,
 ): Promise<string> {
   return workspace
     ? runRuntimeCommand(
@@ -716,6 +721,7 @@ export function answerRuntime(
         workspaceRoot,
         undefined,
         'workspaceRuntime',
+        definedPath,
       )
     : runRuntimeCommand(
         command,
@@ -724,6 +730,7 @@ export function answerRuntime(
         workspaceRoot,
         undefined,
         'runtime',
+        definedPath,
       )
 }
 
@@ -756,7 +763,8 @@ function resolveEnvValues(
  * (projectDir, command).
  *
  * Its PATH leads with the task's `node_modules/.bin` directories, as the task's
- * does, so `tsc --version` keys the tsc the task runs.
+ * does, then the PATH `exec.env.define` sets or else the host's, so
+ * `tsc --version` keys the tsc the task runs.
  */
 async function runRuntimeCommand(
   command: string,
@@ -765,11 +773,13 @@ async function runRuntimeCommand(
   workspaceRoot: string,
   owner: RuntimeMemo | undefined,
   field: RuntimeField,
+  definedPath: string | undefined,
 ): Promise<string> {
   const probe = `inputs.${field} probe`
   const source = taskEnvSource()
-  // As a task's (exec/env.ts): no member's bin inherited from `npm run`.
-  const ambient = withoutWorkspaceBins(source['PATH'] ?? '', workspaceRoot)
+  // As a task's (exec/env.ts): a defined PATH replaces the host's, kept as
+  // written; the host's drops any member's bin inherited from `npm run`.
+  const ambient = definedPath ?? withoutWorkspaceBins(source['PATH'] ?? '', workspaceRoot)
   // As the task's PATH: a dir holding the delimiter splits into a relative
   // entry.
   const PATH = [...binDirs.filter((dir) => !dir.includes(path.delimiter)), ambient]
@@ -955,6 +965,7 @@ async function resolveRuntimeValues(
   memo: Map<string, Promise<string>> | undefined,
   memoKeyPrefix: string,
   field: RuntimeField,
+  definedPath: string | undefined,
 ): Promise<Array<[string, string]>> {
   if (commands.length === 0) return []
   const unique = [...new Set(commands)].sort()
@@ -963,7 +974,7 @@ async function resolveRuntimeValues(
       const key = `${memoKeyPrefix}${cmd}`
       let p = memo?.get(key)
       if (p === undefined) {
-        p = runRuntimeCommand(cmd, cwd, binDirs, workspaceRoot, memo, field)
+        p = runRuntimeCommand(cmd, cwd, binDirs, workspaceRoot, memo, field, definedPath)
         memo?.set(key, p)
       }
       return [cmd, await p] as [string, string]

@@ -2472,7 +2472,7 @@ export interface PreparedTask {
 }
 export interface WorkerRuntime {
   prepare(task: WorkerTask): Promise<PreparedTask>
-  probe(command: string, dir: string, workspace: boolean): Promise<string>
+  probe(command: string, dir: string, workspace: boolean, path?: string): Promise<string>
   packageManager(): string | null
   sample(roots: readonly number[]): Promise<ReadonlyMap<number, TreeUsage>>
   rearm(sandboxes: readonly SandboxConfig[]): Promise<void>

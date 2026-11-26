@@ -926,6 +926,60 @@ it('a worker stopped by a signal stops its tasks before it exits', async () => {
   }
 })
 
+// A task whose define sets PATH ran its probes there on the run's machine:
+// the worker asked its own PATH, found no `tool`, and refused the run.
+it('a worker answers a probe on the PATH the task sent as its own', async () => {
+  const root = await tmp()
+  await Bun.write(path.join(root, 'bin', 'tool'), '#!/bin/sh\necho v9\n')
+  await chmod(path.join(root, 'bin', 'tool'), 0o755)
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, 'worker-child.ts'), served.url, R, root],
+      { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, NO_COLOR: '1' } },
+    )
+    const order: RunOrder = {
+      task: 't',
+      key: 'k-t',
+      runKey: runKey(R, 't'),
+      deps: [],
+      nested: [],
+      command: 'echo t >> runs.txt',
+      cwd: '',
+      project: '',
+      env: { PATH: `${root}/node_modules/.bin:${root}/bin:/usr/bin:/bin` },
+      path: true,
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+      runtime: [{ command: 'tool', output: 'v9' }],
+    }
+    const said: { type: string }[] = []
+    for (let i = 0; i < 100 && !said.some((m) => ['end', 'differs', 'fault'].includes(m.type)); i++)
+      for (const { from, body } of flat(await o.poll())) {
+        const m = body as { type: string; id?: string }
+        if (from === 'relay') {
+          if (m.type !== 'joined') continue
+          await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          await o.send(m.id!, { type: 'batch', n: 1, root, realRoot: root, tasks: [order] })
+          continue
+        }
+        said.push(m)
+      }
+    child.kill()
+    await child.exited
+    expect(said.map((m) => m.type)).not.toContain('differs')
+    expect(await Bun.file(path.join(root, 'runs.txt')).text()).toBe('t\n')
+  } finally {
+    await served.stop()
+  }
+})
+
 // A worker whose keyed runtime fact differs runs nothing of the run: it
 // says so once and the orchestrator refuses it (a failed task there failed
 // the run while workers that answered alike sat idle).

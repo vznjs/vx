@@ -60,8 +60,12 @@ export interface WorkerRuntime {
    * placeholders exist, so a placeholder is not read as a stray.
    */
   prepare(task: WorkerTask): Promise<PreparedTask>
-  /** A runtime probe's answer here, once per (dir, command). */
-  probe(command: string, dir: string, workspace: boolean): Promise<string>
+  /**
+   * A runtime probe's answer here, once per (dir, command, path). `path`,
+   * the task's own PATH when it is not this machine's (a defined or keyed
+   * one), replaces this machine's as the probe's, behind the bins.
+   */
+  probe(command: string, dir: string, workspace: boolean, path?: string): Promise<string>
   /** The `npm_execpath` core gives a local task here. */
   packageManager(): string | null
   /** CPU and memory of running process trees, by root pid. */
@@ -130,11 +134,11 @@ export function workerRuntime(opts: {
         },
       }
     },
-    probe(command, dir, workspace) {
-      const k = `${dir}\0${command}`
+    probe(command, dir, workspace, taskPath) {
+      const k = `${dir}\0${command}\0${taskPath ?? ''}`
       let p = probes.get(k)
       if (p === undefined) {
-        p = answerRuntime(command, dir, opts.root, workspace)
+        p = answerRuntime(command, dir, opts.root, workspace, taskPath)
         probes.set(k, p)
       }
       return p

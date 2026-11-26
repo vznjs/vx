@@ -788,6 +788,8 @@ a plugin changes where a command runs, never what it is.
 - One the run started counts as a failed start: with none left, the run
   says no worker could start.
 - A worker answers each probe once, in each directory it is asked in.
+- A task whose `exec.env.define` sets `PATH` (or whose `inputs.env` keys it)
+  has its probes answered on that `PATH`, as it runs, not the worker's own.
 - A path under the worker's checkout root reads as the same path under this
   machine's, as the task's environment does.
 
