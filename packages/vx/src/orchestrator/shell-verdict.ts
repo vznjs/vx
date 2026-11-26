@@ -68,7 +68,7 @@ function wordVerdict(args: Parameters<typeof shellVerdict>[0], word: string | un
   // (`/usr/bin/env node` under a hermetic task) or a library the runtime
   // links. Said "not on PATH, install it", which sent the reader the wrong way.
   if (word !== undefined && args.hidden !== undefined) {
-    const runtime = hiddenRuntime(found, args.hidden, args.stderr)
+    const runtime = hiddenRuntime(found, args.hidden, args.stderr, taskPath)
     if (runtime !== undefined)
       return `[vx] exit 127 is the shell's "not found": ${word} is there, but ${runtime}, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
   }
@@ -127,12 +127,13 @@ const LIBRARY_DIRS = [
 /**
  * What a found program needs that the sandbox hides, said as a clause: the
  * library its loader could not open, or the runtime its `#!/usr/bin/env`
- * line names, looked up on the host's PATH.
+ * line names, looked up on the task's PATH.
  */
 function hiddenRuntime(
   found: string | null,
   hidden: (file: string) => boolean,
   stderr: string | undefined,
+  taskPath: string,
 ): string | undefined {
   const lib =
     /error while loading shared libraries: ([^:\s]+): cannot open shared object file/.exec(
@@ -149,7 +150,7 @@ function hiddenRuntime(
   const missing = /env: '?([^':\s]+)'?: No such file or directory/.exec(stderr ?? '')?.[1]
   const name = missing ?? (found === null ? undefined : envRuntime(found))
   if (name === undefined) return undefined
-  const runtime = Bun.which(name, { PATH: process.env['PATH'] ?? '' })
+  const runtime = Bun.which(name, { PATH: taskPath })
   if (runtime === null || (missing === undefined && !hidden(runtime))) return undefined
   return `its runtime ${name} is ${runtime} on the host, read by no sandbox grant`
 }
