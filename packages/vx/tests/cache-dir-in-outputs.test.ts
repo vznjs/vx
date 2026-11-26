@@ -6,7 +6,7 @@
 // naming the task and the directory.
 
 import { existsSync } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { run } from './helpers/orchestrator.js'
@@ -110,7 +110,6 @@ describe('a cache directory under a task’s outputs', () => {
       commit()
       const cacheDir = path.join(fx.root, 'packages', 'a', 'dist', 'cc')
       await mkdir(cacheDir, { recursive: true })
-      await writeFile(path.join(cacheDir, 'vx-write'), '')
       const opts = { cwd: fx.root, tasks: ['build'], cacheDir, log: silentLogger(fx) }
       const first = await run(opts)
       expect(first.outcomes.map((o) => [o.status, o.cache?.saved])).toEqual([['success', true]])
