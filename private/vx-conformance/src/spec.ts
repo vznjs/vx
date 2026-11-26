@@ -20,6 +20,8 @@ export interface TaskSpec {
   env?: string[]
   /** Environment variables that reach the command but never key the task. */
   passThrough?: string[]
+  /** Variables the task itself sets for its command; `$ROOT` in a value is the workspace's absolute path. */
+  define?: Record<string, string>
   /** Project-relative globs the task writes, stored and restored with it. Omitted: the tool's default; `[]`: none. */
   outputs?: string[]
   /** Project-relative globs the task may or may not write: stored and restored when it does, no failure when it does not. */
@@ -314,6 +316,8 @@ export type Feature =
   | 'ready'
   /** Inputs that are a command's output (`runtime`). */
   | 'runtime-inputs'
+  /** Variables a task sets for its own command (`define`). */
+  | 'task-env'
   /** More than one task named in one run (`also`). */
   | 'multi-task'
   /** A run that goes on past a failure, running what depends on it. */

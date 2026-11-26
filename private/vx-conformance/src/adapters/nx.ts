@@ -3,7 +3,7 @@
 // each `^task` in dependsOn adds the dependency's own inputs for that task.
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { optionalAsOutputs, type Adapter } from '../adapter.ts'
+import { optionalAsOutputs, rootedDefine, type Adapter } from '../adapter.ts'
 import { projectDir, type Selector } from '../spec.ts'
 
 /** A project-relative glob as Nx spells it; a `!` stays in front. */
@@ -119,7 +119,11 @@ export const nx: Adapter = {
               ? { executor: 'nx:noop' }
               : {
                   executor: 'nx:run-commands',
-                  options: { command: command(name, t), cwd: '{projectRoot}' },
+                  options: {
+                    command: command(name, t),
+                    cwd: '{projectRoot}',
+                    ...(spec.define ? { env: rootedDefine(spec.define, dir) } : {}),
+                  },
                 }),
             dependsOn: (spec.dependsOn ?? []).map((d) => dependsOn(d, ready)),
             inputs: [

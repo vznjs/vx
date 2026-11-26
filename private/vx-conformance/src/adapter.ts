@@ -102,6 +102,11 @@ export function pnpmFilter(s: Selector): string {
   return (s.exclude ? '!' : '') + walked
 }
 
+/** A task's `define` with `$ROOT` in each value read as the workspace's absolute path `dir`. */
+export function rootedDefine(define: Record<string, string>, dir: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(define).map(([k, v]) => [k, v.replaceAll('$ROOT', dir)]))
+}
+
 /**
  * `ws` with each task's `optionalOutputs` among its `outputs`: for a tool
  * whose outputs are stored when written and never required, that is how

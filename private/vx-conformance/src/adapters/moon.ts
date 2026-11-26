@@ -8,7 +8,7 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Adapter } from '../adapter.ts'
+import { rootedDefine, type Adapter } from '../adapter.ts'
 import { harnessNotes } from '../report.ts'
 import { modulesOf, pkgDir } from '../tools.ts'
 import { projectDir, type Selector, type TaskReport } from '../spec.ts'
@@ -293,6 +293,7 @@ export const moon: Adapter = {
                   ? { command: ['sh', '-c', `${command(name, t)} "$@"`, 'sh'] }
                   : { script: command(name, t) }),
               ...(deps.length > 0 ? { deps } : {}),
+              ...(spec.define ? { env: rootedDefine(spec.define, dir) } : {}),
               ...(inputs ? { inputs } : {}),
               ...(outputs.length > 0 ? { outputs } : {}),
               ...(spec.runtime

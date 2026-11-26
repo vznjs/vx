@@ -137,12 +137,12 @@ supports but gets wrong.
 
 | Tool              | Cases passed   | Issues |
 | ----------------- | -------------- | ------ |
-| **vx**            | 1,948 of 2,017 | **0**  |
-| Nx 24.0.2         | 1,343 of 2,017 | 410    |
-| Turborepo 2.11.10 | 1,320 of 2,017 | 396    |
-| moon 2.6.5        | 1,202 of 2,017 | 427    |
-| Nix 2.34.6        | 1,052 of 2,017 | 274    |
-| Vite Task 1.4.0   | 972 of 2,017   | 350    |
+| **vx**            | 1,949 of 2,018 | **0**  |
+| Nx 24.0.2         | 1,343 of 2,018 | 411    |
+| Turborepo 2.11.10 | 1,320 of 2,018 | 396    |
+| moon 2.6.5        | 1,202 of 2,018 | 428    |
+| Nix 2.34.6        | 1,052 of 2,018 | 274    |
+| Vite Task 1.4.0   | 972 of 2,018   | 350    |
 
 vx has 0 issues in every area: cache, inputs, outputs, affected, sandbox
 and watch. Every case, every tool: [conformance](https://vznjs.github.io/vx/conformance/).
