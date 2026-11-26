@@ -161,6 +161,31 @@ describe('computeTaskHash — what the config contributes', () => {
     expect(await at('a')).not.toBe(await at('b'))
   })
 
+  // The task sees define's value over the host's, so a host value under the
+  // same name keyed nothing it reads: every change to it was a miss.
+  it("an inputs.env name define sets keys define's value, not the host's", async () => {
+    const at = async (host: string, fixed = 'fixed') => {
+      const before = process.env['VX_T_DEF']
+      process.env['VX_T_DEF'] = host
+      try {
+        return await key({
+          node: node(
+            {},
+            {
+              exec: { command: 'build', env: { define: { VX_T_DEF: fixed } } },
+              inputs: { files: [], env: ['VX_T_*'] },
+            },
+          ),
+        })
+      } finally {
+        if (before === undefined) delete process.env['VX_T_DEF']
+        else process.env['VX_T_DEF'] = before
+      }
+    }
+    expect(await at('1')).toBe(await at('2'))
+    expect(await at('1')).not.toBe(await at('1', 'other'))
+  })
+
   it('STABILITY: exec.remote does NOT move the key', async () => {
     // Placement, not content. `exec.remote: false` says "run this task on
     // this machine" — it never reaches the task's output, and the whole
