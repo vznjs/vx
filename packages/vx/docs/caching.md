@@ -2137,7 +2137,8 @@ nothing is deleted through it; so does one, in either scope, that
 resolves into a directory an entry of the task's own `inputs.files` or
 `inputs.workspaceFiles` can match below (`dist -> src` under `src/**` or
 `**/*.ts`: the clean deleted every untracked source; `dist ->
-build-out` under `src/**` stays an output), and so does an
+build-out` under `src/**` stays an output, as does `gen -> src/generated`
+under `src/**, !src/generated/**`, whose negation takes the tree back), and so does an
 `outputs.workspaceFiles` directory that resolves outside the workspace
 (it saved an empty entry under a warning), and so does a project's one
 that resolves into a nested project, whose files no scan walks (it

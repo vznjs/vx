@@ -843,6 +843,27 @@ describe('output resolution contains itself — the loader guard is now the SECO
     expect(await readFile(path.join(projectDir, 'untracked.txt'), 'utf8')).toBe('precious')
   })
 
+  // `gen -> src/generated` under inputs `src/**, !src/generated/**`: the
+  // negation takes the tree back, as the lexical `src/generated/**` output is
+  // allowed, so the link is no read of the task's own inputs.
+  it('an output dir linked into a tree the inputs take back is cleaned', async () => {
+    await Bun.write(path.join(projectDir, 'src/generated/old.js'), 'old')
+    await Bun.write(path.join(projectDir, 'src/a.ts'), 'a')
+    await symlink('src/generated', path.join(projectDir, 'gen'))
+    const inputs = (files: string[]) => ({
+      projectDir,
+      outputs: ['gen/**'],
+      nestedProjectDirs: [],
+      inputs: { projectDir, workspaceRoot: projectDir, declared: { files } },
+    })
+    await expect(cleanOutputs(inputs(['src/**']))).rejects.toThrow(
+      "which the task's own inputs read",
+    )
+    await cleanOutputs(inputs(['src/**', '!src/generated/**']))
+    expect(existsSync(path.join(projectDir, 'src/generated/old.js'))).toBe(false)
+    expect(existsSync(path.join(projectDir, 'src/a.ts'))).toBe(true)
+  })
+
   it('a clean follows a symlinked output dir that points INSIDE the project', async () => {
     // `dist -> real-out`: the save follows the link (output-shape.test.ts,
     // turborepo#13042), so the clean must too, or the next entry saves the

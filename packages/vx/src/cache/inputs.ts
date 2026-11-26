@@ -56,6 +56,7 @@ import {
   UserError,
   writableUnder,
   withoutWorkspaceBins,
+  wholeSubtreePrefixes,
 } from '../util/index.js'
 import {
   GitFilesCache,
@@ -1209,16 +1210,21 @@ function refuseDirLinkedOut(
 
 /**
  * Throws when an entry of `inputs` can match a path under the real directory
- * `real`. A link to an ancestor of the anchor holds every entry. Negations are
- * not subtracted.
+ * `real`. A link to an ancestor of the anchor holds every entry. A negation
+ * taking back the whole tree (`!src/generated/**`) subtracts it, as the
+ * lexical twin `outputs: ['src/generated/**']` is allowed beside it.
  */
 function refuseLinkedIntoInputs(at: string, real: string, inputs: OwnInputs): void {
   const holds = (anchor: string, globs: readonly string[] | undefined): boolean => {
-    const { positive } = splitNegations(globs ?? [])
+    const { positive, negative } = splitNegations(globs ?? [])
     if (positive.length === 0) return false
     const realAnchor = realOr(anchor)
     const rel = relPosix(realAnchor, real)
     if (rel === '..' || rel.startsWith('../')) return isInside(real, realAnchor)
+    const takenBack = negative
+      .flatMap((g) => wholeSubtreePrefixes([g]) ?? [])
+      .some((d) => rel === d || rel.startsWith(`${d}/`))
+    if (takenBack) return false
     const dir = rel === '' ? [] : rel.split('/')
     return asTrees(positive).some((g) => reachesBelow(g.split('/'), dir))
   }
