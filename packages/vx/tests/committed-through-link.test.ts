@@ -4,7 +4,7 @@
 // lists, and the clean before the miss deleted `static/logo.txt`.
 
 import { existsSync, readdirSync, symlinkSync } from 'node:fs'
-import { rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import {
@@ -49,6 +49,39 @@ it(
     expect(hit.outcomes[0]?.status).toBe('cache-hit')
     expect(existsSync(path.join(dir, 'static/logo.txt'))).toBe(true)
     expect(existsSync(path.join(dir, 'static/a.txt'))).toBe(true)
+  },
+  TIMEOUT,
+)
+
+// The hit's half: a committed file that appeared behind the link after the
+// entry was saved is a stale file to the restore, and `cleanOutputPaths`
+// asked git about it by the link's name, so the hit deleted it.
+it(
+  'a hit keeps a committed file its entry does not hold, behind an untracked output link',
+  async () => {
+    const dir = await addProject(f.root, 'app', {
+      files: { 'src/a.txt': 'v1', '.gitignore': 'public\nstatic/a.txt\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'cp src/a.txt public/a.txt' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['public/**'] }, cache: true,
+      } } }`,
+    })
+    await mkdir(path.join(dir, 'static'))
+    symlinkSync('static', path.join(dir, 'public'))
+    const git = gitIn(f.root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const build = async () =>
+      (await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })).outcomes[0]?.status
+    expect(await build()).toBe('success')
+    await writeFile(path.join(dir, 'static/logo.txt'), 'committed')
+    git('add', '-A')
+    git('commit', '-q', '-m', 'logo')
+    await writeFile(path.join(dir, 'src/a.txt'), 'v2')
+    expect(await build()).toBe('success')
+    await writeFile(path.join(dir, 'src/a.txt'), 'v1')
+    expect(await build()).toBe('cache-hit')
+    expect(existsSync(path.join(dir, 'static/logo.txt'))).toBe(true)
   },
   TIMEOUT,
 )

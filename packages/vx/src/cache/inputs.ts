@@ -1528,7 +1528,12 @@ export async function cleanOutputPaths(args: {
   /** Empty directories to remove too (project-relative). */
   emptyDirs?: readonly string[]
 }): Promise<void> {
-  const committed = args.committed ?? committedFiles(undefined, args.projectDir)
+  // Past links as `cleanOutputs` asks: a hit's stale file under `public ->
+  // static` is git's as `static/…`, and was deleted when asked as `public/…`.
+  const committed = committedPastLinks(
+    args.projectDir,
+    args.committed ?? committedFiles(undefined, args.projectDir),
+  )
   const files = args.rels.map((r) => path.resolve(args.projectDir, r)).filter((f) => !committed(f))
   await pruneEmptiedDirs(
     args.projectDir,
