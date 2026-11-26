@@ -43,6 +43,19 @@ export function unsettledHooks(): string[] {
   ]
 }
 
+/**
+ * The stage hooks still awaited, each once (`plugin 'p' (key)`), for a stop:
+ * a task's `execute` and a remote cache call are its work in flight, bounded
+ * on their own, so a stop mid-task names none of them.
+ */
+export function awaitedStageHooks(): string[] {
+  const out = new Set<string>()
+  for (const [p, h] of pendingHooks)
+    if (h !== 'execute' && !h.startsWith('cache ') && !h.startsWith('command '))
+      out.add(`plugin '${p}' (${h})`)
+  return [...out]
+}
+
 /** `work` runs if the process is stranded before the returned call withdraws it. */
 export function owedIfStranded(work: () => Promise<void>): () => void {
   owed.add(work)

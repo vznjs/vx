@@ -2061,6 +2061,7 @@ export function beforeExit(work: () => Promise<void>): void
 export async function settleBeforeExit(): Promise<void>
 export function hookStarted(plugin: string, hook: string): () => void
 export function unsettledHooks(): string[]
+export function awaitedStageHooks(): string[]
 export function owedIfStranded(work: () => Promise<void>): () => void
 export async function settleStranded(): Promise<void>
 ```
@@ -2074,7 +2075,9 @@ export async function settleStranded(): Promise<void>
   `setup`, a plugin executor's `execute`, a plugin remote's calls
   (`RemoteLane`) and a plugin verb's `run`. `unsettledHooks` lists those still
   awaited, as `plugin 'p' never settled its h hook` (`its command 'v'`
-  for a verb), for `bin.ts`'s line.
+  for a verb), for `bin.ts`'s line. `awaitedStageHooks` lists only the
+  stage hooks still awaited, as `plugin 'p' (h)`, never an `execute`, a
+  remote's call or a verb, for the line a signal exit writes (`signals.ts`).
 - `owedIfStranded` registers work until the call it returns withdraws
   it: `prepareRun` from its factories to its return, `run()` until its
   teardown. `settleStranded` runs what is registered, once, and never

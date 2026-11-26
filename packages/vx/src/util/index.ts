@@ -158,6 +158,7 @@ export {
   settleBeforeExit,
   settleStranded,
   unsettledHooks,
+  awaitedStageHooks,
 } from './before-exit.js'
 export { OWN_DIR_HINT, refuseForeignCacheDir } from './foreign-cache-dir.js'
 export { realPath, realpathOf, sameDir } from './real-path.js'

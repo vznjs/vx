@@ -248,8 +248,10 @@ it('waits at least half its backoff before each redial', async () => {
       for (;;) await o.poll()
     }
     await expect(polls()).rejects.toThrow('no socket in 3 dials')
-    // Four waits of half of half a 50 ms heartbeat.
-    expect(performance.now() - at).toBeGreaterThanOrEqual(4 * 12.5)
+    // Four waits of half of half a 50 ms heartbeat. A timer may fire up to
+    // a millisecond early on performance.now()'s clock (49.79 ms on CI),
+    // so each wait gets that much; a redial with no wait still fails.
+    expect(performance.now() - at).toBeGreaterThanOrEqual(4 * (12.5 - 1))
   } finally {
     Math.random = random
     globalThis.WebSocket = Real
