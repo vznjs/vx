@@ -22,7 +22,7 @@ import {
   settleStranded,
   settleWithin,
   stopActedOn,
-  unsettledHooks,
+  awaitedStageHooks,
 } from '../util/index.js'
 import {
   holdGroups,
@@ -208,10 +208,10 @@ export async function exitOfSignal(signal: StopSignal): Promise<never> {
 function exitOf(signal: StopSignal, handsTerminal: boolean): never {
   // A hook still awaited on a live timer (a call with no deadline) kept the
   // run waiting with nothing said, and the stop left as silently.
-  const hooks = unsettledHooks()
+  const hooks = awaitedStageHooks()
   if (hooks.length > 0)
     try {
-      writeSync(2, `vx: the run stopped on ${signal}: ${hooks.join(', ')}\n`)
+      writeSync(2, `vx: the run stopped on ${signal} while it waited on ${hooks.join(', ')}\n`)
     } catch {}
   if (!handsTerminal) process.once('exit', () => dieOf(signal))
   process.exit(signalExitCode(signal))

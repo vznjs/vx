@@ -3503,12 +3503,13 @@ a run explorer's record on this API and reads it back through a verb.
   refused setup, a factory that threw, an unresolved name) or a plan
   (item 1021); a second signal, or a `kill -9`, is. A signal during a
   setup, executor factory or `schedule` hook that never settles tears every plugin down,
-  that one included, and exits, naming each hook still awaited (`vx: the
-  run stopped on SIGINT: plugin 'p' never settled its key hook`): one
-  waiting on a live timer keeps the loop up, so nothing else names it. So does a run a hook strands (one that
+  that one included, and exits. So does a run a hook strands (one that
   never settles, from the stage after the factories on): the loop
   drains, `bin.ts` names the plugin and hook and exits 1 once the
-  teardowns end. A plugin whose own `setup` threw is not
+  teardowns end. A hook waiting on a live timer keeps the loop up, so
+  that drain never comes: any signal exit names each stage hook still
+  awaited (`vx: the run stopped on SIGINT while it waited on plugin 'p'
+  (key)`), never a task's `execute` or a remote cache call in flight. A plugin whose own `setup` threw is not
   torn down. Its `ctx.on` handlers and telemetry
   sinks are released just before `teardown()`, so it hears nothing after
   it, a server vx keeps in the foreground included (C-66). (The older `eventSink` seam is gone since

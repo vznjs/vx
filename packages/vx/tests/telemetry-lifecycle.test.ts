@@ -280,7 +280,7 @@ describe('a hook that never settles', () => {
     'in %s, still waiting at a Ctrl-C: the plugin is named',
     async (hook) => {
       const root = await fixture(
-        `{ ${hook}() { return new Promise((r) => setTimeout(r, 600_000)) } }`,
+        `{ ${hook}() { require('node:fs').writeFileSync('started', ''); return new Promise((r) => setTimeout(r, 600_000)) } }`,
       )
       const proc = Bun.spawn({
         cmd: [
@@ -295,11 +295,12 @@ describe('a hook that never settles', () => {
         stdout: 'ignore',
         stderr: 'pipe',
       })
-      await Bun.sleep(3_000)
+      // The signal lands once the hook is awaited, however slow the start.
+      while (!(await Bun.file(path.join(root, 'started')).exists())) await Bun.sleep(20)
       proc.kill('SIGINT')
       await proc.exited
       expect(await new Response(proc.stderr).text()).toContain(
-        `vx: the run stopped on SIGINT: plugin 'org/hang' never settled its ${hook} hook\n`,
+        `vx: the run stopped on SIGINT while it waited on plugin 'org/hang' (${hook})\n`,
       )
     },
     30_000,
