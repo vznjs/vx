@@ -26,6 +26,7 @@ import {
   missingOutputs,
   nestedOutputMatches,
   outputsStep,
+  unsavedOutputMatches,
 } from './attempt-outputs.js'
 import { buildRequest } from './attempt-request.js'
 import { bracketLiteralHint } from './miss-save.js'
@@ -672,7 +673,7 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
   else {
     missing = missingOutputs([
       { base: node.projectDir, globs: policy.outputs, nestedDirs: nested },
-      { base: args.run.workspaceRoot, globs: policy.wsOutputs, nestedDirs: [] },
+      { base: args.run.workspaceRoot, globs: policy.wsOutputs, nestedDirs: [], scope: 'workspace' },
     ])
     left = missing.length > 0 && m.state !== undefined ? stateLeft(m.state, node.projectDir) : []
   }
@@ -690,11 +691,17 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
   const files = facts.folderAsFile ?? []
   const inNested = elsewhere
     ? []
-    : nestedOutputMatches(
-        node.projectDir,
-        missing.filter((g) => policy.outputs.includes(g)),
-        nested,
-      )
+    : nestedOutputMatches(node.projectDir, withTakeBacks(missing, policy.outputs), nested)
+  const unsaved = elsewhere
+    ? []
+    : [
+        ...unsavedOutputMatches(node.projectDir, withTakeBacks(missing, policy.outputs), 'project'),
+        ...unsavedOutputMatches(
+          args.run.workspaceRoot,
+          withTakeBacks(missing, policy.wsOutputs),
+          'workspace',
+        ),
+      ]
   const line =
     `[vx] ${node.id}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
     `but never wrote ${missing.length === 1 ? 'it' : 'them'}, so the task fails and nothing is cached: ` +
@@ -704,11 +711,15 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
       : '') +
     // Nx and Turbo cache whichever outputs exist, so an Nx test target's
     // coverage dir, written only with coverage on, failed every other run.
-    (!noWrite && facts.wroteNone === true && inNested.length === 0
+    (!noWrite && facts.wroteNone === true && inNested.length === 0 && unsaved.length === 0
       ? ` — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it`
       : '') +
     (files.length > 0 ? ` — a folder was declared, a file was written: ${files.join(', ')}` : '') +
     nestedClause(inNested, node.projectDir, nested, args.run.workspaceRoot) +
+    (unsaved.length > 0
+      ? ` — it wrote ${unsaved.map(printable).join(', ')}, which an output never takes: vx's own ` +
+        `files never, and node_modules only when the glob names it (node_modules/**)`
+      : '') +
     (left.length > 0
       ? ` — ${left.map(printable).join(', ')} survived the clean, which the task declares neither input nor ` +
         `output: a tool that reads such a file back (an incremental build's state) may take the cleaned ` +
@@ -718,6 +729,11 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     (facts.bracket ?? '')
   warnOf(log)(secrets.text(line))
   return missing
+}
+
+/** The missing globs of `globs`, with its `!` entries: a path one takes back is never named. */
+function withTakeBacks(missing: readonly string[], globs: readonly string[]): string[] {
+  return globs.filter((g) => g.startsWith('!') || missing.includes(g))
 }
 
 /** What a glob matched only inside a nested project: where it lies, and the two ways out. */

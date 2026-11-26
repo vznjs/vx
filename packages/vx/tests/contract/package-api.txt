@@ -1441,6 +1441,7 @@ export interface OutputSet {
   readonly base: string
   readonly globs: readonly string[]
   readonly nestedDirs: readonly string[]
+  readonly scope?: 'project' | 'workspace'
 }
 == type OutputsMissingFacts (src/exec/executor.ts)
 export interface OutputsMissingFacts {

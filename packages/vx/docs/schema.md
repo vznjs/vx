@@ -1833,6 +1833,8 @@ each path.
   matched, so one list fits a `vite build` app and a Next app alike.
 - `['dist/**']` with nothing written: a task that declares outputs and
   writes none at all fails.
+- `**/*.js` matching only `node_modules/p/i.js`: an output never takes an
+  installed file a wildcard reaches, so that task fails the same way.
 - `dist/**` over an empty `dist/`: an empty directory is no match. To
   require one, name it as itself: `public/uploads`.
 - `['dist/**', '!dist/a.js']`: a path a `!` entry takes back is no match.

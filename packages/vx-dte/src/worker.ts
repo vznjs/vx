@@ -665,7 +665,12 @@ async function serve(
                 globs: m.outputs.files,
                 nestedDirs: m.nested.map((n) => path.join(opts.root, n)),
               },
-              { base: opts.root, globs: m.outputs.workspaceFiles, nestedDirs: [] },
+              {
+                base: opts.root,
+                globs: m.outputs.workspaceFiles,
+                nestedDirs: [],
+                scope: 'workspace',
+              },
             ])
           : []
       // Why, read here: the orchestrator's disk lacks what the command wrote.
