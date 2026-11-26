@@ -39,7 +39,7 @@ import {
   type ToWorker,
   type WiredResult,
 } from './messages.js'
-import { leftUnder, names, outputFiles } from './outputs.js'
+import { leftUnder, names, outputFiles, trackedPastLinks } from './outputs.js'
 import { serverFit } from './server-fit.js'
 import { changedFiles, snapshot, unfilter } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
@@ -518,7 +518,11 @@ async function serve(
       // found the files it builds on gone.
       const upstream = m.deps.map((d) => names(d.project, d.outputs))
       const under = await outputFiles(opts.root, m.project, m.outputs)
-      const { cleared, held: upstreams, committed } = leftUnder(under, tracked, m.nested, upstream)
+      const {
+        cleared,
+        held: upstreams,
+        committed,
+      } = leftUnder(under, trackedPastLinks(opts.root, tracked), m.nested, upstream)
       // An upstream's file it leaves as it found it is not its entry's: one
       // saved there replayed the upstream's old bytes over its new ones on a
       // hit that did not fold the upstream's key.

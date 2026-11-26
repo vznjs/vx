@@ -711,6 +711,10 @@ bounds a run's.
 - They land as the worker made them, through its entry: bytes, modes,
   symlinks and empty directories. A dependant on another worker gets them
   the same way.
+- An output no entry can hold (a link out of the workspace or into
+  `.git`) fails the task on its worker, naming it.
+- A run here keeps such a file and saves no entry, but a worker's files
+  come back only through an entry.
 - Two runs that make one key at once each land their own; the cache keeps
   one whole entry, and a later hit lands that one.
 - A cached one is saved here once its files land.
@@ -817,8 +821,9 @@ every task the one it runs depends on.
   fault fails the run.
 - Before a task runs, its worker removes the files under its outputs that
   an earlier task left.
-- It keeps committed files, nested projects' files, and its dependencies'
-  outputs (an additive task builds on its upstream's tree).
+- It keeps committed files (one reached through a linked output
+  directory, `dist -> build`, too), nested projects' files, and its
+  dependencies' outputs (an additive task builds on its upstream's tree).
 - Before laying what the task left, this machine removes the same, cached
   task or not. So its outputs end as the worker's did.
 - An upstream's file the task leaves as it found it is not saved in its
