@@ -180,12 +180,16 @@ describe('the key, over random hosts and configs', () => {
 
   // The documented key, as a value: the config as written (define values
   // included, passThrough names but not their values) and each
-  // `inputs.env` name with its host value, unset apart from empty.
+  // `inputs.env` name with its value as the child sees it (define's over
+  // the host's), unset apart from empty.
   const signature = (s: Scenario): string =>
     JSON.stringify([
       s.c.passThrough,
       s.c.define,
-      [...s.keyed].sort().map((n) => (s.host[n] === undefined ? [n] : [n, s.host[n]])),
+      [...s.keyed].sort().map((n) => {
+        const v = Object.hasOwn(s.c.define, n) ? s.c.define[n] : s.host[n]
+        return v === undefined ? [n] : [n, v]
+      }),
     ])
 
   async function keyOf(s: Scenario): Promise<string> {
