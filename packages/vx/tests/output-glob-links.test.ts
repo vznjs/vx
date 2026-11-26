@@ -20,10 +20,12 @@ function tmp(): string {
   return d
 }
 
-it("a link at an output's head into a nested project is not this project's output", async () => {
+it("a link at an output's head into a nested project is refused, its files kept", async () => {
   // The walk follows a head link that stays in the project (X-88), but the
   // nested-project filter read the lexical `docs/...`: the clean deleted the
   // site's untracked build and the save packed it into the parent's entry.
+  // Saving nothing instead let a hit call the task done with its output
+  // missing, so the link is refused.
   const d = tmp()
   mkdirSync(path.join(d, 'packages/site/dist'), { recursive: true })
   writeFileSync(path.join(d, 'packages/site/dist/index.html'), 'x')
@@ -33,8 +35,10 @@ it("a link at an output's head into a nested project is not this project's outpu
     outputs: ['docs/**'],
     nestedProjectDirs: [path.join(d, 'packages/site')],
   }
-  expect(await resolveOutputs(args)).toEqual([])
-  await cleanOutputs({ ...args, committed: () => false })
+  await expect(resolveOutputs(args)).rejects.toThrow('in the nested project')
+  await expect(cleanOutputs({ ...args, committed: () => false })).rejects.toThrow(
+    'in the nested project',
+  )
   expect(existsSync(path.join(d, 'packages/site/dist/index.html'))).toBe(true)
 })
 
