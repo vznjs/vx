@@ -17,7 +17,7 @@ export async function printHelp(
   const text = verb === undefined ? helpText(pluginCommands) : verbHelpText(verb)
   // The reference a script greps: refilled and painted on a terminal only;
   // piped it is `text` exactly.
-  const columns = process.stdout.isTTY ? process.stdout.columns : undefined
+  const columns = detectColors(process.stdout).columns
   ui.data(
     'out',
     paintHelp(wrapHelp(text, columns), helpColors(process.stdout, detectColors), paint),

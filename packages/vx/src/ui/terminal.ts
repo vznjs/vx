@@ -90,7 +90,7 @@ export function transient(line: Inline): () => void {
   const s = process.stdout
   if (s.isTTY !== true) return () => {}
   const c = detectColors(s)
-  const rows = wrap(`${INDENT}${inline(line, c)} …`, s.columns ?? 80)
+  const rows = wrap(`${INDENT}${inline(line, c)} …`, c.columns ?? 80)
   s.write(`\n${rows.join('\n')}`)
   return () => void s.write(`\r\x1b[2K${'\x1b[1A\x1b[2K'.repeat(rows.length - 1)}\x1b[1A`)
 }

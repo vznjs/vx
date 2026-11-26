@@ -56,7 +56,7 @@ type Inline = string | Token | readonly Inline[]
 interface Block { readonly lines: (colors: ColorSupport) => string[] }
 export interface ColorSupport {
   enabled: boolean
-  readonly columns?: number | undefined // the terminal's width, read live
+  readonly columns?: number | undefined // the terminal's width, read live; none piped or 0x0
 }
 
 // inline tokens: a plain string in prose, fields or a table renders dim

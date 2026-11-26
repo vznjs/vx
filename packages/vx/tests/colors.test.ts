@@ -118,6 +118,15 @@ describe('detectColors', () => {
     ]).toEqual([true, true, false, false, false, false])
   })
 
+  // A pty that reports no size (0x0: `script` with no terminal, some
+  // `docker exec -t`) wrapped every line at one column: a refusal printed
+  // one character a line. No size is no width, as a pipe's.
+  it('a TTY of 0 columns has no width', () => {
+    const tty = (columns: number | undefined) =>
+      detectColors({ isTTY: true, columns } as NodeJS.WriteStream).columns
+    expect([tty(0), tty(undefined), tty(100)]).toEqual([undefined, undefined, 100])
+  })
+
   it('falls through to stream.isTTY when neither env var is set', () => {
     expect(detectColors({ isTTY: true } as NodeJS.WriteStream).enabled).toBe(true)
     expect(detectColors({ isTTY: false } as NodeJS.WriteStream).enabled).toBe(false)
