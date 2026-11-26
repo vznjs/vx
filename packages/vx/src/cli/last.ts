@@ -1052,16 +1052,20 @@ export function formatRunList(
  */
 async function bareTaskId(db: Database, task: string, at: VerbWorkspace): Promise<string> {
   if (task.includes('#')) return task
-  const ids = (
-    db
-      .query('SELECT DISTINCT project FROM main.runs WHERE task = ? ORDER BY project')
-      .all(task) as {
-      project: string
-    }[]
-  ).map((r) => `${r.project}#${task}`)
-  if (ids.length <= 1) return ids[0] ?? task
+  // A project whose rows are all skipped never ran it: `b#build`, blocked
+  // by a failed `a#build`, made "build" ambiguous though only one ran.
+  const rows = db
+    .query(
+      `SELECT project, MAX(status <> 'skipped') AS ran FROM main.runs WHERE task = ?
+       GROUP BY project ORDER BY project`,
+    )
+    .all(task) as { project: string; ran: number }[]
+  if (rows.length <= 1) return rows[0] === undefined ? task : `${rows[0].project}#${task}`
   const here = await findCwdProject(process.cwd(), at)
-  if (here !== null && ids.includes(`${here}#${task}`)) return `${here}#${task}`
+  if (here !== null && rows.some((r) => r.project === here)) return `${here}#${task}`
+  const ran = rows.filter((r) => r.ran === 1)
+  const ids = (ran.length > 0 ? ran : rows).map((r) => `${r.project}#${task}`)
+  if (ids.length === 1) return ids[0]!
   throw ambiguousTask('last', task, ids)
 }
 

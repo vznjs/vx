@@ -57,6 +57,12 @@ export default { tasks: {
     `export default { tasks: { gate: { exec: { command: 'exit 2' } }, after: { dependsOn: ['gate'], exec: { command: 'echo after' } } } }\n`,
   )
   expect(vx('run', 'c#after').code).toBe(1)
+  await addProject(
+    root,
+    'd',
+    `export default { tasks: { after: { exec: { command: 'echo d-after' } } } }\n`,
+  )
+  expect(vx('run', 'd#after').code).toBe(0)
 }, 60_000)
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
@@ -188,7 +194,8 @@ it('--log takes a bare task name: the one project that ran it, else the ones to 
     code: 1,
     out: '',
     err: noticed('vx last: "build" ran in 2 projects — pick one:\n  a#build\n  b#build\n'),
-  })
+  }) // c#after was skipped (its gate failed): only d ran `after`.
+  expect(vx('last', '--log', 'after').err).toContain('d#after ended success')
 })
 
 it('a cached task whose run saved no entry says so, not that it is uncached', () => {
