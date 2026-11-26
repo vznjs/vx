@@ -6,11 +6,11 @@ authors:
 tags:
   - dx
   - execution
-excerpt: 'vx watch lets the cache key decide what runs. A README edit runs nothing, a source edit runs exactly what it reaches.'
+excerpt: 'vx watch lets the cache key decide what runs. A source edit runs exactly what it reaches.'
 ---
 
-`vx watch` runs only what an edit really affects. A README edit runs
-nothing. A source edit runs that project and everything after it.
+`vx watch` runs only what an edit really affects. A source edit runs
+that project and everything after it.
 
 ```sh frame="terminal"
 $ vx watch build test --all
