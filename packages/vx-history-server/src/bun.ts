@@ -19,6 +19,9 @@ const USAGE = `usage: vx-history-server [--db vx-history.sqlite] [--port 8080] [
 /** A SQLite file through bun:sqlite. */
 export function sqliteDb(path: string): Db {
   const db = new Database(path, { create: true, strict: true })
+  // bun:sqlite waits for a lock on the server's one thread, stalling every
+  // request: a fold takes ms, so a lock held past this is no other fold's.
+  db.run('PRAGMA busy_timeout = 1000')
   // A file another tool made started the server, and its first upload
   // failed 500 after init had altered that tool's table.
   for (const table of TABLES.keys()) {
@@ -36,14 +39,28 @@ export function sqliteDb(path: string): Db {
       throw new Error(why)
     }
   }
-  db.run('PRAGMA journal_mode = WAL')
-  // bun:sqlite waits for a lock on the server's one thread, stalling every
-  // request: a fold takes ms, so a lock held past this is no other fold's.
-  db.run('PRAGMA busy_timeout = 1000')
+  toWal(db)
   return {
     all: async <T>(sql: string, params: readonly unknown[]) =>
       db.query(sql).all(...(params as never[])) as T[],
     run: async (sql, params) => db.query(sql).run(...(params as never[])).changes,
+  }
+}
+
+/**
+ * The file in WAL mode. The switch takes the file whole and SQLite asks no
+ * busy handler for it: two servers starting on a new file raced, and the
+ * loser died of "database is locked". Tried again within the busy timeout.
+ */
+function toWal(db: Database): void {
+  for (const until = Date.now() + 1000; ;) {
+    try {
+      db.run('PRAGMA journal_mode = WAL')
+      return
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'SQLITE_BUSY' || Date.now() >= until) throw err
+      Bun.sleepSync(10)
+    }
   }
 }
 
