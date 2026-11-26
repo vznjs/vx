@@ -544,14 +544,20 @@ function noKeyCause(
     status: string
     cacheHit: number | null
     blockedBy: string | null
+    exitCode: number | null
     spawned: number | null
     notReady: string | null
   },
 ): string {
+  // A skip with no blocker exits 0 for another platform, 1 for --fail-fast.
   if (r.status === 'skipped')
-    return r.blockedBy === null
-      ? 'this task was skipped: it needs another platform, so it recorded no cache key'
-      : `this task never ran: ${r.blockedBy} did not pass, so it recorded no cache key`
+    return r.blockedBy !== null
+      ? `this task never ran: ${r.blockedBy} did not pass, so it recorded no cache key`
+      : r.exitCode === 0
+        ? 'this task was skipped: it needs another platform, so it recorded no cache key'
+        : r.exitCode === 1
+          ? 'this task never ran: --fail-fast stopped the run before it started, so it recorded no cache key'
+          : 'this task was skipped, so it recorded no cache key'
   if (keyNotDerived(r))
     return `this task's cache key could not be derived, so its command never ran (\`vx last ${runId} --log ${taskId}\` says why)`
   if (r.status === 'failed' && r.cacheHit === null)
@@ -572,7 +578,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
   const this_ = db
     .query(
       `SELECT id, hash, status, cache_hit AS cacheHit, restored, cached, started_at AS startedAt,
-              keyless_by AS keylessBy, blocked_by AS blockedBy,
+              keyless_by AS keylessBy, blocked_by AS blockedBy, exit_code AS exitCode,
               wallclock_start_ns AS spawned, not_ready AS notReady
        FROM runs WHERE run_id = ? AND project = ? AND task = ?`,
     )
@@ -587,6 +593,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
         startedAt: number
         keylessBy: string | null
         blockedBy: string | null
+        exitCode: number | null
         spawned: number | null
         notReady: string | null
       }
@@ -766,7 +773,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
-      'SELECT id, hash, cached, cache_hit AS cacheHit, status, started_at AS startedAt, keyless_by AS keylessBy, blocked_by AS blockedBy, wallclock_start_ns AS spawned, not_ready AS notReady FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+      'SELECT id, hash, cached, cache_hit AS cacheHit, status, started_at AS startedAt, keyless_by AS keylessBy, blocked_by AS blockedBy, exit_code AS exitCode, wallclock_start_ns AS spawned, not_ready AS notReady FROM runs WHERE run_id = ? AND project = ? AND task = ?',
     )
     .get(runId, project, task) as
     | {
@@ -778,6 +785,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
         startedAt: number
         keylessBy: string | null
         blockedBy: string | null
+        exitCode: number | null
         spawned: number | null
         notReady: string | null
       }

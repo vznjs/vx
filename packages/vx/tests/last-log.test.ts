@@ -252,6 +252,50 @@ it("a skipped task's log points at what blocked it", () => {
   })
 })
 
+// A skip with no blocker read "ended skipped. vx keeps output only for
+// failed and cached tasks", though it never ran; a blocker --fail-fast
+// killed keeps no row, so its "vx last --log" pointer was a dead end.
+it("a skip's log and why say why it never ran when no blocker's log can tell", async () => {
+  const other = `${process.platform}-${process.arch}` === 'linux-x64' ? 'linux-arm64' : 'linux-x64'
+  await addProject(
+    root,
+    'f',
+    `export default { tasks: {
+  mac: { exec: { command: 'echo mac', platforms: ['${other}'] } },
+  bad: { exec: { command: 'exit 3' } },
+  bad2: { dependsOn: ['bad'], exec: { command: 'true' } },
+  slow: { exec: { command: 'sleep 5' } },
+  later: { dependsOn: ['slow'], exec: { command: 'true' } },
+  z: { exec: { command: 'true' } },
+  killed: { dependsOn: ['bad', 'later'] },
+  unstarted: { dependsOn: ['bad2', 'z'] },
+} }
+`,
+  )
+  expect(vx('run', 'f#mac').code).toBe(0)
+  expect(vx('last', '--log', 'f#mac').err).toBe(
+    noticed('vx last: f#mac did not run: it needs another platform\n', 'info'),
+  )
+  expect(vx('run', 'f#killed', '--fail-fast', '--concurrency', '2').code).toBe(1)
+  expect(vx('last', '--log', 'f#later').err).toBe(
+    noticed(
+      'vx last: f#later did not run: f#slow did not pass, and this run kept no row for it\n',
+      'info',
+    ),
+  )
+  expect(vx('run', 'f#unstarted', '--fail-fast', '--concurrency', '1').code).toBe(1)
+  expect(vx('last', '--log', 'f#z').err).toBe(
+    noticed('vx last: f#z did not run: --fail-fast stopped the run before it started\n', 'info'),
+  )
+  // vx why read every skip with no blocker as another platform's.
+  expect(vx('why', 'f#z').out).toContain(
+    'verdict   this task never ran: --fail-fast stopped the run before it started',
+  )
+  expect(vx('why', 'f#mac').out).toContain(
+    'verdict   this task was skipped: it needs another platform',
+  )
+}, 30_000)
+
 // The entry is the key's, not the run's: a `--force` run saves over the entry
 // it finds, and an evicted key saved again holds the later run's output. Each
 // run's log is its own, or says it was not kept, never another run's.

@@ -91,6 +91,8 @@ of these exact sentences:
 | this task declares no `cache: true` — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` (and `outputs` with `cache: true` to cache it too) | not cached, and no task depending on it can hit |
 | this task was skipped: it needs another platform, so it recorded no cache key | it waits for a worker of that platform |
 | this task never ran: … did not pass, so it recorded no cache key | a task it depends on failed or was skipped |
+| this task never ran: --fail-fast stopped the run before it started, so it recorded no cache key | another task failed first |
+| this task was skipped, so it recorded no cache key | its row does not say why |
 | this task's cache key could not be derived, so its command never ran (…) | the line names the `vx last` command that shows why |
 | this task hit the cache and its restore failed, so it recorded no cache key | the restore was refused or failed; the line in its log says why |
 | this task is persistent: it records no cache key | a server or watcher has no key to compare |

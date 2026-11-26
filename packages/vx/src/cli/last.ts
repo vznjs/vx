@@ -1180,26 +1180,39 @@ async function printLog(
           .get(log.runId, project, task) as { cached: number | null } | null
       )?.cached === 1
     // A skip ran nothing: the output to read is its blocker's.
-    const blocker =
+    const skip =
       log.status === 'skipped'
-        ? (
-            db
-              .query(
-                'SELECT blocked_by AS b FROM runs WHERE run_id = ? AND project = ? AND task = ?',
-              )
-              .get(log.runId, project, task) as { b: string | null } | null
-          )?.b
+        ? (db
+            .query(
+              'SELECT blocked_by AS b, exit_code AS code FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+            )
+            .get(log.runId, project, task) as { b: string | null; code: number | null } | null)
         : null
+    const blocker = skip?.b ?? null
+    // A blocker --fail-fast or a stop killed keeps no row: pointing at its
+    // log answered "no recorded run of" it. A skip with no blocker exits 0
+    // for another platform, 1 for --fail-fast (as the run summary reads it).
+    const blockerKept =
+      blocker !== null &&
+      db
+        .query('SELECT 1 FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+        .get(log.runId, ...splitTaskId(blocker)) !== null
     sayNotice(
       'info',
       'vx last',
-      typeof blocker === 'string'
-        ? `${log.taskId} did not run: ${blocker} blocked it (vx last --log ${blocker})`
-        : log.status === 'failed'
-          ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
-          : cached
-            ? `${log.taskId} ended ${log.status}, and the cache does not hold its output: the run did not save it, or it was pruned or saved over since`
-            : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
+      blocker !== null
+        ? blockerKept
+          ? `${log.taskId} did not run: ${blocker} blocked it (vx last --log ${blocker})`
+          : `${log.taskId} did not run: ${blocker} did not pass, and this run kept no row for it`
+        : skip?.code === 0
+          ? `${log.taskId} did not run: it ${OTHER_PLATFORM}`
+          : skip?.code === 1
+            ? `${log.taskId} did not run: --fail-fast stopped the run before it started`
+            : log.status === 'failed'
+              ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
+              : cached
+                ? `${log.taskId} ended ${log.status}, and the cache does not hold its output: the run did not save it, or it was pruned or saved over since`
+                : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
     )
   } else if (log.output === '') {
     sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)

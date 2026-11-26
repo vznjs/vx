@@ -6233,6 +6233,9 @@ not kept` when no cache entry holds what it printed.
   (`@w/envy#test` for `envy#test`).
 - `--log build`: a bare name is the one project that ran it. With several,
   the cwd's project; else refused, listing them.
+- A skipped task's `--log` says why it never ran: what blocked it (with
+  that task's `--log`), another platform, or `--fail-fast`. A blocker
+  `--fail-fast` killed keeps no row, so no `--log` is offered for it.
 - `//#<task>` is the root project's, here and in `--stats`.
 - `vx last @demo/web#build --log`: a `--log` with no value takes the
   positional as its task.
