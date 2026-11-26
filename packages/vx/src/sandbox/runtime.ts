@@ -509,7 +509,9 @@ async function wrapIn(
   // hermetic task's `/usr/bin/sh`) is there already: bwrap refuses a link
   // over it, and a grant spelled through it failed the task.
   const bound = new Set(allowRead)
-  const laid = links.filter(([, at]) => !bound.has(at))
+  const laid = links.filter(
+    ([, at], i) => !bound.has(at) && links.findIndex(([, a]) => a === at) === i,
+  )
   if (process.platform === 'linux' && /^\S*bwrap /.test(wrapped)) {
     const gitGranted = [...args.config.allowRead, ...args.config.allowWrite].some((g) =>
       g.split(/[\\/]/).includes('.git'),
