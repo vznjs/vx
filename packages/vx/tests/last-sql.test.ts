@@ -238,3 +238,19 @@ it('a query that selects no row says so', () => {
   const j = vx('last', '--sql', "SELECT run_id FROM runs WHERE task = 'nope'", '--format', 'json')
   expect([j.code, j.out, j.err]).toEqual([0, '{"rows":[]}\n', ''])
 })
+
+// A leading comment hid the SELECT from the read-only check: a query that
+// reads was refused as a write.
+it('a query that opens with a comment reads', () => {
+  for (const sql of [
+    '/* why */ SELECT 1 AS a',
+    '-- why\nSELECT 1 AS a',
+    ' /* a */ -- b\n WITH t AS (SELECT 1 AS a) SELECT a FROM t',
+  ]) {
+    const r = vx('last', `--sql=${sql}`, '--format', 'json')
+    expect([r.code, r.err, r.out]).toEqual([0, '', '{"rows":[{"a":1}]}\n'])
+  }
+  const w = vx('last', '--sql=/* x */ DELETE FROM runs')
+  expect(w.code).toBe(1)
+  expect(w.err).toContain('--sql reads only')
+})

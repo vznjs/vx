@@ -513,7 +513,8 @@ function* jsonRows(
  * creates a file, hence only SELECT or WITH may lead.
  */
 async function printQuery(db: Database, sql: string, format: 'pretty' | 'json'): Promise<number> {
-  if (!/^\s*(select|with)\b/i.test(sql)) {
+  // A leading comment is no statement: `/* why */ SELECT` reads.
+  if (!/^(?:\s|--[^\n]*|\/\*[^]*?\*\/)*(select|with)\b/i.test(sql)) {
     throw new UserError(
       `vx last: --sql reads only: one SELECT (or WITH … SELECT) over the history`,
       'VX_E_USAGE',
