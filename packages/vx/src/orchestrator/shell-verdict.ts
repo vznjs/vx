@@ -27,6 +27,8 @@ export function shellVerdict(args: {
   hidden?: ((file: string) => boolean) | undefined
   /** What the step wrote to stderr: the shell's own "not found" line names the word a compound command missed. */
   stderr?: string | undefined
+  /** The PATH the step's `exec.env.define` sets, which replaces the host's. */
+  definedPath?: string | undefined
 }): string | undefined {
   if (args.code !== 127 && args.code !== 126) return signalVerdict(args.code, args.signal)
   const own = execWord(args.command)
@@ -55,7 +57,9 @@ function wordVerdict(args: Parameters<typeof shellVerdict>[0], word: string | un
   }
   // A program the host's PATH has may be one the sandbox hides (a
   // hermetic task sees no /usr/bin): the reason is a grant, not an install.
-  const taskPath = [...args.bins, process.env['PATH'] ?? ''].join(path.delimiter)
+  const taskPath = [...args.bins, args.definedPath ?? process.env['PATH'] ?? ''].join(
+    path.delimiter,
+  )
   const found = word === undefined ? null : Bun.which(word, { PATH: taskPath })
   if (found !== null && args.hidden?.(found) === true) {
     return `[vx] exit 127 is the shell's "command not found": ${word} is ${found} on the host, but no sandbox grant reads it, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`
@@ -78,6 +82,11 @@ function wordVerdict(args: Parameters<typeof shellVerdict>[0], word: string | un
   const unnamed = args.bins.find((dir) => dir.includes(path.delimiter))
   if (unnamed !== undefined) {
     return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — ${unnamed} holds "${path.delimiter}", which PATH reads as a separator, so vx cannot put it there; move the workspace to a path without "${path.delimiter}"`
+  }
+  // `define: { PATH: '/opt/x' }` dropped the host's PATH: "install it" sent
+  // the reader to install a program the host has.
+  if (args.definedPath !== undefined && found === null) {
+    return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — exec.env.define sets PATH to "${args.definedPath}", which replaces the host's PATH; add the directory that holds it there`
   }
   return `[vx] exit 127 is the shell's "command not found": ${what} is not on this task's PATH — vx puts ${args.bins.join(' and ')} first and never a sibling project's bin; install it in this package or at the workspace root`
 }

@@ -242,6 +242,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
             bins: taskBinDirs(node, args.run.workspaceRoot),
             signal,
             hidden: serverSandbox && ((f: string) => !sandboxReads(serverSandbox, f)),
+            definedPath: step.env?.define?.['PATH'],
           })
     if (verdict !== undefined) lines.push(serverSecrets?.mask(verdict) ?? verdict)
     if (step.sandbox !== undefined && code !== 0) {

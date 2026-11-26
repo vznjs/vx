@@ -875,7 +875,8 @@ PATH is vx's: the line names the word (`execWord`, the predicate
 `execWrap` uses; for a compound command, the word the shell's own "not
 found" line names in the step's stderr, else "a command in this task"), the two
 bin directories `taskBinDirs` prepends, and that a sibling project's bin
-is never on it; a bare word on 126 gets `chmod +x`. A word with a slash
+is never on it; under a PATH the task's `exec.env.define` sets, which
+replaces the host's, the line names that PATH instead of an install; a bare word on 126 gets `chmod +x`. A word with a slash
 is a file, and the file says why, under either code: missing (the
 resolved path), a directory, not executable by this user, a `#!` line ending in CRLF
 (the interpreter's name ends in `\r`), a `#!` interpreter that does not
