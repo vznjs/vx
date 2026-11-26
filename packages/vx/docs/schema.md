@@ -3144,7 +3144,8 @@ interface CacheSettings {
 - A project no rule selects is free. An untagged dependency matches no `tag:` selector.
 - `{ from: 'tag:lib' }` with neither `allow` nor `deny`, or with `deny: []` and no `allow`, is refused: it checks nothing.
 - `allow: []` allows no dependency.
-- A `from`, `allow` or `deny` selector that selects no project is warned about at `vx lock`, naming its field: `run.rules.dependencies[0].deny[0] 'tag:ap' selects no project`. A typo in a `deny` would pass every edge. It is not refused: a rule may name a tag no project carries yet.
+- A selector that selects no project gets a `vx lock` warning naming its field: `run.rules.dependencies[0].deny[0] 'tag:ap' selects no project`.
+- Why: a typo in a `deny` would pass every edge. It is not refused, since a rule may name a tag no project carries yet.
 - A broken edge refuses the lock with `VX_E_DEPENDENCY_RULE`, every broken edge on its own line: `lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies`.
 
 </div>
