@@ -96,7 +96,8 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
   return {
     enabled,
     get columns() {
-      return stream.isTTY === true ? stream.columns : undefined
+      // A pty of no size (0x0) reads 0: unknown, not one column to wrap at.
+      return stream.isTTY === true && stream.columns > 0 ? stream.columns : undefined
     },
   }
 }
