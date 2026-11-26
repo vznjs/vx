@@ -439,6 +439,47 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
     )
   })
 
+  // A hidden directory holding a link into another project: the key entry
+  // `lk/**` followed the link, and the run refused it (VX_E_NESTED_INPUT),
+  // so the hint's own fix failed. The link is taken back and its target
+  // keyed through inputs.workspaceFiles.
+  it('beside a cached task takes back a link into another project and keys its target', async () => {
+    await addProject(root, 'lib', { files: { 'shared/s.json': 'v1\n' } })
+    const cached = (read: string[], files: string[], workspaceFiles: string[]) =>
+      `export default { tasks: { t: {
+        exec: { command: ${JSON.stringify(
+          '[ -e lk/lnk/s.json ] || { echo "cat: lk/lnk/s.json: No such file or directory" >&2; exit 1; }; cat lk/lnk/s.json lk/own.txt > out.txt',
+        )},
+          sandbox: { allow: { read: ${JSON.stringify(read)}, write: ['out.txt'] } } },
+        cache: true,
+        inputs: { files: ${JSON.stringify(files)}, workspaceFiles: ${JSON.stringify(workspaceFiles)} },
+        outputs: { files: ['out.txt'] },
+      } } }\n`
+    const app = await addProject(root, 'app', {
+      config: cached(['src/'], ['src/**'], []),
+      files: { 'src/a': '', 'lk/own.txt': 'own\n' },
+    })
+    await symlink('../../lib/shared', path.join(app, 'lk', 'lnk'))
+    const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
+    expect((await t())?.sandbox?.lines?.[0]).toEndWith(
+      "If the task reads one, grant it, e.g. `allow: { read: ['lk'] }`, and, if the output " +
+        "depends on it, key it: `inputs: { files: ['lk/**', '!lk/lnk'], workspaceFiles: " +
+        "['packages/lib/shared/**'] }`.",
+    )
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      cached(
+        ['src/', 'lk', '../lib/shared'],
+        ['src/**', 'lk/**', '!lk/lnk'],
+        ['packages/lib/shared/**'],
+      ),
+    )
+    expect((await t())?.status).toBe('success')
+    await writeFile(path.join(root, 'packages', 'lib', 'shared', 's.json'), 'v2\n')
+    expect((await t())?.status).toBe('success')
+    expect(await Bun.file(path.join(app, 'out.txt')).text()).toBe('v2\nown\n')
+  })
+
   // A root task's `inputs.files` stops at a member project, and `vx lock`
   // refuses a glob into one ("lies inside the project"): a root `tsc -b`
   // reading a member was told an entry it could not declare.

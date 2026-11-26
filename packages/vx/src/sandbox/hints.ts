@@ -3,7 +3,7 @@
 
 import path from 'node:path'
 import os from 'node:os'
-import { lstatSync, readFileSync, statSync } from 'node:fs'
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import type { SandboxViolation } from '../exec/index.js'
 import { procfsIsOwn, relPosix, taskGlobOf } from '../util/index.js'
 import { bindableWrites } from './binds.js'
@@ -687,7 +687,69 @@ function keyEntryHint(p: string, within: string, key: KeyScope | undefined): str
   const rel = relPosix(base, p)
   const dir = statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
   const glob = rel === '' ? '**' : dir ? `${taskGlobOf(rel)}/**` : taskGlobOf(rel)
-  return `, and, if the output depends on it, key it: \`inputs: { ${field}: [${jsString(glob)}] }\``
+  const entries = [jsString(glob)]
+  let through = ''
+  if (own && dir) {
+    // `dir/**` follows a link in it, and a run refuses one into another
+    // project (VX_E_NESTED_INPUT): the hint's own entry failed. Each link
+    // out of the project is taken back and its target keyed where it lies.
+    const nested = key.nested.map(toRealPath)
+    const targets: string[] = []
+    for (const [link, target] of linksLeaving(p, project, nested)) {
+      if (!atOrUnder(target, root)) continue
+      entries.push(jsString(`!${taskGlobOf(relPosix(project, link))}`))
+      const t = relPosix(root, target)
+      const tDir = statSync(target, { throwIfNoEntry: false })?.isDirectory() === true
+      targets.push(jsString(tDir ? `${taskGlobOf(t)}/**` : taskGlobOf(t)))
+    }
+    if (targets.length > 0) through = `, workspaceFiles: [${targets.join(', ')}]`
+  }
+  return `, and, if the output depends on it, key it: \`inputs: { ${field}: [${entries.join(', ')}]${through} }\``
+}
+
+/** Entries a hint's walk of a directory looks at, at most: it runs on a failure only. */
+const LINK_WALK_ENTRIES = 10_000
+
+/**
+ * The links under `dir` whose real target lies outside `project` or in a
+ * project nested in it, with that target: a walk that never enters a link
+ * or `node_modules` / `.git`, bounded.
+ */
+function linksLeaving(
+  dir: string,
+  project: string,
+  nested: readonly string[],
+): Array<[link: string, target: string]> {
+  const found: Array<[string, string]> = []
+  const stack = [dir]
+  let seen = 0
+  while (stack.length > 0 && seen < LINK_WALK_ENTRIES) {
+    const at = stack.pop()!
+    let names
+    try {
+      names = readdirSync(at, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const e of names) {
+      if (++seen > LINK_WALK_ENTRIES) break
+      const abs = path.join(at, e.name)
+      if (e.isDirectory()) {
+        if (e.name !== 'node_modules' && e.name !== '.git') stack.push(abs)
+        continue
+      }
+      if (!e.isSymbolicLink()) continue
+      let target: string
+      try {
+        target = realpathSync(abs)
+      } catch {
+        continue
+      }
+      if (!atOrUnder(target, project) || nested.some((n) => atOrUnder(target, n)))
+        found.push([abs, target])
+    }
+  }
+  return found.sort((a, b) => (a[0] < b[0] ? -1 : 1))
 }
 
 /**
