@@ -6934,7 +6934,10 @@ and a CI turns them on.
 - `GITHUB_STEP_SUMMARY`: core never reads it. The job summary is
   `@vzn/vx-ci`'s.
 - A sandboxed task's temp dir sits under `CLAUDE_CODE_TMPDIR`, else
-  `CLAUDE_TMPDIR`, else `/tmp/claude`: the sandbox runtime's convention.
+  `CLAUDE_TMPDIR` (the sandbox runtime's names), else this user's own
+  `/tmp/vx-tasks-<uid>`.
+- Why the uid: `/tmp/claude` is one directory for every user of the
+  machine, and a second user's sandboxed tasks were refused there.
 - See `docs/modules/exec.md` for that temp dir.
 - That variable and `TMPDIR` hold sockets whose paths pass unquoted
   through a shell.

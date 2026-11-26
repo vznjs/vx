@@ -887,7 +887,10 @@ SRT points every sandboxed task's `TMPDIR` at one host directory
 across runs. A file one task wrote there was the next task's, and the
 next run's, undeclared input: a cached reader replayed the first value it
 saw after the writer changed it (item 965). Each task now gets its own,
-`vx-tasks/vx-task-<pid>-<tag>` under it, exported as `TMPDIR` after the command's
+`vx-task-<pid>-<tag>` in `vx-tasks` under it (with neither variable set,
+in `/tmp/vx-tasks-<uid>` instead: `/tmp/claude` is one directory for
+every user, made 0755 by the first, and a second user's every sandboxed
+task was refused on the first one's `vx-tasks`), exported as `TMPDIR` after the command's
 tag (SRT keys violations by the first 100 characters), and as `TMP` and
 `TEMP` when the task's env has them: passed through from the host, they
 named a temp directory the sandbox mounts read-only, and a tool reading

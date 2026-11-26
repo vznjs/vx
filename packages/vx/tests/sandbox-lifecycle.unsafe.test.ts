@@ -353,8 +353,10 @@ describe('localBinding port list — the pure halves', () => {
     try {
       set('CLAUDE_CODE_TMPDIR', '')
       set('CLAUDE_TMPDIR', undefined)
+      // Unset, the root is this user's own: one `/tmp/claude/vx-tasks` for
+      // every user refused a second user's every sandboxed task.
       expect(portBridgeSocket('t', 1)).toBe(
-        `/tmp/claude/vx-tasks/vx-task-${process.pid}-t/vx-port-t-1.sock`,
+        `/tmp/vx-tasks-${process.getuid!()}/vx-task-${process.pid}-t/vx-port-t-1.sock`,
       )
       set('CLAUDE_CODE_TMPDIR', undefined)
       set('CLAUDE_TMPDIR', '/legacy')
