@@ -1129,8 +1129,9 @@ export function committedFiles(
  * link. Refused in either scope: a head linked into `.git` or `.vx` (a clean
  * through `dist -> .git` deleted the repository), out of the root, or onto an
  * entry of the task's own `inputs` (`dist -> src` would clean every untracked
- * source). In project scope, also a head linked into a nested project, whose
- * files the scan never walks.
+ * source), or onto a directory holding the link (`dist -> .`). In project
+ * scope, also a head linked into a nested project, whose files the scan never
+ * walks.
  */
 function refuseDirLinkedOut(
   root: string,
@@ -1179,6 +1180,15 @@ function refuseDirLinkedOut(
           `${at} is a symbolic link to ${real}, Git's or vx's metadata — vx never cleans, ` +
             'saves or restores declared outputs through a link into .git or .vx. Remove the ' +
             'link and re-run, or stop declaring outputs under it.',
+        )
+      }
+      // `dist -> .`: the target holds the link, so dist/** is every file beside
+      // it, and a clean before a task with no inputs deleted them all.
+      if (isInside(real, realOr(path.dirname(at)))) {
+        throw new UserError(
+          `${at} is a symbolic link to ${real}, which holds the link itself — vx never cleans, ` +
+            'saves or restores declared outputs through a link that loops back, as every file ' +
+            'beside it would be an output. Remove the link and re-run, or stop declaring outputs under it.',
         )
       }
       // The scan never walks a nested project's files: the outputs would be

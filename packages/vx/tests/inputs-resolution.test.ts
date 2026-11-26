@@ -821,6 +821,28 @@ describe('output resolution contains itself — the loader guard is now the SECO
     expect(await readFile(path.join(nested, 'gen/o.txt'), 'utf8')).toBe('built')
   })
 
+  // `dist -> .` under a task with `inputs.files: []`: no input entry refused
+  // it, and the clean before the miss deleted every untracked project file.
+  it('an output dir linked back onto a directory holding it is refused by name', async () => {
+    await Bun.write(path.join(projectDir, 'untracked.txt'), 'precious')
+    await mkdir(path.join(projectDir, 'out'))
+    for (const [link, target] of [
+      ['dist', '.'],
+      ['out/dist', '..'],
+    ] as const) {
+      await symlink(target, path.join(projectDir, link))
+      const refusal =
+        `${path.join(projectDir, link)} is a symbolic link to ${await realpath(projectDir)}, ` +
+        'which holds the link itself — vx never cleans, saves or restores declared outputs ' +
+        'through a link that loops back, as every file beside it would be an output. Remove ' +
+        'the link and re-run, or stop declaring outputs under it.'
+      const args = { projectDir, outputs: [`${link}/**`], nestedProjectDirs: [] }
+      await expect(cleanOutputs(args)).rejects.toThrow(refusal)
+      await rm(path.join(projectDir, link))
+    }
+    expect(await readFile(path.join(projectDir, 'untracked.txt'), 'utf8')).toBe('precious')
+  })
+
   it('a clean follows a symlinked output dir that points INSIDE the project', async () => {
     // `dist -> real-out`: the save follows the link (output-shape.test.ts,
     // turborepo#13042), so the clean must too, or the next entry saves the
