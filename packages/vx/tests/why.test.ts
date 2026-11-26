@@ -1195,6 +1195,47 @@ describe('vx why — an input another task rewrites', () => {
   )
 })
 
+describe('vx why — a committed output its own task rewrites', () => {
+  // A hand edit to a committed output keys by its bytes; a command that
+  // writes it differently each run then re-keyed itself forever, and the
+  // advice said to give the write its own task or drop the file from
+  // inputs.files, though it was an output and in no inputs.files glob.
+  it(
+    'says to put back what git holds, and that ends the misses',
+    async () => {
+      const root = await makeWorkspace()
+      const appDir = path.join(root, 'packages', 'app')
+      try {
+        await writeFile(
+          path.join(appDir, 'vx.config.mjs'),
+          `export default { tasks: { build: {
+            exec: { command: 'date +%s%N > out.txt' },
+            inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] }, cache: true,
+          } } }`,
+        )
+        await writeFile(path.join(appDir, 'out.txt'), 'committed\n')
+        gitIn(root)('add', '-A')
+        await writeFile(path.join(appDir, 'out.txt'), 'hand edit\n')
+        await vx(root, ['run', 'app#build'])
+        await vx(root, ['run', 'app#build'])
+        const r = await vx(root, ['why', 'app#build'])
+        expect(r.out).toContain('cache key changed: file packages/app/out.txt')
+        expect(r.out).toContain(
+          'a committed output keys by its bytes after a hand edit: `git checkout` it',
+        )
+        gitIn(root)('checkout', '--', 'packages/app/out.txt')
+        await vx(root, ['run', 'app#build'])
+        await vx(root, ['run', 'app#build'])
+        const after = await vx(root, ['why', 'app#build'])
+        expect(after.out).toContain('cache key unchanged')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('vx why — a task that never records a key', () => {
   it(
     'a second run of a persistent task is not called its first, and says why nothing compares',

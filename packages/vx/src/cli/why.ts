@@ -629,7 +629,14 @@ function whatToDoRows(
   }
   // A task re-writing a file a key reads moves that key every run:
   // the miss is right, and only moving the write ends it.
-  if (writers.length > 0) todo.push(['written', WRITTEN_TODO])
+  if (writers.length > 0)
+    todo.push([
+      'written',
+      // A key that reads what its own task rewrites, never another's: a
+      // committed output (git tracks it) a hand edit left keys by its bytes,
+      // and a command that writes it differently each time missed forever.
+      writers.every((w) => w.writers.every((x) => x === w.taskId)) ? OWN_WRITE_TODO : WRITTEN_TODO,
+    ])
   return todo
 }
 
@@ -837,3 +844,6 @@ async function groupMembers(
 
 const WRITTEN_TODO =
   'a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files'
+
+const OWN_WRITE_TODO =
+  'the task rewrites a file its own key reads, so each run re-keys it; a committed output keys by its bytes after a hand edit: `git checkout` it (or commit it) and the key folds what git holds; any other file belongs among its outputs or out of inputs.files'

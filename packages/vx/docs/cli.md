@@ -5802,6 +5802,10 @@ re-keys that key every run:
 
 - The miss is right. Only moving the write ends it, for example a build
   that rewrites a translation file in another package.
+- A task that rewrites a file its own key reads names itself. A
+  committed output keys by its bytes after a hand edit, so a command that
+  writes it differently each run misses every run: `git checkout` it, or
+  commit it, and the key folds what git holds again.
 - An edit made outside a run, or after the asked run ended, names no
   task.
 - The history holds when tasks ran, not what they wrote. A hand edit
