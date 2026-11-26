@@ -712,9 +712,9 @@ bounds a run's.
   symlinks and empty directories. A dependant on another worker gets them
   the same way.
 - An output no entry can hold (a link out of the workspace or into
-  `.git`) fails the task on its worker, naming it: a run here keeps such a
-  file and only saves no entry, but a worker's files come back only
-  through one.
+  `.git`) fails the task on its worker, naming it.
+- A run here keeps such a file and saves no entry, but a worker's files
+  come back only through an entry.
 - Two runs that make one key at once each land their own; the cache keeps
   one whole entry, and a later hit lands that one.
 - A cached one is saved here once its files land.
