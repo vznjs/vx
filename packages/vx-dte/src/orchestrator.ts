@@ -1497,8 +1497,9 @@ export class Orchestrator extends RunReport<Worker> {
     delete job.batch
     const begun = a.started.delete(job.req.taskId)
     // Stopped, it runs nowhere again; the cancel sent its worker has no one to answer it.
+    // Begun there, its row names that worker, as an answered cancel's does.
     if (job.req.signal?.aborted === true) {
-      job.resolve(stopped())
+      job.resolve(begun ? { ...stopped(), where: a.label } : stopped())
       this.bound?.drop(job.req.taskId, this.clock())
       return undefined
     }
@@ -1612,7 +1613,8 @@ export class Orchestrator extends RunReport<Worker> {
     // a hang's cut by a timeout, taught later runs the task's pace.
     if (job.req.signal?.aborted === true) {
       this.pumpSoon()
-      return job.resolve(result(head, sentLog ?? []))
+      // Begun here: its row names this worker, not the machine that ran vx.
+      return job.resolve({ ...result(head, sentLog ?? []), where: a.label })
     }
     const share = shareOf(head.cpuShare)
     // At least as long as it ran: begun here once its batch's send resolved,
