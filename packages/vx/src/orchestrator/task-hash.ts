@@ -569,6 +569,16 @@ export async function inputFilesOf(args: ComputeHashArgs): Promise<readonly stri
   ).files
 }
 
+/**
+ * The env an `inputs.env` name keys from: the task sees define's value over
+ * the host's, so a name define sets keys that value. Keying the host's
+ * missed on every change to a value the task never reads.
+ */
+function keyEnvSource(define: Readonly<Record<string, string>> | undefined): NodeJS.ProcessEnv {
+  const host = taskEnvSource()
+  return define === undefined || Object.keys(define).length === 0 ? host : { ...host, ...define }
+}
+
 /** What `resolveInputs` is asked for a task's key. */
 function inputsArgs(args: ComputeHashArgs): ResolveInputsArgs {
   const cfg = args.node.config
@@ -576,7 +586,7 @@ function inputsArgs(args: ComputeHashArgs): ResolveInputsArgs {
   return {
     projectDir: args.node.projectDir,
     workspaceRoot: args.workspaceRoot,
-    envSource: taskEnvSource(),
+    envSource: keyEnvSource(cfg.exec?.env?.define),
     inputs: cfg.inputs,
     ownOutputs: cfgOut?.files ?? [],
     ownWorkspaceOutputs: cfgOut?.workspaceFiles ?? [],
