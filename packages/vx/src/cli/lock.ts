@@ -181,26 +181,28 @@ export async function lockWorkspace(
   // One writer at a time: two at once left a review copy and the lock from
   // different evaluations. Taken before the evaluation, so the second
   // writes what the configs say after the first.
-  // A stop ends vx through its exit hooks, which remove the temps it was
-  // writing and its run lock's entry.
-  return await exitOnStop(async () => {
-    const release = await acquireRunLock(root, {
-      log: warn,
-      // Taking turns is a status line, as a run says it, not a warning.
-      wait: (line) => ui.say('info', line),
-      of: 'lock',
-    })
-    try {
-      const check = await audit(root, warn)
-      if (check.broken !== null) {
-        notWritten(check.broken, check.brokenParts, check.alsoBroken)
-        return 1
-      }
-      return await writeLock(root, check, say)
-    } finally {
-      await release()
-    }
+  const release = await acquireRunLock(root, {
+    log: warn,
+    // Taking turns is a status line, as a run says it, not a warning.
+    wait: (line) => ui.say('info', line),
+    of: 'lock',
   })
+  try {
+    // The evaluation keeps each stop signal's default: a handler runs on the
+    // event loop, which a config spinning in a loop never yields, so Ctrl-C
+    // and SIGTERM left vx lock running until SIGKILL. A stop there writes
+    // nothing, and the next vx reclaims a dead holder's run lock.
+    const check = await audit(root, warn)
+    if (check.broken !== null) {
+      notWritten(check.broken, check.brokenParts, check.alsoBroken)
+      return 1
+    }
+    // A stop ends vx through its exit hooks, which remove the temps it was
+    // writing and its run lock's entry.
+    return await exitOnStop(() => writeLock(root, check, say))
+  } finally {
+    await release()
+  }
 }
 
 /**
