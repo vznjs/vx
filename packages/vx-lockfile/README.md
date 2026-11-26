@@ -99,6 +99,7 @@ The file is `pnpm-lock.yaml`, lockfile v5, v6, v9 and v13.
 - That entry is keyed `name@version`, a version range such as `name@<=7.0.0`, or `name`, in that precedence.
 - A `link:` hashes the linked importer's reach.
 - A link to an importer's `publishDirectory` is that importer: its edge and reach, not the directory's content. `publishConfig.linkDirectory` writes such a link: `link:../b/dist`.
+- pnpm: a `link:` into another importer's directory (`workspace:../b/dist` with no `publishDirectory`) is that importer too, so b's build output moves no key. A directory inside the linking importer, or only inside the root, stays content.
 - A `link:` to a directory that is no importer hashes the directory's content. That is an importer's link or, under an override, a package's.
 - Under `excludeLinksFromLockfile`, which leaves links out of the file, it hashes the directory a `package.json` `link:` names. That goes in every project's key, as the importers' reaches do.
 - A `file:` directory dependency hashes its own closure. v9 keys it `name@file:…`, v5/v6 by the bare `file:…`.

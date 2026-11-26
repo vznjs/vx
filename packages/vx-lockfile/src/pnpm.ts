@@ -405,7 +405,7 @@ export function fileDeps(lock: Lockfile): string[] {
   const add = (dir: string, deps: ReadonlyMap<string, string>): void => {
     for (const version of deps.values()) {
       const target = linkTarget(dir, version)
-      if (target !== undefined && importerAt(lock, target) === undefined) out.add(target)
+      if (target !== undefined && linkedImporter(lock, target, dir) === undefined) out.add(target)
     }
   }
   for (const [dir, deps] of lock.importers) {
@@ -456,7 +456,7 @@ export function manifestLinks(lock: Lockfile, root: string): string[] {
           const target = path.isAbsolute(to)
             ? path.relative(root, to).split(path.sep).join('/') || '.'
             : resolvePosix(importer, to)
-          if (importerAt(lock, target) === undefined) out.add(target)
+          if (linkedImporter(lock, target, importer) === undefined) out.add(target)
         }
       }
     }
@@ -497,6 +497,22 @@ function importerAt(lock: Lockfile, target: string): string | undefined {
   return lock.importers.has(target) ? target : lock.published.get(target)
 }
 
+/**
+ * The importer a `link:` from `from` reaches: `importerAt`, else another
+ * project the directory lies in. drizzle's `workspace:../drizzle-orm/dist`
+ * sets no publishDirectory; read as plain content, that build output moved
+ * every key on every build, the producer's own included. The root holds
+ * every path, and a directory in the linking project is its own files:
+ * both stay content.
+ */
+function linkedImporter(lock: Lockfile, target: string, from: string): string | undefined {
+  const own = importerAt(lock, target)
+  if (own !== undefined) return own
+  for (let at = path.posix.dirname(target); at !== '.' && at !== '/'; at = path.posix.dirname(at))
+    if (lock.importers.has(at)) return at === from ? undefined : at
+  return undefined
+}
+
 function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   const { index, material, edges, node } = newGraph()
   for (const key of lock.snapshots.keys()) {
@@ -516,7 +532,7 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   const link = (from: number, by: string, dir: string, name: string, version: string): void => {
     if (version.startsWith('link:')) {
       const target = linkTarget(dir, version)
-      const importer = target === undefined ? undefined : importerAt(lock, target)
+      const importer = target === undefined ? undefined : linkedImporter(lock, target, dir)
       if (importer !== undefined) edges[from]!.push(index.get(importerNode(importer))!)
       else {
         const content = target === undefined ? '' : `\0file\0${files.get(target) ?? ''}`
@@ -598,12 +614,14 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
   for (const [dir, deps] of lock.importers) {
     const links: Record<string, string> = {}
     for (const [name, version] of deps) {
-      const at = version.startsWith('link:')
+      const link = version.startsWith('link:')
+      const at = link
         ? joinPosix(dir, version.slice('link:'.length))
         : version.startsWith('file:')
           ? fileTarget(lock, version)
           : undefined
-      const target = at === undefined ? undefined : importerAt(lock, at)
+      const target =
+        at === undefined ? undefined : link ? linkedImporter(lock, at, dir) : importerAt(lock, at)
       if (target !== undefined && target !== dir) links[name] = target
     }
     out.set(dir, withTransitive({ deps: links, peers: {} }, reached.get(dir)))
