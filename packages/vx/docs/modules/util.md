@@ -1585,7 +1585,7 @@ export const MASKED = '***'
 export interface SecretMask {
   mask(text: string): string
   spans(text: string): Array<[start: number, end: number]> // where mask replaces a value
-  stream(): { push(chunk: string): string; end(): string }
+  stream(): { push(chunk: string): string; release(): string; end(): string }
   // `spans` over a text in chunks: each call returns the spans it settled, as
   // offsets into the whole text (a frame read back from its file, report.md)
   spanStream(): { push(chunk: string): Array<[number, number]>; end(): Array<[number, number]> }
@@ -1642,12 +1642,16 @@ span, nor right after one with a held tail behind it.
 
 `stream()` holds back only a tail that could begin a value, so a value
 split across two chunks is caught and output that cannot be one (a
-`readyWhen` line, a start marker) is never delayed. `maskedStreams` emits a held tail
+`readyWhen` line, a start marker) is never delayed. `maskedStreams` releases a held tail
 25 ms after the last chunk when none follows, so a long task's last
 characters do not wait for its exit, and before a chunk on the other
-stream, so stdout and stderr keep the order the task wrote them in; a
-value split by a longer pause, or by a write to the other stream, is
-not caught where it streams live. What vx stores of the output
+stream, so stdout and stderr keep the order the task wrote them in.
+`release()` lets a piece shorter than six characters go as written and a
+longer one go as `***`, kept so the rest of its value joins that mask:
+`printf 'key=hunter2-l'; sleep 0.3; printf '11-sekret'` showed both pieces
+plain, the whole value on a single task's terminal. Only a value whose
+first piece before the pause is shorter is not caught live; a longer
+piece the rest does not complete stays masked. What vx stores of the output
 (`encodeOutputLog`, `failedOutputLog`), a replayed hit and a buffered
 frame (`report/logger.ts`, the CI default) mask each stream's whole
 text again through `spans` (`maskStreams`), a write to the other stream
