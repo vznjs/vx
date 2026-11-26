@@ -283,7 +283,7 @@ export async function sandboxRequestFor(
       : []),
   ].map(toRealPath)
   const walls = [...nested.map(toRealPath), ...sealed]
-  const resolved = resolveSandboxConfig(sandbox, node.projectDir, walls)
+  const resolved = resolveSandboxConfig(sandbox, node.projectDir, walls, workspaceRoot)
   // Made before the walls judge the binds: a directory grant naming nothing
   // yet (`dist/`, `dist/**`) was judged as a file, its bind its parent, and
   // a root project's was refused for `.git`.

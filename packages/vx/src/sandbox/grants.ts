@@ -116,7 +116,9 @@ export function dependencyReadLinks(
 /**
  * Linux: the links a read grant passes through, hop by hop (`src -> lib2
  * -> lib` is both), each at its real spelling: those inside the project,
- * and under `hermetic` those outside it too, where the host's root is
+ * those of a relative grant leaving it inside the workspace (`../sh/` over
+ * a root `sh -> sh-real`: the workspace is walled too), and under
+ * `hermetic` those outside it too, where the host's root is
  * hidden and a grant of `/usr/bin/python3 -> python3.12` bound the target
  * alone, so the program the task ran was not there.
  */
@@ -124,6 +126,7 @@ function readLinkSpellings(
   grant: string,
   projectDir: string,
   hermetic: boolean,
+  root = projectDir,
 ): Array<{ at: string; text: string }> {
   if (process.platform !== 'linux') return []
   const outside = grant.startsWith('~') || path.isAbsolute(grant)
@@ -134,14 +137,13 @@ function readLinkSpellings(
   // A pattern's links are those of its literal head (`src/*.ts`: `src`).
   const at = wildcardAt(full)
   const lexical = at === -1 ? full : path.dirname(`${full.slice(0, at)}x`)
-  const inside = atOrUnder(lexical, projectDir)
+  const anchor = outside ? undefined : [projectDir, root].find((d) => atOrUnder(lexical, d))
+  const inside = anchor !== undefined
   if (!outside && !inside) return []
-  const home = toRealPath(projectDir)
+  const home = toRealPath(anchor ?? projectDir)
   const out: Array<{ at: string; text: string }> = []
   let cur = inside ? home : path.sep
-  let parts = (inside ? path.relative(projectDir, lexical) : lexical)
-    .split(path.sep)
-    .filter(Boolean)
+  let parts = (inside ? path.relative(anchor, lexical) : lexical).split(path.sep).filter(Boolean)
   for (let hops = 0; parts.length > 0;) {
     const next = path.join(cur, parts.shift()!)
     let link = false
@@ -242,14 +244,18 @@ function linkSpelling(
   grant: string,
   real: string,
   projectDir: string,
+  root = projectDir,
 ): { link: string; target: string } | undefined {
   if (process.platform !== 'linux' || grant.startsWith('~') || path.isAbsolute(grant)) return
   // `gen/**` is the directory whole (`expandGrants`).
   const whole = /\/\*\*(?:\/\*)?$/
   const lexical = path.resolve(projectDir, grant.replace(whole, ''))
   const target = real.replace(whole, '')
-  if (!atOrUnder(lexical, projectDir) || !isMountableLiteral(target)) return
-  const link = path.join(toRealPath(projectDir), path.relative(projectDir, lexical))
+  // A relative grant leaving the project is spelled from the workspace,
+  // walled the same way (`../gen/` over a root `gen -> gen-real`).
+  const base = [projectDir, root].find((d) => atOrUnder(lexical, d))
+  if (base === undefined || !isMountableLiteral(target)) return
+  const link = path.join(toRealPath(base), path.relative(base, lexical))
   return link === target ? undefined : { link, target }
 }
 
@@ -279,6 +285,8 @@ export function resolveSandboxConfig(
   projectDir: string,
   /** Canonical directories a glob's hits stop at (sandbox/request.ts `wallOff`). */
   walls: readonly string[] = [],
+  /** The workspace root: a relative grant leaving the project is spelled from it. */
+  root = projectDir,
 ): ResolvedSandboxConfig {
   const resolve = (p: string): string => {
     if (p.startsWith('~')) return toRealPath(path.join(os.homedir(), p.slice(1)))
@@ -293,7 +301,7 @@ export function resolveSandboxConfig(
   const r: ResolvedSandboxConfig = {
     allowRead: expandGrants(
       (a.read ?? []).flatMap(grantAlternatives).map((p) => {
-        for (const l of readLinkSpellings(p, projectDir, cfg.hermetic === true))
+        for (const l of readLinkSpellings(p, projectDir, cfg.hermetic === true, root))
           if (!linkedReads.some((o) => o.at === l.at)) linkedReads.push(l)
         return resolve(p)
       }),
@@ -303,7 +311,7 @@ export function resolveSandboxConfig(
       (a.write ?? []).flatMap(grantAlternatives).map((p) => {
         const real = resolve(p)
         assertWriteStaysHome(p, real, projectDir)
-        const link = linkSpelling(p, real, projectDir)
+        const link = linkSpelling(p, real, projectDir, root)
         if (link !== undefined) linked.push(link)
         // A directory a write glob matches is writable whole, as Linux's
         // bind of the hit makes it: `<glob>/**` collapses below into the

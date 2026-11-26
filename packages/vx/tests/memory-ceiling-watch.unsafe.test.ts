@@ -22,8 +22,11 @@ import {
 // 5,000 projects' files take minutes to remove on a loaded disk.
 afterEach(removeScratch, TIMEOUT * 3)
 
-const CYCLES = 80
-const WARM = 20
+// Read from cycle 40: the heap settles by then (21 MiB at 20, 31 at 40,
+// 28-31 from 40 to 200), and read from 20 the settling alone read 17.6 MiB
+// of growth on a loaded runner.
+const CYCLES = 100
+const WARM = 40
 
 let base = 0
 beforeAll(async () => {

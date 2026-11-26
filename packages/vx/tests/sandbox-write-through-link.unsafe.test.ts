@@ -141,3 +141,44 @@ describe.skipIf(!available || process.platform !== 'linux')(
     })
   },
 )
+
+// A relative grant leaving the project through a link at the workspace
+// root (`../sh/` over `sh -> sh-real`) bound the target alone, and the
+// link lay in the walled workspace: the read met ENOENT and the write
+// "Directory nonexistent", with hints to grant `..`.
+describe.skipIf(!available || process.platform !== 'linux')(
+  'a grant spelled through a link at the workspace root',
+  () => {
+    let root: string
+    beforeEach(async () => {
+      root = realpathSync(await makeWorkspace({ prefix: 'vx-root-link-' }))
+      await mkdir(path.join(root, 'sh-real'))
+      await Bun.write(path.join(root, 'sh-real', 'x'), 'x\n')
+      symlinkSync('sh-real', path.join(root, 'sh'))
+    })
+    afterEach(async () => {
+      await rm(root, { recursive: true, force: true })
+    })
+
+    const outcome = async (command: string, allow: object) => {
+      await addProject(root, 'p', {
+        config: `export default { tasks: { t: {
+        exec: { command: ${JSON.stringify(command)}, sandbox: { allow: ${JSON.stringify(allow)} } },
+        inputs: { files: [] },
+      } } }\n`,
+      })
+      said = ''
+      return (await run({ cwd: root, tasks: ['t'], log })).outcomes[0]!.status
+    }
+
+    it('reads through it', async () => {
+      expect(await outcome('cat ../../sh/x', { read: ['../../sh/'] }), said).toBe('success')
+      expect(said).toContain('x\n')
+    })
+
+    it('writes through it', async () => {
+      expect(await outcome('echo w > ../../sh/w', { write: ['../../sh/'] }), said).toBe('success')
+      expect(await readFile(path.join(root, 'sh-real', 'w'), 'utf8')).toBe('w\n')
+    })
+  },
+)
