@@ -162,6 +162,23 @@ describe('a found program whose runtime the sandbox hides', () => {
     }
   })
 
+  // The task's PATH is the one define sets: a runtime only there was looked
+  // up on the host's, found nowhere, and the hint fell back to "install it".
+  it('looks its #! runtime up on the PATH exec.env.define sets', () => {
+    expect(
+      shellVerdict({
+        code: 127,
+        command: 'tool-a41 build',
+        cwd: dir,
+        bins: [bin],
+        hidden,
+        definedPath: `${rt}${path.delimiter}/usr/bin:/bin`,
+      }),
+    ).toBe(
+      `[vx] exit 127 is the shell's "not found": tool-a41 is there, but its runtime rt-a41 is ${rt}/rt-a41 on the host, read by no sandbox grant, so inside the sandbox it is not there — add it (or its directory) to exec.sandbox.allow.read`,
+    )
+  })
+
   it('names a library its runtime links that the loader could not open', () => {
     expect(
       shellVerdict({
