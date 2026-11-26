@@ -1038,8 +1038,8 @@ interface ExecEnv {
   `exec.env.passThrough` what the command gets only. These are Turbo's
   `env` and `passThroughEnv`.
 - A name in both lists is fine: it is passed and keyed.
-- A name `define` also sets keys `define`'s value, the one the command
-  gets; your shell's value under that name changes no key.
+- A name `define` also sets (by name or pattern) keys only `define`'s
+  value, the one the command gets: your shell's value, set or not, moves no key.
 - `passThrough: ['API_URL']` takes the value from your shell at spawn
   time. Not in the cache key: for secrets, regional values and CI flags
   that vary between machines.

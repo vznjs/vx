@@ -1326,7 +1326,7 @@ export interface ResolveInputsArgs {
   projectDir: string
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
-  definedPath?: string | undefined // the PATH `exec.env.define` sets; its probes resolve tools on it
+  define?: Readonly<Record<string, string>> | undefined // exec.env.define: its names key no host value; its PATH is the probes'
   inputs: InputsConfig | undefined
   ownOutputs: readonly string[] // project-relative globs to exclude
   ownWorkspaceOutputs?: readonly string[] // root-relative `outputs.workspaceFiles` to exclude from `inputs.workspaceFiles`
