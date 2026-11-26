@@ -461,3 +461,6 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
 - A config edit runs the old command until `vx lock`; a fresh cache dir
   does not notice the edit. Relock before timing a config change
   (2026-11-24).
+- A new refusal can turn a conformance case red that expected the old
+  run to pass: #5664 did. Before merging one, run its area's cases for
+  vx (`bun src/cli.ts --case outputs/ --tool vx`) (2026-11-26).
