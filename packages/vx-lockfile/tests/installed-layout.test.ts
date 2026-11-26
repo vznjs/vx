@@ -246,3 +246,56 @@ snapshots:
     expect(pnpmLock.fileDeps(lock('3.0.1'))).toEqual([])
   })
 })
+
+// drizzle links `workspace:../drizzle-orm/dist` with no publishDirectory.
+// Read as a directory no importer holds, b's build output was content in
+// every key and no edge: each build of b moved a's key and b's own.
+describe("pnpm(): a link into another workspace's directory", () => {
+  const text = (isOdd: string): string => `lockfileVersion: '9.0'
+
+importers:
+
+  .: {}
+
+  packages/a:
+    dependencies:
+      b:
+        specifier: link:../b/dist
+        version: link:../b/dist
+      v:
+        specifier: link:vendor/v
+        version: link:vendor/v
+
+  packages/b:
+    dependencies:
+      is-odd:
+        specifier: ${isOdd}
+        version: ${isOdd}
+
+packages:
+
+  is-odd@${isOdd}:
+    resolution: {integrity: sha512-io${isOdd}}
+
+snapshots:
+
+  is-odd@${isOdd}: {}
+`
+  const lock = (isOdd: string) => pnpmLock.parseLockfile(text(isOdd))
+
+  it('is an edge to that workspace', () => {
+    expect(pnpmLock.importerLinks(lock('3.0.1')).get('packages/a')).toEqual({
+      deps: { b: 'packages/b' },
+      peers: {},
+    })
+  })
+
+  it("folds the workspace's reach, not the directory's content; its own stays content", () => {
+    const [before, after] = [
+      pnpmLock.importerDigests(lock('3.0.1')),
+      pnpmLock.importerDigests(lock('3.0.0')),
+    ]
+    expect(after.get('packages/a')).not.toBe(before.get('packages/a'))
+    expect(pnpmLock.fileDeps(lock('3.0.1'))).toEqual(['packages/a/vendor/v'])
+  })
+})
