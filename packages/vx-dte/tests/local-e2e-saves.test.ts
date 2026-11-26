@@ -246,6 +246,30 @@ it('fails a task whose outputs link out of its project, not its worker', async (
   expect(await readFile(path.join(root, 'a/out/a.txt'), 'utf8')).toBe('made\n')
 }, 60_000)
 
+// Through `dist -> build`, the clear before the task took the committed
+// `build/logo.txt` (git's name) for an earlier task's and deleted it here,
+// and the worker saved it under its key: a later hit put the old logo back
+// over a newer commit. Core keeps the file and saves no such entry.
+it('keeps a committed file behind a linked output dir and saves no entry holding it', async () => {
+  const logo = path.join(root, 'ln/build/logo.txt')
+  const run = async (src: string, id: string) => {
+    await writeFile(path.join(root, 'ln/src.txt'), src)
+    const r = vx(['run', 'ln#b'], id)
+    expect([id, r.exitCode, r.stdout.toString().includes('linux.small#')]).toEqual([id, 0, true])
+  }
+  await run('a\n', 'link-1')
+  expect(await readFile(logo, 'utf8')).toBe('v1\n')
+  await writeFile(logo, 'v2\n')
+  Bun.spawnSync(
+    ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'logo v2'],
+    { cwd: root },
+  )
+  await run('b\n', 'link-2')
+  await run('a\n', 'link-3')
+  expect(await readFile(logo, 'utf8')).toBe('v2\n')
+  expect(await readFile(path.join(root, 'ln/build/a.js'), 'utf8')).toBe('a\n')
+}, 60_000)
+
 it('leaves a tracked file under a task’s outputs in place on its worker', async () => {
   const r = vx(['run', 'g#use'], 'tracked')
   const out = r.stdout.toString()

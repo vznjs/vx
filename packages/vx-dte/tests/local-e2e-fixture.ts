@@ -4,7 +4,7 @@
 // task of its own, so neither is the run's longest.
 
 import { existsSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect } from 'bun:test'
@@ -154,6 +154,14 @@ export default { name: 'p', tasks: {
   use: { dependsOn: ['gen'], exec: { command: 'cat gen/keep.txt gen/out.txt' } },
 } }
 `,
+    // A committed file behind a linked output directory (`dist -> build`).
+    'ln/build/logo.txt': 'v1\n',
+    'ln/src.txt': 'a\n',
+    'ln/.gitignore': 'build/a.js\n',
+    'ln/vx.config.mjs': `export default { name: 'ln', tasks: {
+  b: { exec: { command: 'mkdir -p build && cat src.txt > build/a.js' }, inputs: { files: ['src.txt'] }, outputs: { files: ['dist/**'] }, cache: true },
+} }
+`,
     // A literal output the command never writes: required where it ran too.
     'o/vx.config.mjs': `export default { name: 'o', tasks: {
   lit: { exec: { command: 'mkdir -p out' }, inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['out/x.js'] }, cache: true },
@@ -197,6 +205,7 @@ export default { name: 'c', tasks: {
     await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
     await writeFile(path.join(root, rel), text)
   }
+  await symlink('build', path.join(root, 'ln/dist'))
   const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: root })
   git('init', '-q')
   expect(vx(['lock']).exitCode).toBe(0)

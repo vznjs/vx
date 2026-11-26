@@ -704,6 +704,11 @@ async function serve(
       const removed = [...found.keys(), ...mine]
         .filter((f) => !now.has(f))
         .map((f) => path.relative(opts.root, f))
+      // A committed file reached through a linked output directory (`dist ->
+      // build`): no key names it (git lists `build/logo.txt`), so an entry
+      // holding it replayed the old bytes over a newer commit. Core saves no
+      // such entry; nor does this.
+      const linked = committed.filter((f) => !tracked.has(f))
       const key =
         res.exitCode === 0 &&
         res.timedOut !== true &&
@@ -713,6 +718,7 @@ async function serve(
         res.deadServers === undefined &&
         changed.length === 0 &&
         removed.length === 0 &&
+        linked.length === 0 &&
         outputsMissing.length === 0 &&
         m.key !== undefined
           ? m.key
