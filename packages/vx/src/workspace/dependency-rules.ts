@@ -10,13 +10,14 @@ import type { PackageGraph } from './package-graph.js'
  * dependency must match an `allow` selector when `allow` is given, and no
  * `deny` one. Every rule that selects a project applies, so a deny beats any
  * allow. Checked by `vx lock` only (owner); every broken edge is named in one
- * refusal.
+ * refusal; a selector that selects no project is warned about.
  */
 export function checkDependencyRules(
   rules: readonly DependencyRule[],
   projects: readonly string[],
   tags: ReadonlyMap<string, readonly string[]>,
   graph: PackageGraph,
+  warn: (message: string) => void,
 ): void {
   if (rules.length === 0) return
   const compiled = rules.map((r) => ({
@@ -24,6 +25,20 @@ export function checkDependencyRules(
     allow: r.allow?.map(selector),
     deny: r.deny?.map(selector),
   }))
+  // A selector no project matches is a typo or a name not in the workspace
+  // yet: in `deny` it passes every edge, in `from` the rule checks nothing.
+  // Said, not refused: a migrated Nx or Turbo rule may name a tag no project
+  // carries yet.
+  const selects = (s: (n: string, t: readonly string[]) => boolean): boolean =>
+    projects.some((p) => s(p, tags.get(p) ?? []))
+  for (const [i, rule] of compiled.entries()) {
+    const at = `run.rules.dependencies[${i}]`
+    if (!selects(rule.from)) warn(`${at}.from '${rules[i]!.from}' selects no project`)
+    for (const field of ['allow', 'deny'] as const)
+      rule[field]?.forEach((s, j) => {
+        if (!selects(s)) warn(`${at}.${field}[${j}] '${rules[i]![field]![j]}' selects no project`)
+      })
+  }
   const broken: string[] = []
   for (const name of projects) {
     const own = tags.get(name) ?? []
