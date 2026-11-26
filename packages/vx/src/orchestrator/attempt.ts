@@ -691,22 +691,14 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
   const files = facts.folderAsFile ?? []
   const inNested = elsewhere
     ? []
-    : nestedOutputMatches(
-        node.projectDir,
-        missing.filter((g) => policy.outputs.includes(g)),
-        nested,
-      )
+    : nestedOutputMatches(node.projectDir, withTakeBacks(missing, policy.outputs), nested)
   const unsaved = elsewhere
     ? []
     : [
-        ...unsavedOutputMatches(
-          node.projectDir,
-          missing.filter((g) => policy.outputs.includes(g)),
-          'project',
-        ),
+        ...unsavedOutputMatches(node.projectDir, withTakeBacks(missing, policy.outputs), 'project'),
         ...unsavedOutputMatches(
           args.run.workspaceRoot,
-          missing.filter((g) => policy.wsOutputs.includes(g)),
+          withTakeBacks(missing, policy.wsOutputs),
           'workspace',
         ),
       ]
@@ -737,6 +729,11 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     (facts.bracket ?? '')
   warnOf(log)(secrets.text(line))
   return missing
+}
+
+/** The missing globs of `globs`, with its `!` entries: a path one takes back is never named. */
+function withTakeBacks(missing: readonly string[], globs: readonly string[]): string[] {
+  return globs.filter((g) => g.startsWith('!') || missing.includes(g))
 }
 
 /** What a glob matched only inside a nested project: where it lies, and the two ways out. */

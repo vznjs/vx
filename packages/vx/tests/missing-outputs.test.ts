@@ -266,6 +266,8 @@ describe('an output glob whose only match the save never takes', () => {
       `export default { tasks: {
         installed: { exec: { command: 'mkdir -p node_modules/p && echo x > node_modules/p/i.js' },
           inputs: { files: [] }, outputs: { files: ['**/*.js'] }, cache: true },
+        takenback: { exec: { command: 'mkdir -p node_modules/q && echo x > node_modules/q/i.cjs' },
+          inputs: { files: [] }, outputs: { files: ['**/*.cjs', '!node_modules/q/**'] }, cache: true },
       } }\n`,
     )
     await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
@@ -284,5 +286,11 @@ describe('an output glob whose only match the save never takes', () => {
         "[vx] app#installed: outputs matched no files (**/*.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote node_modules/p/i.js, which an output never takes: vx's own files never, and node_modules only when the glob names it (node_modules/**)",
       ],
     ])
+  })
+
+  it('names no file a ! entry takes back', async () => {
+    const r = await runTask('takenback')
+    expect(r.status).toBe('failed')
+    expect(r.lines[0]).not.toContain('node_modules/q/i.cjs')
   })
 })
