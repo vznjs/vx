@@ -1081,7 +1081,7 @@ export function formatTaskSkippedLine(
   const note = `• ${why}`
   if (colors.columns === undefined || width + 1 + Bun.stringWidth(note) <= colors.columns)
     return `${row} ${paint('muted', note, colors)}`
-  return `${row}\n${ROW_LEAD}${paint('muted', note, colors)}`
+  return `${row}\n${ROW_LEAD}${paint('muted', cutMiddle(note, colors.columns - GUTTER), colors)}`
 }
 
 /**

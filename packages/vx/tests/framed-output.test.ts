@@ -336,6 +336,8 @@ describe('the compact one-liners', () => {
       expect.stringMatching(/^ {12}skipped .*packa…build$/),
       '            • blocked by packages/a#build',
     ])
+    // Under it too a long blocker gives way in its middle.
+    expect(at(30).at(-1)).toBe('            • blocked…/a#build')
     expect(at(undefined)).toEqual([expect.stringMatching(/build • blocked by packages\/a#build$/)])
   })
 })
