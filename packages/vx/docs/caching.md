@@ -2139,7 +2139,9 @@ resolves into a directory an entry of the task's own `inputs.files` or
 `**/*.ts`: the clean deleted every untracked source; `dist ->
 build-out` under `src/**` stays an output), and so does an
 `outputs.workspaceFiles` directory that resolves outside the workspace
-(it saved an empty entry under a warning). So does one, in either scope, that
+(it saved an empty entry under a warning), and so does a project's one
+that resolves into a nested project, whose files no scan walks (it
+saved an empty entry, and a hit left the output missing). So does one, in either scope, that
 resolves into the root's own `.git` (any case) or its `.vx`: for the root
 project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
 under `dist/**` had the clean delete the repository. A recorded row

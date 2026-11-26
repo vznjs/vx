@@ -804,6 +804,23 @@ describe('output resolution contains itself — the loader guard is now the SECO
     expect(lstatSync(dist).isSymbolicLink()).toBe(true)
   })
 
+  // `dist -> n/gen` with n a nested project: the scan stops at n, so the
+  // entry was saved empty and a hit called the task done with o.txt missing.
+  it('an output dir linked into a nested project is refused by name', async () => {
+    const nested = path.join(projectDir, 'n')
+    await Bun.write(path.join(nested, 'gen/o.txt'), 'built')
+    await symlink('n/gen', path.join(projectDir, 'dist'))
+    const refusal =
+      `${path.join(projectDir, 'dist')} is a symbolic link to ${await realpath(path.join(nested, 'gen'))}, ` +
+      `in the nested project ${nested} — vx never cleans, saves or restores declared outputs ` +
+      'through a link into another project. Remove the link and re-run, or stop declaring ' +
+      'outputs under it.'
+    const args = { projectDir, outputs: ['dist/**'], nestedProjectDirs: [nested] }
+    await expect(resolveOutputs(args)).rejects.toThrow(refusal)
+    await expect(cleanOutputs(args)).rejects.toThrow(refusal)
+    expect(await readFile(path.join(nested, 'gen/o.txt'), 'utf8')).toBe('built')
+  })
+
   it('a clean follows a symlinked output dir that points INSIDE the project', async () => {
     // `dist -> real-out`: the save follows the link (output-shape.test.ts,
     // turborepo#13042), so the clean must too, or the next entry saves the
