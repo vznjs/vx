@@ -1563,6 +1563,37 @@ describe('vx why — an upstream whose config moved', () => {
   )
 })
 
+it(
+  'a bare name skips a project whose run of it was only skipped',
+  async () => {
+    const root = await makeWorkspaceRoot({ prefix: 'vx-why-skipped-', git: false })
+    try {
+      const configs: Array<[string, string]> = [
+        [
+          'c',
+          `export default { tasks: { gate: { exec: { command: 'exit 2' } }, after: { dependsOn: ['gate'], exec: { command: 'true' } } } }\n`,
+        ],
+        ['d', `export default { tasks: { after: { exec: { command: 'true' } } } }\n`],
+      ]
+      for (const [name, config] of configs) {
+        const dir = path.join(root, 'packages', name)
+        await mkdir(dir, { recursive: true })
+        await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
+        await writeFile(path.join(dir, 'vx.config.mjs'), config)
+      }
+      gitIn(root)('init', '-q')
+      expect((await vx(root, ['run', 'c#after'])).code).toBe(1)
+      expect((await vx(root, ['run', 'd#after'])).code).toBe(0)
+      const r = await vx(root, ['why', 'after'])
+      expect(r.err).not.toContain('pick one')
+      expect(r.out.split('\n')[0]).toBe('  Why d#after')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)
+
 describe('a bare name that ran in many projects', () => {
   it('lists the first ten and counts the rest', () => {
     // 10,000 projects listed 10,002 lines.
