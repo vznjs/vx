@@ -1612,7 +1612,8 @@ export class Orchestrator extends RunReport<Worker> {
     // a hang's cut by a timeout, taught later runs the task's pace.
     if (job.req.signal?.aborted === true) {
       this.pumpSoon()
-      return job.resolve(result(head, sentLog ?? []))
+      // Begun here: its row names this worker, not the machine that ran vx.
+      return job.resolve({ ...result(head, sentLog ?? []), where: a.label })
     }
     const share = shareOf(head.cpuShare)
     // At least as long as it ran: begun here once its batch's send resolved,

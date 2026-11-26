@@ -7101,6 +7101,30 @@ it('a retry waits for the worker still holding its cancelled attempt, and runs a
   }
 }, 30_000)
 
+// A stopped run's task that a worker had begun answered its cancel with no
+// `where`: the run's row said `local` beside the worker's `1 aborted`.
+it('a cancelled attempt names the worker it ran on', async () => {
+  const h = await harness(new Map([node('t'), node('u')]))
+  try {
+    const a = await h.worker(1)
+    const ran = h.o.execute(h.req('u'))
+    expect(await a.batches()).toEqual([['u']])
+    await a.finish('u', 'k-u')
+    const label = (await ran).where
+    expect(label).toBeString()
+    const stop = new AbortController()
+    const first = h.o.execute({ ...h.req('t'), signal: stop.signal })
+    expect(await a.batches()).toEqual([['t']])
+    stop.abort()
+    expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't' }])
+    await a.finish('t', 'k-t', { exitCode: 143, durationMs: 1 })
+    const end = await first
+    expect([end.exitCode, end.where]).toEqual([143, label])
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
 // A cancelled attempt's end that comes after its retry ran elsewhere laid
 // the cancelled attempt's files over the retry's, and dependants were sent
 // its key for their upstream's files.
