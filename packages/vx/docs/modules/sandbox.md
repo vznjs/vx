@@ -1672,7 +1672,8 @@ export function mayWriteFingerprint(
   (`out -> real` under `out/**`), walked as one. Each link the reads are
   spelled through in the workspace is laid as a link
   (`dependencyReadLinks`, through `readGrantLinks`): SRT bound `real`
-  alone, and the dependant met ENOENT at `out/`. Past
+  alone, and the dependant met ENOENT at `out/`. On macOS seatbelt
+  still refuses the lookup through such a link. Past
   `DEPENDENCY_BIND_BYTES` (64 KiB) of binds it throws a `UserError`
   naming the dependencies: each bind is two paths on the wrap, one
   argument to `sh -c` that holds 128 KiB on Linux, and 1,000 one-by-one
