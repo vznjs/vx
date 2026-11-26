@@ -820,3 +820,29 @@ it('fails an upload soon while another process holds the database, and goes on r
     other.close()
   }
 })
+
+// Two servers starting on a new file raced to switch it to WAL, which takes
+// the file's lock, and the loser died of "database is locked": the busy
+// timeout was set only after the switch.
+it('opens a new file whose lock another process holds for a moment', async () => {
+  const file = path.join(dir, 'held.sqlite')
+  const holder = Bun.spawn(
+    [
+      process.execPath,
+      '-e',
+      `const { Database } = require('bun:sqlite')
+const db = new Database(${JSON.stringify(file)}, { create: true })
+db.run('BEGIN IMMEDIATE')
+db.run('CREATE TABLE held (x)')
+console.log('held')
+await Bun.sleep(300)
+db.run('COMMIT')`,
+    ],
+    { stdout: 'pipe' },
+  )
+  const reader = holder.stdout.getReader()
+  await reader.read()
+  const store = sqliteStore(sqliteDb(file))
+  await store.init()
+  expect(await holder.exited).toBe(0)
+})
