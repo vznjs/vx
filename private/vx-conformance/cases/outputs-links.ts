@@ -197,6 +197,41 @@ export const outputsLinks = [
   }),
 
   defineCase({
+    id: 'outputs/linked-output-dir-committed-file-kept-on-replay',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A replay keeps a file committed behind an output directory symlink after the entry was saved',
+    why: 'Here `public` is an untracked link to `static`, and `static/logo.txt` is committed after the build was cached. A replay clears what the entry does not hold, but git knows the file as `static/logo.txt`, not under `public`. A clear that does not ask git past the link deletes the committed logo under a green run. The tree after a run must hold what the user committed.',
+    from: ['committed-through-link'],
+    workspace: one(
+      {
+        command: 'mkdir -p static && cat src/a.txt > static/a.txt',
+        inputs: ['src/**'],
+        outputs: ['public/**'],
+      },
+      { 'src/a.txt': 'a\n', '.gitignore': 'public\nstatic/a.txt\n' },
+    ),
+    steps: [
+      { link: { [`${A}/public`]: 'static' } },
+      { commit: 'init' },
+      { run: 'build', expect: { exit: 0, files: { [`${A}/static/a.txt`]: 'a\n' } } },
+      { write: { [`${A}/static/logo.txt`]: 'logo\n' } },
+      { commit: 'logo' },
+      { write: { [`${A}/src/a.txt`]: 'b\n' } },
+      { run: 'build', expect: { exit: 0, files: { [`${A}/static/a.txt`]: 'b\n' } } },
+      { write: { [`${A}/src/a.txt`]: 'a\n' } },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { [`${A}/static/logo.txt`]: 'logo\n', [`${A}/static/a.txt`]: 'a\n' },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/link-into-nested-project-untouched',
     category: 'outputs',
     kind: 'correctness',
