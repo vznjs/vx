@@ -858,6 +858,9 @@ The same goes for a task core would not save:
 - one a stopped run cancelled
 - one whose declared outputs did not all land there by core's rule, which
   fails it, as a run here does
+- one whose outputs hold a committed file reached through a linked output
+  directory (`dist -> build`): no key names it, so a hit put old bytes back
+  over a newer commit
 - one that left a tracked file under its project changed on its worker (a
   formatter's input)
 - one that found an untracked, unignored file under its project there (its
