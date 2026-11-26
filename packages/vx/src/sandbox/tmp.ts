@@ -77,10 +77,16 @@ export function taskTmpdir(tag: string): string {
  * sandboxed task, each granted its own directory inside: SRT binds its
  * whole temp dir writable into every task, so a task listed and read what
  * a concurrent one kept in its TMPDIR, or replaced its port bridge's
- * socket (L-10).
+ * socket (L-10). With no variable naming a temp dir it is this user's own
+ * `/tmp/vx-tasks-<uid>`: `/tmp/claude` is one directory for every user,
+ * made 0755 by the first, and a second user's every sandboxed task was
+ * refused on the first one's `vx-tasks`, which it could not remove.
  */
 export function taskTmpRoot(): string {
-  return path.join(sandboxTmpdir(), 'vx-tasks')
+  const named = process.env['CLAUDE_CODE_TMPDIR'] ?? process.env['CLAUDE_TMPDIR']
+  if (named !== undefined && named !== '') return path.join(named, 'vx-tasks')
+  const uid = process.getuid?.()
+  return uid === undefined ? '/tmp/vx-tasks' : `/tmp/vx-tasks-${uid}`
 }
 
 /**

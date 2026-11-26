@@ -33,7 +33,9 @@ export function expectOk(r: RunSummary, fixture: Fixture): void {
 // temp dir, which every sandbox replaces with its own (L-25).
 export function taskRoot(env: NodeJS.ProcessEnv = process.env): string {
   const named = env['CLAUDE_CODE_TMPDIR'] ?? env['CLAUDE_TMPDIR']
-  return path.join(named !== undefined && named !== '' ? named : '/tmp/claude', 'vx-tasks')
+  return named !== undefined && named !== ''
+    ? path.join(named, 'vx-tasks')
+    : `/tmp/vx-tasks-${process.getuid!()}`
 }
 
 export const collectingLogger = (fixture: Fixture): Logger => ({
