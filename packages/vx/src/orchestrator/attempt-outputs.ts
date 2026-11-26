@@ -33,6 +33,7 @@ import {
   isLiteralPattern,
   literalPath,
   normalizeGlob,
+  outputExcluded,
   relPosix,
   span,
   splitNegations,
@@ -441,6 +442,8 @@ export interface OutputSet {
   readonly base: string
   readonly globs: readonly string[]
   readonly nestedDirs: readonly string[]
+  /** `outputs.workspaceFiles`: what the save never takes is read from the root. Default `project`. */
+  readonly scope?: 'project' | 'workspace'
 }
 
 /**
@@ -449,7 +452,7 @@ export interface OutputSet {
  * A wildcard may match nothing beside one that matched.
  */
 export function missingOutputs(sets: readonly OutputSet[]): string[] {
-  const m = sets.map((s) => outputMatches(s.base, s.globs, s.nestedDirs))
+  const m = sets.map((s) => outputMatches(s.base, s.globs, s.nestedDirs, s.scope ?? 'project'))
   const required = m.flatMap((x) => x.required)
   const optional = m.flatMap((x) => x.optional)
   const declared = m.reduce((n, x) => n + x.declared, 0)
@@ -467,17 +470,21 @@ function outputMatches(
   base: string,
   globs: readonly string[],
   nestedDirs: readonly string[],
+  scope: 'project' | 'workspace',
 ): OutputMatches {
   const { positive, negative } = splitNegations(globs)
   const required: string[] = []
   const optional: string[] = []
   if (positive.length === 0) return { required, optional, declared: 0 }
   const takenBack = anyTaskGlob(negative)
+  // What the save never takes (an installed file a wildcard reaches, vx's
+  // own) is no match: counted, the task passed and saved an empty entry.
+  const excluded = outputExcluded(globs, scope)
   const nested = nestedDirs
     .map((d) => path.relative(base, d))
     .filter((r) => r !== '' && !r.startsWith('..'))
   const kept = (rel: string): boolean =>
-    !takenBack(rel) && !nested.some((n) => rel === n || rel.startsWith(`${n}/`))
+    !takenBack(rel) && !excluded(rel) && !nested.some((n) => rel === n || rel.startsWith(`${n}/`))
   for (const g of positive) {
     if (matchesAny(base, g, kept)) continue
     if (literalPath(normalizeGlob(g)) === null) optional.push(g)
@@ -506,6 +513,25 @@ export function nestedOutputMatches(
     !takenBack(rel) && nested.some((n) => rel === n || rel.startsWith(`${n}/`))
   return positive.flatMap((g) => {
     const hit = firstMatch(base, g, inNested)
+    return hit === null || hit === true ? [] : [hit]
+  })
+}
+
+/**
+ * The first path each positive glob of `globs` matches that the save never
+ * takes (`outputExcluded`): on a failure's path only, what its line names.
+ */
+export function unsavedOutputMatches(
+  base: string,
+  globs: readonly string[],
+  scope: 'project' | 'workspace',
+): string[] {
+  const { positive, negative } = splitNegations(globs)
+  const takenBack = anyTaskGlob(negative)
+  const excluded = outputExcluded(globs, scope)
+  const unsaved = (rel: string): boolean => !takenBack(rel) && excluded(rel)
+  return positive.flatMap((g) => {
+    const hit = firstMatch(base, g, unsaved)
     return hit === null || hit === true ? [] : [hit]
   })
 }

@@ -251,3 +251,38 @@ describe('an output glob whose only match lies in a nested project', () => {
     ])
   })
 })
+
+describe('an output glob whose only match the save never takes', () => {
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-missing-out-installed-'))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
+    const app = path.join(root, 'packages', 'app')
+    await mkdir(app, { recursive: true })
+    await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      `export default { tasks: {
+        installed: { exec: { command: 'mkdir -p node_modules/p && echo x > node_modules/p/i.js' },
+          inputs: { files: [] }, outputs: { files: ['**/*.js'] }, cache: true },
+      } }\n`,
+    )
+    await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  // The save never takes an installed file a glob reaches by wildcard alone,
+  // so it saved an empty entry and passed, and every later hit restored nothing.
+  it('fails a glob whose only match is one the save never takes', async () => {
+    const r = await runTask('installed')
+    expect([r.status, r.lines]).toEqual([
+      'failed',
+      [
+        "[vx] app#installed: outputs matched no files (**/*.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote node_modules/p/i.js, which an output never takes: vx's own files never, and node_modules only when the glob names it (node_modules/**)",
+      ],
+    ])
+  })
+})

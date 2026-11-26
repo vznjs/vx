@@ -1632,7 +1632,12 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
 function unwritten(req: ExecuteRequest): Pick<ExecuteResult, 'outputsMissing'> {
   const missing = missingOutputs([
     { base: req.cwd, globs: req.outputs.files, nestedDirs: [] },
-    { base: req.workspaceRoot, globs: req.outputs.workspaceFiles, nestedDirs: [] },
+    {
+      base: req.workspaceRoot,
+      globs: req.outputs.workspaceFiles,
+      nestedDirs: [],
+      scope: 'workspace',
+    },
   ])
   return missing.length === 0 ? {} : { outputsMissing: missing }
 }
