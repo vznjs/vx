@@ -1306,6 +1306,39 @@ function committedPastLinks(
 }
 
 /**
+ * The output files git tracks only by their real path, through a linked
+ * output head (`public -> static`, `static/logo.txt` committed). A key folds a
+ * committed output by the name git lists, so it finds none of these, and a
+ * hit would write the saved bytes over a newer commit. None, with no
+ * realpath, when no output head is a link.
+ */
+export function committedPastOutputLinks(
+  root: string,
+  outputs: readonly string[],
+  files: readonly string[],
+  committed: (abs: string) => boolean,
+): string[] {
+  if (files.length === 0 || !outputHeadLinked(root, outputs)) return []
+  const past = committedPastLinks(root, committed)
+  return files.filter((f) => !committed(f) && past(f))
+}
+
+/** Whether a literal directory heading one of `outputs` is a symlink. */
+function outputHeadLinked(root: string, outputs: readonly string[]): boolean {
+  for (const tree of asTrees(splitNegations(outputs).positive)) {
+    let at = root
+    for (const part of staticPrefix(tree).split('/')) {
+      if (part === '' || part === '.') continue
+      at = path.join(at, part)
+      const st = lstatOrAbsent(at)
+      if (st?.isSymbolicLink() === true) return true
+      if (st?.isDirectory() !== true) break
+    }
+  }
+  return false
+}
+
+/**
  * Drop files whose real directory is in a nested project: a followed link may
  * land there.
  */

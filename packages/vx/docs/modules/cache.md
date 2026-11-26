@@ -1492,6 +1492,16 @@ export function committedFiles(
   dir: string,
 ): (abs: string) => boolean
 
+// The output files git tracks only by their real path, through a linked
+// output head (`public -> static`): no key names them, so a result holding
+// one is not saved. None, with no realpath, when no head is a link.
+export function committedPastOutputLinks(
+  root: string,
+  outputs: readonly string[],
+  files: readonly string[],
+  committed: (abs: string) => boolean,
+): string[]
+
 // An ADDITIVE task (its outputs overlap an upstream's, with the edge that
 // orders them; item 588) owns what its run added or changed, not what
 // its glob selects: the stamp before, the diff after, and a clean by

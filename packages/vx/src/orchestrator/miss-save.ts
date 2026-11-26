@@ -11,6 +11,8 @@ import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   type CacheLayer,
+  committedFiles,
+  committedPastOutputLinks,
   type GitFilesCache,
   resolveOutputTree,
   outputWalkTakes,
@@ -313,6 +315,32 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
         `(a FIFO, socket or device): vx does not cache ${special.length === 1 ? 'it' : 'them'}, so a hit restores the outputs without ${special.length === 1 ? 'it' : 'them'} ` +
         `— emit a file there, or take ${special.length === 1 ? 'it' : 'them'} back with a '!' entry`,
     )
+  }
+  // A committed file reached through a linked output head is keyed by no
+  // name: saved, a hit would write these bytes over a newer commit of it.
+  const pastLinks = [
+    ...committedPastOutputLinks(
+      node.projectDir,
+      a.outputs,
+      outputFiles,
+      committedFiles(a.gitFilesCache, node.projectDir),
+    ).map((f) => relPosix(node.projectDir, f)),
+    ...committedPastOutputLinks(
+      a.workspaceRoot,
+      a.wsOutputs,
+      wsOutputFiles,
+      committedFiles(a.gitFilesCache, a.workspaceRoot),
+    ).map((f) => relPosix(a.workspaceRoot, f)),
+  ]
+  if (pastLinks.length > 0) {
+    warnOf(log)(
+      `[vx] ${node.id}: ${pastLinks.map(printable).join(', ')} ${pastLinks.length === 1 ? 'is a file' : 'are files'} ` +
+        `git tracks by another name, reached through a linked output directory — the result stands, but is not ` +
+        `saved: a hit could restore ${pastLinks.length === 1 ? 'it' : 'them'} over a newer commit. Declare the ` +
+        `outputs at the link's target, or keep committed files out of it`,
+    )
+    markWritten(a, outputFiles, wsOutputFiles)
+    return { landed: Promise.resolve({}) }
   }
   // The mirror of the input warning: declared outputs that resolve to
   // nothing save an empty artifact, and the next hit "restores" it —

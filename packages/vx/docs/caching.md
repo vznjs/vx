@@ -1331,7 +1331,10 @@ git compares them: case-folded under `core.ignorecase` where the disk
 folds case too (macOS), and a
 file inside a submodule counts as committed. A file past a committed
 symbolic link (`dist -> real`) does not: git tracks none through one, so
-it is asked by its target's name (`real/x`).
+it is asked by its target's name (`real/x`), by the clean before a run
+and by a hit's restore alike. A result holding such a file is not
+saved: no key names it, so a hit would write the saved bytes over a newer
+commit of it. Declare the outputs at the link's target to cache it.
 Workspace outputs take the same rules, and a path an output `!` entry
 takes back is off the wipe, the artifact and the restore alike.
 Skipped when:
