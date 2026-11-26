@@ -462,7 +462,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
     await symlink('../../lib/shared', path.join(app, 'lk', 'lnk'))
     const t = async () => (await run({ cwd: root, tasks: ['t'], log: quiet })).outcomes[0]
     expect((await t())?.sandbox?.lines?.[0]).toEndWith(
-      "If the task reads one, grant it, e.g. `allow: { read: ['lk'] }`, and, if the output " +
+      "If the task reads one, grant it, e.g. `allow: { read: ['lk', '../lib/shared'] }`, and, if the output " +
         "depends on it, key it: `inputs: { files: ['lk/**', '!lk/lnk'], workspaceFiles: " +
         "['packages/lib/shared/**'] }`.",
     )
