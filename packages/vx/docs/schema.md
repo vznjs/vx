@@ -1118,6 +1118,8 @@ interface ExecEnv {
 - Masked in output: the task's output, the line vx adds under a shell's
   127 or 126 (the command's first word), and the stdout the cache keeps
   and a hit replays.
+- A value printed in two pieces with a pause between is masked live too,
+  once the first piece has six characters. Every stored copy masks it whole.
 - Masked in commands: the command a cache entry stores (what `vx why`
   prints and a remote cache receives) and the `$ command` line.
 - Masked in commands too: the run's own invocation line that `vx last`

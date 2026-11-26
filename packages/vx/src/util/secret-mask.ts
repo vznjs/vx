@@ -74,9 +74,11 @@ export interface SecretMask {
   /**
    * A mask for a stream of chunks: a value split across two chunks is
    * still caught, by holding back only a tail that could begin one until
-   * the next chunk or `end`.
+   * the next chunk or `end`. `release` lets the held tail go before
+   * either: a piece of `MIN_SECRET_CHARS` or more as the mask, which the
+   * rest of its value then joins.
    */
-  stream(): { push(chunk: string): string; end(): string }
+  stream(): { push(chunk: string): string; release(): string; end(): string }
   /**
    * `spans` over a text given in chunks: each call returns the spans it
    * settled, as offsets into the whole text, the same spans `spans` finds in
@@ -431,15 +433,29 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     },
     stream() {
       let carry = ''
+      // How many characters at `carry`'s start already went out as a mask
+      // (`release`): a value they begin joins that mask, and they are never
+      // shown again.
+      let ghost = 0
       // What went out ends in a mask: a value starting right after it joins
       // that mask, as in the whole text. Holding the span back for that held
       // back-to-back values forever and re-scanned them per chunk.
       let joined = false
-      const out = (text: string): string => {
-        if (text === '') return ''
+      const out = (text: string, shown: number): string => {
+        if (text.length <= shown) return ''
         const found = spans(text)
-        let masked = render(text, found)
-        if (joined && found[0]?.[0] === 0) masked = masked.slice(MASKED.length)
+        let masked = ''
+        let at = shown
+        for (const [s, e] of found) {
+          if (e <= at) continue
+          if (s < shown || (s <= at && joined && at === shown)) {
+            at = e
+            continue
+          }
+          masked += text.slice(at, s) + MASKED
+          at = e
+        }
+        masked += text.slice(at)
         joined = found.at(-1)?.[1] === text.length
         return masked
       }
@@ -450,11 +466,33 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
           // cannot be one is never delayed (a `readyWhen` line, a marker).
           const cut = safeCut(text)
           carry = text.slice(cut)
-          return out(text.slice(0, cut))
+          const shown = Math.min(ghost, cut)
+          ghost -= shown
+          return out(text.slice(0, cut), shown)
+        },
+        release() {
+          // A piece too short to say much goes out as written; a longer one
+          // goes out as the mask, kept to join the rest of its value.
+          const piece = partialTail(carry)
+          if (piece < MIN_SECRET_CHARS) {
+            const rest = out(carry, ghost)
+            carry = ''
+            ghost = 0
+            return rest
+          }
+          const cut = carry.length - piece
+          const head = out(carry.slice(0, cut), Math.min(ghost, cut))
+          const fresh = ghost <= cut
+          carry = carry.slice(cut)
+          ghost = carry.length
+          const result = head + (fresh && !joined ? MASKED : '')
+          joined = true
+          return result
         },
         end() {
-          const rest = out(carry)
+          const rest = out(carry, ghost)
           carry = ''
+          ghost = 0
           return rest
         },
       }
@@ -533,33 +571,42 @@ export function maskStreams(
 
 /**
  * `mask.stream()` driving `emit`: what it holds back (a tail that could
- * begin a value) is emitted `idleMs` after the last chunk when none
+ * begin a value) is released `idleMs` after the last chunk when none
  * follows, so a long task's last characters do not wait for its exit. A
- * value is written whole or in chunks that arrive together; one split by
- * a pause longer than that is not caught.
+ * released piece of `MIN_SECRET_CHARS` or more goes out as the mask, and
+ * the rest of its value joins it: a value split by a longer pause is caught
+ * unless its first piece is shorter than that.
  */
 function maskedEmitter(
   mask: SecretMask,
   emit: (text: string) => void,
   idleMs = 25,
-): { push(chunk: string): void; end(): void } {
+): { push(chunk: string): void; release(): void; end(): void } {
   const s = mask.stream()
   let timer: ReturnType<typeof setTimeout> | undefined
-  const end = (): void => {
+  const stop = (): void => {
     if (timer !== undefined) clearTimeout(timer)
     timer = undefined
-    const rest = s.end()
+  }
+  const release = (): void => {
+    stop()
+    const rest = s.release()
     if (rest) emit(rest)
   }
   return {
     push(chunk) {
-      if (timer !== undefined) clearTimeout(timer)
+      stop()
       const out = s.push(chunk)
       if (out) emit(out)
-      timer = setTimeout(end, idleMs)
+      timer = setTimeout(release, idleMs)
       timer.unref?.()
     },
-    end,
+    release,
+    end() {
+      stop()
+      const rest = s.end()
+      if (rest) emit(rest)
+    },
   }
 }
 
@@ -568,8 +615,7 @@ function maskedEmitter(
  * task wrote them. Each held its own tail, so a stdout tail that could
  * begin a value waited out the idle bound while stderr printed, and the
  * run log, live and cached, put the stderr line first. A chunk on one
- * stream now emits the other's held tail before it: a value split by a
- * write to the other stream is not caught, as one split by a pause.
+ * stream now releases the other's held tail before it, as a pause does.
  */
 export function maskedStreams(
   mask: SecretMask,
@@ -581,11 +627,11 @@ export function maskedStreams(
   const err = maskedEmitter(mask, emitErr, idleMs)
   return {
     out(chunk) {
-      err.end()
+      err.release()
       out.push(chunk)
     },
     err(chunk) {
-      out.end()
+      out.release()
       err.push(chunk)
     },
     end() {

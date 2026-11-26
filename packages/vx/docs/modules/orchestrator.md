@@ -3910,8 +3910,9 @@ elsewhere (the run history keeps it a success).
   however many rejections follow (`telemetry-async-hooks.test.ts`).
 - `task.log` is opt-in via `TelemetrySink.wants` (default excludes it).
   Its chunks pass a second `mask.stream()` per task and stream
-  (`taskLogMasks`): the live mask lets a held piece go after 25 ms, so a
-  value printed slowly reached a sink in pieces it joined whole. This one
+  (`taskLogMasks`): the live mask lets a held piece shorter than six
+  characters go as written after 25 ms, so a value printed slowly reached a
+  sink in pieces it joined whole. This one
   holds the piece until more output, the task's `task:complete` or
   `run:end`, never on a timer.
 - `task.sample` is opt-in the same way. Only when a sink wants it does the

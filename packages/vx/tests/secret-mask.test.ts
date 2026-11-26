@@ -200,6 +200,29 @@ describe('secretMask', () => {
     expect(got.join('')).toBe('progress hun')
   })
 
+  // The idle bound let a held piece go as written: `printf 'key=hunter2-l1';
+  // sleep 0.3; printf '1-sekret'` showed both pieces plain, the whole value
+  // on the terminal of a single-task run. A piece of six characters or more
+  // goes out as the mask, and the rest that completes it joins that mask.
+  it('masks a value a pause splits, once its piece is six characters', async () => {
+    const got: string[] = []
+    const e = maskedStreams(
+      secretMask([{ API_TOKEN: SECRET }])!,
+      (t) => void got.push(t),
+      () => {},
+      20,
+    )
+    e.out('key=hunter2-l')
+    await Bun.sleep(80)
+    expect(got.join('')).toBe(`key=${MASKED}`)
+    e.out('1')
+    await Bun.sleep(80)
+    e.out('1-sekret done\n')
+    e.end()
+    expect(got.join('')).toBe(`key=${MASKED} done\n`)
+    for (const piece of got) expect(piece).not.toMatch(/hunter|sekret/)
+  })
+
   // Each stream held its own tail: a stdout tail that could begin a value
   // waited out the idle bound while stderr printed, and the run log, live
   // and cached, put the stderr line before text the task wrote first.
@@ -409,8 +432,8 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
   })
 })
 
-// A value written in two pieces with a pause between them outlasts the
-// live stream's 25 ms hold, so the terminal shows it whole. The stored
+// A value written in two pieces with a pause between them outlasted the
+// live stream's 25 ms hold, so the terminal showed it whole. The stored
 // copies did too: the entry's stdout (which a hit replays and a remote
 // cache receives) and the failure record `vx last` reads kept the raw
 // value, though only the terminal cannot be taken back.
