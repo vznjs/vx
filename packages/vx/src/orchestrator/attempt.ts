@@ -26,6 +26,7 @@ import {
   missingOutputs,
   nestedOutputMatches,
   outputsStep,
+  specialOutputs,
   unsavedOutputMatches,
 } from './attempt-outputs.js'
 import { buildRequest } from './attempt-request.js'
@@ -702,6 +703,12 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
           'workspace',
         ),
       ]
+  const special = elsewhere
+    ? []
+    : [
+        ...specialOutputs(node.projectDir, withTakeBacks(missing, policy.outputs)),
+        ...specialOutputs(args.run.workspaceRoot, withTakeBacks(missing, policy.wsOutputs)),
+      ]
   const line =
     `[vx] ${node.id}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
     `but never wrote ${missing.length === 1 ? 'it' : 'them'}, so the task fails and nothing is cached: ` +
@@ -711,11 +718,19 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
       : '') +
     // Nx and Turbo cache whichever outputs exist, so an Nx test target's
     // coverage dir, written only with coverage on, failed every other run.
-    (!noWrite && facts.wroteNone === true && inNested.length === 0 && unsaved.length === 0
+    (!noWrite &&
+    facts.wroteNone === true &&
+    inNested.length === 0 &&
+    unsaved.length === 0 &&
+    special.length === 0
       ? ` — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it`
       : '') +
     (files.length > 0 ? ` — a folder was declared, a file was written: ${files.join(', ')}` : '') +
     nestedClause(inNested, node.projectDir, nested, args.run.workspaceRoot) +
+    (special.length > 0
+      ? ` — ${special.map(printable).join(', ')} ${special.length === 1 ? 'is' : 'are'} a FIFO, ` +
+        `socket or device, which no output holds`
+      : '') +
     (unsaved.length > 0
       ? ` — it wrote ${unsaved.map(printable).join(', ')}, which an output never takes: vx's own ` +
         `files never, and node_modules only when the glob names it (node_modules/**)`

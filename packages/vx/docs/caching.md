@@ -2087,7 +2087,9 @@ where a file has its size and mtime, so the skip-restore check compares
 the target and never follows the link. A FIFO, socket or device under
 the outputs holds no bytes to store and stays out of the entry; the
 save names each one in a warning, since a hit restores the tree without
-it (until 2026-11-06 it was left out without a word). The clean before
+it (until 2026-11-06 it was left out without a word). A literal output
+that is one counts as not written and fails the task, as a missing
+literal does: it saved an empty entry before (until 2026-11-26). The clean before
 a miss and a restore removes one, as it removes a file: a FIFO left at a
 declared output path hung the task that wrote there, and a stray one
 survived a restore (until 2026-11-07). A hit whose tree is otherwise
