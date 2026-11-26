@@ -1497,8 +1497,9 @@ export class Orchestrator extends RunReport<Worker> {
     delete job.batch
     const begun = a.started.delete(job.req.taskId)
     // Stopped, it runs nowhere again; the cancel sent its worker has no one to answer it.
+    // Begun there, its row names that worker, as an answered cancel's does.
     if (job.req.signal?.aborted === true) {
-      job.resolve(stopped())
+      job.resolve(begun ? { ...stopped(), where: a.label } : stopped())
       this.bound?.drop(job.req.taskId, this.clock())
       return undefined
     }

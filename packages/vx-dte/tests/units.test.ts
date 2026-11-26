@@ -4696,7 +4696,8 @@ it('a task stopped while its worker is lost ends as stopped', async () => {
     stop.abort()
     expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't1' }])
     await a.leave()
-    expect(await t1).toMatchObject({ exitCode: 130 })
+    // Begun on the lost worker: its row names it, not this machine.
+    expect(await t1).toMatchObject({ exitCode: 130, where: 'worker#1' })
   } finally {
     await h.stop()
   }
