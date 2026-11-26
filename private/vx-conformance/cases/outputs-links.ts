@@ -237,7 +237,7 @@ export const outputsLinks = [
     kind: 'correctness',
     title:
       'An output path that is a link into a nested project never deletes or overwrites that project’s files',
-    why: 'Project boundaries hold even through a link. Here `a/docs` is a link into the nested project `site`, which has its own build and outputs. If a clean or restore of `a` follows the link, it deletes or overwrites `site`’s files, so building one project silently breaks another. The nested project’s files belong to its own task.',
+    why: 'Project boundaries hold even through a link. Here `a/docs` is a link into the nested project `site`, which has its own build and outputs. If a clean or restore of `a` follows the link, it deletes or overwrites `site`’s files, so building one project silently breaks another. The nested project’s files belong to its own task, so refusing the run is right too.',
     from: ['output-glob-links'],
     needs: ['filter'],
     workspace: {
@@ -268,12 +268,12 @@ export const outputsLinks = [
     steps: [
       { link: { [`${A}/docs`]: 'site/dist' } },
       { run: 'build', projects: ['site'], expect: { exit: 0 } },
-      { run: 'build', projects: ['a'], expect: { exit: 0 } },
+      { run: 'build', projects: ['a'], expect: { exit: 0, orRefused: true } },
       { write: { [`${A}/site/dist/index.html`]: 'kept\n', [`${A}/src/a.txt`]: 'b\n' } },
       {
         run: 'build',
         projects: ['a'],
-        expect: { exit: 0, files: { [`${A}/site/dist/index.html`]: 'kept\n' } },
+        expect: { exit: 0, orRefused: true, files: { [`${A}/site/dist/index.html`]: 'kept\n' } },
       },
       { write: { [`${A}/src/a.txt`]: 'a\n', [`${A}/out`]: null } },
       {
@@ -281,9 +281,34 @@ export const outputsLinks = [
         projects: ['a'],
         expect: {
           exit: 0,
+          orRefused: true,
           files: { [`${A}/out/a.txt`]: 'a\n', [`${A}/site/dist/index.html`]: 'kept\n' },
         },
       },
+    ],
+  }),
+
+  defineCase({
+    id: 'outputs/output-dir-linked-onto-own-folder-keeps-files',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'An output directory linked back onto its own project never deletes the files beside it',
+    why: 'Here `dist` is a committed link to `.`, so `dist/**` names every file in the project. A tool that clears the outputs before a run, following the link, deletes uncommitted work beside it. Refusing the run or writing through the link both keep those files. Losing them to a routine build is never acceptable.',
+    from: ['inputs-resolution'],
+    workspace: one(
+      { command: 'mkdir -p dist && echo x > dist/o.txt', inputs: [], outputs: ['dist/**'] },
+      { 'src/a.txt': 'a\n', '.gitignore': 'notes.txt\n' },
+    ),
+    steps: [
+      { link: { [`${A}/dist`]: '.' } },
+      { commit: 'dist link' },
+      { write: { [`${A}/notes.txt`]: 'mine\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, orRefused: true, files: { [`${A}/notes.txt`]: 'mine\n' } },
+      },
+      { write: { [`${A}/dist`]: null } },
+      { run: 'build', expect: { exit: 0, files: { [`${A}/notes.txt`]: 'mine\n' } } },
     ],
   }),
 

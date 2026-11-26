@@ -1201,14 +1201,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1947,
-        "can": 1947,
-        "of": 2016
+        "pass": 1948,
+        "can": 1948,
+        "of": 2017
       },
       "correctness": {
-        "pass": 1620,
-        "can": 1620,
-        "of": 1681
+        "pass": 1621,
+        "can": 1621,
+        "of": 1682
       },
       "efficiency": {
         "pass": 327,
@@ -1241,9 +1241,9 @@
         "of": 494
       },
       "outputs": {
-        "pass": 309,
-        "can": 309,
-        "of": 320
+        "pass": 310,
+        "can": 310,
+        "of": 321
       },
       "config": {
         "pass": 31,
@@ -1268,14 +1268,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 1319,
-        "can": 1715,
-        "of": 2016
+        "pass": 1320,
+        "can": 1716,
+        "of": 2017
       },
       "correctness": {
-        "pass": 1073,
-        "can": 1396,
-        "of": 1681
+        "pass": 1074,
+        "can": 1397,
+        "of": 1682
       },
       "efficiency": {
         "pass": 246,
@@ -1308,9 +1308,9 @@
         "of": 494
       },
       "outputs": {
-        "pass": 237,
-        "can": 307,
-        "of": 320
+        "pass": 238,
+        "can": 308,
+        "of": 321
       },
       "config": {
         "pass": 26,
@@ -1335,14 +1335,14 @@
     },
     "nx": {
       "all": {
-        "pass": 1342,
-        "can": 1752,
-        "of": 2016
+        "pass": 1343,
+        "can": 1753,
+        "of": 2017
       },
       "correctness": {
-        "pass": 1056,
-        "can": 1423,
-        "of": 1681
+        "pass": 1057,
+        "can": 1424,
+        "of": 1682
       },
       "efficiency": {
         "pass": 286,
@@ -1375,9 +1375,9 @@
         "of": 494
       },
       "outputs": {
-        "pass": 226,
-        "can": 307,
-        "of": 320
+        "pass": 227,
+        "can": 308,
+        "of": 321
       },
       "config": {
         "pass": 18,
@@ -1403,13 +1403,13 @@
     "vite-task": {
       "all": {
         "pass": 972,
-        "can": 1321,
-        "of": 2016
+        "can": 1322,
+        "of": 2017
       },
       "correctness": {
         "pass": 816,
-        "can": 1109,
-        "of": 1681
+        "can": 1110,
+        "of": 1682
       },
       "efficiency": {
         "pass": 156,
@@ -1443,8 +1443,8 @@
       },
       "outputs": {
         "pass": 209,
-        "can": 307,
-        "of": 320
+        "can": 308,
+        "of": 321
       },
       "config": {
         "pass": 20,
@@ -1469,14 +1469,14 @@
     },
     "nix": {
       "all": {
-        "pass": 1051,
-        "can": 1325,
-        "of": 2016
+        "pass": 1052,
+        "can": 1326,
+        "of": 2017
       },
       "correctness": {
-        "pass": 904,
-        "can": 1139,
-        "of": 1681
+        "pass": 905,
+        "can": 1140,
+        "of": 1682
       },
       "efficiency": {
         "pass": 147,
@@ -1509,9 +1509,9 @@
         "of": 494
       },
       "outputs": {
-        "pass": 234,
-        "can": 314,
-        "of": 320
+        "pass": 235,
+        "can": 315,
+        "of": 321
       },
       "config": {
         "pass": 16,
@@ -1536,14 +1536,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1201,
-        "can": 1628,
-        "of": 2016
+        "pass": 1202,
+        "can": 1629,
+        "of": 2017
       },
       "correctness": {
-        "pass": 962,
-        "can": 1342,
-        "of": 1681
+        "pass": 963,
+        "can": 1343,
+        "of": 1682
       },
       "efficiency": {
         "pass": 239,
@@ -1576,9 +1576,9 @@
         "of": 494
       },
       "outputs": {
-        "pass": 194,
-        "can": 310,
-        "of": 320
+        "pass": 195,
+        "can": 311,
+        "of": 321
       },
       "config": {
         "pass": 24,
@@ -15256,6 +15256,39 @@
         "nix": {
           "status": "n/a",
           "detail": "nix-build builds the attributes it is named: no filter picks them."
+        },
+        "moon": {
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "outputs/output-dir-linked-onto-own-folder-keeps-files",
+      "ref": "y2aqcs",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "An output directory linked back onto its own project never deletes the files beside it",
+      "why": "Here `dist` is a committed link to `.`, so `dist/**` names every file in the project. A tool that clears the outputs before a run, following the link, deletes uncommitted work beside it. Refusing the run or writing through the link both keep those files. Losing them to a routine build is never acceptable.",
+      "from": [
+        "inputs-resolution"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 6,
+          "detail": "exited 1, expected success"
+        },
+        "nix": {
+          "status": "pass"
         },
         "moon": {
           "status": "pass"
