@@ -266,6 +266,7 @@ export function resolveSandboxConfig(
   cfg: SandboxConfig,
   projectDir: string,
   walls?: readonly string[], // canonical dirs a glob's hits stop at (sandbox/request.ts `wallOff`)
+  root?: string, // the workspace root: a relative grant leaving the project is spelled from it
 ): ResolvedSandboxConfig
 // scratchWrites judged, the mountless reported once each; the scratch returned
 export function pendingWriteGrants(config, fs, anchors, within): string[]

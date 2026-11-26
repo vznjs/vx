@@ -137,17 +137,13 @@ function readLinkSpellings(
   // A pattern's links are those of its literal head (`src/*.ts`: `src`).
   const at = wildcardAt(full)
   const lexical = at === -1 ? full : path.dirname(`${full.slice(0, at)}x`)
-  const anchor = outside
-    ? undefined
-    : [projectDir, root].find((d) => atOrUnder(lexical, d))
+  const anchor = outside ? undefined : [projectDir, root].find((d) => atOrUnder(lexical, d))
   const inside = anchor !== undefined
   if (!outside && !inside) return []
   const home = toRealPath(anchor ?? projectDir)
   const out: Array<{ at: string; text: string }> = []
   let cur = inside ? home : path.sep
-  let parts = (inside ? path.relative(anchor, lexical) : lexical)
-    .split(path.sep)
-    .filter(Boolean)
+  let parts = (inside ? path.relative(anchor, lexical) : lexical).split(path.sep).filter(Boolean)
   for (let hops = 0; parts.length > 0;) {
     const next = path.join(cur, parts.shift()!)
     let link = false
