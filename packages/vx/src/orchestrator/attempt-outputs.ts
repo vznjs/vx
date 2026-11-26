@@ -486,19 +486,52 @@ function outputMatches(
   return { required, optional, declared: positive.length }
 }
 
+/**
+ * The first path each positive glob of `globs` matches inside a project
+ * nested in `base` (`nestedDirs`, absolute), which `missingOutputs` never
+ * counts: on a failure's path only, what its line names.
+ */
+export function nestedOutputMatches(
+  base: string,
+  globs: readonly string[],
+  nestedDirs: readonly string[],
+): string[] {
+  const { positive, negative } = splitNegations(globs)
+  const takenBack = anyTaskGlob(negative)
+  const nested = nestedDirs
+    .map((d) => path.relative(base, d))
+    .filter((r) => r !== '' && !r.startsWith('..'))
+  if (nested.length === 0) return []
+  const inNested = (rel: string): boolean =>
+    !takenBack(rel) && nested.some((n) => rel === n || rel.startsWith(`${n}/`))
+  return positive.flatMap((g) => {
+    const hit = firstMatch(base, g, inNested)
+    return hit === null || hit === true ? [] : [hit]
+  })
+}
+
 function matchesAny(base: string, glob: string, kept: (rel: string) => boolean): boolean {
+  return firstMatch(base, glob, kept) !== null
+}
+
+/** The first kept path `glob` matches; `true` for a directory it cannot list. */
+function firstMatch(
+  base: string,
+  glob: string,
+  kept: (rel: string) => boolean,
+): string | true | null {
   // `out/` names a folder: a file of that name is no match (M 2026-11-24).
   const folder = glob.endsWith('/')
   for (const tree of asTrees([glob])) {
     if (isLiteralPattern(tree)) {
       const abs = path.join(base, tree)
-      if (kept(tree) && (folder ? isDir(abs) : exists(abs))) return true
+      if (kept(tree) && (folder ? isDir(abs) : exists(abs))) return tree
       continue
     }
     // A link to a directory is listed by its own name, which a glob reaching
     // below it does not match: its target holds the outputs.
     const prefix = staticPrefix(tree)
-    if (prefix !== '' && kept(prefix) && linksToDir(path.join(base, prefix))) return true
+    if (prefix !== '' && kept(prefix) && linksToDir(path.join(base, prefix))) return prefix
     if (prefix !== '' && !exists(path.join(base, prefix))) continue
     // `dir/**` left empty matched nothing: the clean keeps the root, so an
     // empty one is no sign the command wrote. A literal `dir` is required
@@ -508,14 +541,14 @@ function matchesAny(base: string, glob: string, kept: (rel: string) => boolean):
     // a build on the bench's cold run, against 0.05 ms).
     try {
       for (const rel of taskGlob(tree).scanSync({ ...SCAN, cwd: base })) {
-        if (rel !== '' && kept(rel)) return true
+        if (rel !== '' && kept(rel)) return rel
       }
     } catch {
       // A directory it cannot list holds something: the save names it.
       return true
     }
   }
-  return false
+  return null
 }
 
 function staticPrefix(glob: string): string {

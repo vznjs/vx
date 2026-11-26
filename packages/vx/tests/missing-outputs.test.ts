@@ -212,3 +212,42 @@ describe('a declared literal output that matches no files', () => {
     expect((await runTask('found')).status).toBe('cache-hit')
   })
 })
+
+// `**/gen/**` in app never reaches app/sub/gen when app/sub is a project of
+// its own: the line said the command never wrote it and blamed a
+// sometimes-written output, though it wrote app/sub/gen/x.
+describe('an output glob whose only match lies in a nested project', () => {
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-missing-out-nested-'))
+    await writeFile(
+      path.join(root, 'pnpm-workspace.yaml'),
+      'packages:\n  - "packages/*"\n  - "packages/app/sub"\n',
+    )
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
+    const app = path.join(root, 'packages', 'app')
+    await mkdir(path.join(app, 'sub'), { recursive: true })
+    await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
+    await writeFile(path.join(app, 'sub', 'package.json'), JSON.stringify({ name: 'sub' }))
+    await writeFile(path.join(app, 'sub', 'vx.config.mjs'), 'export default {}\n')
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      `export default { tasks: {
+        gen: { exec: { command: 'mkdir -p sub/gen && echo x > sub/gen/x' },
+          inputs: { files: [] }, outputs: { files: ['**/gen/**'] }, cache: true },
+      } }\n`,
+    )
+    await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('names the file and the project it lies in', async () => {
+    const r = await runTask('gen')
+    expect(r.status).toBe('failed')
+    expect(r.lines).toEqual([
+      "[vx] app#gen: outputs matched no files (**/gen/**) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote sub/gen/x, which lies inside the project at packages/app/sub, and a project's globs never reach another project's files: let a task of that project write it, or name it in outputs.workspaceFiles",
+    ])
+  })
+})

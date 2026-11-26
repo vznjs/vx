@@ -55,8 +55,14 @@ function alive(pid: number): boolean {
     return false
   }
   if (process.platform === 'linux') {
-    // An orphan dead of the signal waits for init to reap it.
-    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    // An orphan dead of the signal waits for init to reap it, and once
+    // reaped after signal 0 landed it has no entry (ESRCH on CI).
+    let stat: string
+    try {
+      stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    } catch {
+      return false
+    }
     return !'ZX'.includes(stat[stat.lastIndexOf(')') + 2]!)
   }
   const out = Bun.spawnSync(['ps', '-o', 'stat=', '-p', String(pid)])

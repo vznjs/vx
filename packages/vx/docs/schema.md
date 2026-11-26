@@ -1864,6 +1864,8 @@ each path.
   members.
 - A leading `**`, a sibling folder and a `!` entry are fine beside a
   nested project.
+- `**/gen/**` whose only match is `sub/gen/x` matched nothing: the task
+  fails, and the error names `sub/gen/x` and the project it lies in.
 - `sub/` holding its own `.vx/workspace.*`: no outer output glob matches
   under it, so the clean never deletes its files.
 - An outer input glob still matches inside a nested workspace, so an edit
