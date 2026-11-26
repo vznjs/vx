@@ -266,6 +266,8 @@ describe('an output glob whose only match the save never takes', () => {
       `export default { tasks: {
         installed: { exec: { command: 'mkdir -p node_modules/p && echo x > node_modules/p/i.js' },
           inputs: { files: [] }, outputs: { files: ['**/*.js'] }, cache: true },
+        fifo: { exec: { command: 'mkdir -p d && rm -f d/p && mkfifo d/p' },
+          inputs: { files: [] }, outputs: { files: ['d/p'] }, cache: true },
         takenback: { exec: { command: 'mkdir -p node_modules/q && echo x > node_modules/q/i.cjs' },
           inputs: { files: [] }, outputs: { files: ['**/*.cjs', '!node_modules/q/**'] }, cache: true },
       } }\n`,
@@ -284,6 +286,18 @@ describe('an output glob whose only match the save never takes', () => {
       'failed',
       [
         "[vx] app#installed: outputs matched no files (**/*.js) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — it wrote node_modules/p/i.js, which an output never takes: vx's own files never, and node_modules only when the glob names it (node_modules/**)",
+      ],
+    ])
+  })
+
+  // A literal FIFO counted as written: the task passed and saved an empty
+  // entry, where the same FIFO under a glob failed it.
+  it('fails a literal output that is a FIFO, saying so', async () => {
+    const r = await runTask('fifo')
+    expect([r.status, r.lines]).toEqual([
+      'failed',
+      [
+        '[vx] app#fifo: outputs matched no files (d/p) — the command exited 0 but never wrote it, so the task fails and nothing is cached: write it, or fix the pattern — d/p is a FIFO, socket or device, which no output holds',
       ],
     ])
   })

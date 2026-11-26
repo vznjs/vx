@@ -551,7 +551,7 @@ function firstMatch(
   for (const tree of asTrees([glob])) {
     if (isLiteralPattern(tree)) {
       const abs = path.join(base, tree)
-      if (kept(tree) && (folder ? isDir(abs) : exists(abs))) return tree
+      if (kept(tree) && (folder ? isDir(abs) : savable(abs))) return tree
       continue
     }
     // A link to a directory is listed by its own name, which a glob reaching
@@ -589,6 +589,23 @@ function exists(abs: string): boolean {
   } catch {
     return false
   }
+}
+
+/** A file, link or directory: what a save holds. A FIFO, socket or device it never does. */
+function savable(abs: string): boolean {
+  try {
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    return st !== undefined && (st.isFile() || st.isSymbolicLink() || st.isDirectory())
+  } catch {
+    return false
+  }
+}
+
+/** The positive literals of `globs` that name a FIFO, socket or device: what a failure's line names. */
+export function specialOutputs(base: string, globs: readonly string[]): string[] {
+  return asTrees(splitNegations(globs).positive).filter(
+    (t) => isLiteralPattern(t) && exists(path.join(base, t)) && !savable(path.join(base, t)),
+  )
 }
 
 function isDir(abs: string): boolean {
