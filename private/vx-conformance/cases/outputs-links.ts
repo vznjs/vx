@@ -168,6 +168,35 @@ export const outputsLinks = [
   ),
 
   defineCase({
+    id: 'outputs/linked-output-dir-committed-file-not-reverted',
+    category: 'outputs',
+    kind: 'correctness',
+    title:
+      'A committed file behind an output directory symlink keeps its newest commit after a replay',
+    why: 'Here `dist` links to `build`, and `build/logo.txt` is committed. Git knows the file as `build/logo.txt`, so a key built from what git lists under `dist` never sees a new commit of it. A replay of the old entry then writes the old logo over the one just committed, under a green run. The tree after a run must hold what the user committed.',
+    from: ['committed-through-link'],
+    workspace: one(
+      {
+        command: 'mkdir -p build && cat src/a.txt > build/a.js',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      },
+      { 'src/a.txt': 'a\n', 'build/logo.txt': 'v1\n', '.gitignore': 'build/a.js\n' },
+    ),
+    steps: [
+      { link: { [`${A}/dist`]: 'build' } },
+      { commit: 'init' },
+      { run: 'build', expect: { exit: 0, files: { [`${A}/build/a.js`]: 'a\n' } } },
+      { write: { [`${A}/build/logo.txt`]: 'v2\n' } },
+      { commit: 'logo v2' },
+      {
+        run: 'build',
+        expect: { exit: 0, files: { [`${A}/build/logo.txt`]: 'v2\n', [`${A}/build/a.js`]: 'a\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/link-into-nested-project-untouched',
     category: 'outputs',
     kind: 'correctness',
