@@ -3,7 +3,7 @@
 // an install too, since a run keys from the lockfile digests it records.
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { optionalAsOutputs, pnpmFilter, type Adapter } from '../adapter.ts'
+import { optionalAsOutputs, pnpmFilter, rootedDefine, type Adapter } from '../adapter.ts'
 import { ISOLATED_RAN } from '../harness.ts'
 import { projectDir } from '../spec.ts'
 
@@ -72,13 +72,21 @@ export const vx: Adapter = {
                 : {
                     exec: {
                       command: run,
-                      ...(spec.env || spec.passThrough
+                      ...(spec.env || spec.passThrough || spec.define
                         ? {
-                            // A name both declared and passed through is listed once: vx refuses a repeat.
                             env: {
-                              passThrough: [
-                                ...new Set([...(spec.env ?? []), ...(spec.passThrough ?? [])]),
-                              ],
+                              // A name both declared and passed through is listed once: vx refuses a repeat.
+                              ...(spec.env || spec.passThrough
+                                ? {
+                                    passThrough: [
+                                      ...new Set([
+                                        ...(spec.env ?? []),
+                                        ...(spec.passThrough ?? []),
+                                      ]),
+                                    ],
+                                  }
+                                : {}),
+                              ...(spec.define ? { define: rootedDefine(spec.define, dir) } : {}),
                             },
                           }
                         : {}),

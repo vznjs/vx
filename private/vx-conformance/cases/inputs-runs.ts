@@ -211,6 +211,43 @@ export default [
   }),
 
   defineCase({
+    id: 'inputs/runtime-on-task-path',
+    category: 'inputs',
+    kind: 'correctness',
+    needs: ['runtime-inputs', 'task-env'],
+    title: 'A key command finds its tool on the PATH the task sets',
+    why: 'A task that sets its own PATH runs the tool found there, so a key command naming that tool must ask the same one. Asked on the machine’s PATH instead, it reads another copy of the tool or none, and a change to the tool the task runs leaves the key as it was. The runner then replays output built with the old tool.',
+    from: ['runtime-inputs'],
+    workspace: {
+      projects: {
+        a: {
+          tasks: {
+            build: {
+              command: 'mytool > out.txt',
+              define: { PATH: '$ROOT/tools/bin:/usr/bin:/bin' },
+              inputs: [],
+              runtime: ['mytool'],
+              outputs: ['out.txt'],
+            },
+          },
+          files: { '.gitignore': 'out.txt\n' },
+        },
+      },
+      files: { 'tools/bin/mytool': '#!/bin/sh\necho 1\n' },
+    },
+    steps: [
+      { chmod: { 'tools/bin/mytool': 0o755 } },
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/out.txt': '1\n' } } },
+      { write: { 'tools/bin/mytool': '#!/bin/sh\necho 2\n' } },
+      { chmod: { 'tools/bin/mytool': 0o755 } },
+      {
+        run: 'build',
+        expect: { exit: 0, ran: ['a#build'], files: { 'packages/a/out.txt': '2\n' } },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'inputs/runtime-output-same',
     category: 'inputs',
     kind: 'efficiency',

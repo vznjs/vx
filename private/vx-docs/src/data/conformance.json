@@ -1201,14 +1201,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1948,
-        "can": 1948,
-        "of": 2017
+        "pass": 1949,
+        "can": 1949,
+        "of": 2018
       },
       "correctness": {
-        "pass": 1621,
-        "can": 1621,
-        "of": 1682
+        "pass": 1622,
+        "can": 1622,
+        "of": 1683
       },
       "efficiency": {
         "pass": 327,
@@ -1236,9 +1236,9 @@
         "of": 129
       },
       "inputs": {
-        "pass": 481,
-        "can": 481,
-        "of": 494
+        "pass": 482,
+        "can": 482,
+        "of": 495
       },
       "outputs": {
         "pass": 310,
@@ -1270,12 +1270,12 @@
       "all": {
         "pass": 1320,
         "can": 1716,
-        "of": 2017
+        "of": 2018
       },
       "correctness": {
         "pass": 1074,
         "can": 1397,
-        "of": 1682
+        "of": 1683
       },
       "efficiency": {
         "pass": 246,
@@ -1305,7 +1305,7 @@
       "inputs": {
         "pass": 342,
         "can": 478,
-        "of": 494
+        "of": 495
       },
       "outputs": {
         "pass": 238,
@@ -1336,13 +1336,13 @@
     "nx": {
       "all": {
         "pass": 1343,
-        "can": 1753,
-        "of": 2017
+        "can": 1754,
+        "of": 2018
       },
       "correctness": {
         "pass": 1057,
-        "can": 1424,
-        "of": 1682
+        "can": 1425,
+        "of": 1683
       },
       "efficiency": {
         "pass": 286,
@@ -1371,8 +1371,8 @@
       },
       "inputs": {
         "pass": 346,
-        "can": 494,
-        "of": 494
+        "can": 495,
+        "of": 495
       },
       "outputs": {
         "pass": 227,
@@ -1404,12 +1404,12 @@
       "all": {
         "pass": 972,
         "can": 1322,
-        "of": 2017
+        "of": 2018
       },
       "correctness": {
         "pass": 816,
         "can": 1110,
-        "of": 1682
+        "of": 1683
       },
       "efficiency": {
         "pass": 156,
@@ -1439,7 +1439,7 @@
       "inputs": {
         "pass": 314,
         "can": 479,
-        "of": 494
+        "of": 495
       },
       "outputs": {
         "pass": 209,
@@ -1471,12 +1471,12 @@
       "all": {
         "pass": 1052,
         "can": 1326,
-        "of": 2017
+        "of": 2018
       },
       "correctness": {
         "pass": 905,
         "can": 1140,
-        "of": 1682
+        "of": 1683
       },
       "efficiency": {
         "pass": 147,
@@ -1506,7 +1506,7 @@
       "inputs": {
         "pass": 346,
         "can": 435,
-        "of": 494
+        "of": 495
       },
       "outputs": {
         "pass": 235,
@@ -1537,13 +1537,13 @@
     "moon": {
       "all": {
         "pass": 1202,
-        "can": 1629,
-        "of": 2017
+        "can": 1630,
+        "of": 2018
       },
       "correctness": {
         "pass": 963,
-        "can": 1343,
-        "of": 1682
+        "can": 1344,
+        "of": 1683
       },
       "efficiency": {
         "pass": 239,
@@ -1572,8 +1572,8 @@
       },
       "inputs": {
         "pass": 350,
-        "can": 494,
-        "of": 494
+        "can": 495,
+        "of": 495
       },
       "outputs": {
         "pass": 195,
@@ -8447,6 +8447,44 @@
         },
         "moon": {
           "status": "pass"
+        }
+      }
+    },
+    {
+      "id": "inputs/runtime-on-task-path",
+      "ref": "0hndrl",
+      "category": "inputs",
+      "kind": "correctness",
+      "title": "A key command finds its tool on the PATH the task sets",
+      "why": "A task that sets its own PATH runs the tool found there, so a key command naming that tool must ask the same one. Asked on the machine’s PATH instead, it reads another copy of the tool or none, and a change to the tool the task runs leaves the key as it was. The runner then replays output built with the old tool.",
+      "from": [
+        "runtime-inputs"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "n/a",
+          "detail": "Turborepo inputs are files and variables, never a command’s output."
+        },
+        "nx": {
+          "status": "fail",
+          "step": 2,
+          "detail": "exited 1, expected success"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task inputs are files and variables, never a command’s output."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "Evaluation reads files and variables, never a command’s output."
+        },
+        "moon": {
+          "status": "fail",
+          "step": 2,
+          "detail": "exited 1, expected success"
         }
       }
     },
