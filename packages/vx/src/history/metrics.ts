@@ -555,7 +555,9 @@ function noKeyCause(
       ? `this task never ran: ${r.blockedBy} did not pass, so it recorded no cache key`
       : r.exitCode === 0
         ? 'this task was skipped: it needs another platform, so it recorded no cache key'
-        : 'this task never ran: --fail-fast stopped the run before it started, so it recorded no cache key'
+        : r.exitCode === 1
+          ? 'this task never ran: --fail-fast stopped the run before it started, so it recorded no cache key'
+          : 'this task was skipped, so it recorded no cache key'
   if (keyNotDerived(r))
     return `this task's cache key could not be derived, so its command never ran (\`vx last ${runId} --log ${taskId}\` says why)`
   if (r.status === 'failed' && r.cacheHit === null)
