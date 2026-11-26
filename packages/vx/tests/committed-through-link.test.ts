@@ -43,12 +43,6 @@ it(
     const r = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
     expect(r.outcomes[0]?.status).toBe('success')
     expect(existsSync(path.join(dir, 'static/logo.txt'))).toBe(true)
-    // The restore's clean takes the same path.
-    await rm(path.join(dir, 'static/a.txt'))
-    const hit = await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })
-    expect(hit.outcomes[0]?.status).toBe('cache-hit')
-    expect(existsSync(path.join(dir, 'static/logo.txt'))).toBe(true)
-    expect(existsSync(path.join(dir, 'static/a.txt'))).toBe(true)
   },
   TIMEOUT,
 )
@@ -82,6 +76,35 @@ it(
     await writeFile(path.join(dir, 'src/a.txt'), 'v1')
     expect(await build()).toBe('cache-hit')
     expect(existsSync(path.join(dir, 'static/logo.txt'))).toBe(true)
+  },
+  TIMEOUT,
+)
+
+// No key names a committed file reached through a linked output head (git
+// lists `static/logo.txt`, the outputs `public/logo.txt`), so a hit replayed
+// the saved bytes over a newer commit of it. Such a result is not saved.
+it(
+  'a result holding a committed file behind an output link is not saved',
+  async () => {
+    const dir = await addProject(f.root, 'app', {
+      files: { 'src/a.txt': 'v1', 'static/logo.txt': 'v1', '.gitignore': 'public\nstatic/a.txt\n' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'cp src/a.txt public/a.txt' },
+        inputs: { files: ['src/**'] }, outputs: { files: ['public/**'] }, cache: true,
+      } } }`,
+    })
+    symlinkSync('static', path.join(dir, 'public'))
+    const git = gitIn(f.root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const build = async () =>
+      (await run({ cwd: f.root, tasks: ['build'], log: silentLogger(f) })).outcomes[0]?.status
+    expect(await build()).toBe('success')
+    expect(f.log.join('\n')).toContain('public/logo.txt is a file git tracks by another name')
+    await writeFile(path.join(dir, 'static/logo.txt'), 'v2')
+    git('commit', '-q', '-am', 'logo v2')
+    expect(await build()).toBe('success')
+    expect(await Bun.file(path.join(dir, 'static/logo.txt')).text()).toBe('v2')
   },
   TIMEOUT,
 )
@@ -314,9 +337,10 @@ it(
     }
     expect(await build('b', 'success')).toEqual(['a.out', 'fb', 'keep.txt'])
     expect(await build('c', 'success')).toEqual(['a.out', 'fc', 'keep.txt'])
-    // The restore's clean, on its own: a file no entry holds is gone.
+    // Nothing is saved past the committed `keep.txt`, so each build runs, and
+    // its clean takes a file no build wrote.
     await writeFile(path.join(dir, 'real/stray'), 'old run')
-    expect(await build('b', 'cache-hit')).toEqual(['a.out', 'fb', 'keep.txt'])
+    expect(await build('b', 'success')).toEqual(['a.out', 'fb', 'keep.txt'])
   },
   TIMEOUT,
 )

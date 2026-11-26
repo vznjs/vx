@@ -49,6 +49,7 @@ export {
   cleanOutputs,
   deferRemovals,
   committedFiles,
+  committedPastOutputLinks,
   committedOutputOids,
   cleanWorkspaceOutputs,
   declaresInput,
