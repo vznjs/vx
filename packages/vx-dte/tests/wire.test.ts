@@ -116,6 +116,28 @@ it('a quiet worker beats once each heartbeat and a half, its orchestrator only a
   await o.leave()
 }, 30_000)
 
+// CI run 45904796329 (2026-11-26): a worker's task was stopped on its
+// orchestrator's silence on a loaded runner. Time the process did not run
+// is not a peer's silence: a 2 s stall on a 500 ms heartbeat lost every
+// peer at once, the orchestrator its workers and the worker its run.
+it('a stall of its own process loses no peer', async () => {
+  const { url } = sockets(500)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  await a.send('orchestrator', 1)
+  await Bun.sleep(100)
+  Bun.sleepSync(2_000)
+  await Bun.sleep(300)
+  let ended: unknown = null
+  await a.send('orchestrator', 2).catch((err: unknown) => (ended = err))
+  await Bun.sleep(300)
+  const relay = (await o.poll()).filter((m) => m.from === 'relay')
+  expect([ended, relay]).toEqual([null, []])
+  await a.leave()
+  await o.leave()
+}, 30_000)
+
 // CI run 41952026507 (2026-11-05): three busy workers ended at once on
 // their orchestrator's silence while it ran. A quiet worker beats 3 s
 // after it last spoke and is lost at 6 s: an ack half a heartbeat late
