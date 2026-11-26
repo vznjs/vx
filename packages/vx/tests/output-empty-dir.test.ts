@@ -309,6 +309,21 @@ it(
 )
 
 it(
+  'a hit replaces a tree of empty directories standing where the entry holds a file',
+  async () => {
+    // Only the empty directory AT the file's path went before the restore;
+    // `dist/real.txt/x` went after it, so the rename met a directory.
+    const { root, dir } = await workspace(['dist/**'])
+    await build(root)
+    await rm(path.join(dir, 'dist/real.txt'))
+    mkdirSync(path.join(dir, 'dist/real.txt/x/y'), { recursive: true })
+    expect(await build(root)).toContain('1↓')
+    expect(statSync(path.join(dir, 'dist/real.txt')).isFile()).toBe(true)
+  },
+  TIMEOUT,
+)
+
+it(
   'a hit takes a stray empty directory under a workspaceFiles output',
   async () => {
     const root = await makeWorkspace({ prefix: 'vx-ws-empty-stray-' })
