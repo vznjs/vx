@@ -21,7 +21,12 @@ import { isLocalExecutor, localExecutor } from './local-executor.js'
 import { printable, relPosix, span, taskEnvSource, UserError } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { tagged } from '../ui/index.js'
-import { folderWrittenAsFile, missingOutputs, outputsStep } from './attempt-outputs.js'
+import {
+  folderWrittenAsFile,
+  missingOutputs,
+  nestedOutputMatches,
+  outputsStep,
+} from './attempt-outputs.js'
 import { buildRequest } from './attempt-request.js'
 import { bracketLiteralHint } from './miss-save.js'
 import { declareStateHint, stateLeft } from './undeclared-state.js'
@@ -683,6 +688,13 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
         { base: args.run.workspaceRoot, globs: policy.wsOutputs },
       ])
   const files = facts.folderAsFile ?? []
+  const inNested = elsewhere
+    ? []
+    : nestedOutputMatches(
+        node.projectDir,
+        missing.filter((g) => policy.outputs.includes(g)),
+        nested,
+      )
   const line =
     `[vx] ${node.id}: outputs matched no files (${missing.join(', ')}) — the command exited 0 ` +
     `but never wrote ${missing.length === 1 ? 'it' : 'them'}, so the task fails and nothing is cached: ` +
@@ -692,10 +704,11 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
       : '') +
     // Nx and Turbo cache whichever outputs exist, so an Nx test target's
     // coverage dir, written only with coverage on, failed every other run.
-    (!noWrite && facts.wroteNone === true
+    (!noWrite && facts.wroteNone === true && inNested.length === 0
       ? ` — it wrote none of its outputs: one written only sometimes (test coverage, written only with coverage on) cannot be declared, so drop it from outputs or run the command so it writes it`
       : '') +
     (files.length > 0 ? ` — a folder was declared, a file was written: ${files.join(', ')}` : '') +
+    nestedClause(inNested, node.projectDir, nested, args.run.workspaceRoot) +
     (left.length > 0
       ? ` — ${left.map(printable).join(', ')} survived the clean, which the task declares neither input nor ` +
         `output: a tool that reads such a file back (an incremental build's state) may take the cleaned ` +
@@ -705,6 +718,30 @@ function outputsMissing(m: MissRun, res: ExecuteResult): string[] | undefined {
     (facts.bracket ?? '')
   warnOf(log)(secrets.text(line))
   return missing
+}
+
+/** What a glob matched only inside a nested project: where it lies, and the two ways out. */
+function nestedClause(
+  hits: readonly string[],
+  projectDir: string,
+  nestedDirs: readonly string[],
+  root: string,
+): string {
+  if (hits.length === 0) return ''
+  const owners = new Set(
+    hits.map((h) => {
+      const abs = path.join(projectDir, h)
+      const dir = nestedDirs.find((d) => abs === d || abs.startsWith(`${d}${path.sep}`))
+      return path.relative(root, dir ?? abs)
+    }),
+  )
+  const one = hits.length === 1
+  return (
+    ` — it wrote ${hits.map(printable).join(', ')}, which ${one ? 'lies' : 'lie'} inside the ` +
+    `project${owners.size === 1 ? '' : 's'} at ${[...owners].map(printable).join(', ')}, and a project's ` +
+    `globs never reach another project's files: let a task of that project write ` +
+    `${one ? 'it' : 'them'}, or name ${one ? 'it' : 'them'} in outputs.workspaceFiles`
+  )
 }
 
 function bracketOnly(
