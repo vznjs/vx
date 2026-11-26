@@ -18,14 +18,16 @@ const { base, latest } = Astro.props
 const href = (p: string) => `${base}${p}`
 const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
 const data = { ...play(run as Run), travel: TRAVEL_MS, ends: Object.fromEntries(WIRES.map((w) => [w.id, [w.from, w.to]])) }
-// What matters (M 2026-11-25), in words: no figure on the strip (M 2026-11-26).
+// What matters (M 2026-11-25), one compact line of words: no figure on the
+// strip, one line on every width (M 2026-11-26). A phone shows DTE.
 const specs = [
-  { tone: 'dte', what: 'Distributed task execution', line: 'one run over every worker your CI starts', to: 'docs/distributed-task-execution/' },
-  { tone: 'remote', what: 'Cache', line: 'a hit leaves the disk as the real run would', to: 'docs/caching/' },
-  { tone: 'read', what: 'History', line: 'vx why names what made a task run again', to: 'cli/why/' },
-  { tone: 'core', what: 'Speed', line: 'nothing boots between vx and your command', to: 'benchmarks/' },
-  { tone: 'core', what: 'Conformance', line: 'every tool’s tests, run on every tool', to: 'conformance/' },
-]---
+  { tone: 'dte', what: 'Distributed task execution', short: 'DTE', to: 'docs/distributed-task-execution/' },
+  { tone: 'remote', what: 'Cache', to: 'docs/caching/' },
+  { tone: 'read', what: 'History', to: 'cli/why/' },
+  { tone: 'core', what: 'Speed', to: 'benchmarks/' },
+  { tone: 'core', what: 'Conformance', to: 'conformance/' },
+]
+---
 
 <section class="stage" data-play={JSON.stringify(data)} aria-label="vx">
   <div class="stage-pin">
@@ -52,8 +54,16 @@ const specs = [
           specs.map((s) => (
             <li style={`--tone: var(--tone-${s.tone})`}>
               <a href={href(s.to)}>
-                <strong>{s.what}</strong>
-                <span>{s.line}</span>
+                {s.short ? (
+                  <>
+                    <span class="long">{s.what}</span>
+                    <abbr class="short" title={s.what}>
+                      {s.short}
+                    </abbr>
+                  </>
+                ) : (
+                  s.what
+                )}
               </a>
             </li>
           ))

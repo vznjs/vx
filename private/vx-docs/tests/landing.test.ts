@@ -195,26 +195,19 @@ describe('the landing page', () => {
   })
 
   // What matters (M 2026-11-25: Distributed task execution, cache,
-  // history, speed, conformance), each linked to its proof; words only,
-  // no figure (M 2026-11-26: "No number on strip").
-  it('leads with the five things that matter, in words, each linked to its proof', () => {
-    const specs = [
-      ...stage.matchAll(
-        /<li[^>]*>\s*<a href="([^"]*)">\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g,
-      ),
-    ]
-    expect(specs.map((m) => [m[1], text(m[2]!), text(m[3]!)])).toEqual([
-      [
-        `${BASE}docs/distributed-task-execution/`,
-        'Distributed task execution',
-        'one run over every worker your CI starts',
-      ],
-      [`${BASE}docs/caching/`, 'Cache', 'a hit leaves the disk as the real run would'],
-      [`${BASE}cli/why/`, 'History', 'vx why names what made a task run again'],
-      [`${BASE}benchmarks/`, 'Speed', 'nothing boots between vx and your command'],
-      [`${BASE}conformance/`, 'Conformance', 'every tool’s tests, run on every tool'],
+  // history, speed, conformance), each linked to its proof; words only
+  // (M 2026-11-26: "No number on strip"), one compact line.
+  it('names the five things that matter, each linked to its proof', () => {
+    const ul = /<ul class="specs">([\s\S]*?)<\/ul>/.exec(stage)![1]!
+    const specs = [...ul.matchAll(/<a href="([^"]*)">([\s\S]*?)<\/a>/g)]
+    expect(specs.map((m) => [m[1], text(m[2]!.replace(/<abbr[\s\S]*?<\/abbr>/, ''))])).toEqual([
+      [`${BASE}docs/distributed-task-execution/`, 'Distributed task execution'],
+      [`${BASE}docs/caching/`, 'Cache'],
+      [`${BASE}cli/why/`, 'History'],
+      [`${BASE}benchmarks/`, 'Speed'],
+      [`${BASE}conformance/`, 'Conformance'],
     ])
-    expect(specs.map((m) => `${text(m[2]!)} ${text(m[3]!)}`).join(' ')).not.toMatch(/\d/)
+    expect(text(ul)).not.toMatch(/\d/)
   })
 
   // The graph is drawn once per layout, and every hook group is in the
