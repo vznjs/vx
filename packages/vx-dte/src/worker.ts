@@ -441,13 +441,27 @@ async function serve(
     work.add(p)
   }
 
+  /**
+   * The PATH a task sent as its own (defined or keyed), behind the bins core
+   * leads it with: the orchestrator's probes ran on it, so this worker's do.
+   */
+  const taskPath = (m: RunOrder): string | undefined => {
+    if (m.path !== true) return undefined
+    const entries = (swapRoots(m.env['PATH'] ?? '', [[root, opts.root]]) as string).split(':')
+    const bin = (e: string) =>
+      (e === opts.root || e.startsWith(`${opts.root}/`)) && e.endsWith('/node_modules/.bin')
+    let i = 0
+    while (i < entries.length && bin(entries[i]!)) i++
+    return entries.slice(i).join(':')
+  }
+
   /** Why this worker answers a keyed runtime fact otherwise: it runs no more. */
   let differing: string | undefined
   /** The first probe this machine answers otherwise than the orchestrator did, each learned once (`rt.probe`). */
   const runtimeDiffers = async (m: RunOrder): Promise<string | undefined> => {
     for (const r of m.runtime ?? []) {
       const dir = r.workspace === true ? '' : m.project
-      const p = rt.probe(r.command, path.join(opts.root, dir), r.workspace === true)
+      const p = rt.probe(r.command, path.join(opts.root, dir), r.workspace === true, taskPath(m))
       // Its checkout root read as the run's: a path under it names the same
       // file there, as the task's env does. Compared raw, a probe of a
       // workspace tool's path failed every task on a worker checked out

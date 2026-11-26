@@ -3,7 +3,7 @@
 // lock's) only holds across real invocations.
 
 import { existsSync } from 'node:fs'
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { answerRuntime } from '../src/cache/index.js'
@@ -217,6 +217,41 @@ describe('runtime inputs — e2e', () => {
     })
     expect(r.code).toBe(0)
     expect(await readFile(log, 'utf8')).toBe('unset\n')
+  })
+
+  // A defined PATH replaces the host's for the task: a probe on the host's
+  // asked another `tool`, so a change to the one the task runs was a hit
+  // replaying the old output.
+  it('a probe resolves tools on the PATH exec.env.define sets, as the task does', async () => {
+    const bin = path.join(root, 'packages', 'a', 'bin')
+    const hostBin = path.join(root, 'hostbin')
+    const tool = async (dir: string, says: string) => {
+      await Bun.write(path.join(dir, 'tool'), `#!/bin/sh\necho ${says}\n`)
+      await chmod(path.join(dir, 'tool'), 0o755)
+    }
+    await tool(hostBin, 'host')
+    await addProject(
+      root,
+      'a',
+      `export default {
+        tasks: {
+          build: {
+            exec: { command: 'tool > out.txt', env: { define: { PATH: 'bin:/usr/bin:/bin' } } },
+            inputs: { files: [], runtime: ['tool'] },
+            outputs: { files: ['out.txt'] },
+            cache: true,
+          },
+        },
+      }
+      `,
+    )
+    await tool(bin, 'v1')
+    const env = { PATH: `${hostBin}:${process.env['PATH']}` }
+    const r1 = await vx(root, ['run', 'a#build'], env)
+    expect({ code: r1.code, text: r1.code === 0 ? '' : r1.text }).toEqual({ code: 0, text: '' })
+    await tool(bin, 'v2')
+    expect((await vx(root, ['run', 'a#build'], env)).code).toBe(0)
+    expect(await readFile(path.join(bin, '..', 'out.txt'), 'utf8')).toBe('v2\n')
   })
 
   // A gitignored file a tool reads by itself (Vite's `.env.local`) is not a

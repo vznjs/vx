@@ -1557,6 +1557,7 @@ Default: `[]`, no commands.
 - What a leftover child prints later is not part of the answer.
 - The command sees only the essential environment every task sees (`PATH`, `HOME`, the locale; see `ExecEnv`), with vx's values.
 - It does not see the task's `exec.env.define` or `passThrough`, nor vx's other variables. One environment for every probe lets tasks share one spawn.
+- The one exception is a `PATH` that `exec.env.define` sets: it replaces the host's for the probe too, as it does for the task.
 - A value the probe would read from the environment belongs in `inputs.env`.
 - Its `PATH` leads with the project's `node_modules/.bin`, then the root's, so `vite --version` keys the `vite` the task runs.
 - The command runs before the task's `exec`, so the task's `sandbox` does not apply: it runs unsandboxed even on a sandboxed task.
@@ -1586,6 +1587,7 @@ Default: `[]`, no commands.
 - `node -v` declared in 500 projects spawns once: one run per command across the whole run.
 - It runs at the workspace root, for a value that is the same for every project.
 - Its `PATH` leads with the root's `node_modules/.bin` only, not a project's: every project shares the value.
+- A task whose `exec.env.define` sets `PATH` runs it on that `PATH`, once per distinct value.
 - A version manager's shim (nvm, Volta, mise, asdf) picks its version by the directory it runs in.
 - So a project with its own `.nvmrc`, `.tool-versions` or Volta pin needs `runtime: ['node -v']`. At the root, the probe answers the root's version, and a change to the project's pin replays the old output.
 - The rest is as in `runtime`: `sh -c`, run every time the key is needed, `vx lock` keeps the text, a non-zero exit fails the task.

@@ -1311,6 +1311,7 @@ export function answerRuntime(
   projectDir: string,
   workspaceRoot: string,
   workspace?: boolean,
+  definedPath?: string, // the task's own PATH, replacing this machine's behind the bins
 ): Promise<string>
 
 export interface ResolvedInputs {
@@ -1325,6 +1326,7 @@ export interface ResolveInputsArgs {
   projectDir: string
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
+  definedPath?: string | undefined // the PATH `exec.env.define` sets; its probes resolve tools on it
   inputs: InputsConfig | undefined
   ownOutputs: readonly string[] // project-relative globs to exclude
   ownWorkspaceOutputs?: readonly string[] // root-relative `outputs.workspaceFiles` to exclude from `inputs.workspaceFiles`
