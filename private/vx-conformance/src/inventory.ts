@@ -417,6 +417,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'lock-config-cwd',
     'lock-config-edited',
     'lock-config-sigint',
+    'lock-config-spin',
     'lock-discover-stage',
     'lock-during-run',
     'lock-graph-rules',
