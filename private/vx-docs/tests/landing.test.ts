@@ -194,17 +194,27 @@ describe('the landing page', () => {
     ])
   })
 
-  // Ownership and extensibility, never a speed multiple (2026-10-12: the
-  // benchmark shows speed, copy does not).
-  it('leads with seams, no paid tier and nothing to run beside it', () => {
+  // What matters (M 2026-11-25: Distributed task execution, cache,
+  // history, speed, conformance), each linked to its proof; words only,
+  // no figure (M 2026-11-26: "No number on strip").
+  it('leads with the five things that matter, in words, each linked to its proof', () => {
     const specs = [
-      ...stage.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
+      ...stage.matchAll(
+        /<li[^>]*>\s*<a href="([^"]*)">\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g,
+      ),
     ]
-    expect(specs.map((m) => `${text(m[1]!)} ${text(m[2]!)}`)).toEqual([
-      `${PLUGIN_HOOKS.length} stages a plugin can take over`,
-      'MIT every piece, no paid tier',
-      '0 daemons, accounts or clouds',
+    expect(specs.map((m) => [m[1], text(m[2]!), text(m[3]!)])).toEqual([
+      [
+        `${BASE}docs/distributed-task-execution/`,
+        'Distributed task execution',
+        'one run over every worker your CI starts',
+      ],
+      [`${BASE}docs/caching/`, 'Cache', 'a hit leaves the disk as the real run would'],
+      [`${BASE}cli/why/`, 'History', 'vx why names what made a task run again'],
+      [`${BASE}benchmarks/`, 'Speed', 'nothing boots between vx and your command'],
+      [`${BASE}conformance/`, 'Conformance', 'every tool’s tests, run on every tool'],
     ])
+    expect(specs.map((m) => `${text(m[2]!)} ${text(m[3]!)}`).join(' ')).not.toMatch(/\d/)
   })
 
   // The graph is drawn once per layout, and every hook group is in the
