@@ -1201,14 +1201,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1945,
-        "can": 1945,
-        "of": 2014
+        "pass": 1946,
+        "can": 1946,
+        "of": 2015
       },
       "correctness": {
-        "pass": 1618,
-        "can": 1618,
-        "of": 1679
+        "pass": 1619,
+        "can": 1619,
+        "of": 1680
       },
       "efficiency": {
         "pass": 327,
@@ -1241,9 +1241,9 @@
         "of": 494
       },
       "outputs": {
-        "pass": 307,
-        "can": 307,
-        "of": 318
+        "pass": 308,
+        "can": 308,
+        "of": 319
       },
       "config": {
         "pass": 31,
@@ -1269,13 +1269,13 @@
     "turbo": {
       "all": {
         "pass": 1318,
-        "can": 1713,
-        "of": 2014
+        "can": 1714,
+        "of": 2015
       },
       "correctness": {
         "pass": 1072,
-        "can": 1394,
-        "of": 1679
+        "can": 1395,
+        "of": 1680
       },
       "efficiency": {
         "pass": 246,
@@ -1309,8 +1309,8 @@
       },
       "outputs": {
         "pass": 236,
-        "can": 305,
-        "of": 318
+        "can": 306,
+        "of": 319
       },
       "config": {
         "pass": 26,
@@ -1335,14 +1335,14 @@
     },
     "nx": {
       "all": {
-        "pass": 1341,
-        "can": 1750,
-        "of": 2014
+        "pass": 1342,
+        "can": 1751,
+        "of": 2015
       },
       "correctness": {
-        "pass": 1055,
-        "can": 1421,
-        "of": 1679
+        "pass": 1056,
+        "can": 1422,
+        "of": 1680
       },
       "efficiency": {
         "pass": 286,
@@ -1375,9 +1375,9 @@
         "of": 494
       },
       "outputs": {
-        "pass": 225,
-        "can": 305,
-        "of": 318
+        "pass": 226,
+        "can": 306,
+        "of": 319
       },
       "config": {
         "pass": 18,
@@ -1403,13 +1403,13 @@
     "vite-task": {
       "all": {
         "pass": 971,
-        "can": 1319,
-        "of": 2014
+        "can": 1320,
+        "of": 2015
       },
       "correctness": {
         "pass": 815,
-        "can": 1107,
-        "of": 1679
+        "can": 1108,
+        "of": 1680
       },
       "efficiency": {
         "pass": 156,
@@ -1443,8 +1443,8 @@
       },
       "outputs": {
         "pass": 208,
-        "can": 305,
-        "of": 318
+        "can": 306,
+        "of": 319
       },
       "config": {
         "pass": 20,
@@ -1470,13 +1470,13 @@
     "nix": {
       "all": {
         "pass": 1051,
-        "can": 1323,
-        "of": 2014
+        "can": 1324,
+        "of": 2015
       },
       "correctness": {
         "pass": 904,
-        "can": 1137,
-        "of": 1679
+        "can": 1138,
+        "of": 1680
       },
       "efficiency": {
         "pass": 147,
@@ -1510,8 +1510,8 @@
       },
       "outputs": {
         "pass": 234,
-        "can": 312,
-        "of": 318
+        "can": 313,
+        "of": 319
       },
       "config": {
         "pass": 16,
@@ -1536,14 +1536,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1200,
-        "can": 1626,
-        "of": 2014
+        "pass": 1201,
+        "can": 1627,
+        "of": 2015
       },
       "correctness": {
-        "pass": 961,
-        "can": 1340,
-        "of": 1679
+        "pass": 962,
+        "can": 1341,
+        "of": 1680
       },
       "efficiency": {
         "pass": 239,
@@ -1576,9 +1576,9 @@
         "of": 494
       },
       "outputs": {
-        "pass": 193,
-        "can": 308,
-        "of": 318
+        "pass": 194,
+        "can": 309,
+        "of": 319
       },
       "config": {
         "pass": 24,
@@ -15151,6 +15151,43 @@
           "status": "fail",
           "step": 4,
           "detail": "packages/a/build/a.js is missing, expected \"a\\n\""
+        }
+      }
+    },
+    {
+      "id": "outputs/linked-output-dir-committed-file-not-reverted",
+      "ref": "g8zhdi",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A committed file behind an output directory symlink keeps its newest commit after a replay",
+      "why": "Here `dist` links to `build`, and `build/logo.txt` is committed. Git knows the file as `build/logo.txt`, so a key built from what git lists under `dist` never sees a new commit of it. A replay of the old entry then writes the old logo over the one just committed, under a green run. The tree after a run must hold what the user committed.",
+      "from": [
+        "committed-through-link"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/build/logo.txt is \"v1\\n\", expected \"v2\\n\""
+        },
+        "nx": {
+          "status": "pass"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/build/logo.txt is \"v1\\n\", expected \"v2\\n\""
+        },
+        "nix": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/build/a.js is missing, expected \"a\\n\""
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },
