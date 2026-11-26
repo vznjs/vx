@@ -72,6 +72,19 @@ describe('shellVerdict', () => {
     }
   })
 
+  // `define: { PATH: '/nope' }` hid the host's `env`; the line said to
+  // install it in the package.
+  it('127 under a defined PATH names the define, not an install', () => {
+    const line = shellVerdict({ code: 127, command: 'env', cwd, bins, definedPath: '/nope' })
+    expect(line).toBe(
+      `[vx] exit 127 is the shell's "command not found": env is not on this task's PATH — exec.env.define sets PATH to "/nope", which replaces the host's PATH; add the directory that holds it there`,
+    )
+    // A program the defined PATH holds is not this rule's.
+    expect(
+      shellVerdict({ code: 127, command: 'env', cwd, bins, definedPath: '/usr/bin:/bin' }),
+    ).not.toContain('exec.env.define')
+  })
+
   it('127 on a bare word is the PATH rule with both bin directories', () => {
     expect(verdict(127, 'tsc --version')).toBe(
       `[vx] exit 127 is the shell's "command not found": tsc is not on this task's PATH — vx puts ${bins[0]} and ${bins[1]} first and never a sibling project's bin; install it in this package or at the workspace root`,

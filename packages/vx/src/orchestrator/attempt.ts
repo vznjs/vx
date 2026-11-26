@@ -564,6 +564,7 @@ async function classifyExit(
       signal: res.signal,
       hidden: sandbox && ((f: string) => !sandboxReads(sandbox, f)),
       stderr: stream.errTail,
+      definedPath: policy.exec.env?.define?.['PATH'],
     })
     // The line quotes the command's first word, which a config may have
     // built from a secret: masked as the task's own output is.
