@@ -256,7 +256,7 @@ it("a skipped task's log points at what blocked it", () => {
 // failed and cached tasks", though it never ran; a blocker --fail-fast
 // killed keeps no row, so its "vx last --log" pointer was a dead end.
 it("a skip's log and why say why it never ran when no blocker's log can tell", async () => {
-  const other = process.platform === 'darwin' ? 'linux-x64' : 'darwin-arm64'
+  const other = `${process.platform}-${process.arch}` === 'linux-x64' ? 'linux-arm64' : 'linux-x64'
   await addProject(
     root,
     'f',
