@@ -702,4 +702,34 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
     },
     TIMEOUT,
   )
+
+  it(
+    "a sandbox fix: each violation's path stat'd once",
+    async () => {
+      const project = path.join(dir, 'fix', 'p')
+      await mkdir(path.join(project, 'public'), { recursive: true })
+      // 300 probes on three paths (a directory, a file, one gone), as a
+      // task's violations repeat a path per syscall: each was stat'd twice.
+      await writeFile(path.join(project, 'f'), '')
+      const paths = ['public', 'f', 'gone'].map((p) => path.join(project, p))
+      const vs = Array.from({ length: 300 }, (_, i) => paths[i % 3]).map((p) => ({
+        line: `deny access ${p}`,
+        target: p,
+        path: p,
+        ignorable: ['read', 'write'],
+      }))
+      const calls = await trace(
+        dir,
+        `
+        import { sandboxFix } from '$SRC/sandbox/fix.js'
+        const vs = ${JSON.stringify(vs)}.map((v) => ({ ...v, timestamp: new Date() }))
+        const f = sandboxFix(vs, ${JSON.stringify(project)}, ${JSON.stringify(path.dirname(project))}, undefined, { files: ['f'] }, [], { files: [] })
+        if (f?.write.length !== 1 || f.inputs.length !== 1) throw new Error(JSON.stringify(f))
+        `,
+      )
+      const asked = calls.filter((c) => c.path.startsWith(project + '/') && c.name !== 'execve')
+      expect(asked.length).toBeLessThanOrEqual(10)
+    },
+    TIMEOUT,
+  )
 })

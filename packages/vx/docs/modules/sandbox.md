@@ -963,6 +963,9 @@ A finished task's write records are judged on vx's own loop, so
 record, a test shard's thousands held the loop 2.6 s; on a busy 4-core CI
 worker that passed the DTE relay's 6 s silence, and the run lost a worker
 whose task had passed (CI run 46013136782).
+The fix built from the same violations (`sandboxFix` and its hints)
+stats each path once too: a task's violations repeat a path per syscall,
+and each was stat'd up to three times.
 
 Canonicalizing a WRITE grant is also how a link moved it: `out.txt ->
 ../b/src/x`, committed or planted by the task's own previous run, bound
