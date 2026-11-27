@@ -19,12 +19,14 @@ import {
 import path from 'node:path'
 import { closeDb } from '../index-db/index.js'
 import {
-  UserError,
   DOT_VX_GITIGNORE,
   IGNORE_ALL,
   isDiskFull,
+  lstatOrAbsent,
   OWN_DIR_HINT,
   refuseForeignCacheDir,
+  statOrAbsent,
+  UserError,
 } from '../util/index.js'
 
 /**
@@ -151,8 +153,7 @@ export function storeBlocked(
       const vxHome = path.dirname(path.dirname(storeRoot))
       for (const dir of [vxHome, path.dirname(storeRoot), storeRoot]) {
         // The levels below one not made yet are made by this user, 0700.
-        if (!make && lstatSync(dir, { throwIfNoEntry: false }) === undefined)
-          return mkdirBlocked(dir, false)
+        if (!make && lstatOrAbsent(dir) === undefined) return mkdirBlocked(dir, false)
         const refused = ensurePrivateDir(dir, make)
         if (refused !== null) return refused
       }
@@ -179,8 +180,7 @@ export function storeBlocked(
 /** Why `mkdir` (`-p` with `recursive`) of `dir` would fail, asked without making it. */
 function mkdirBlocked(dir: string, recursive: boolean): string | null {
   let up = path.dirname(dir)
-  if (recursive)
-    while (lstatSync(up, { throwIfNoEntry: false }) === undefined) up = path.dirname(up)
+  if (recursive) while (lstatOrAbsent(up) === undefined) up = path.dirname(up)
   try {
     if (!statSync(up).isDirectory()) return `${up} is not a directory`
     accessSync(up, constants.W_OK)
@@ -436,7 +436,7 @@ export async function holdCacheDir(
     let db: Database
     let before: Stats
     try {
-      let seen = statSync(file, { throwIfNoEntry: false })
+      let seen = statOrAbsent(file)
       if (seen === undefined && !existsSync(path.join(dir, 'cache.db'))) {
         if (mode === 'exclusive') return () => {}
         // The run makes the index next and must hold it, or a clean elsewhere
@@ -465,7 +465,7 @@ export async function holdCacheDir(
         db.exec('BEGIN')
         db.query('SELECT count(*) FROM sqlite_master').get()
       }
-      const now = statSync(file, { throwIfNoEntry: false })
+      const now = statOrAbsent(file)
       if (now !== undefined && now.ino === before.ino && now.dev === before.dev) {
         return () => closeDb(db)
       }

@@ -15,7 +15,14 @@ import {
 import { type ExecuteResult } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { atOrUnder, wildcardAt, toRealPath } from '../sandbox/index.js'
-import { outputMatcher, printable, relPosix, span, taskGlobOf } from '../util/index.js'
+import {
+  lstatOrAbsent,
+  outputMatcher,
+  printable,
+  relPosix,
+  span,
+  taskGlobOf,
+} from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import type { MissRun } from './miss-run.js'
@@ -379,7 +386,7 @@ function outputMoved(
     const ws = r.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
     const abs = ws ? path.join(root, r.path.slice(WORKSPACE_OUTPUT_PREFIX.length)) : base + r.path
     if ((near || ws) && claims?.(abs) === true) continue
-    const s = lstatSync(abs, { throwIfNoEntry: false })
+    const s = lstatOrAbsent(abs)
     if (
       s === undefined ||
       r.ino === undefined ||

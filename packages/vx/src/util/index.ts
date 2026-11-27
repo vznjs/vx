@@ -161,7 +161,7 @@ export {
   awaitedStageHooks,
 } from './before-exit.js'
 export { OWN_DIR_HINT, refuseForeignCacheDir } from './foreign-cache-dir.js'
-export { realPath, realpathOf, sameDir } from './real-path.js'
+export { lstatOrAbsent, realPath, realpathOf, sameDir, statOrAbsent } from './real-path.js'
 export {
   exitOnStop,
   IGNORE_ALL,

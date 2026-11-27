@@ -5,6 +5,7 @@
 import { chmodSync, lstatSync, mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { lstatOrAbsent } from './real-path.js'
 
 /** A helper's path per architecture, as its `with { type: 'file' }` imports name it. */
 export type EmbeddedBinary = Partial<Record<NodeJS.Architecture, string>>
@@ -76,7 +77,7 @@ async function extractedTo(
     ? path.basename(embedded).replace(/\.+$/, '')
     : `${path.basename(embedded)}-${Bun.hash(await bytes.arrayBuffer()).toString(16)}`
   const target = path.join(dir, named)
-  const st = lstatSync(target, { throwIfNoEntry: false })
+  const st = lstatOrAbsent(target)
   const own = (): boolean => {
     const d = lstatSync(dir)
     return d.isDirectory() && d.uid === uid && (d.mode & 0o022) === 0

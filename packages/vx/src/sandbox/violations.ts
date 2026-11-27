@@ -16,7 +16,7 @@ import {
   wildcardAt,
 } from './paths.js'
 import { bindableReads, bindableWrites } from './binds.js'
-import { printable } from '../util/index.js'
+import { lstatOrAbsent, printable } from '../util/index.js'
 import type { ResolvedSandboxConfig, SandboxViolation } from '../exec/index.js'
 import type { SandboxedRunArgs } from './runtime.js'
 
@@ -574,8 +574,7 @@ export async function parseStraceViolations(
   // and `config.json` read under `**/*.d.ts` would pass unreported.
   const ownOutput = (p: string): boolean =>
     underGlob(p, writeGlobs) ||
-    (rawGlobs.some((g) => holdsMatchUnder(p, g)) &&
-      lstatSync(p, { throwIfNoEntry: false })?.isDirectory() === true)
+    (rawGlobs.some((g) => holdsMatchUnder(p, g)) && lstatOrAbsent(p)?.isDirectory() === true)
   // The deepest directory first: `dist` held for `dist/*.js` inside the
   // project held for `*.js` judges what is under `dist`.
   const judgedDirs = [...widened].sort(([a], [b]) => b.length - a.length)
@@ -629,23 +628,21 @@ export async function parseStraceViolations(
     // root project's `read: ['.']` failed every tool that tries an
     // optional file (`cat .env.local`, esbuild's virtual paths).
     // One the host has was made after the grant was listed, and is hidden.
-    if (via === undefined && walledIn(abs) && !lstatSync(abs, { throwIfNoEntry: false })) continue
+    if (via === undefined && walledIn(abs) && !lstatOrAbsent(abs)) continue
     if (underGlob(abs, pendingWrites)) continue
     // Where the glob's directory is bound the miss was real when it was
     // asked; elsewhere only one the host lacks is (a hidden file answers ENOENT).
     if (
       errno === 'ENOENT' &&
       underGlob(abs, writeGlobs) &&
-      (judgedDirs.some(([d]) => atOrUnder(path.dirname(abs), d)) ||
-        !lstatSync(abs, { throwIfNoEntry: false }))
+      (judgedDirs.some(([d]) => atOrUnder(path.dirname(abs), d)) || !lstatOrAbsent(abs))
     )
       continue
     if (read === true && !undeclared(abs)) continue
     // A hidden path answers ENOENT, as a missing one does: a probe
     // (`./gen.sh || …`, `test -x`, a PATH walk) is a refusal only where
     // the host has the file.
-    if (errno === 'ENOENT' && PROBES.has(syscall) && !lstatSync(abs, { throwIfNoEntry: false }))
-      continue
+    if (errno === 'ENOENT' && PROBES.has(syscall) && !lstatOrAbsent(abs)) continue
     const key = `${syscall}|${abs}|${writes}`
     if (seen.has(key)) continue
     seen.add(key)

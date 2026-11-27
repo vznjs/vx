@@ -1,7 +1,6 @@
 // Pruning the store: evicting entries by age or size, reaping orphan
 // files, and the counts `vx info` reports.
 
-import { statSync } from 'node:fs'
 import { readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -12,7 +11,7 @@ import {
   EXECUTED_RUNS_SQL,
   recordEntryPasses,
 } from '../index-db/index.js'
-import { diskBytes, limitSetting } from '../util/index.js'
+import { diskBytes, limitSetting, statOrAbsent } from '../util/index.js'
 import {
   type CacheStats,
   type CacheStatsOptions,
@@ -147,7 +146,7 @@ async function scanOrphanFiles(
 /** Bytes the files hold now; one gone counts 0. */
 function sizeOf(files: readonly string[]): number {
   let total = 0
-  for (const f of files) total += statSync(f, { throwIfNoEntry: false })?.size ?? 0
+  for (const f of files) total += statOrAbsent(f)?.size ?? 0
   return total
 }
 

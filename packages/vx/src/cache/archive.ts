@@ -56,12 +56,14 @@ import path from 'node:path'
 import {
   decodeRaw,
   ignoreDir,
+  lstatOrAbsent,
   rawEncode,
-  UserError,
-  writableUnder,
   readUmask,
   renameNew,
   restoredMode,
+  statOrAbsent,
+  UserError,
+  writableUnder,
 } from '../util/index.js'
 import { type OutputFileRow, WORKSPACE_OUTPUT_PREFIX, LINK_MODE } from '../memo/index.js'
 import {
@@ -73,7 +75,6 @@ import {
   tarPackInto,
   tarSize,
 } from './tar-stream.js'
-import { lstatOrAbsent } from './git-inputs.js'
 import { ON_THREAD_MAX } from './zstd.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
@@ -290,7 +291,7 @@ interface Held {
  */
 function assertHeldSync(held: readonly Held[] | undefined): void {
   for (const h of held ?? []) {
-    const st = lstatSync(h.abs, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(h.abs)
     if (!sameFile(h, st)) throw movedError(h)
   }
 }
@@ -507,7 +508,7 @@ function narrowDirModes(
   const visit = (dir: string): void => {
     if (seen.has(dir)) return
     seen.add(dir)
-    const st = statSync(abs(dir), { throwIfNoEntry: false })
+    const st = statOrAbsent(abs(dir))
     if (st?.isDirectory() !== true || (st.mode & 0o755) === 0o755) return
     ;(out ??= {})[dir] = st.mode & 0o777
   }
@@ -1633,7 +1634,7 @@ class Extractor {
     }
     if (top === undefined) return undefined
     const staging = stagingDir(this.stageRoot)
-    if (!stagesInto(statSync(staging), statSync(probe, { throwIfNoEntry: false }))) return undefined
+    if (!stagesInto(statSync(staging), statOrAbsent(probe))) return undefined
     const at = path.join(staging, (tmpSeq++).toString(36))
     this.trees.set(top, { at, base, dirs: [] })
     return at + abs.slice(top.length)
@@ -1713,7 +1714,7 @@ class Extractor {
     // costs ~0.4 ms on ext4 (auto_da_alloc). Bytes, not a stamp: a reproducible
     // build gives every output one mtime. Never an empty file, which reads as
     // an untouched write-grant placeholder and is swept after a remote task.
-    const st = created === undefined ? lstatSync(target, { throwIfNoEntry: false }) : undefined
+    const st = created === undefined ? lstatOrAbsent(target) : undefined
     // A directory there would fail its rename at commit, after others landed:
     // refused now, nothing replaced.
     if (st?.isDirectory() === true)
@@ -1817,7 +1818,7 @@ class Extractor {
       this.ensuredDirs.add(dir)
     }
     if (created === undefined) {
-      const st = lstatSync(target, { throwIfNoEntry: false })
+      const st = lstatOrAbsent(target)
       if (st?.isSymbolicLink() === true && readlinkSync(target) === to) return
     }
     const staged = this.stageRoot !== undefined
@@ -1994,7 +1995,7 @@ class Extractor {
 
   private reopen(dir: string): boolean {
     if (this.reopened.has(dir)) return false
-    const st = lstatSync(dir, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(dir)
     if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
     if ((st.mode & 0o300) === 0o300) return false
     this.reopened.set(dir, st.mode & 0o7777)
@@ -2253,7 +2254,7 @@ export function copyStaging(root: string | undefined): {
   if (root === undefined) return { stats: undefined, temp: siblingTemp }
   // Made already: its stat checks it still stands.
   let dir = ownStaging(root)
-  let stats = stagingMade.has(dir) ? statSync(dir, { throwIfNoEntry: false }) : undefined
+  let stats = stagingMade.has(dir) ? statOrAbsent(dir) : undefined
   if (stats === undefined) {
     dir = stagingDir(root)
     stats = statSync(dir)
@@ -2318,7 +2319,7 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
 /** Whether nothing at all is at `p` (a dangling link is something). */
 function absent(p: string): boolean {
   try {
-    return lstatSync(p, { throwIfNoEntry: false }) === undefined
+    return lstatOrAbsent(p) === undefined
   } catch {
     return false
   }

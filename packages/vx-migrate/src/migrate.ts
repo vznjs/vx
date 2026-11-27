@@ -711,9 +711,13 @@ async function keep(
             'config',
             `${args.dry ? 'would declare' : 'declared'} ${added.join(', ')} in ${existing}`,
           ]
-  const next = adoptionNext(root, runner, source, [
+  const needed = adoptionNext(root, runner, source, [
     ...new Set(['@vzn/vx', '@vzn/vx-migrate', ...(declares ? all.map((p) => p.pkg) : [])]),
   ])
+  // `--no-install` skips `vx lock` here as it does for native config.
+  const skipLock = args.dry || args.noInstall === true || needed.includes(' lock && ')
+  const next =
+    skipLock && !needed.includes(' lock && ') && !args.dry ? `vx lock, then ${needed}` : needed
   if (args.json) {
     ui.data(
       'out',
@@ -739,7 +743,7 @@ async function keep(
   if (args.dry && before === undefined) ui.print('out', ui.excerpt(name, text))
   // A run reads only the lock; with the plugins installed it is written
   // now, else `next` names `vx lock` after the install.
-  const lock = !args.dry && !next.includes(' lock && ') ? await lockWorkspace(root) : undefined
+  const lock = skipLock ? undefined : await lockWorkspace(root)
   if (lock !== undefined && lock.code !== 0) ui.data('err', lock.said)
   const rows: ui.FieldRow[] = [
     ['from', `${source}, run by ${runner}() from @vzn/vx-migrate`],

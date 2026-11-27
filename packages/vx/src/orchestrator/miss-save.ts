@@ -7,7 +7,7 @@
 // a later run replays.
 
 import type { KeyCheck } from './input-recheck.js'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import {
   type CacheLayer,
@@ -33,6 +33,7 @@ import {
   relPosix,
   span,
   splitNegations,
+  statOrAbsent,
   taskGlob,
 } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
@@ -450,7 +451,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       const size =
         cache.artifactSize !== undefined
           ? cache.artifactSize(a.hash)
-          : statSync(cache.outputsPath(a.hash), { throwIfNoEntry: false })?.size
+          : statOrAbsent(cache.outputsPath(a.hash))?.size
       if (size !== undefined) facts.artifactBytes = size
     }
     // The files the task just wrote are the entry's bytes: stamp them,
@@ -549,7 +550,7 @@ async function resolveUnsaved(
 /** The bytes of `files` (absolute, or under `base`); one gone since it was listed counts none. */
 function sizeOf(base: string, files: readonly string[]): number {
   let n = 0
-  for (const f of files) n += statSync(path.resolve(base, f), { throwIfNoEntry: false })?.size ?? 0
+  for (const f of files) n += statOrAbsent(path.resolve(base, f))?.size ?? 0
   return n
 }
 
@@ -628,7 +629,7 @@ function deadOutputGlobs(
 
 function linksToDir(abs: string): boolean {
   try {
-    return statSync(abs, { throwIfNoEntry: false })?.isDirectory() === true
+    return statOrAbsent(abs)?.isDirectory() === true
   } catch {
     return false
   }

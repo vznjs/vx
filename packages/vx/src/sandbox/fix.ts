@@ -3,14 +3,19 @@
 // rather than leaving the user to turn absolute paths into grants. Built on
 // the failure path only: a passing run never calls it.
 
-import { lstatSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { InputsConfig, TaskOutputs } from '../config.js'
 import type { SandboxViolation } from '../exec/index.js'
 import { atOrUnder, MOUNT_WILDCARDS, toRealPath } from './paths.js'
 import type { SandboxFix } from '../graph/index.js'
-import { grantPrefix, isLiteralPattern, relPosix, taskGlobOf } from '../util/index.js'
+import {
+  grantPrefix,
+  isLiteralPattern,
+  lstatOrAbsent,
+  relPosix,
+  taskGlobOf,
+} from '../util/index.js'
 import { credentialStorePaths } from './request.js'
 
 type Kind = Exclude<keyof SandboxFix, 'withheld' | 'inputs' | 'workspaceFiles'>
@@ -164,7 +169,7 @@ function keysContents(keyed: (rel: string) => boolean, rel: string, v: SandboxVi
  */
 function entryOf(v: SandboxViolation): 'file' | 'dir' | 'missing' {
   if (v.entry !== undefined) return v.entry
-  const st = lstatSync(v.path!, { throwIfNoEntry: false })
+  const st = lstatOrAbsent(v.path!)
   return st === undefined ? 'missing' : st.isDirectory() ? 'dir' : 'file'
 }
 
@@ -435,7 +440,7 @@ function misrooted(abs: string, dirs: Dirs): string | undefined {
   if (end === -1) return undefined
   const held = parts.slice(0, end).join('/')
   for (let dir = path.dirname(dirs.project); atOrUnder(dir, dirs.root); dir = path.dirname(dir)) {
-    if (lstatSync(path.join(dir, held), { throwIfNoEntry: false }) !== undefined)
+    if (lstatOrAbsent(path.join(dir, held)) !== undefined)
       return relPosix(dirs.project, path.join(dir, held))
     if (dir === dirs.root) break
   }
@@ -451,7 +456,7 @@ function rootMarkers(dirs: Dirs): string[] {
   for (let dir = path.dirname(dirs.project); atOrUnder(dir, dirs.root); dir = path.dirname(dir)) {
     for (const m of ROOT_MARKERS) {
       const p = path.join(dir, m)
-      if (lstatSync(p, { throwIfNoEntry: false })?.isFile() === true) out.push(p)
+      if (lstatOrAbsent(p)?.isFile() === true) out.push(p)
     }
     if (dir === dirs.root) break
   }
@@ -470,7 +475,7 @@ function rootFile(v: SandboxViolation, dirs: Dirs): boolean {
     v.path !== undefined &&
     path.dirname(v.path) === dirs.root &&
     !v.line.startsWith('mkdir') &&
-    lstatSync(v.path, { throwIfNoEntry: false })?.isDirectory() !== true
+    lstatOrAbsent(v.path)?.isDirectory() !== true
   )
 }
 

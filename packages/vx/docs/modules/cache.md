@@ -2068,8 +2068,6 @@ export function repoFacts(dir: string): RepoFacts | null
 // before the picker; undefined, and free via repoFacts, when git tracks dir.
 export function gitRefusal(dir: string): UserError | undefined
 export function repoRootOf(workspaceRoot: string, gitPrefix: string): string // the repo root, from `--show-prefix`
-// `lstat`, or undefined for no entry, under a parent that is a file (ENOTDIR) too
-export function lstatOrAbsent(p: string): Stats | undefined
 export function autocrlfConverts(gitVars: string): boolean // over `git var -l`
 // `core.trustctime` off or `core.checkStat=minimal`: `git status` cannot see a
 // same-size, time-keeping rewrite, so the enumeration trusts no OID (A-6).

@@ -4,7 +4,6 @@
 // description says to the user: a declared set that matched nothing, and
 // inputs the declaration lists that git ignores.
 
-import { statSync } from 'node:fs'
 import path from 'node:path'
 import { type TaskInputComponent } from '../cache/index.js'
 import { fsClockNow } from '../memo/index.js'
@@ -21,6 +20,7 @@ import {
   outputMatcher,
   relPosix,
   secretNamed,
+  statOrAbsent,
 } from '../util/index.js'
 import { warnOf } from '../report/index.js'
 import { hashArgsOf } from './execute-args.js'
@@ -185,7 +185,7 @@ export async function describeMiss(
  */
 function linksToDir(abs: string): boolean {
   try {
-    return statSync(abs, { throwIfNoEntry: false })?.isDirectory() === true
+    return statOrAbsent(abs)?.isDirectory() === true
   } catch {
     return false
   }

@@ -2,15 +2,7 @@
 // statements and the state one open keeps. Every store function takes it.
 
 import { Database } from 'bun:sqlite'
-import {
-  closeSync,
-  existsSync,
-  openSync,
-  readdirSync,
-  renameSync,
-  statSync,
-  utimesSync,
-} from 'node:fs'
+import { closeSync, existsSync, openSync, readdirSync, renameSync, utimesSync } from 'node:fs'
 import path from 'node:path'
 import {
   createArtifactTables,
@@ -24,12 +16,13 @@ import {
   SCHEMA_VERSION,
 } from '../index-db/index.js'
 import {
+  decodeRaw,
   DISK_FULL_HINT,
-  UserError,
   isOutOfFds,
   OUT_OF_FDS_HINT,
+  statOrAbsent,
+  UserError,
   xxh3hex,
-  decodeRaw,
 } from '../util/index.js'
 import {
   FileHashStore,
@@ -1104,7 +1097,7 @@ export function artifactStat(
   const order = ix.store.decompress ? [true, false] : [false, true]
   for (const tree of order) {
     const at = tree ? treePathOf(ix, hash) : tarPath(ix, hash)
-    const st = statSync(at, { throwIfNoEntry: false })
+    const st = statOrAbsent(at)
     if (st !== undefined) return { path: at, tree, mtimeMs: st.mtimeMs }
   }
   return undefined

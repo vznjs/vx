@@ -11,12 +11,13 @@
 // exempt (`eslint --cache`, `tsc --noEmit --incremental`), and a file any
 // task of the project declares as its output is that task's.
 
-import { lstatSync, readFileSync, realpathSync, type Stats } from 'node:fs'
+import { readFileSync, realpathSync, type Stats } from 'node:fs'
 import path from 'node:path'
 import type { TaskConfig } from '../config.js'
 import { declaresInput, type GitFilesCache } from '../cache/index.js'
 import {
   asTrees,
+  lstatOrAbsent,
   outputMatcher,
   printable,
   relPosix,
@@ -33,7 +34,7 @@ export type StateStamps = ReadonlyMap<string, { at: string | undefined; ignored:
 
 function lstatOf(abs: string): Stats | undefined {
   try {
-    return lstatSync(abs, { throwIfNoEntry: false })
+    return lstatOrAbsent(abs)
   } catch {
     return undefined
   }

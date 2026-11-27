@@ -2,7 +2,7 @@
 // (`findProjectConfigs`); a run takes them from the lock and never walks. Named
 // by its config's `name`, else a `discover` plugin, else its root-relative path
 // (`//` for the root). docs/design/language-agnostic-core-2026-10.md.
-import { type Dirent, lstatSync, realpathSync } from 'node:fs'
+import { type Dirent, realpathSync } from 'node:fs'
 import { lstat, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -16,6 +16,7 @@ import {
   hasControl,
   isExecutableMissing,
   isOutOfFds,
+  lstatOrAbsent,
   printable,
   refusal,
   relPosix,
@@ -452,7 +453,7 @@ function behindLink(root: string, rel: string, linked: Map<string, boolean>): bo
   if (is === undefined) {
     is =
       behindLink(root, dir, linked) ||
-      (lstatSync(path.join(root, dir), { throwIfNoEntry: false })?.isSymbolicLink() ?? false)
+      (lstatOrAbsent(path.join(root, dir))?.isSymbolicLink() ?? false)
     linked.set(dir, is)
   }
   return is

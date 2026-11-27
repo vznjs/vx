@@ -23,46 +23,47 @@ import {
 import { rm, rmdir, unlink } from 'node:fs/promises'
 import type { InputsConfig, TaskConfig } from '../config.js'
 import {
-  appendTail,
-  createTail,
-  literalPath,
   anyTaskGlob,
-  tailText,
+  appendTail,
   asTrees,
   beforeExit,
+  braceAlternatives,
+  createTail,
+  ESSENTIAL_ENV,
+  expandEnvNames,
   isExecutableMissing,
   isInstalledPath,
   isLiteralPattern,
+  literalPath,
+  lstatOrAbsent,
   normalizeGlob,
-  outputMatcher,
   outputExcluded,
+  outputMatcher,
+  ownEnv,
+  POST_EXIT_DRAIN_MS,
   realpathOf,
   relPosix,
   restorableOutput,
   shellArgv,
   slashBraceExpansions,
-  braceAlternatives,
-  ESSENTIAL_ENV,
-  taskEnvSource,
-  ownEnv,
-  expandEnvNames,
-  POST_EXIT_DRAIN_MS,
   splitNegations,
   staticPrefix,
-  treeRoot,
+  statOrAbsent,
   stripTrailingSlash,
+  tailText,
+  taskEnvSource,
   taskGlob,
   thrownMessage,
+  treeRoot,
   UserError,
-  writableUnder,
-  withoutWorkspaceBins,
   wholeSubtreePrefixes,
+  withoutWorkspaceBins,
+  writableUnder,
 } from '../util/index.js'
 import {
   GitFilesCache,
   listingEnv,
   relistedFilesDigest,
-  lstatOrAbsent,
   lowerBoundOf,
   newFilesIgnoredIn,
   runGitLsFiles,
@@ -1177,7 +1178,7 @@ function refuseDirLinkedOut(
       if (!isInside(root, at)) break
       let st
       try {
-        st = lstatSync(at, { throwIfNoEntry: false })
+        st = lstatOrAbsent(at)
       } catch {
         break
       }
@@ -1497,7 +1498,7 @@ function reportWritten(
   w: NonNullable<Parameters<typeof cleanOutputs>[0]['written']>,
 ): void {
   for (const f of files) {
-    const at = lstatSync(f, { throwIfNoEntry: false })?.mtimeMs
+    const at = lstatOrAbsent(f)?.mtimeMs
     if (at === undefined) continue
     const i = w.windows.findIndex(([from, to]) => at >= from && at <= to)
     if (i >= 0) w.onWritten(f, i)
@@ -1585,8 +1586,8 @@ function putBack(stage: string): void {
   for (const to of list.split('\n')) {
     if (!path.isAbsolute(to)) continue
     const from = path.join(stage, `.host-${path.basename(to)}`)
-    if (lstatSync(from, { throwIfNoEntry: false })?.isDirectory() !== true) continue
-    if (lstatSync(to, { throwIfNoEntry: false }) !== undefined) continue
+    if (lstatOrAbsent(from)?.isDirectory() !== true) continue
+    if (lstatOrAbsent(to) !== undefined) continue
     try {
       renameSync(from, to)
     } catch {
@@ -1907,7 +1908,7 @@ type Reopened = Map<string, number>
 /** Whether `dir` is now open: this user's, given the owner `bits` it lacked. */
 function reopenDir(dir: string, reopened: Reopened, bits = 0o300): boolean {
   if (reopened.has(dir)) return true
-  const st = lstatSync(dir, { throwIfNoEntry: false })
+  const st = lstatOrAbsent(dir)
   if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
   if ((st.mode & bits) === bits) return false
   reopened.set(dir, st.mode & 0o7777)
@@ -3086,7 +3087,7 @@ function addedTo(
     const abs = dir === '' ? l.root : path.resolve(l.root, dir)
     let entries
     try {
-      const st = lstatSync(abs, { throwIfNoEntry: false })
+      const st = lstatOrAbsent(abs)
       if (st === undefined) continue
       if (st.ctimeMs < listedAt - racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) continue
       entries = readdirSync(abs, { withFileTypes: true })
@@ -3151,7 +3152,7 @@ async function scanUnion(
   const take = (rel: string): void => {
     if (nested(rel) || excluded(rel)) return
     const abs = path.resolve(cwd, rel)
-    const st = lstatSync(abs, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(abs)
     if (st !== undefined && (st.isFile() || st.isSymbolicLink())) {
       matches.add(abs)
       if (st.isSymbolicLink()) links.push(abs)
@@ -3165,7 +3166,7 @@ async function scanUnion(
   const takeRoot = (rel: string): void => {
     if (emptyDirs === undefined || nested(rel) || excluded(rel)) return
     const abs = path.resolve(cwd, rel)
-    if (lstatSync(abs, { throwIfNoEntry: false })?.isDirectory() !== true) return
+    if (lstatOrAbsent(abs)?.isDirectory() !== true) return
     if (readdirSync(abs).length === 0) emptyDirs.add(abs)
   }
   const opts = { onlyFiles: false, followSymlinks: false, dot: true }
@@ -3322,7 +3323,7 @@ function headLinked(cwd: string, pattern: string): boolean {
   let at = cwd
   for (const part of prefix.split('/')) {
     at = path.join(at, part)
-    const st = lstatSync(at, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(at)
     if (st === undefined || !st.isDirectory()) return st?.isSymbolicLink() === true
   }
   return false
@@ -3344,7 +3345,7 @@ function scanRoot(
   const dir = path.join(cwd, prefix)
   let st
   try {
-    st = statSync(dir, { throwIfNoEntry: false })
+    st = statOrAbsent(dir)
   } catch {
     return undefined
   }
@@ -3363,7 +3364,7 @@ function absentPrefix(cwd: string, pattern: string, known?: ReadonlySet<string>)
   const at = path.join(cwd, prefix)
   if (known?.has(at) === true) return true
   try {
-    return lstatSync(at, { throwIfNoEntry: false }) === undefined
+    return lstatOrAbsent(at) === undefined
   } catch {
     return false
   }

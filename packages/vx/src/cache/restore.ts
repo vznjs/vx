@@ -9,24 +9,25 @@ import {
   readlinkSync,
   renameSync,
   type Stats,
-  statSync,
 } from 'node:fs'
 import { chmod, mkdir, rename, rm, symlink, utimes } from 'node:fs/promises'
 import path from 'node:path'
 import { isIndexFull, recordEntryPasses } from '../index-db/index.js'
 import {
-  UserError,
   isDiskFull,
   isFsRefusal,
   isOutOfFds,
-  OUT_OF_FDS_HINT,
-  restorableOutput,
-  restorableOutputDir,
-  span,
+  lstatOrAbsent,
   modeMatches,
+  OUT_OF_FDS_HINT,
   readUmask,
   renameNew,
+  restorableOutput,
+  restorableOutputDir,
   restoredMode,
+  span,
+  statOrAbsent,
+  UserError,
 } from '../util/index.js'
 import {
   ArchiveSecurityError,
@@ -94,7 +95,7 @@ function modedDirs(
     if ((r.mode & 0o170000) !== DIR_MODE || !r.path.endsWith('/')) continue
     const dir = rowDir(r.path.slice(0, -1), projectDir, workspaceRoot)
     if (dir === undefined) continue
-    const st = lstatSync(dir, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(dir)
     if (st === undefined || (st.isDirectory() && !modeMatches(st.mode, r.mode)))
       out.push([dir, r.mode & 0o777])
   }
@@ -130,7 +131,7 @@ function narrowedDirs(
     if (dir === undefined || made.has(dir)) return
     for (let up = path.dirname(dir); up !== dir && up.length > 1; up = path.dirname(up))
       if (made.has(up)) return
-    const st = lstatSync(dir, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(dir)
     if (st?.isDirectory() === true && !wideDirMode(st.mode)) out.push([dir, 0o755])
   }
   for (const r of rows)
@@ -389,14 +390,14 @@ function treeSource(hash: string, tree: string, ino: number): CopySource {
     // Bun clones only from a path.
     write: async (to, rel) => {
       const from = path.join(tree, rel)
-      if (lstatSync(from, { throwIfNoEntry: false })?.isFile() === false)
+      if (lstatOrAbsent(from)?.isFile() === false)
         throw new CorruptArtifactError(hash, `${rel} is not a file in its stored tree`)
       return await Bun.write(to, Bun.file(from), { createPath: false })
     },
     // The tree renamed aside mid-copy would give later files from another
     // build. A changed inode is that race: a miss, and the other process's
     // entry is kept.
-    swapped: () => lstatSync(tree, { throwIfNoEntry: false })?.ino !== ino,
+    swapped: () => lstatOrAbsent(tree)?.ino !== ino,
     reopens: true,
     writesNow: false,
   }
@@ -481,7 +482,7 @@ async function copyTree(
         return 'absent'
       }
       try {
-        const st = lstatSync(abs, { throwIfNoEntry: false })
+        const st = lstatOrAbsent(abs)
         known = st === undefined ? 'absent' : st.isDirectory() ? 'dir' : 'other'
         if (known === 'absent') absentDirs.add(abs)
       } catch {
@@ -513,7 +514,7 @@ async function copyTree(
       }
       if (isLeaf && state === 'other' && !r.path.endsWith('/') && r.mode !== LINK_MODE) {
         const abs = path.join(projectDir, rel)
-        if (lstatSync(abs, { throwIfNoEntry: false })?.isFile() !== true) return false
+        if (lstatOrAbsent(abs)?.isFile() !== true) return false
         replaced.set(r.path, abs)
         return true
       }
@@ -532,7 +533,7 @@ async function copyTree(
   const reopened = new Map<string, number>()
   const reopen = (dir: string): boolean => {
     if (reopened.has(dir)) return true
-    const st = lstatSync(dir, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(dir)
     if (st?.isDirectory() !== true || st.uid !== process.getuid?.()) return false
     if ((st.mode & 0o300) === 0o300) return false
     reopened.set(dir, st.mode & 0o7777)
@@ -547,7 +548,7 @@ async function copyTree(
   // answers what a rename into it keeps.
   let projectStat: Stats | undefined
   try {
-    projectStat = statSync(projectDir, { throwIfNoEntry: false })
+    projectStat = statOrAbsent(projectDir)
   } catch {
     projectStat = undefined
   }
@@ -560,10 +561,7 @@ async function copyTree(
       let fit = fits.get(dir)
       if (fit === undefined) {
         const top = !rel.includes('/') && projectStat !== undefined
-        fit = stagesInto(
-          staging.stats,
-          top ? projectStat : statSync(dir, { throwIfNoEntry: false }),
-        )
+        fit = stagesInto(staging.stats, top ? projectStat : statOrAbsent(dir))
         fits.set(dir, fit)
       }
       if (!fit) return false
@@ -580,7 +578,7 @@ async function copyTree(
     if (fit === undefined) {
       fit =
         staging?.stats !== undefined &&
-        stagesInto(staging.stats, statSync(dir, { throwIfNoEntry: false })) &&
+        stagesInto(staging.stats, statOrAbsent(dir)) &&
         writable(dir)
       into.set(dir, fit)
     }
@@ -613,7 +611,7 @@ async function copyTree(
   // unchanged tree dated every output now (a noop's restore rewrote dist/).
   const keptAsIs = (r: OutputFileRow): boolean => {
     const abs = path.join(projectDir, r.path)
-    const st = lstatSync(abs, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(abs)
     if (st?.isFile() !== true || st.nlink !== 1 || st.size !== r.size || r.size === 0) return false
     if (!readFileSync(abs).equals(src.bytes(r.path))) return false
     if ((st.mode & 0o7777) !== restoredMode(r.mode)) chmodSync(abs, restoredMode(r.mode))
@@ -792,7 +790,7 @@ async function restoreOutputsOnce(
   let treeIno: number | undefined
   let treeAsked = false
   if (held !== undefined && heldAt === undefined) {
-    treeIno = lstatSync(treePathOf(ix, hash), { throwIfNoEntry: false })?.ino
+    treeIno = lstatOrAbsent(treePathOf(ix, hash))?.ino
     treeAsked = true
     if (treeIno !== undefined) rows = held
   } else if (held !== undefined) {
@@ -818,8 +816,7 @@ async function restoreOutputsOnce(
     )
     // A tree asked of above and absent: the artifact is the blob or the
     // tar, and a tree saved since is a miss at worst (the tar is gone).
-    if (inline === undefined && !treeAsked)
-      treeIno = lstatSync(treePathOf(ix, hash), { throwIfNoEntry: false })?.ino
+    if (inline === undefined && !treeAsked) treeIno = lstatOrAbsent(treePathOf(ix, hash))?.ino
   }
   used.rows = rows
   const expected = rows
@@ -994,8 +991,7 @@ async function restoreOutputsOnce(
     // place lacking a file is damage at rest, not a clean that never ran.
     const missing = (err as NodeJS.ErrnoException).path
     if (code === 'ENOENT' && tree !== undefined && inTree(missing, tree)) {
-      if (lstatSync(tree, { throwIfNoEntry: false })?.ino !== treeIno)
-        throw new ArtifactVanishedError(hash)
+      if (lstatOrAbsent(tree)?.ino !== treeIno) throw new ArtifactVanishedError(hash)
       const rel = path.relative(tree, missing!).split(path.sep).join('/')
       throw new CorruptArtifactError(hash, `${rel} is missing from its stored tree`)
     }

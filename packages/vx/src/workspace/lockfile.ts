@@ -28,13 +28,14 @@
 // hashed order keeps two new projects apart. A name a tab could break, or one starting with `#`, `"`
 // or `{`, is written as a JSON string.
 
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import {
   keysSorted,
   type PendingWrite,
   relPosix,
+  statOrAbsent,
   UserError,
   writeAllOrNone,
   xxh3,
@@ -175,7 +176,7 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   const file = Bun.file(lockfilePath(root))
   if (!(await file.exists())) {
     // A directory reads as no file: `--check` said "run `vx lock`", which cannot write over it.
-    if (statSync(lockfilePath(root), { throwIfNoEntry: false })?.isDirectory()) {
+    if (statOrAbsent(lockfilePath(root))?.isDirectory()) {
       throw new UserError(
         `${LOCKFILE_NAME} is a directory — remove it and run \`vx lock\``,
         'VX_E_LOCK',

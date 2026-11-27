@@ -2267,6 +2267,8 @@ folded one spelling while every caller compared another).
 export function realPath(p: string): string
 export function realpathOf(p: string): string
 export function sameDir(a: string, b: string): boolean
+export function lstatOrAbsent(p: string): Stats | undefined
+export function statOrAbsent(p: string): Stats | undefined
 ```
 
 - `realPath` — `realpathSync.native`: the OS's final path for `p`.
@@ -2281,6 +2283,12 @@ export function sameDir(a: string, b: string): boolean
   enumeration (`cache/git-inputs.ts`) and `--affected`
   (`workspace/affected.ts`) match a project dir by its own spelling
   first and by its NFC name only when this holds.
+- `lstatOrAbsent`, `statOrAbsent` — `lstat` and `stat`, undefined when
+  nothing is there, under a parent that is a file too. Bun's
+  `throwIfNoEntry: false` passes over ENOENT alone (Node's over ENOTDIR
+  too), so `--profile=<file>/p.json` died as a vx bug and an output
+  literal under a file a past run left failed its task. Every stat in
+  `src/` that may find nothing uses these (`tests/stat-or-absent.test.ts`).
 
 ### Tests
 

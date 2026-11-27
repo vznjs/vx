@@ -3,9 +3,9 @@
 
 import path from 'node:path'
 import os from 'node:os'
-import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, realpathSync } from 'node:fs'
 import type { SandboxViolation } from '../exec/index.js'
-import { procfsIsOwn, relPosix, taskGlobOf } from '../util/index.js'
+import { lstatOrAbsent, procfsIsOwn, relPosix, statOrAbsent, taskGlobOf } from '../util/index.js'
 import { bindableWrites } from './binds.js'
 import { atOrUnder, loopbackPorts, toRealPath } from './paths.js'
 import { srtDefaultWritePaths } from './deny-scan.js'
@@ -173,12 +173,7 @@ export function addHints(
           ...new Set(
             granted
               // A baseline the host lacks (no node_modules) is bound to nothing.
-              .filter(
-                (g) =>
-                  g !== cwd &&
-                  atOrUnder(g, cwd) &&
-                  statSync(g, { throwIfNoEntry: false }) !== undefined,
-              )
+              .filter((g) => g !== cwd && atOrUnder(g, cwd) && statOrAbsent(g) !== undefined)
               .map((g) => relPosix(cwd, g)),
           ),
         ]
@@ -231,8 +226,7 @@ export function outsideWritesHint(
   const inHome = (p: string): boolean => atOrUnder(p, home) && !temps.includes(home)
   const scratchTemp = (p: string): boolean =>
     temps.some((t) => atOrUnder(p, t)) && !walls.some((w) => atOrUnder(p, w)) && !inHome(p)
-  const isDir = (p: string): boolean =>
-    made.has(p) || statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
+  const isDir = (p: string): boolean => made.has(p) || statOrAbsent(p)?.isDirectory() === true
   // A tool's cache under `~/.cache` is its own directory there: `go build`
   // writes `~/.cache/go-build/ab/<hash>-d`, and `ab/` alone failed the next
   // build on another subdirectory.
@@ -397,10 +391,10 @@ function hiddenGitHint(
   within: string,
 ): { dir: string; hint: SandboxViolation } | undefined {
   let dir = toRealPath(cwd)
-  let st = lstatSync(path.join(dir, '.git'), { throwIfNoEntry: false })
+  let st = lstatOrAbsent(path.join(dir, '.git'))
   while (st === undefined && path.dirname(dir) !== dir) {
     dir = path.dirname(dir)
-    st = lstatSync(path.join(dir, '.git'), { throwIfNoEntry: false })
+    st = lstatOrAbsent(path.join(dir, '.git'))
   }
   const git = path.join(dir, '.git')
   // A worktree's `.git` file granted is still no repository: the data it
@@ -614,7 +608,7 @@ function statedHiddenHint(
       const abs = path.resolve(cwd, w)
       if (seen.has(abs)) continue
       seen.add(abs)
-      if (!lstatSync(abs, { throwIfNoEntry: false })) continue
+      if (!lstatOrAbsent(abs)) continue
       const target = toRealPath(abs)
       // A granted target behind a link the sandbox does not hold is hidden
       // all the same: the grant is the directory holding the link.
@@ -674,7 +668,7 @@ function leavingLinks(
   if (grantable === undefined) return []
   const project = toRealPath(within)
   if (grantable === project || !atOrUnder(grantable, project)) return []
-  if (statSync(grantable, { throwIfNoEntry: false })?.isDirectory() !== true) return []
+  if (statOrAbsent(grantable)?.isDirectory() !== true) return []
   const root = key === undefined ? undefined : toRealPath(key.root)
   const nested = (key?.nested ?? []).map(toRealPath)
   return linksLeaving(grantable, project, nested).filter(
@@ -728,7 +722,7 @@ function keyEntryHint(
   const own = atOrUnder(p, project) && !key.nested.some((d) => atOrUnder(p, toRealPath(d)))
   const [field, base] = own ? ['files', project] : ['workspaceFiles', root]
   const rel = relPosix(base, p)
-  const dir = statSync(p, { throwIfNoEntry: false })?.isDirectory() === true
+  const dir = statOrAbsent(p)?.isDirectory() === true
   const glob = rel === '' ? '**' : dir ? `${taskGlobOf(rel)}/**` : taskGlobOf(rel)
   const entries = [jsString(glob)]
   let through = ''
@@ -740,7 +734,7 @@ function keyEntryHint(
     for (const [link, target] of leaving) {
       entries.push(jsString(`!${taskGlobOf(relPosix(project, link))}`))
       const t = relPosix(root, target)
-      const tDir = statSync(target, { throwIfNoEntry: false })?.isDirectory() === true
+      const tDir = statOrAbsent(target)?.isDirectory() === true
       targets.push(jsString(tDir ? `${taskGlobOf(t)}/**` : taskGlobOf(t)))
     }
     through = `, workspaceFiles: [${targets.join(', ')}]`

@@ -14,7 +14,7 @@ const FILE_PREFIX_MTIME = -2
 
 import type { Database } from 'bun:sqlite'
 import { inHashes, lazyStatement, isIndexFull } from '../index-db/index.js'
-import { modeMatches } from '../util/index.js'
+import { lstatOrAbsent, modeMatches, statOrAbsent } from '../util/index.js'
 import { stampGrainMs, racyWindowMs } from './fs-clock.js'
 import { STAT_FIELDS } from './stat-thread.js'
 import { lstatSync, readdirSync, readlinkSync, realpathSync, statSync } from 'node:fs'
@@ -519,7 +519,7 @@ export class OutputIndex {
     // a chmod of one left the tree "current" (a stat per directory).
     for (const dir of rowAncestors(expected)) {
       const abs = path.join(projectDir, dir)
-      const mode = known?.get(abs) ?? statSync(abs, { throwIfNoEntry: false })?.mode
+      const mode = known?.get(abs) ?? statOrAbsent(abs)?.mode
       if (mode === undefined || !wideDirMode(mode)) return false
     }
     return true
@@ -743,7 +743,7 @@ export class OutputIndex {
       try {
         // No throw for a missing dir: every restore after a clean asks
         // about one, and an exception per hit cost more than the stat.
-        st = lstatSync(abs, { throwIfNoEntry: false })
+        st = lstatOrAbsent(abs)
       } catch {
         return r.mtimeMs === ABSENT_DIR_MTIME
       }
