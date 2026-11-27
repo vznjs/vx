@@ -678,3 +678,62 @@ export function takingBack(globs: readonly string[]): string[] {
   const kept = withoutTakenBack(globs)
   return kept.some((g) => !g.startsWith('!')) ? kept : []
 }
+
+/**
+ * Drops each input every file of which lies in one of the task's own literal
+ * outputs (`lib`, `dist/**`), under either base: vx cleans the outputs before
+ * the task runs, so core refuses such an input, and that refused the whole
+ * `vx lock`. With any `!` output, nothing is dropped. Returns the
+ * TODOs; `pkgDir` is `''` for the root.
+ */
+export function dropOwnOutputInputs(
+  task: Record<string, unknown>,
+  pkgDir: string,
+  tool: string,
+): string[] {
+  const inputs = task['inputs'] as Record<string, unknown> | undefined
+  const outputs = task['outputs'] as Record<string, unknown> | undefined
+  if (inputs === undefined || outputs === undefined) return []
+  const at = (rel: string): string => (pkgDir === '' ? rel : `${pkgDir}/${rel}`)
+  const strings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((g): g is string => typeof g === 'string') : []
+  const outs = [
+    ...strings(outputs['files']).map((g) => (g.startsWith('!') ? `!${at(g.slice(1))}` : at(g))),
+    ...strings(outputs['workspaceFiles']),
+  ]
+  if (outs.some((g) => g.startsWith('!'))) return []
+  const roots = outs.map((g) => g.replace(/\/\*\*(\/\*)?$/, '')).filter((r) => !/[*?[\]{}]/.test(r))
+  if (roots.length === 0) return []
+  const todos: string[] = []
+  for (const [field, toRoot] of [
+    ['files', at],
+    ['workspaceFiles', (g: string) => g],
+  ] as const) {
+    const list = inputs[field]
+    if (!Array.isArray(list)) continue
+    const kept = list.filter((g) => {
+      if (typeof g !== 'string' || g.startsWith('!')) return true
+      const r = roots.find((o) => inside(staticPrefix(toRoot(g)), o))
+      if (r === undefined) return true
+      const own = pkgDir !== '' && r.startsWith(`${pkgDir}/`) ? r.slice(pkgDir.length + 1) : r
+      todos.push(
+        `input ${JSON.stringify(g)} lies inside this task’s own output ${own} — dropped: ` +
+          `vx cleans the outputs before the task runs, where ${tool} hashes the last run’s files`,
+      )
+      return false
+    })
+    inputs[field] = kept.some((g) => typeof g !== 'string' || !g.startsWith('!')) ? kept : []
+  }
+  if (Array.isArray(inputs['workspaceFiles']) && inputs['workspaceFiles'].length === 0)
+    delete inputs['workspaceFiles']
+  return todos
+}
+
+/** The literal directories a glob starts with: `lib/*.d.ts` is `lib`, `**` is ''. */
+function staticPrefix(glob: string): string {
+  const segs = glob.split('/')
+  const at = segs.findIndex((s) => /[*?[\]{}]/.test(s))
+  return (at === -1 ? segs : segs.slice(0, at)).join('/')
+}
+
+const inside = (p: string, dir: string): boolean => p === dir || p.startsWith(`${dir}/`)

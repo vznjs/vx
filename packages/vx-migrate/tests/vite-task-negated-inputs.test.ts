@@ -30,6 +30,7 @@ it('a negation with no positive glob under its base takes back from the other ba
       deep: { command: 'x', cache: { input: ['src/**', ${ws('!**/*.md')}, ${ws('!packages/*/src/*.snap')}], output: [] } },
       shared: { command: 'x', cache: { input: [${ws('packages/**')}, '!**/*.md'], output: [] } },
       out: { command: 'x', cache: { input: [], output: ['dist/**', ${ws('!packages/a/dist/x/**')}] } },
+      own: { command: 'x', cache: { input: ['src/**', 'lib/**'], output: ['lib/**'] } },
       outWs: { command: 'x', cache: { input: [], output: [${ws('out/**')}, '!out/**/*.map'] } },
     } } }`,
   )
@@ -58,6 +59,8 @@ it('a negation with no positive glob under its base takes back from the other ba
     shared: { files: [], workspaceFiles: ['packages/**', '!packages/a/**/*.md'] },
     top: { files: ['**/*', '!**/*.md'] },
     out: { files: [] },
+    // Inside its own output: vx cleans it first, and core refused the lock.
+    own: { files: ['src/**'] },
     outWs: { files: [] },
   })
   // Dropped, `dist/x` was cleaned before each run and saved, which Vite

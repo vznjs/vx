@@ -31,6 +31,7 @@ import {
   yarnPnp,
 } from '../script-command.js'
 import {
+  dropOwnOutputInputs,
   ownFileTakeBacks,
   excludeSiblingOutputs,
   excludeWorkspaceOutputs,
@@ -2315,6 +2316,7 @@ function buildTask(
   const ws = takingBack(wsOutFiles).sort(negationsLast)
   if (ws.length > 0) outputs['workspaceFiles'] = ws
   task['outputs'] = outputs
+  todos.push(...dropOwnOutputInputs(task, atRoot ? '' : pkgDir, 'Turbo'))
   // A path a `!` output takes back is still written by the task, often
   // not gitignored (`dist/skip`): as its own input it changed after the
   // key was taken, so no run was saved, and no dependant's either. One
