@@ -1350,6 +1350,8 @@ There is no live plugin, so `--keep` is refused.
 - The task runs nothing when nothing follows them: a no-op task of its `cache.input`, or a group with none. Its `cache` and outputs are dropped.
 - The edges run in parallel where Vite Task ran a chain in order.
 - Any other form stays in the command with a TODO: `--parallel`, `-t`, forwarded arguments, or a `vp run` after another command.
+- So does a command with `||`, `;`, `&`, a subshell or a backtick outside quotes: Vite Task runs it whole in a shell, so what runs after a failure differs.
+- A quoted `&&` (`echo "a&&b"`) is never a cut.
 
 | Vite Task                                                 | vx                                                                                                                                                                                                                           |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

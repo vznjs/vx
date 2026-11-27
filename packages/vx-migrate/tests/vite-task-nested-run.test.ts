@@ -27,6 +27,9 @@ describe('vx-migrate (vite-task): nested `vp run`', () => {
           web: 'vp run --filter app build',
           dev: 'vp run -r --parallel dev',
           mix: 'echo a && vp run lint',
+          quoted: 'vp run lint && echo "a&&b"',
+          orelse: 'vp run lint && node a.js || node b.js',
+          redirect: 'vp run lint && node a.js 2>&1',
           lint: 'oxlint',
           check: 'tsc',
         },
@@ -99,5 +102,18 @@ describe('vx-migrate (vite-task): nested `vp run`', () => {
     expect(ws['mix']!.exec!.command).toBe('echo a && vp run lint')
     expect(out).toContain('`vp run -r --parallel dev` runs Vite Task inside the command')
     expect(out).toContain('`vp run lint` runs Vite Task inside the command')
+  })
+
+  // Cut at every `&&`, `echo "a&&b"` was written back as `echo "a && b"`;
+  // and `vp run lint && x || y`, which Vite Task runs whole in a shell (y
+  // runs when lint fails), became an edge on lint that skips y instead.
+  it('cuts only at a top-level `&&`, and never a chain with `||`', async () => {
+    const ws = (await loadProjectConfig(path.join(root, 'vx.config.ts'))).tasks!
+    expect(ws['quoted']).toEqual({ dependsOn: ['lint'], exec: { command: 'echo "a&&b"' } })
+    expect(ws['redirect']).toEqual({ dependsOn: ['lint'], exec: { command: 'node a.js 2>&1' } })
+    expect(ws['orelse']).toEqual({ exec: { command: 'vp run lint && node a.js || node b.js' } })
+    expect(out).toContain(
+      '`vp run lint && node a.js || node b.js` runs Vite Task inside the command',
+    )
   })
 })
