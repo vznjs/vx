@@ -3736,6 +3736,10 @@ config edited after `vx lock` adds a `dependsOn` loop:
 - Two `.vx/workspace.*` files count too. Precedence reads the first, so
   an edit to the other changes nothing.
 - That warning does not fail `--check`.
+- They warn of a `vx.config` by a name vx does not read (`vx.config.json`,
+  `.tsx`) where no config is read: that directory is no project.
+- One beside a config vx reads is left alone. That warning does not fail
+  `--check` either.
 - `--format json` answers `--check` only. Its schema is
   `schemas/lock.json`, and the exit code is unchanged.
 - Under `--format json`, paths are root-relative.

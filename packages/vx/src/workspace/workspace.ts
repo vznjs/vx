@@ -285,6 +285,8 @@ export interface ProjectConfigs {
   readonly strayReviews: string[]
   /** Absolute: config files a higher-precedence one beside them hides, the root's workspace config among them, by the one read. */
   readonly shadowed: { file: string; read: string }[]
+  /** Absolute, sorted: `vx.config.*` files by a name vx does not read (`.json`, `.tsx`) in a directory holding no config it reads. */
+  readonly unread: string[]
   /** Absolute, sorted: the outermost directories holding their own `.vx/workspace.*`. */
   readonly nestedWorkspaces: string[]
   /** Config files git lists that a sparse checkout left out: `file` absolute, `add` what `git sparse-checkout add` takes. */
@@ -319,13 +321,17 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
   if (inGit) nested.push(...(await unlistedNested(root, rels, nested)))
   const byDir = new Map<string, string[]>()
   const reviewed: string[] = []
+  const misnamed: string[] = []
   for (const rel of rels) {
     const slash = rel.lastIndexOf('/')
     const base = rel.slice(slash + 1)
     const dir = slash === -1 ? '' : rel.slice(0, slash)
     if (nested.some((n) => dir === n || dir.startsWith(`${n}/`))) continue
     if (base === REVIEW_FILE) reviewed.push(dir)
-    if (!CONFIG_RANK.has(base)) continue
+    if (!CONFIG_RANK.has(base)) {
+      if (base.startsWith('vx.config.')) misnamed.push(rel)
+      continue
+    }
     const names = byDir.get(dir)
     if (names === undefined) byDir.set(dir, [base])
     else names.push(base)
@@ -375,6 +381,18 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((f): f is ConfigDir => f !== null)
     .sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0))
   const configured = new Set(configs.map((c) => c.dir))
+  // A `vx.config.json` was skipped without a word: its directory was no
+  // project, and a run there said only "not inside a project".
+  const unread = (
+    await Promise.all(
+      misnamed
+        .map((rel) => path.join(root, rel))
+        .filter((file) => !configured.has(path.dirname(file)))
+        .map(async (file) => ((await isFile(file)) ? file : null)),
+    )
+  )
+    .filter((f) => f !== null)
+    .sort()
   // On disk only: git lists a tracked copy deleted with its project.
   const strayReviews = (
     await Promise.all(
@@ -398,6 +416,7 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     configs,
     strayReviews,
     shadowed,
+    unread,
     nestedWorkspaces: [...new Set(nestedWorkspaces)],
     sparse,
   }
@@ -670,6 +689,7 @@ async function scanConfigs(root: string): Promise<string[]> {
     for (const e of entries) {
       const child = rel === '' ? e.name : `${rel}/${e.name}`
       if (CONFIG_RANK.has(e.name) || e.name === REVIEW_FILE) out.push(child)
+      else if (e.name.startsWith('vx.config.') && !e.isDirectory()) out.push(child)
       else if (e.isDirectory() && !SCAN_SKIPS.has(e.name)) {
         below.push(child)
         // A name not valid UTF-8 decodes to one no directory has (a valid one may hold U+FFFD).
