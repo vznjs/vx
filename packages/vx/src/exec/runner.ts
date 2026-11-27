@@ -843,11 +843,11 @@ export async function drainOrAbort(
 const READY_MATCH_WINDOW_CHARS = 64 * 1024
 
 /**
- * How much of a line with no break yet a `readyWhen` regex is tested against,
- * on each chunk: its most recent characters, where a prompt or a marker the
- * last write ended sits. The whole growing line was tested on every chunk;
- * `.*up` over a 600 KB line held vx for minutes, past a SIGTERM. The whole
- * line (up to the window) is tested once its break arrives.
+ * How far before a chunk's new text a line with no break yet is tested
+ * against `readyWhen` again: enough for a marker the last write split. The
+ * whole growing line was tested on every chunk; `.*up` over a 600 KB line
+ * held vx for minutes, past a SIGTERM. The whole line (up to the window) is
+ * tested once its break arrives.
  */
 const READY_OPEN_LINE_CHARS = 4096
 
@@ -1074,11 +1074,11 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
         start = i + 1
       }
       fragment = fragment.slice(start)
-      // An open line is tested on every chunk, so only its recent tail: the
-      // whole line is tested once, at its break.
-      const open =
-        fragment.length > READY_OPEN_LINE_CHARS ? fragment.slice(-READY_OPEN_LINE_CHARS) : fragment
-      if (readyLine(re, open)) {
+      // An open line is tested on every chunk, so only from a little before
+      // what this chunk added: each character is tested a bounded number of
+      // times, and the whole line once, at its break.
+      const from = Math.max(0, base - start - READY_OPEN_LINE_CHARS)
+      if (readyLine(re, from === 0 ? fragment : fragment.slice(from))) {
         fragment = ''
         return chunk.length
       }

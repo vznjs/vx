@@ -787,6 +787,25 @@ describe('runPersistent', () => {
     }
   }, 60_000)
 
+  it('matches a marker at the start of a long open line written at once', async () => {
+    const spawn = runPersistent({
+      command: `printf 'Listening on :3000 %06000d' 0; exec sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: '^Listening on',
+    })
+    try {
+      const settled = await Promise.race([
+        spawn.ready.then(() => 'ready'),
+        Bun.sleep(1_500).then(() => 'timed out'),
+      ])
+      expect(settled).toBe('ready')
+    } finally {
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
+    }
+  }, 30_000)
+
   it('readyWhen matches a character split across two writes', async () => {
     // `€` is three bytes; the child writes two, pauses, then the third.
     const spawn = runPersistent({
