@@ -277,7 +277,7 @@ export async function mapViteTaskWorkspace(
         )
       return
     }
-    if (!parts.some((p) => VP_RUN.test(p))) return
+    if (!VP_RUN_ANYWHERE.test(exec.command)) return
     const edges: string[] = []
     let i = 0
     for (; i < parts.length && VP_RUN.test(parts[i]!); i++) {
@@ -285,8 +285,9 @@ export async function mapViteTaskWorkspace(
       if (e === null) break
       edges.push(...e)
     }
-    if (parts.slice(i).some((p) => VP_RUN.test(p))) {
-      const seg = parts.find((p, j) => j >= i && VP_RUN.test(p))!
+    // `FOO=1 vp run x` too: kept, it ran Vite Task nested under vx.
+    if (parts.slice(i).some((p) => VP_RUN_ANYWHERE.test(p))) {
+      const seg = parts.find((p, j) => j >= i && VP_RUN_ANYWHERE.test(p))!
       t.todos.push(
         `\`${seg}\` runs Vite Task inside the command, which \`vp run\` inlined into its graph: name the tasks it runs under dependsOn and drop it from the command`,
       )

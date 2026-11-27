@@ -1357,6 +1357,7 @@ There is no live plugin, so `--keep` is refused.
 - Any other form stays in the command with a TODO: `--parallel`, `-t`, forwarded arguments, or a `vp run` after another command.
 - So does a command with `||`, `;`, `&`, a subshell or a backtick outside quotes: Vite Task runs it whole in a shell, so what runs after a failure differs.
 - A quoted `&&` (`echo "a&&b"`) is never a cut.
+- A `vp run` behind an env prefix (`MODE=ci vp run x`) stays in the command with a TODO.
 
 | Vite Task                                                  | vx                                                                                                                                                                                                                           |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
