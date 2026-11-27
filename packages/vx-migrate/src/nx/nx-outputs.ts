@@ -94,7 +94,8 @@ export function nxDefaultOutputs(
   tops?: ReadonlySet<string>,
 ): string[] {
   const outputPath = options['outputPath']
-  if (typeof outputPath === 'string') return [outputPath]
+  // Nx tests it for truth: an empty one is unset.
+  if (typeof outputPath === 'string' && outputPath !== '') return [outputPath]
   // A list is each of its paths, as Nx takes it; read as no `outputPath`,
   // the build cached the default directories and a hit restored none.
   if (Array.isArray(outputPath) && outputPath.length > 0) {
@@ -138,7 +139,8 @@ export function mapNxOutputs(
     // (`getOutputsForTargetAndConfiguration`): @nx/eslint's
     // `{options.outputFile}` with no outputFile is no output, not a todo on
     // every lint target.
-    if (r === null) continue
+    // So is one that resolves to nothing: as the path `.`, core refused it.
+    if (r === null || r === '') continue
     if (typeof r !== 'string') {
       todos.push(
         `output ${JSON.stringify(o)}: option ${JSON.stringify(r.notText)} is not a literal ` +
@@ -177,6 +179,16 @@ export function mapNxOutputs(
         `output ${JSON.stringify(o)} resolves to ${JSON.stringify(withProjectDir(norm, projectRel, false))}, outside the workspace — ` +
           'vx caches only inside it; dropped',
       )
+      continue
+    }
+    // The workspace itself: core refuses `.`. The root project's is its whole
+    // dir, as `{projectRoot}` maps; another's is no output vx can clean.
+    if (norm.replace(/\/+$/, '') === '.') {
+      if (projectRel === '.' || projectRel === '') outFiles.push(`${neg}*`, `${neg}*/**`)
+      else
+        todos.push(
+          `output ${JSON.stringify(o)} is the whole workspace — vx caches no such output; dropped`,
+        )
       continue
     }
     const globs = vxOutputGlobs(neg + s)

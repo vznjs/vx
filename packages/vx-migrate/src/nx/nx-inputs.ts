@@ -186,8 +186,9 @@ export function expandNxInputs(
     if (entry && typeof entry === 'object') {
       const o = entry as Record<string, unknown>
       if (typeof o['env'] === 'string') {
-        // Each once: vx lock refuses a name twice in inputs.env.
-        if (!into.envNames.includes(o['env'])) into.envNames.push(o['env'])
+        // Each once: vx lock refuses a name twice in inputs.env. No name is
+        // none set, which Nx keys as nothing; core refuses it.
+        if (o['env'] !== '' && !into.envNames.includes(o['env'])) into.envNames.push(o['env'])
         return
       }
       if (typeof o['runtime'] === 'string') {
