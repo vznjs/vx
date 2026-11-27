@@ -340,6 +340,28 @@ describe('sandboxFix', () => {
     }
   })
 
+  // The stores were listed for each violation: 40,000 refused writes held
+  // vx's loop 1.4 s at the task's end, where a DTE worker quiet 6 s is lost.
+  it('lists the stores once, however many violations', () => {
+    const env = process.env
+    let asked = 0
+    process.env = new Proxy(env, {
+      get(t, k) {
+        if (k === 'XDG_CONFIG_HOME') asked++
+        return Reflect.get(t, k)
+      },
+    })
+    try {
+      const writes = Array.from({ length: 50 }, (_, i) =>
+        v('deny(1) file-write-create', ['write'], path.join(dir, 'out', `f${i}`)),
+      )
+      expect(sandboxFix(writes, dir, dir)?.write).toEqual(['out/'])
+    } finally {
+      process.env = env
+    }
+    expect(asked).toBe(1)
+  })
+
   it('is undefined when nothing maps, and masks what it names', () => {
     expect(sandboxFix([v('x', undefined, 'x')], dir, dir)).toBeUndefined()
     const fix = sandboxFix(

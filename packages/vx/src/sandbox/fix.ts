@@ -24,10 +24,12 @@ type Kind = Exclude<keyof SandboxFix, 'withheld' | 'inputs' | 'workspaceFiles'>
 // applies the fix as given, so a dependency probing ~/.ssh would get
 // its grant suggested and applied (Security, 2026-10-12). The stores are
 // the ones the sandbox denies: a hand copy here missed half of them.
-function isCredential(abs: string): boolean {
+// `stores` is listed once a fix: listed per violation, 40,000 refused
+// writes held vx's loop 1.4 s, past half a DTE worker's 6 s silence.
+function isCredential(abs: string, stores: readonly string[]): boolean {
   const base = path.basename(abs)
   if (base === '.env' || base.startsWith('.env.')) return true
-  return credentialStorePaths(os.homedir()).some((d) => abs === d || abs.startsWith(d + path.sep))
+  return stores.some((d) => abs === d || abs.startsWith(d + path.sep))
 }
 
 /** Where a fix is spelled from: the project's and the workspace root's canonical dirs. */
@@ -257,6 +259,7 @@ export function sandboxFix(
   const listsProject = reads.some((g) => readsWhole(g, dirs.project))
   const output = keyedBy(outputs?.files ?? [])
   let markers: string[] | undefined
+  let stores: string[] | undefined
   const keyed =
     inputs === undefined
       ? undefined
@@ -274,7 +277,7 @@ export function sandboxFix(
     else if (kind === 'network') fix.network.add(v.target.replace(/:\d+$/, ''))
     else if (kind === 'systemInfo') fix.systemInfo.add(v.target)
     else if (v.path === undefined) continue
-    else if (isCredential(v.path)) fix.withheld.add(grantPath(v.path, dirs))
+    else if (isCredential(v.path, (stores ??= credentialStorePaths(os.homedir())))) fix.withheld.add(grantPath(v.path, dirs))
     else if (kind === 'read') {
       const rel = grantPath(v.path, dirs)
       fix.read.add(grantFor(v.path, dirs, 'read'))
