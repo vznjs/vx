@@ -173,3 +173,20 @@ it.skipIf(skipAsRoot('workspace root file link owner'))(
     expect(await found('repo', process.getuid!() + 1)).toBe('VX_E_NO_WORKSPACE')
   },
 )
+
+// "No .vx/workspace.ts ... run vx init" beside a `.vx/workspace.json` named
+// nothing that was there.
+it('a .vx/workspace by a name vx does not read is named, never above the top-level', async () => {
+  await file('repo/.git/HEAD', 'ref: refs/heads/main\n')
+  await file('.vx/workspace.json', '{}\n')
+  const said = (dir: string) =>
+    findWorkspaceRoot(path.join(shared, dir)).then(
+      () => 'found',
+      (err: Error & { code?: string }) => `${err.code}: ${err.message}`,
+    )
+  expect(await said('repo/pkgs/a')).toStartWith('VX_E_NO_WORKSPACE: no .vx/workspace.ts in')
+  await file('repo/.vx/workspace.json', '{}\n')
+  expect(await said('repo/pkgs/a')).toBe(
+    `VX_E_NO_WORKSPACE: ${shared}/repo/.vx/workspace.json is not read: vx reads a .vx/workspace ending in ts, mts, js, mjs, cts, cjs — move its settings into ${shared}/repo/.vx/workspace.ts`,
+  )
+})
