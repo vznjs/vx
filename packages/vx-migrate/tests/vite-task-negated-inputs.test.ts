@@ -27,6 +27,7 @@ it('a negation with no positive glob under its base takes back from the other ba
     `export default { run: { tasks: {
       outside: { command: 'x', cache: { input: ['src/**', ${ws('!docs/**')}], output: [] } },
       inside: { command: 'x', cache: { input: ['src/**', ${ws('!packages/a/src/gen/**')}], output: [] } },
+      deep: { command: 'x', cache: { input: ['src/**', ${ws('!**/*.md')}, ${ws('!packages/*/src/*.snap')}], output: [] } },
       shared: { command: 'x', cache: { input: [${ws('packages/**')}, '!**/*.md'], output: [] } },
       out: { command: 'x', cache: { input: [], output: ['dist/**', ${ws('!packages/a/dist/x/**')}] } },
       outWs: { command: 'x', cache: { input: [], output: [${ws('out/**')}, '!out/**/*.map'] } },
@@ -53,6 +54,7 @@ it('a negation with no positive glob under its base takes back from the other ba
   expect(inputs).toEqual({
     outside: { files: ['src/**'] },
     inside: { files: ['src/**', '!src/gen/**'] },
+    deep: { files: ['src/**', '!**/*.md', '!src/*.snap'] },
     shared: { files: [], workspaceFiles: ['packages/**', '!packages/a/**/*.md'] },
     top: { files: ['**/*', '!**/*.md'] },
     out: { files: [] },

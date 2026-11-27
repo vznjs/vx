@@ -520,6 +520,21 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
   return { name, todos, task }
 }
 
+// The part of workspace glob `glob` that matches under `pkgDir`, package
+// relative (`**/*.md` stays `**/*.md`, `packages/*/dist/**` under
+// `packages/a` is `dist/**`), or null when it matches nothing there.
+
+function underPackage(glob: string, pkgDir: string): string | null {
+  const segs = glob.split('/')
+  for (const dir of pkgDir.split('/')) {
+    const seg = segs[0]
+    if (seg === '**') return segs.join('/')
+    if (seg === undefined || segs.length === 1 || !new Bun.Glob(seg).match(dir)) return null
+    segs.shift()
+  }
+  return segs.join('/')
+}
+
 /**
  * `env` / `untrackedEnv` as vx env names: a name, or a `*` pattern kept as
  * written, which core matches each run as Vite Task does. A `!` entry takes
@@ -619,8 +634,10 @@ function globs(
   const pkgPrefix = ctx.atRoot ? '' : `${ctx.pkgDir}/`
   const positive = (l: string[]): boolean => l.some((g) => !g.startsWith('!'))
   if (!positive(ws))
-    for (const g of ws.splice(0))
-      if (g.startsWith(`!${pkgPrefix}`)) files.push(`!${g.slice(pkgPrefix.length + 1)}`)
+    for (const g of ws.splice(0)) {
+      const own = ctx.atRoot ? g.slice(1) : underPackage(g.slice(1), ctx.pkgDir)
+      if (own !== null) files.push(`!${own}`)
+    }
   if (!positive(files) && positive(ws))
     ws.push(...files.splice(0).map((g) => `!${pkgPrefix}${g.slice(1)}`))
   const lists: Record<string, string[]> = {}
