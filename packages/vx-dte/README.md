@@ -907,6 +907,8 @@ is refused. The orchestrator says so as it happens:
   commit holds it fails, naming the file.
 - Examples: CRLF such a filter wrote, an expanded ident, an LFS file's
   content. No worker builds on those bytes.
+- A committed file under the task's own outputs is not checked: its key
+  holds the commit's bytes, which its last build rewrote on disk.
 - A task whose key hashes a file the run's commit lacks fails, naming the
   file: no worker has it.
 - Such a file is untracked, gitignored and named outright, or inside a

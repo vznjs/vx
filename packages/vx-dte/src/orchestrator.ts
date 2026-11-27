@@ -442,12 +442,30 @@ export class Orchestrator extends RunReport<Worker> {
       // disk otherwise (CRLF a git filter wrote, an expanded ident, an LFS
       // file's content) is not what it builds on, and the output saved
       // under the key of this disk's bytes was a stale hit (2026-11-08).
+      // A committed file under the task's own outputs is keyed by its index
+      // OID (core, #5570): its build rewrites it on disk, and the commit's
+      // bytes are what the key and the worker both see.
+      let mine: ((file: string) => boolean) | null | undefined
+      const own = (file: string): boolean => {
+        if (mine === undefined) {
+          const n = nodes?.get(req.taskId)
+          const outs = n?.config.outputs
+          mine =
+            n === undefined || outs === undefined
+              ? null
+              : names(path.relative(this.o.root, n.projectDir), {
+                  files: outs.files,
+                  workspaceFiles: outs.workspaceFiles ?? [],
+                })
+        }
+        return mine !== null && mine(file)
+      }
       const off =
         tree === undefined
           ? undefined
           : req.inputs.files.find((f) => {
               const has = tree.files.get(f.path)
-              return has !== undefined && has !== f.digest && !made(f.path)
+              return has !== undefined && has !== f.digest && !made(f.path) && !own(f.path)
             })
       if (off !== undefined)
         throw new UserError(

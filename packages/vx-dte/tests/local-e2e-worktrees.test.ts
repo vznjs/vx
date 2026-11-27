@@ -340,6 +340,31 @@ it('runs a task on the bytes its key read, not those a git filter checks out', a
   ])
 }, 60_000)
 
+// A committed build output (a GitHub Action's dist/) is keyed by the
+// commit's bytes (core, #5570); its own build rewrote it here, and the run
+// was refused as a file on disk other than the commit (2026-11-28).
+it('runs a task whose committed output its last build rewrote', async () => {
+  await commitProject(
+    'co',
+    `export default { name: 'co', tasks: { build: { cache: true,
+  exec: { command: 'cat src/f > out.txt; date +%N >> out.txt' },
+  inputs: { files: ['src/**'] },
+  outputs: { files: ['out.txt'] },
+} } }
+`,
+    { 'src/f': 'f\n', 'out.txt': 'committed\n' },
+  )
+  for (const n of [1, 2, 3]) {
+    await writeFile(path.join(root, 'co/src/f'), `${n}\n`)
+    const r = vx(['run', 'co#build'], `own-out-${n}`)
+    expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([
+      0,
+      expect.stringContaining(' · linux.small#'),
+    ])
+    expect(await readFile(path.join(root, 'co/out.txt'), 'utf8')).toStartWith(`${n}\n`)
+  }
+}, 60_000)
+
 // A worker cleared every file under a task's output globs, its upstream's
 // too: an additive task (outputs over its upstream's tree) found the files
 // it builds on gone (2026-10-24).
