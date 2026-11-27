@@ -615,8 +615,20 @@ function globs(
   }
   const lists: Record<string, string[]> = {}
   if (kind === 'input') {
-    // Exclusions alone narrow every file; core refuses a list of them alone.
-    if (files.length > 0 && files.every((f) => f.startsWith('!'))) files.unshift('**/*')
+    // A negation only takes back what a positive glob matched (vite-plus
+    // 1.8.0), and core refuses a list of them alone: one with no positive
+    // under its base takes back from the other base, or nothing.
+    const pkgPrefix = ctx.atRoot ? '' : `${ctx.pkgDir}/`
+    const positive = (l: string[]): boolean => l.some((g) => !g.startsWith('!'))
+    if (!positive(ws)) {
+      for (const g of ws.splice(0))
+        if (g.startsWith(`!${pkgPrefix}`)) files.push(`!${g.slice(pkgPrefix.length + 1)}`)
+    }
+    if (!positive(files) && files.length > 0) {
+      // Exclusions alone narrow every file.
+      if (!positive(ws)) files.unshift('**/*')
+      else ws.push(...files.splice(0).map((g) => `!${pkgPrefix}${g.slice(1)}`))
+    }
     lists['files'] = withoutTakenBack(files)
     if (ws.length > 0) lists['workspaceFiles'] = withoutTakenBack(ws)
   } else {
