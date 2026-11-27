@@ -79,3 +79,17 @@ for (const git of ['init', false] as const) {
     expect(lock(r)).toEqual({ code: 0, err: '' })
   })
 }
+
+// `.vx` is vx's own: `vx init` wrote `.vx/workspace.ts` beside a
+// `.vx/workspace.json`, and its settings were dropped without a word.
+it('vx lock names a .vx/workspace by a name it does not read, beside the one it reads', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-unread-ws-', git: 'init' }))
+  await Bun.write(path.join(r, '.vx', 'workspace.json'), '{}\n')
+  const line = (verb: string): string =>
+    noticed(
+      `${verb}: .vx/workspace.json is not read: vx reads a .vx/workspace ending in ts, mts, js, mjs, cts, cjs — move its settings into .vx/workspace.ts\n`,
+      'warn',
+    )
+  expect(lock(r)).toEqual({ code: 0, err: line('vx lock') })
+  expect(lock(r, '--check')).toEqual({ code: 0, err: line('vx lock --check') })
+})

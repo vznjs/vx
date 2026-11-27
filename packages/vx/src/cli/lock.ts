@@ -1211,13 +1211,21 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
 function warnUnread(root: string, check: GraphCheck, verb: string, strays: string[]): void {
   const named = new Set(strays.map((f) => path.dirname(f)))
   const exts = PROJECT_CONFIG_FILENAMES.map((n) => n.slice('vx.config.'.length)).join(', ')
-  for (const file of check.unread)
-    if (!named.has(path.dirname(file)))
+  for (const file of check.unread) {
+    const rel = relPosix(root, file)
+    if (rel.startsWith('.vx/'))
       sayNotice(
         'warn',
         verb,
-        `${relPosix(root, file)} is not read: vx reads a vx.config ending in ${exts}, so its directory is no project`,
+        `${rel} is not read: vx reads a .vx/workspace ending in ${exts} — move its settings into .vx/workspace.ts`,
       )
+    else if (!named.has(path.dirname(file)))
+      sayNotice(
+        'warn',
+        verb,
+        `${rel} is not read: vx reads a vx.config ending in ${exts}, so its directory is no project`,
+      )
+  }
 }
 
 /** One `vx lock --check` problem: its code is what an agent branches on. */

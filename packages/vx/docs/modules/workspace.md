@@ -48,7 +48,7 @@ export interface ProjectConfigs {
   readonly configs: ConfigDir[]
   readonly strayReviews: string[]
   readonly shadowed: { file: string; read: string }[]
-  // `vx.config.*` by a name vx does not read, where no config is read
+  // `vx.config.*` by a name vx does not read where no config is read, and the root's unread `.vx/workspace.*`
   readonly unread: string[]
   // the outermost nested workspace roots, absolute: `vx lock` records them
   readonly nestedWorkspaces: string[]
@@ -193,7 +193,9 @@ which `vx lock --check` names. Left where a project's config was
 deleted, it is a source of the project around it, and a `**` reader
 there was keyed on a copy no `vx lock` rewrites (2026-10-23).
 A `vx.config.*` by a name vx does not read (`.json`, `.tsx`) in a
-directory holding no config it reads is `unread`, which `vx lock` names:
+directory holding no config it reads is `unread`, and so is a root
+`.vx/workspace.*` by such a name even beside the one read (`.vx` is vx's
+own: `vx init` wrote a `.ts` beside a `.json`). `vx lock` names each:
 skipped without a word, its directory was no project and a run there said
 only "not inside a project" (2026-11-27).
 
