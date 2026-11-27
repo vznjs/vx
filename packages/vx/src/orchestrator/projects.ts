@@ -542,7 +542,16 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
         stat(m.configPath).then(
           () => true,
           (err: NodeJS.ErrnoException) =>
-            err.code === 'EACCES' || err.code === 'EPERM' ? refused(m, err) : dirThere(m),
+            err.code === 'EACCES' || err.code === 'EPERM'
+              ? refused(m, err)
+              : // A sparse checkout leaves a project's ignored files (its
+                // node_modules, its dist) behind: the directory stood, the
+                // run read the project as there and ran it on no sources.
+                dirThere(m).then(
+                  (dir) =>
+                    dir &&
+                    skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, m.configPath)) === null,
+                ),
         ),
       ),
       ...bare.map(dirThere),

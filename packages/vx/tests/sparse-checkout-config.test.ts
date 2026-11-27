@@ -39,6 +39,14 @@ it('a run that selects the excluded project names the sparse checkout', async ()
   expect([r.code, r.err.trim()]).toEqual([1, REFUSAL])
 }, 30_000)
 
+it('a left-out project whose directory still holds its ignored files is refused', async () => {
+  // `git sparse-checkout set` keeps a directory holding untracked or ignored
+  // files (an install's node_modules): the run read it as there.
+  await Bun.write(path.join(root, 'packages/lib/node_modules/.keep'), '')
+  const r = await vx(root, ['run', 'build', '--all'])
+  expect([r.code, r.out.includes('built'), r.err.trim()]).toEqual([1, false, REFUSAL])
+}, 30_000)
+
 it('a run whose task depends on the excluded project is refused', async () => {
   const r = await vx(root, ['run', 'build', '--filter', 'app'])
   expect([r.code, r.out.includes('built'), r.err.trim()]).toEqual([1, false, REFUSAL])
