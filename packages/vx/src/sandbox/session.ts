@@ -29,8 +29,9 @@ import {
   executablePath,
   helperEnv,
   holdSecret,
-  taskShell,
+  lstatOrAbsent,
   procfsIsOwn,
+  taskShell,
   UserError,
   xxh3hex,
 } from '../util/index.js'
@@ -503,7 +504,7 @@ function ownWrapper(body: string): string {
   const uid = process.getuid!()
   const file = path.join(ownTmpDir('vx-socat'), `socat-${xxh3hex(body).slice(0, 16)}`)
   const ok = (): boolean => {
-    const f = lstatSync(file, { throwIfNoEntry: false })
+    const f = lstatOrAbsent(file)
     return (
       f !== undefined &&
       f.isFile() &&

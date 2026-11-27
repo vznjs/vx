@@ -1,4 +1,3 @@
-import { statSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
@@ -30,7 +29,7 @@ import {
   resolveFilters,
 } from './select.js'
 import { nxTargetHint, taskNamesHere, undeclaredTasks } from './task-verb.js'
-import { ciProvider, hasControl, parseDecimalInt, UserError } from '../util/index.js'
+import { ciProvider, hasControl, parseDecimalInt, statOrAbsent, UserError } from '../util/index.js'
 import * as ui from '../ui/index.js'
 import { sayNotice, sayLine } from '../ui/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
@@ -848,7 +847,7 @@ export async function spacedHint(parsed: RunArgs, cwd: string): Promise<string> 
  * with EISDIR only after). A missing parent is made by the write.
  */
 function profileProblem(cwd: string, target: string): string | undefined {
-  if (statSync(path.resolve(cwd, target), { throwIfNoEntry: false })?.isDirectory() === true)
+  if (statOrAbsent(path.resolve(cwd, target))?.isDirectory() === true)
     return `--profile: ${target} is a directory — name a file, e.g. --profile=${path.join(target, 'profile.json')}`
   return undefined
 }

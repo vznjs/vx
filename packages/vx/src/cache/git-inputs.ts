@@ -39,6 +39,7 @@ import {
   gitSpawnRefusal,
   ignoreCaseLies,
   isInstalledPath,
+  lstatOrAbsent,
   notAWorkTree,
   parseCheckAttrOutput,
   peekUmask,
@@ -195,7 +196,7 @@ function repoFactsFromDisk(dir: string): RepoFacts | undefined {
     const dev = lstatSync(real).dev
     for (let at = real; ;) {
       const dotGit = path.join(at, '.git')
-      const st = lstatSync(dotGit, { throwIfNoEntry: false })
+      const st = lstatOrAbsent(dotGit)
       if (st !== undefined) {
         if (!st.isDirectory() || !existsSync(path.join(dotGit, 'HEAD'))) return undefined
         const objectFormat = configObjectFormat(readFileSync(path.join(dotGit, 'config'), 'utf8'))
@@ -327,7 +328,7 @@ function realNames(dir: string, rels: readonly string[]): readonly string[] | un
         const abs = path.join(dir, head)
         let st: Stats | undefined
         try {
-          st = lstatSync(abs, { throwIfNoEntry: false })
+          st = lstatOrAbsent(abs)
         } catch {
           st = undefined
         }
@@ -1352,20 +1353,6 @@ function canAccess(p: string, mode: number): boolean {
     return true
   } catch (err) {
     return (err as NodeJS.ErrnoException).code !== 'EACCES'
-  }
-}
-
-/**
- * `lstat`, or undefined for a path that is not there, a parent that is a
- * file included: `throwIfNoEntry: false` passes over ENOENT alone, and the
- * ENOTDIR of `conf/b.txt` under a file `conf` failed the key (2026-11-10).
- */
-export function lstatOrAbsent(p: string): Stats | undefined {
-  try {
-    return lstatSync(p, { throwIfNoEntry: false })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
-    throw err
   }
 }
 
@@ -3162,7 +3149,7 @@ function statRecord(
 /** `ino:ctime:size` of a git index, which git replaces by rename on each write; undefined when absent. */
 function indexStampOf(file: string | undefined): string | undefined {
   if (file === undefined) return undefined
-  const st = lstatSync(file, { throwIfNoEntry: false })
+  const st = lstatOrAbsent(file)
   return st === undefined ? undefined : `${st.ino}:${st.ctimeMs}:${st.size}`
 }
 

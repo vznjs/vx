@@ -1,6 +1,7 @@
-import { lstatSync, readdirSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import path from 'node:path'
 import { parseDecimalInt } from './num.js'
+import { lstatOrAbsent } from './real-path.js'
 
 /**
  * Parse a byte-size string: a bare integer (`"1048576"`) or an integer
@@ -79,7 +80,7 @@ export function diskBytes(st: { size: number; blocks: number }): number {
 
 /** Bytes under `p` on disk, as {@link diskBytes} counts them, links not followed; 0 when missing, and for a directory this user cannot list. */
 export function treeBytes(p: string): number {
-  const st = lstatSync(p, { throwIfNoEntry: false })
+  const st = lstatOrAbsent(p)
   if (st === undefined) return 0
   if (!st.isDirectory()) return diskBytes(st)
   let names: string[]

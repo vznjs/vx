@@ -4,11 +4,10 @@
 // a directory the run never used — `vx last` found no runs, `vx cache
 // prune` pruned nothing, `vx watch` ignored the wrong path.
 
-import { statSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import type { LazyGitEnumeration } from '../cache/index.js'
-import { UserError } from '../util/index.js'
+import { statOrAbsent, UserError } from '../util/index.js'
 import { sayLine } from '../ui/index.js'
 import {
   discoverProjects,
@@ -173,7 +172,7 @@ export function parseCacheDirFlag(
  */
 export function namedCacheDir(override: string): string {
   const dir = path.resolve(process.cwd(), override)
-  const st = statSync(dir, { throwIfNoEntry: false })
+  const st = statOrAbsent(dir)
   if (st === undefined) {
     throw new UserError(
       `--cache-dir ${override}: no such directory (${dir}) — check the path, or drop --cache-dir to read the workspace's own cache`,

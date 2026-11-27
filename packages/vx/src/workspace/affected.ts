@@ -3,7 +3,6 @@
 // unstaged), so it holds what you touched and nothing the base moved on with.
 // Turbo's `[<since>]` semantics.
 
-import { lstatSync } from 'node:fs'
 import { lstat, readFile, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -16,6 +15,7 @@ import {
   isExecutableMissing,
   isInstalledPath,
   isUserError,
+  lstatOrAbsent,
   notAWorkTree,
   parseCheckAttrOutput,
   relPosix,
@@ -1172,12 +1172,7 @@ async function indexEntries(workspaceRoot: string): Promise<IndexEntry[]> {
 
 /** No entry at `p`, under a parent that is now a file too (ENOTDIR). */
 function absent(p: string): boolean {
-  try {
-    return lstatSync(p, { throwIfNoEntry: false }) === undefined
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return true
-    throw err
-  }
+  return lstatOrAbsent(p) === undefined
 }
 
 /**

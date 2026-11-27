@@ -1,5 +1,31 @@
-import { readlinkSync, realpathSync, statSync } from 'node:fs'
+import { lstatSync, readlinkSync, realpathSync, statSync, type Stats } from 'node:fs'
 import path from 'node:path'
+
+/**
+ * `lstat`, or undefined for a path that is not there, a parent that is a
+ * file included: Bun's `throwIfNoEntry: false` passes over ENOENT alone
+ * (Node's over ENOTDIR too), and the ENOTDIR of `conf/b.txt` under a file
+ * `conf` failed a key (2026-11-10), `--profile=<file>/p.json` and an output
+ * under a file a past run left (2026-11-27).
+ */
+export function lstatOrAbsent(p: string): Stats | undefined {
+  try {
+    return lstatSync(p, { throwIfNoEntry: false })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
+    throw err
+  }
+}
+
+/** `stat` as `lstatOrAbsent` is `lstat`: a link to nothing is absent too. */
+export function statOrAbsent(p: string): Stats | undefined {
+  try {
+    return statSync(p, { throwIfNoEntry: false })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
+    throw err
+  }
+}
 
 /**
  * A path's canonical spelling: the OS's own answer for the final path, so a key
@@ -14,8 +40,8 @@ export function realPath(p: string): string {
  * together (APFS's NFC and NFD), not two that merely compare equal.
  */
 export function sameDir(a: string, b: string): boolean {
-  const sa = statSync(a, { throwIfNoEntry: false })
-  const sb = sa === undefined ? undefined : statSync(b, { throwIfNoEntry: false })
+  const sa = statOrAbsent(a)
+  const sb = sa === undefined ? undefined : statOrAbsent(b)
   return sb !== undefined && sa!.ino === sb.ino && sa!.dev === sb.dev
 }
 

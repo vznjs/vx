@@ -41,13 +41,14 @@ import { GROUP_VIA } from '../history/index.js'
 import {
   isUserError,
   keysSorted,
+  lstatOrAbsent,
   memoParts,
   relPosix,
   secretMask,
   span,
+  taskEnvSource,
   UserError,
   xxh3hex,
-  taskEnvSource,
 } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { outputsLeft } from './run-report.js'
@@ -721,7 +722,7 @@ async function heldOutputs(
   const held = new Map<string, string>()
   for (const [abs, oid] of found) {
     // Asked now, not at the run's start: a task's write since is no proof.
-    const st = lstatSync(abs, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(abs)
     const rel = relPosix(args.workspaceRoot, abs)
     if (st?.isFile() === true && proven.has(`${rel}\0${st.ino}:${Math.floor(st.ctimeMs)}`))
       held.set(abs, oid)
@@ -745,7 +746,7 @@ function foldedIdentities(
   if (proven !== undefined) return proven
   const probes: StampProbe[] = []
   for (const [abs, oid] of run.stagedOids) {
-    const st = lstatSync(abs, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(abs)
     if (st?.isFile() === true)
       probes.push({ ino: st.ino, ctimeMs: st.ctimeMs, rel: relPosix(workspaceRoot, abs), oid })
   }

@@ -5,7 +5,6 @@
 // makes `own()` answer undefined: the task saves nothing. A declared output
 // the pass never wrote, if a literal path, fails it (`missingOutputs`).
 
-import { lstatSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   cleanOutputPaths,
@@ -32,11 +31,13 @@ import {
   asTrees,
   isLiteralPattern,
   literalPath,
+  lstatOrAbsent,
   normalizeGlob,
   outputExcluded,
   relPosix,
   span,
   splitNegations,
+  statOrAbsent,
   stripTrailingSlash,
   taskGlob,
 } from '../util/index.js'
@@ -249,8 +250,7 @@ export class OutputGuard {
    */
   async own(): Promise<OwnOutputs | undefined> {
     if (this.failedTouchedFound) return undefined
-    if (this.committedKept.some((f) => lstatSync(f, { throwIfNoEntry: false }) === undefined))
-      return undefined
+    if (this.committedKept.some((f) => lstatOrAbsent(f) === undefined)) return undefined
     const mine: OwnOutputs = {}
     const left = this.leftByOwnEntries()
     if (this.stampedBefore !== undefined) {
@@ -585,7 +585,7 @@ function staticPrefix(glob: string): string {
 
 function exists(abs: string): boolean {
   try {
-    return lstatSync(abs, { throwIfNoEntry: false }) !== undefined
+    return lstatOrAbsent(abs) !== undefined
   } catch {
     return false
   }
@@ -594,7 +594,7 @@ function exists(abs: string): boolean {
 /** A file, link or directory: what a save holds. A FIFO, socket or device it never does. */
 function savable(abs: string): boolean {
   try {
-    const st = lstatSync(abs, { throwIfNoEntry: false })
+    const st = lstatOrAbsent(abs)
     return st !== undefined && (st.isFile() || st.isSymbolicLink() || st.isDirectory())
   } catch {
     return false
@@ -610,7 +610,7 @@ export function specialOutputs(base: string, globs: readonly string[]): string[]
 
 function isDir(abs: string): boolean {
   try {
-    return statSync(abs, { throwIfNoEntry: false })?.isDirectory() === true
+    return statOrAbsent(abs)?.isDirectory() === true
   } catch {
     return false
   }
@@ -632,8 +632,7 @@ export function folderWrittenAsFile(base: string, globs: readonly string[]): str
 function linksToDir(abs: string): boolean {
   try {
     return (
-      lstatSync(abs, { throwIfNoEntry: false })?.isSymbolicLink() === true &&
-      statSync(abs, { throwIfNoEntry: false })?.isDirectory() === true
+      lstatOrAbsent(abs)?.isSymbolicLink() === true && statOrAbsent(abs)?.isDirectory() === true
     )
   } catch {
     return false

@@ -27,7 +27,7 @@ import {
   toRealPath,
   unique,
 } from './paths.js'
-import { notify } from '../util/index.js'
+import { lstatOrAbsent, notify, statOrAbsent } from '../util/index.js'
 import { STAGE_PUT_BACK } from '../cache/index.js'
 import { shellQuote } from '../exec/index.js'
 import type { ResolvedSandboxConfig } from '../exec/index.js'
@@ -754,7 +754,7 @@ export function stagedOutputs(
     for (const d of dirs) {
       const fresh = path.join(stage, path.basename(d))
       const old = path.join(stage, `.host-${path.basename(d)}`)
-      const made = lstatSync(fresh, { throwIfNoEntry: false })
+      const made = lstatOrAbsent(fresh)
       // A link or file in its place would land on the host where the grant
       // let the task write only inside a directory.
       if (made !== undefined && !made.isDirectory()) {
@@ -826,7 +826,7 @@ export function stagedOutputs(
 function nearestVx(dir: string): string | undefined {
   for (let d = dir; ; d = path.dirname(d)) {
     const vx = path.join(d, '.vx')
-    if (statSync(vx, { throwIfNoEntry: false })?.isDirectory() === true) return vx
+    if (statOrAbsent(vx)?.isDirectory() === true) return vx
     if (path.dirname(d) === d) return undefined
   }
 }

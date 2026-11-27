@@ -1320,6 +1320,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'stable-keys',
     'staged-once',
     'stale-hit-memo',
+    'stat-or-absent',
     'stall-watch',
     'status-line',
     'status-vocabulary',

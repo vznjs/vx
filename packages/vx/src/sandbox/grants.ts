@@ -7,7 +7,14 @@ import os from 'node:os'
 import { existsSync, lstatSync, readlinkSync, realpathSync } from 'node:fs'
 import type { SandboxConfig } from '../config.js'
 import type { ResolvedSandboxConfig } from '../exec/index.js'
-import { BUN_GLOB_WILDCARDS, grantPrefix, notify, scannable, UserError } from '../util/index.js'
+import {
+  BUN_GLOB_WILDCARDS,
+  grantPrefix,
+  lstatOrAbsent,
+  notify,
+  scannable,
+  UserError,
+} from '../util/index.js'
 import { scratchWrites } from './binds.js'
 import {
   atOrUnder,
@@ -105,7 +112,7 @@ export function dependencyReadLinks(
       at = path.join(at, part)
       if (seen.has(at)) continue
       seen.add(at)
-      if (lstatSync(at, { throwIfNoEntry: false })?.isSymbolicLink() !== true) continue
+      if (lstatOrAbsent(at)?.isSymbolicLink() !== true) continue
       for (const l of readLinkSpellings(path.relative(workspaceRoot, at), workspaceRoot, false))
         if (!out.some((o) => o.at === l.at)) out.push(l)
     }
