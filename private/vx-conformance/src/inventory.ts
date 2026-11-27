@@ -943,6 +943,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/vite-task-backslash',
     'vx-migrate/vite-task-env-wildcard',
     'vx-migrate/vite-task-glued-globstar',
+    'vx-migrate/vite-task-mapped-config-loads',
     'vx-migrate/vite-task-negated-inputs',
     'vx-migrate/vite-task-shared-outputs',
     'vx-migrate/vite-task-nested-run',

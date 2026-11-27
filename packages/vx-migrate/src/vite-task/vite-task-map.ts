@@ -552,11 +552,9 @@ function envNames(field: string, v: unknown, todos: string[]): string[] {
       dropped.push(e.slice(1))
       continue
     }
-    if (
-      e.includes('*')
-        ? !/^(?!\*+$)[A-Za-z_*][A-Za-z0-9_*]*$/.test(e)
-        : /[?[\]{}=\0]/.test(e) || e === ''
-    ) {
+    // A name sh cannot carry (`A-B`) is no name: core refuses it to
+    // passThrough, and a task never sees it.
+    if (!/^(?!\*+$)[A-Za-z_*][A-Za-z0-9_*]*$/.test(e)) {
       todos.push(
         `${field} ${JSON.stringify(e)}: a vx env name is letters, digits and _, with * the one wildcard — list the names the task reads`,
       )
@@ -628,7 +626,28 @@ function globs(
       body = anchored
       workspace = true
     }
-    ;(workspace ? ws : files).push((neg ? '!' : '') + body)
+    // A path that names no file, or a whole directory itself, which core
+    // refuses: written so, `vx lock` refused the config.
+    const n = body === '' ? '' : path.posix.normalize(body).replace(/\/$/, '')
+    if (n === '..' || n.startsWith('../')) {
+      todos.push(`${kind} ${JSON.stringify(pattern)}: leaves the workspace — map manually`)
+      if (kind === 'output') uncached = true
+      continue
+    }
+    if (n === '' || n === '.') {
+      todos.push(
+        `${kind} ${JSON.stringify(pattern)}: names ${n === '' ? 'no file' : 'a directory, not its files'} — ` +
+          (kind === 'output'
+            ? 'task runs uncached; declare the exact outputs in a vx.config to cache it'
+            : neg || n === ''
+              ? 'dropped'
+              : 'widened to every file under it'),
+      )
+      if (kind === 'output') uncached = true
+      else if (!neg && n === '.') (workspace ? ws : files).push('**/*')
+      continue
+    }
+    ;(workspace ? ws : files).push((neg ? '!' : '') + n)
   }
   negationsAcrossBases(files, ws, ctx.atRoot ? '' : ctx.pkgDir)
   const lists: Record<string, string[]> = {}
