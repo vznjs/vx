@@ -121,6 +121,18 @@ describe('resolveOtelConfig', () => {
     ])
   })
 
+  // A base no URL parser takes was joined as text, so `https://` became
+  // `https://v1/traces`: every span went to a host named `v1`.
+  it('a base that is no URL is refused, never joined into one', () => {
+    for (const base of ['https://', 'https://:443', 'http://']) {
+      const warns: string[] = []
+      expect(
+        resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: base }, (m) => warns.push(m)),
+      ).toBe(undefined)
+      expect(warns).toHaveLength(1)
+    }
+  })
+
   // An OTLP header is often the vendor's API key: http:// to another host
   // sent it, and every span, in clear (vxCache and vxHistory take http
   // only to this machine too).

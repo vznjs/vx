@@ -142,15 +142,15 @@ function envTimeout(
 
 /**
  * `v1/<signal>` appended to the base URL's PATH, as the exporter spec says: a
- * base with a query had it glued onto the query's last value.
+ * base with a query had it glued onto the query's last value. A base that is
+ * no URL stays as written, for the scheme check to refuse: joined as text,
+ * `https://` became `https://v1/traces`, a host named `v1`.
  */
 function joinSignal(base: string, signal: string): string {
-  if (URL.canParse(base)) {
-    const url = new URL(base)
-    url.pathname = `${url.pathname.replace(/\/+$/, '')}/v1/${signal}`
-    return url.toString()
-  }
-  return `${base.replace(/\/+$/, '')}/v1/${signal}`
+  if (!URL.canParse(base)) return base
+  const url = new URL(base)
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/v1/${signal}`
+  return url.toString()
 }
 
 /**
