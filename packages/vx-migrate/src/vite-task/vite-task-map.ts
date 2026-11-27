@@ -39,6 +39,39 @@ type DepField = (typeof DEP_FIELDS)[number]
 /** A command segment that runs Vite Task: `vp run`, `vpr`, through a package runner too. */
 const VP_RUN = /^(?:(?:pnpm(?: exec)?|npx|bunx|yarn)\s+)?(?:vp\s+run|vpr)(?:\s|$)/
 
+/** `vp run` or `vpr` anywhere in a command, as a word. */
+const VP_RUN_ANYWHERE = /(?:^|[\s;&|(`])(?:vp\s+run|vpr)(?:\s|$)/
+
+/**
+ * `command` cut at each `&&` outside quotes, each part as written; null when
+ * a `||`, `;`, `&`, newline, subshell or backtick sits outside quotes, where
+ * Vite Task runs the command whole in a shell and a cut would change what
+ * runs after a failure.
+ */
+function andChain(command: string): string[] | null {
+  const parts: string[] = []
+  let start = 0
+  let quote: string | null = null
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!
+    if (quote !== null) {
+      if (c === '\\' && quote === '"') i++
+      else if (c === quote) quote = null
+    } else if (c === '\\') i++
+    else if (c === "'" || c === '"') quote = c
+    else if (c === '&' && command[i + 1] === '&') {
+      parts.push(command.slice(start, i).trim())
+      start = ++i + 1
+    } else if (c === '|' && command[i + 1] === '|') return null
+    // A redirect (`2>&1`, `&>`), not a background job.
+    else if (c === '&' && (command[i - 1] === '>' || command[i + 1] === '>')) continue
+    else if (';&\n()`'.includes(c)) return null
+  }
+  if (quote !== null) return null
+  parts.push(command.slice(start).trim())
+  return parts
+}
+
 /** npm's own verbs' hooks: the package manager runs them, never `vp run`'s task list. */
 const LIFECYCLE = /^(pre|post)(install|publish|pack|version)$|^(prepare|prepublishOnly|install)$/
 
@@ -231,7 +264,14 @@ export async function mapViteTaskWorkspace(
   function inlineRuns(t: GeneratedTask, self: PackageMeta): void {
     const exec = t.task?.['exec'] as { command?: unknown } | undefined
     if (typeof exec?.command !== 'string') return
-    const parts = exec.command.split('&&').map((p) => p.trim())
+    const parts = andChain(exec.command)
+    if (parts === null) {
+      if (VP_RUN_ANYWHERE.test(exec.command))
+        t.todos.push(
+          `\`${exec.command}\` runs Vite Task inside the command, which \`vp run\` runs in a shell as written: name the tasks it runs under dependsOn and drop it from the command`,
+        )
+      return
+    }
     if (!parts.some((p) => VP_RUN.test(p))) return
     const edges: string[] = []
     let i = 0
