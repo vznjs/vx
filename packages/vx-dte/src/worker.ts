@@ -1352,8 +1352,17 @@ function parts(end: Extract<ToOrchestrator, { type: 'end' }>): ToOrchestrator[] 
   return out
 }
 
-/** What `abs` is on this worker now, as a violation's `entry` carries it. */
-function entryAt(abs: string): 'file' | 'dir' | 'missing' {
-  const st = lstatSync(abs, { throwIfNoEntry: false })
+/**
+ * What `abs` is on this worker now, as a violation's `entry` carries it.
+ * Under a file it is missing: Bun's `throwIfNoEntry` passes over ENOENT
+ * alone, and a failed task's read of `cfg.json/x` failed its report.
+ */
+export function entryAt(abs: string): 'file' | 'dir' | 'missing' {
+  let st
+  try {
+    st = lstatSync(abs, { throwIfNoEntry: false })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOTDIR') throw err
+  }
   return st === undefined ? 'missing' : st.isDirectory() ? 'dir' : 'file'
 }
