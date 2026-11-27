@@ -47,6 +47,8 @@ import {
   outputMatcher,
   relPosix,
   type RefusalParts,
+  sparseCheckoutSet,
+  sparseLeftDirsSync,
   uncheckedSubmoduleSync,
   UserError,
   errorCode,
@@ -345,6 +347,23 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     // edges (in the dependencies lock) and runs no hook, so a mapping is made
     // here and nowhere else (2026-11-21).
     out.fresh.projects = finalProjects(root, out.all, out.fresh.projects, stage)
+    // A plugin's project (turbo()'s) a sparse checkout left out is not
+    // discovered: it would leave the committed lock, as a config does above.
+    if (held !== null && sparseCheckoutSet(root)) {
+      const gone = Object.entries(held.projects)
+        .filter(
+          ([dir, p]) =>
+            p.file === undefined && dir !== '.' && !Object.hasOwn(out.fresh.projects, dir),
+        )
+        .map(([dir]) => dir)
+      const left = gone.length === 0 ? null : sparseLeftDirsSync(root, gone)
+      const dirs = gone.filter((d) => left?.has(d) === true).sort()
+      if (dirs.length > 0)
+        throw new UserError(
+          `${listed(dirs, 5)} ${dirs.length === 1 ? 'is' : 'are'} outside this sparse checkout, so vx lock cannot read what the lock holds there — run \`git sparse-checkout add ${dirs.join(' ')}\``,
+          'VX_E_LOCK',
+        )
+    }
     out.staged = true
     out.loaded = true
     out.dependencies = await dependenciesOf(root, out.all, plugins, cacheDir, warn)

@@ -2161,6 +2161,8 @@ export function checkIgnoreSync(
 ): Set<string> | null
 export function listedSync(cwd: string, dirs: readonly string[]): string[] | null
 export function skipWorktreeSync(cwd: string, rel: string): string | null
+export function sparseCheckoutSet(cwd: string): boolean
+export function sparseLeftDirsSync(cwd: string, dirs: readonly string[]): Set<string> | null
 export function ignoreCaseLies(dir: string, probe: string): boolean
 export function gitCaseArgs(cwd: string): readonly string[]
 export function wholeIgnored(
@@ -2201,8 +2203,15 @@ export function ignoredInputLine(task: string, rel: string, glob: string): strin
   `dirs`, for `vx lock`; a run reads its own enumeration instead.
 - `skipWorktreeSync`: `git ls-files -t --full-name` of one path: its
   repository path when the index flags it skip-worktree (a sparse
-  checkout left it out), else null. Asked only when a locked project's
-  directory is missing (`orchestrator/projects.ts`), so a run pays no spawn.
+  checkout left it out), else null. Asked when a locked project's
+  config or directory is missing (`orchestrator/projects.ts`), so a run
+  pays no spawn.
+- `sparseCheckoutSet`: whether the per-worktree git dir holds
+  `info/sparse-checkout`, by walking up to `.git`; a stat or two, no spawn.
+- `sparseLeftDirsSync`: one `git ls-files -t` of `dirs`: those whose every
+  listed file is skip-worktree. Asked for config-less projects (by a run,
+  and by `vx lock` for those it no longer finds) only where
+  `sparseCheckoutSet` holds.
 - `uncheckedSubmoduleSync`: one `git ls-files --stage` of a directory's
   ancestors: the outermost submodule among them with no `.git` and nothing
   in it (a clone skipped it), else null. Asked only when a locked

@@ -3656,13 +3656,16 @@ So a config that reads the environment keeps its lock-time values.
 - A project a sparse checkout left out is refused only when the run
   selects it or depends on it.
 - So is one whose directory the checkout kept for the ignored files in it
-  (an install's `node_modules`).
+  (an install's `node_modules`), a config-less project's too.
+- Only a repository where a sparse checkout was set asks git about a
+  config-less project's directory: one spawn per run.
 - The refusal names every such project, and the one
   `git sparse-checkout add a b c` that brings them all back.
 - The message lists the first five and counts the rest. The command
   lists all.
 - `vx lock` and `vx lock --check` refuse there too, naming the same
-  command: the lock they wrote would drop those projects.
+  command: the lock they wrote would drop those projects. A plugin's
+  project (`turbo()`'s) the lock holds is named too.
 - A config added since the lock is no project until `vx lock`: a run
   never looks for one.
 - `--all` runs the locked projects; a run from its directory runs the

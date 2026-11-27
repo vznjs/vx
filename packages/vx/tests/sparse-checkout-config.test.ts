@@ -6,6 +6,8 @@
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { packagesSource, pluginSource } from './helpers/plugin.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { BIN, vx as spawnVx } from './helpers/vx.js'
 
@@ -45,6 +47,54 @@ it('a left-out project whose directory still holds its ignored files is refused'
   await Bun.write(path.join(root, 'packages/lib/node_modules/.keep'), '')
   const r = await vx(root, ['run', 'build', '--all'])
   expect([r.code, r.out.includes('built'), r.err.trim()]).toEqual([1, false, REFUSAL])
+}, 30_000)
+
+it('a left-out config-less project whose directory still stands is refused', async () => {
+  // A `project` plugin's tasks (turbo()'s) have no config file to miss: the
+  // directory kept for its node_modules read as there, and the task ran on
+  // no sources.
+  const git = gitIn(root)
+  git('sparse-checkout', 'disable')
+  await addProject(root, 'svc', {})
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      packagesSource({ app: ['lib', 'packages/lib'] }),
+      pluginSource(
+        'gen',
+        `{ project(config, ctx) {
+          if (ctx.name === 'svc') config.tasks.build = { exec: { command: 'echo built' } }
+        } }`,
+      ),
+    ]),
+  )
+  expect((await vx(root, ['lock'])).code).toBe(0)
+  git('add', '-A')
+  git('commit', '-q', '-m', 'svc')
+  git('sparse-checkout', 'set', '--no-cone', '/*', '!/packages/svc/')
+  await Bun.write(path.join(root, 'packages/svc/node_modules/.keep'), '')
+  const r = await vx(root, ['run', 'build', '--filter', 'svc'])
+  expect([r.code, r.out.includes('built'), r.err.trim()]).toEqual([
+    1,
+    false,
+    '✗ vx run  packages/svc ("svc") is outside this sparse checkout, but this run needs it — run `git sparse-checkout add packages/svc`',
+  ])
+  // Not discovered there, it left the committed lock.
+  const lockFile = path.join(root, '.vx/projects.lock')
+  const before = await Bun.file(lockFile).text()
+  for (const args of [['lock'], ['lock', '--check']]) {
+    const l = await vx(root, args)
+    expect([l.code, l.err]).toEqual([
+      1,
+      expect.stringContaining(
+        'packages/svc is outside this sparse checkout, so vx lock cannot read what the lock holds there — run `git sparse-checkout add packages/svc`',
+      ),
+    ])
+  }
+  expect(await Bun.file(lockFile).text()).toBe(before)
+  // Brought back, it runs.
+  git('sparse-checkout', 'disable')
+  expect((await vx(root, ['run', 'build', '--filter', 'svc'])).code).toBe(0)
 }, 30_000)
 
 it('a run whose task depends on the excluded project is refused', async () => {
