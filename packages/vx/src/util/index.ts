@@ -147,6 +147,8 @@ export {
   ignoreProbes,
   listedSync,
   skipWorktreeSync,
+  sparseCheckoutSet,
+  sparseLeftDirsSync,
   uncheckedSubmoduleSync,
   wholeIgnored,
 } from './git-ignored.js'

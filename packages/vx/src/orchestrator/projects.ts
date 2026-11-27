@@ -34,6 +34,8 @@ import {
   listed,
   relPosix,
   skipWorktreeSync,
+  sparseCheckoutSet,
+  sparseLeftDirsSync,
   uncheckedSubmoduleSync,
   UserError,
 } from '../util/index.js'
@@ -556,6 +558,19 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       ),
       ...bare.map(dirThere),
     ])
+    // A config-less project has no file to miss: the directory a sparse
+    // checkout kept for its ignored files (node_modules) read as there, and
+    // its tasks ran on no sources. Asked of git only where a sparse checkout
+    // was set.
+    const standing = bare
+      .map((m, i) => [m, withFile.length + i] as const)
+      .filter(([m, i]) => there[i] && path.resolve(m.dir) !== path.resolve(workspaceRoot))
+    if (standing.length > 0 && sparseCheckoutSet(workspaceRoot)) {
+      const rels = standing.map(([m]) => relPosix(workspaceRoot, m.dir))
+      const left = sparseLeftDirsSync(workspaceRoot, rels)
+      for (const [k, [, i]] of standing.entries())
+        if (left?.has(rels[k]!) === true) there[i] = false
+    }
     const goneAll = [...withFile, ...bare].filter((_, i) => !there[i])
     const gone = goneAll[0]
     if (gone !== undefined) {

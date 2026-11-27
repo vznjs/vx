@@ -4,7 +4,7 @@
 // files, `info/exclude`, `core.excludesFile`) and that a directory holding a
 // tracked file is not ignored.
 
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { gitEnv } from './hide-env.js'
 import { anyTaskGlob, isLiteralPattern, normalizeGlob, relPosix } from './paths.js'
@@ -242,6 +242,76 @@ export function skipWorktreeSync(cwd: string, rel: string): string | null {
     if (r.exitCode !== 0) return null
     const record = new TextDecoder().decode(r.stdout).split('\0')[0] ?? ''
     return record.startsWith('S ') ? record.slice(2) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether the repository holding `cwd` has had a sparse checkout set: the
+ * file git writes for it is in the per-worktree git dir. One stat or two, no
+ * spawn; true after `git sparse-checkout disable` too, which costs only
+ * {@link sparseLeftDirsSync}'s one spawn.
+ */
+export function sparseCheckoutSet(cwd: string): boolean {
+  for (let dir = path.resolve(cwd); ;) {
+    const dotGit = path.join(dir, '.git')
+    let gitDir: string | undefined
+    try {
+      const st = statSync(dotGit)
+      if (st.isDirectory()) gitDir = dotGit
+      else if (st.isFile()) {
+        const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, 'utf8'))
+        if (pointer === null) return false
+        gitDir = path.resolve(dir, pointer[1]!.trim())
+      }
+    } catch {
+      // quiet: no `.git` here; the walk goes up
+    }
+    if (gitDir !== undefined) return existsSync(path.join(gitDir, 'info', 'sparse-checkout'))
+    const up = path.dirname(dir)
+    if (up === dir) return false
+    dir = up
+  }
+}
+
+/**
+ * Which of `dirs` (relative to `cwd`) a sparse checkout left out: git lists
+ * files there and flags every one skip-worktree. One spawn; null when git
+ * failed.
+ */
+export function sparseLeftDirsSync(cwd: string, dirs: readonly string[]): Set<string> | null {
+  try {
+    const r = Bun.spawnSync({
+      cmd: [
+        executablePath('git'),
+        ...gitCaseArgs(cwd),
+        'ls-files',
+        '-t',
+        '-z',
+        '--',
+        ...dirs.map((d) => `:(literal)${d}`),
+      ],
+      env: gitEnv(),
+      cwd,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    if (r.exitCode !== 0) return null
+    const asked = new Set(dirs)
+    const listed = new Set<string>()
+    const shown = new Set<string>()
+    for (const rec of new TextDecoder().decode(r.stdout).split('\0')) {
+      if (rec === '') continue
+      // Its deepest asked directory: a nested project's files are its own.
+      let d = rec.slice(2)
+      do d = d.slice(0, Math.max(d.lastIndexOf('/'), 0))
+      while (d !== '' && !asked.has(d))
+      if (d === '') continue
+      listed.add(d)
+      if (!rec.startsWith('S ')) shown.add(d)
+    }
+    return new Set([...listed].filter((d) => !shown.has(d)))
   } catch {
     return null
   }
