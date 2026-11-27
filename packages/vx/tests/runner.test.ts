@@ -767,6 +767,73 @@ describe('runPersistent', () => {
     30_000,
   )
 
+  // The open line was tested again on every chunk: a server's 48 KB line
+  // written in 120 pieces cost `.*up` the whole growing line 120 times, and
+  // a longer one froze vx (a 600 KB line held it past a SIGTERM for minutes).
+  it('tests a long open line once, when its break arrives', async () => {
+    // Against the same writes under a pattern that fails at once: the
+    // writes' own sleeps vary with the machine's load. Tested whole on
+    // every write, `.*up` took 7x the cheap pattern's time here.
+    const timeTo = async (readyWhen: string): Promise<number> => {
+      const spawn = runPersistent({
+        command: `i=0; while [ $i -lt 160 ]; do printf '%0400d' 0; sleep 0.01; i=$((i+1)); done; printf '\\nup\\n'; exec sleep 30`,
+        cwd,
+        env: { PATH: process.env.PATH ?? '' },
+        readyWhen,
+      })
+      try {
+        const t = performance.now()
+        await spawn.ready
+        return performance.now() - t
+      } finally {
+        spawn.child!.kill('SIGKILL')
+        await spawn.child!.exited
+      }
+    }
+    const cheap = await timeTo('^up')
+    expect(await timeTo('.*up')).toBeLessThan(cheap * 3 + 2_000)
+  }, 120_000)
+
+  it('does not read a long open line searched from a write as starting there', async () => {
+    // Searched from 1 KB before the last write, a slice of the line would
+    // have begun at `Listening` and `^` matched it mid-line.
+    const spawn = runPersistent({
+      command: `printf '%05000dListening on%01012d'; sleep 0.2; printf 'more'; exec sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: '^Listening on',
+    })
+    try {
+      const settled = await Promise.race([
+        spawn.ready.then(() => 'ready'),
+        Bun.sleep(1_500).then(() => 'waiting'),
+      ])
+      expect(settled).toBe('waiting')
+    } finally {
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited.catch(() => {})
+    }
+  }, 30_000)
+
+  it('matches a marker at the start of a long open line written at once', async () => {
+    const spawn = runPersistent({
+      command: `printf 'Listening on :3000 %06000d' 0; exec sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: '^Listening on',
+    })
+    try {
+      const settled = await Promise.race([
+        spawn.ready.then(() => 'ready'),
+        Bun.sleep(1_500).then(() => 'timed out'),
+      ])
+      expect(settled).toBe('ready')
+    } finally {
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
+    }
+  }, 30_000)
+
   it('readyWhen matches a character split across two writes', async () => {
     // `€` is three bytes; the child writes two, pauses, then the third.
     const spawn = runPersistent({
