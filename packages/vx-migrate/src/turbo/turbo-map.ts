@@ -324,6 +324,47 @@ function collapseDots(glob: string): string {
   return path.posix.normalize(glob)
 }
 
+/**
+ * A root-relative glob as `inputs.workspaceFiles` takes it: the root itself
+ * (`$TURBO_ROOT$/`, which Turbo reads as every file) as every file, null when
+ * it leaves the workspace (Turbo matches nothing there). Written as `.` or
+ * `../x`, core refused the config and every task in the project with it.
+ */
+function rootGlob(glob: string): string | null {
+  const n = path.posix.normalize(glob)
+  if (n === '.' || n === './') return '**/*'
+  return n === '..' || n.startsWith('../') ? null : n
+}
+
+/**
+ * `globalDependencies`' file globs (a Turbo 1 `$NAME` is an env var) as
+ * `inputs.workspaceFiles` takes them. Turbo reads `.` as every file and
+ * matches nothing at `!` or outside the workspace, where core refused the
+ * entry and with it every task.
+ */
+function globalDepGlobs(deps: readonly string[], notes: string[]): string[] {
+  const out: string[] = []
+  for (const d of deps) {
+    if (envDependency(d) !== null) continue
+    const g = turboGlobstar(d)
+    const neg = g.startsWith('!') ? '!' : ''
+    const body = g.slice(neg.length)
+    // Turbo 2 refuses any other `$` entry (`$TURBO_ROOT$/x`, `$TURBO_DEFAULT$`);
+    // after a `!` it is a literal path, which matches nothing.
+    if (body.startsWith('$') && neg === '')
+      throw new UserError(
+        `turbo.json: globalDependencies holds ${JSON.stringify(d)}: Turbo refuses a "$" entry there — its paths are root-relative already`,
+      )
+    const r = body === '' || body.startsWith('$') ? null : rootGlob(body)
+    if (r === null)
+      notes.push(
+        `globalDependencies ${JSON.stringify(d)} matches no workspace file in Turbo — dropped`,
+      )
+    else out.push(neg + r)
+  }
+  return out
+}
+
 /** `""`, `.` or `./`, the package directory itself, as `all`; any other glob as is. */
 function selfDir(glob: string, all: string): string {
   return glob === '.' || glob === './' ? all : glob
@@ -979,7 +1020,7 @@ export async function mapTurboWorkspace(
   const rootMeta = metas.find((m) => path.resolve(m.dir) === path.resolve(root))
   const rootPkg = rootMeta?.packageJson ?? (await rootPackageJson(root))
   const globalFiles = [
-    ...globalDeps.filter((d) => envDependency(d) === null).map(turboGlobstar),
+    ...globalDepGlobs(globalDeps, notes),
     ...(rootCfg.globalDotEnv ?? []),
     // Turbo 2 added the root's dependencies to its global hash; 1.13.4's
     // leaves them out (trigger.dev: a Prisma migration re-keyed only the
@@ -1908,9 +1949,9 @@ function buildTask(
   // workspace has no home and is reported.
   const climbed = (glob: string): string | null => {
     const body = glob.startsWith('!') ? glob.slice(1) : glob
-    if (!body.startsWith('../')) return null
-    const anchored = path.posix.normalize(path.posix.join(literalGlob(pkgDir), body))
-    if (anchored.startsWith('../')) return null
+    if (body !== '..' && !body.startsWith('../')) return null
+    const anchored = rootGlob(path.posix.join(literalGlob(pkgDir), body))
+    if (anchored === null) return null
     return (glob.startsWith('!') ? '!' : '') + anchored
   }
   const uses = new Set<TurboGlobal>()
@@ -2137,11 +2178,14 @@ function buildTask(
         }
         continue
       }
-      if (body.startsWith('$TURBO_ROOT$/')) {
-        wsFiles.push(...withZeroSegments((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length)))
+      const fromRoot = body.startsWith('$TURBO_ROOT$/')
+        ? rootGlob(body.slice('$TURBO_ROOT$/'.length))
+        : undefined
+      if (typeof fromRoot === 'string') {
+        wsFiles.push(...withZeroSegments((neg ? '!' : '') + fromRoot))
       } else if (up !== null) {
         wsFiles.push(...withZeroSegments(up))
-      } else if (body.startsWith('../')) {
+      } else if (fromRoot === null || body === '..' || body.startsWith('../')) {
         todos.push(`input ${JSON.stringify(i)}: leaves the workspace — map manually`)
       } else if (i.includes('$TURBO_ROOT$')) {
         todos.push(

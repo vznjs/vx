@@ -921,7 +921,7 @@ describe('turbo-map: turbo 1 `$NAME` env dependencies', () => {
 
   it('CONTROL: `$TURBO_ROOT$` and a `$` mid-entry are not env names', async () => {
     const t = await taskOf(
-      { globalDependencies: ['$TURBO_ROOT$/x.json', 'a$B'], tasks: { build: {} } },
+      { globalDependencies: ['!$TURBO_ROOT$/x.json', 'a$B'], tasks: { build: {} } },
       { a: { scripts: { build: 'b' } } },
     )
     const inputs = t.task!['inputs'] as { env?: string[] } | undefined
