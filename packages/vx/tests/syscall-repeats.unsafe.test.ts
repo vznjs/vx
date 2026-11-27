@@ -24,7 +24,11 @@
 //     the bottom of a chain was stat'ed once per task above it (a 9,603-
 //     task cold run went from 120 s to 288 s, 2026-11-21);
 //   - a look at a running task's tree read every process's stat on the
-//     machine, four times a second for the whole run (2026-11-21).
+//     machine, four times a second for the whole run (2026-11-21);
+//   - judging a sandboxed task's write records resolved each record's path
+//     anew: a test shard's thousands held vx's loop 2.6 s, past the DTE
+//     relay's 6 s silence on a busy CI worker, which lost the worker
+//     (CI run 46013136782).
 //
 // Unsafe: strace ptraces its tracee, which a sandboxed shard cannot host.
 // Linux only — strace is Linux's. CI's Linux job installs strace for the
@@ -672,6 +676,29 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       // Two processes, four looks: 8. Every process on the machine each
       // look: 4 x (the 32 here and the machine's own).
       expect(stats.length).toBeLessThanOrEqual(8)
+    },
+    TIMEOUT,
+  )
+  it(
+    "judging a task's write records: each path resolved once",
+    async () => {
+      const root = path.join(dir, 'records')
+      await mkdir(path.join(root, 'out'), { recursive: true })
+      // 300 records on three files, one in a directory that is gone: a
+      // missing path is resolved through each of its parents.
+      const records = Array.from({ length: 300 }, (_, i) =>
+        i % 3 === 2 ? `deny mkdir ${root}/gone/a/b` : `deny openat ${root}/out/f${i % 3}.txt`,
+      )
+      const calls = await trace(
+        dir,
+        `
+        import { refusedWrites } from '$SRC/sandbox/violations.js'
+        const v = refusedWrites(${JSON.stringify(records)}, [${JSON.stringify(path.join(root, 'out'))}])
+        if (v.length !== 1) throw new Error(JSON.stringify(v))
+        `,
+      )
+      const asked = calls.filter((c) => c.path.startsWith(root) && c.name !== 'execve')
+      expect(asked.length).toBeLessThanOrEqual(10)
     },
     TIMEOUT,
   )
