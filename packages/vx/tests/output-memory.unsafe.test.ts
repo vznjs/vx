@@ -133,6 +133,10 @@ function capturedProbe(retain: boolean, mib: number): string {
     // The heap after a full collection is what the result retains; RSS was
     // the allocator's high-water of the chunks pushed through, which a
     // loaded reader raised to 122 MiB of noise against a 120 MiB line (M-53).
+    // A turn first: the reader's own turns (READER_TURN_MS) left a dead
+    // 16 MiB string the stack scan still found, 1 in 8 runs (49 MiB, 33 after
+    // one turn), which is no retention.
+    await new Promise((resolve) => setTimeout(resolve, 0))
     Bun.gc(true)
     // Reference the result past the collection so a retained string cannot
     // be freed before the measurement: the control would read flat too.
