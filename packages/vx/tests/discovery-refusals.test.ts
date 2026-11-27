@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { relPosix } from '../src/util/index.js'
+import { ConfigsRefused, relPosix } from '../src/util/index.js'
 import {
   checkProjectNames,
   discoveredProject,
@@ -149,6 +149,29 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
     // CONTROL: the root named by its path, and a `#` path a config names.
     expect(checkProjectNames(root, named('.')).map((m) => m.name)).toEqual(['//'])
     expect(checkProjectNames(root, named('pkg#1', 'pkg')).map((m) => m.name)).toEqual(['pkg'])
+  })
+
+  // Each was refused alone: `vx lock` named `b*`, then `a[1]` on the next
+  // try, then the next, one bad directory a run (2026-11-27).
+  it('every unaddressable name and clash at once', () => {
+    const metas = lockedProjects(root, {
+      'b*': { file: 'vx.config.mjs', config: {} },
+      'pkg#1': { file: 'vx.config.mjs', config: {} },
+      x: { file: 'vx.config.mjs', config: { name: 'cee' } },
+      y: { file: 'vx.config.mjs', config: { name: 'cee' } },
+    })
+    let caught: unknown
+    try {
+      checkProjectNames(root, metas)
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toBeInstanceOf(ConfigsRefused)
+    expect((caught as ConfigsRefused).all.map((e) => e.message.split(':')[0])).toEqual([
+      'b*',
+      'two projects are named "cee"',
+      'pkg#1',
+    ])
   })
 
   it("CONTROL: a path name takes the plugin's, a config's name stays, and a new directory is named by its path", async () => {
