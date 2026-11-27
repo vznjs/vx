@@ -56,8 +56,17 @@ it('a negation with no positive glob under its base takes back from the other ba
     outside: { files: ['src/**'] },
     inside: { files: ['src/**', '!src/gen/**'] },
     deep: { files: ['src/**', '!**/*.md', '!src/*.snap'] },
-    shared: { files: [], workspaceFiles: ['packages/**', '!packages/a/**/*.md'] },
-    top: { files: ['**/*', '!**/*.md'] },
+    // Each also takes back its siblings' outputs, which core refuses it to read.
+    shared: {
+      files: [],
+      workspaceFiles: [
+        'packages/**',
+        '!packages/a/**/*.md',
+        '!packages/a/dist/**',
+        '!packages/a/lib/**',
+      ],
+    },
+    top: { files: ['**/*', '!**/*.md', '!out/**'] },
     out: { files: [] },
     // Inside its own output: vx cleans it first, and core refused the lock.
     own: { files: ['src/**'] },

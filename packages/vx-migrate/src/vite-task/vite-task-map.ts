@@ -20,8 +20,12 @@ import { packageScripts, relPosix } from '../paths.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
   dropOwnOutputInputs,
+  excludeSiblingOutputs,
+  excludeWorkspaceOutputs,
   ownFileOutput,
   ownFileTodo,
+  resolveSharedOutputs,
+  resolveSharedWorkspaceOutputs,
   takingBack,
   wildcardOutput,
   wildcardTodo,
@@ -405,8 +409,13 @@ export async function mapViteTaskWorkspace(
       })
     }
     for (const t of tasks) inlineRuns(t, meta)
+    // Vite Task runs two tasks over one output, or a reader of another's
+    // output with no edge to it; core refuses both, as it does for Turbo.
+    excludeSiblingOutputs(resolveSharedOutputs(tasks), true)
     if (tasks.length > 0) projects.push({ name: meta.name, dir: meta.dir, importLines: [], tasks })
   }
+  resolveSharedWorkspaceOutputs(root, projects)
+  excludeWorkspaceOutputs(root, projects)
   refuseTaskNames(projects, 'task')
   return { projects, notes: [] }
 }
