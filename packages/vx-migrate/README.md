@@ -276,6 +276,7 @@ Rules:
 - `$TURBO_ROOT$/<path>` is `inputs.workspaceFiles`, negation kept. Any other `$TURBO_ROOT$` use is a todo.
 - A `!$TURBO_ROOT$/` input with no positive `$TURBO_ROOT$/` glob takes back from the package's globs, as Turbo does, or nothing outside it.
 - So `!$TURBO_ROOT$/packages/a/src/gen/**` is `!src/gen/**`.
+- An input wholly inside the task's own literal output (`lib` in both) is dropped with a todo: vx cleans the outputs before the task runs.
 
 <details><summary>Details</summary>
 
@@ -1366,6 +1367,7 @@ There is no live plugin, so `--keep` is refused.
 | `dependsOn: 'x'` / `'pkg#x'`                               | the same                                                                                                                                                                                                                     |
 | `dependsOn: { task, from }`                                | `^task`; when a member listed under a field `from` leaves out also has the task, the explicit `pkg#task` edges, since `^` follows every field                                                                                |
 | `cache.input` / `cache.output` globs                       | `inputs.files` / `outputs.files`; `base: 'workspace'` → `workspaceFiles`, a root task's too; a `**` glued to text (`src/**.ts`), which vx refuses, widens an input to `**/*` and runs an output's task uncached, with a todo |
+| an input wholly inside the task's own literal output       | dropped, with a todo: vx cleans the outputs before the task runs                                                                                                                                                             |
 | a `!` input or output with no positive glob under its base | taken back from the other base's globs, as Vite Task does; an input with no positive glob at all takes back from `**/*`, since core refuses a list of negations alone                                                        |
 | omitted or `{ auto: true }` (traced files)                 | no `cache: true`, with a TODO: vx infers no inputs or outputs                                                                                                                                                                |
 | `cache.env`                                                | `inputs.env`, which the task also sees; a `*` entry kept as written, matched by each run; a `!` entry drops its literal, and is a TODO when a kept pattern still matches it                                                  |

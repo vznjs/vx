@@ -19,6 +19,7 @@ import {
 import { packageScripts, relPosix } from '../paths.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
+  dropOwnOutputInputs,
   ownFileOutput,
   ownFileTodo,
   takingBack,
@@ -523,6 +524,7 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
   }
   task['outputs'] = outputs.lists
   task['cache'] = true
+  todos.push(...dropOwnOutputInputs(task, ctx.atRoot ? '' : ctx.pkgDir, 'Vite Task'))
   return { name, todos, task }
 }
 

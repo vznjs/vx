@@ -922,6 +922,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/turbo-noop-uncached',
     'vx-migrate/turbo-oidc',
     'vx-migrate/turbo-output-mode',
+    'vx-migrate/turbo-own-output-input',
     'vx-migrate/turbo-package-tags',
     'vx-migrate/turbo-persistent-unreached',
     'vx-migrate/turbo-proto-names',
