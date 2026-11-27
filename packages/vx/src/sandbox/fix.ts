@@ -277,7 +277,8 @@ export function sandboxFix(
     else if (kind === 'network') fix.network.add(v.target.replace(/:\d+$/, ''))
     else if (kind === 'systemInfo') fix.systemInfo.add(v.target)
     else if (v.path === undefined) continue
-    else if (isCredential(v.path, (stores ??= credentialStorePaths(os.homedir())))) fix.withheld.add(grantPath(v.path, dirs))
+    else if (isCredential(v.path, (stores ??= credentialStorePaths(os.homedir()))))
+      fix.withheld.add(grantPath(v.path, dirs))
     else if (kind === 'read') {
       const rel = grantPath(v.path, dirs)
       fix.read.add(grantFor(v.path, dirs, 'read'))
