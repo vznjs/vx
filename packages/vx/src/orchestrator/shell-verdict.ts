@@ -3,6 +3,7 @@ import { constants as osConstants } from 'node:os'
 import path from 'node:path'
 import { execWord, exitSignal } from '../exec/index.js'
 import { SANDBOX_SET_ENV } from '../sandbox/index.js'
+import { statOrAbsent } from '../util/index.js'
 
 /**
  * The frame line for a shell verdict the task's own output leaves a mystery.
@@ -31,6 +32,12 @@ export function shellVerdict(args: {
   definedPath?: string | undefined
 }): string | undefined {
   if (args.code !== 127 && args.code !== 126) return signalVerdict(args.code, args.signal)
+  // Bun's spawn into a cwd that is no directory throws only when nothing is
+  // there; a file in its place (a dependency replaced the project's
+  // directory) exits 127 unsaid, which read as a program to install.
+  if (args.code === 127 && statOrAbsent(args.cwd)?.isDirectory() === false) {
+    return `[vx] exit 127: the task's working directory ${args.cwd} is not a directory — something replaced it during the run`
+  }
   const own = execWord(args.command)
   // `ls | head` under a hermetic task: the shell says each is missing, and
   // naming only the last left the rest for another round.

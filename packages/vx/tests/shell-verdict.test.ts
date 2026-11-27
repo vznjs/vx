@@ -11,6 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { shellVerdict } from '../src/orchestrator/shell-verdict.js'
+import { spawnFailureText } from '../src/exec/runner.js'
 
 const bins = ['/ws/packages/app/node_modules/.bin', '/ws/node_modules/.bin']
 const signalNumber = os.constants.signals as Record<string, number>
@@ -329,4 +330,25 @@ describe('shellVerdict', () => {
     expect(verdict(128 + 64, 'x')).toBeUndefined()
     expect(verdict(200, 'x')).toBeUndefined()
   })
+})
+
+// A dependency that replaced the project's directory with a file: Bun's
+// spawn exits 127 there with nothing said, and the verdict sent the reader
+// to install `echo`.
+it('a 127 in a working directory that is a file names the directory', async () => {
+  const file = path.join(cwd, 'fine.sh')
+  expect(shellVerdict({ code: 127, command: 'echo hi', cwd: file, bins })).toBe(
+    `[vx] exit 127: the task's working directory ${file} is not a directory — something replaced it during the run`,
+  )
+})
+
+// The sandboxed spawn there throws ENOTDIR instead, which named only `sh`.
+it('a spawn that threw ENOTDIR in a working directory that is a file names it', () => {
+  const file = path.join(cwd, 'fine.sh')
+  const err = Object.assign(new Error("ENOTDIR: not a directory, posix_spawn 'sh'"), {
+    code: 'ENOTDIR',
+  })
+  expect(spawnFailureText(err, file, 'sandboxed task')).toBe(
+    `[vx] failed to spawn sandboxed task: its working directory ${file} is not a directory — something replaced it during the run\n`,
+  )
 })
