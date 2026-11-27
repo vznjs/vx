@@ -216,6 +216,11 @@ held to its start; at the exit, `end` lets everything go; and an
   thread reads only on credit, at most 16 chunks ahead of the consumer,
   so a task writing faster than vx logs waits on its pipe instead of
   filling vx's memory.
+- **Turns:** a reader that has handled chunks for 2 ms without a break
+  yields a turn (`setImmediate`) before the next. Every chunk ready went
+  first: beside `yes`, each await of the run waited up to 70 ms, a chain
+  of 30 one-line tasks took 11.7 s instead of 0.2 s, and `vx watch` missed
+  edits to a flooding server. A 1 GB flood reads about 20% slower.
 - **Spare shell:** on Linux, a task's shell is started before the task
   is asked for (`warm-shell.ts`), so the slot that frees does not wait
   for sh to exec: 200 `sleep 0.02` took 4.4 ms each past their sleep

@@ -1210,6 +1210,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'out-pace',
     'paced-writer',
     'output-dirs-snapshot',
+    'output-flood-fairness.unsafe',
     'output-log',
     'output-memory.unsafe',
     'output-stamps-link',

@@ -853,6 +853,14 @@ const READY_MATCH_WINDOW_CHARS = 64 * 1024
 const READY_OPEN_LINE_CHARS = 1024
 
 /**
+ * How long a task's output reader handles chunks before it yields a turn.
+ * Every chunk ready went first: beside a task writing without pause, each
+ * await of the run waited up to 70 ms, 30 one-line tasks took 11.7 s
+ * instead of 0.2 s, and `vx watch` missed edits to a flooding server.
+ */
+const READER_TURN_MS = 2
+
+/**
  * Terminal escapes a `readyWhen` pattern is matched without (CSI, OSC, charset
  * picks, two-byte forms): Vite under `FORCE_COLOR` prints
  * `\x1b[1mLocal\x1b[22m:`, which `Local:` never matched. The streamed bytes
@@ -1116,10 +1124,16 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
     const reader = stream.getReader()
     const decoder = new RawUtf8Decoder()
     try {
+      let since = performance.now()
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
         handleChunk(decoder.decode(value, { stream: true }))
+        // A turn for the rest of vx (READER_TURN_MS).
+        if (performance.now() - since > READER_TURN_MS) {
+          await new Promise<void>((resolve) => setImmediate(resolve))
+          since = performance.now()
+        }
       }
       // Flush any undecoded multi-byte tail when the stream closes so
       // the buffered text (and a final-fragment match) stay complete.
@@ -1821,9 +1835,14 @@ export async function streamToString(
   if (signal?.aborted) onAbort()
   else signal?.addEventListener('abort', onAbort, { once: true })
   try {
+    let since = performance.now()
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
+      if (performance.now() - since > READER_TURN_MS) {
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        since = performance.now()
+      }
       const chunk = decoder.decode(value, { stream: true })
       if (taken !== undefined) taken.chars += chunk.length
       if (retain) full.push(chunk)
