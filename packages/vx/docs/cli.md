@@ -3976,6 +3976,9 @@ With no `.vx/workspace.ts`, every verb but `vx init` stops with
 <div class="vx-deeper-body">
 
 - `.mts`, `.js`, `.mjs`, `.cts` and `.cjs` count as well as `.ts`.
+- `.vx/workspace.json` or `.tsx` marks nothing. With no workspace file
+  found, the refusal names the nearest such file instead of suggesting
+  `vx init`.
 - vx never looks above the git top-level. Outside git, it looks up to
   `/`.
 - A worktree is its own top-level, and so is a submodule's worktree.

@@ -151,7 +151,9 @@ that is no file (a broken link, a directory), with no file beside it,
 marks the root all the same and is refused by name, `VX_E_CONFIG`. Without one the error is
 `VX_E_NO_WORKSPACE`, naming `vx init`, or `git sparse-checkout add .vx`
 when the git top-level's workspace file is in the index but a sparse
-checkout left it out (git asked only then)
+checkout left it out (git asked only then), or naming the nearest
+`.vx/workspace.*` by a name vx does not read (`.json`, `.tsx`) up to the
+same bound, since "run vx init" named nothing that was there
 (`tests/workspace-root-file.test.ts`). The lookup is `workspaceFile` in
 `handoff.ts`, shared with the hand-off and the config loader, once per run.
 

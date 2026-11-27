@@ -2,7 +2,7 @@
 // (`findProjectConfigs`); a run takes them from the lock and never walks. Named
 // by its config's `name`, else a `discover` plugin, else its root-relative path
 // (`//` for the root). docs/design/language-agnostic-core-2026-10.md.
-import { type Dirent, realpathSync } from 'node:fs'
+import { type Dirent, readdirSync, realpathSync } from 'node:fs'
 import { lstat, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -95,6 +95,13 @@ export async function findWorkspaceRoot(
         },
       )
     }
+    const unread = unreadWorkspaceFile(start, top)
+    if (unread !== null) {
+      const exts = WORKSPACE_CONFIG_FILENAMES.map((n) => n.slice('.vx/workspace.'.length)).join(', ')
+      const headline = `${unread} is not read: vx reads a .vx/workspace ending in ${exts}`
+      const fix = `move its settings into ${path.join(path.dirname(unread), 'workspace.ts')}`
+      throw refusal({ headline, fix }, { code: 'VX_E_NO_WORKSPACE', message: `${headline} — ${fix}` })
+    }
     const headline = `no .vx/workspace.ts in ${start} or a parent${top === null ? '' : ' up to the git root'}`
     throw refusal(
       { headline, fix: 'vx init' },
@@ -123,6 +130,26 @@ export async function findWorkspaceRoot(
     }
   }
   return root
+}
+
+/**
+ * The nearest `.vx/workspace.*` by a name vx does not read (`.json`, `.tsx`),
+ * from `start` up to `top` or `/`, else null. Asked only once none was found:
+ * "run vx init" beside a `.vx/workspace.json` named nothing that was there.
+ */
+function unreadWorkspaceFile(start: string, top: string | null): string | null {
+  const read = new Set(WORKSPACE_CONFIG_FILENAMES.map((n) => n.slice('.vx/'.length)))
+  for (let d = start; ; d = path.dirname(d)) {
+    let names: string[] = []
+    try {
+      names = readdirSync(path.join(d, '.vx'))
+    } catch {
+      // no `.vx` here
+    }
+    const name = names.filter((n) => n.startsWith('workspace.') && !read.has(n)).sort()[0]
+    if (name !== undefined) return path.join(d, '.vx', name)
+    if (d === top || d === path.dirname(d)) return null
+  }
 }
 
 /**
