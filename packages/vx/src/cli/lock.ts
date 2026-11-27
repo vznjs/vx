@@ -227,6 +227,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     reviewFiles: true,
     strayReviews: [],
     shadowed: [],
+    unread: [],
     dependencies: null,
   }
   try {
@@ -237,6 +238,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       configs: found,
       strayReviews,
       shadowed,
+      unread,
       nestedWorkspaces,
       sparse,
     } = await findProjectConfigs(root)
@@ -282,6 +284,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     }
     out.strayReviews = strayReviews
     out.shadowed = shadowed
+    out.unread = unread
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(
       found.map((f) => f.configPath),
@@ -518,6 +521,8 @@ interface GraphCheck {
   strayReviews: string[]
   /** Config files a higher-precedence one beside them hides (`findProjectConfigs`). */
   shadowed: { file: string; read: string }[]
+  /** `vx.config.*` files by a name vx does not read, where no config is read (`findProjectConfigs`). */
+  unread: string[]
   /** What the dependencies resolve to here; null when the configs did not load. */
   dependencies: DependenciesLock | null
   /** The files the `project` stage made each project's config from, by directory. */
@@ -781,8 +786,9 @@ async function writeLock(
   // A second config beside the one read was edited and nothing changed.
   warnShadowed(root, check, 'vx lock')
   // Named here too: a lock that wrote clean failed the `--check` after it.
-  if (check.reviewFiles)
-    for (const file of await strayCopies(check)) sayNotice('warn', 'vx lock', strayLine(root, file))
+  const strays = check.reviewFiles ? await strayCopies(check) : []
+  for (const file of strays) sayNotice('warn', 'vx lock', strayLine(root, file))
+  warnUnread(root, check, 'vx lock', strays)
   // `import.meta.dir` in a command locks this checkout's path: another
   // checkout's `--check` fails and its keys differ.
   const at = new RegExp(`${RegExp.escape(root)}(?![^/\\s"'])`)
@@ -1198,6 +1204,22 @@ function warnShadowed(root: string, check: GraphCheck, verb: string): void {
     )
 }
 
+/**
+ * A `vx.config.json` or `.tsx` where no config is read: its directory is no
+ * project. A stray review copy's line names it already.
+ */
+function warnUnread(root: string, check: GraphCheck, verb: string, strays: string[]): void {
+  const named = new Set(strays.map((f) => path.dirname(f)))
+  const exts = PROJECT_CONFIG_FILENAMES.map((n) => n.slice('vx.config.'.length)).join(', ')
+  for (const file of check.unread)
+    if (!named.has(path.dirname(file)))
+      sayNotice(
+        'warn',
+        verb,
+        `${relPosix(root, file)} is not read: vx reads a vx.config ending in ${exts}, so its directory is no project`,
+      )
+}
+
 /** One `vx lock --check` problem: its code is what an agent branches on. */
 interface LockProblem {
   code: string
@@ -1218,6 +1240,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   // A warning, as `vx lock` says it: the CI gate passed beside a hidden
   // config whose edit changed nothing.
   warnShadowed(root, check, 'vx lock --check')
+  warnUnread(root, check, 'vx lock --check', check.reviewFiles ? await strayCopies(check) : [])
   const { broken } = check
   const metas = configured(check.all)
   const bare = bareProjects(check.all, check.tasked)

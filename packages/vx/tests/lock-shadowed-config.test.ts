@@ -56,3 +56,26 @@ for (const git of ['init', false] as const) {
     expect(lock(r)).toEqual({ code: 0, err: '' })
   })
 }
+
+// A `vx.config.json` alone was skipped without a word: `vx lock` counted no
+// project there and a run in it said only "not inside a project".
+for (const git of ['init', false] as const) {
+  it(`vx lock names a vx.config by a name it does not read (git: ${git})`, async () => {
+    const r = (root = await makeWorkspace({ prefix: 'vx-lock-unread-', git }))
+    const a = await addProject(r, 'a', { config: CONFIG })
+    await rm(path.join(a, 'vx.config.mjs'))
+    await Bun.write(path.join(a, 'vx.config.json'), '{}\n')
+    // Beside a config it reads, another tool's file is left alone.
+    const b = await addProject(r, 'b', { config: CONFIG })
+    await Bun.write(path.join(b, 'vx.config.tsx'), CONFIG)
+    const line = (verb: string): string =>
+      noticed(
+        `${verb}: packages/a/vx.config.json is not read: vx reads a vx.config ending in ts, mts, js, mjs, cts, cjs, so its directory is no project\n`,
+        'warn',
+      )
+    expect(lock(r)).toEqual({ code: 0, err: line('vx lock') })
+    expect(lock(r, '--check')).toEqual({ code: 0, err: line('vx lock --check') })
+    await rm(path.join(a, 'vx.config.json'))
+    expect(lock(r)).toEqual({ code: 0, err: '' })
+  })
+}
