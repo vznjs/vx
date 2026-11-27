@@ -161,18 +161,35 @@ function keyedBy(globs: readonly string[]): (rel: string) => boolean {
  * probe of the directory itself (Vite's `access(public)`) matches no file
  * glob, and the fix named `public` for an input already listed.
  */
-function keysContents(keyed: (rel: string) => boolean, rel: string, v: SandboxViolation): boolean {
+function keysContents(
+  keyed: (rel: string) => boolean,
+  rel: string,
+  v: SandboxViolation,
+  entryOf: EntryOf,
+): boolean {
   return entryOf(v) === 'dir' && keyed(`${rel}/_`)
 }
 
+type EntryOf = (v: SandboxViolation) => 'file' | 'dir' | 'missing'
+
 /**
  * What a violation's path was when the task ended: as its executor reported
- * it (a worker's checkout), else as this machine's disk shows it.
+ * it (a worker's checkout), else as this machine's disk shows it, read once
+ * per path: a fix judged each violation's path up to three times, and a
+ * task's violations repeat a path per syscall.
  */
-function entryOf(v: SandboxViolation): 'file' | 'dir' | 'missing' {
-  if (v.entry !== undefined) return v.entry
-  const st = lstatOrAbsent(v.path!)
-  return st === undefined ? 'missing' : st.isDirectory() ? 'dir' : 'file'
+function entriesOnce(): EntryOf {
+  const known = new Map<string, 'file' | 'dir' | 'missing'>()
+  return (v) => {
+    if (v.entry !== undefined) return v.entry
+    let e = known.get(v.path!)
+    if (e === undefined) {
+      const st = lstatOrAbsent(v.path!)
+      e = st === undefined ? 'missing' : st.isDirectory() ? 'dir' : 'file'
+      known.set(v.path!, e)
+    }
+    return e
+  }
 }
 
 /**
@@ -185,7 +202,11 @@ function entryOf(v: SandboxViolation): 'file' | 'dir' | 'missing' {
  * file grant made anyway, and a glob is none (a write glob covers only
  * what exists when the task starts).
  */
-function placeheld(v: SandboxViolation, output: (rel: string) => boolean): boolean {
+function placeheld(
+  v: SandboxViolation,
+  output: (rel: string) => boolean,
+  entryOf: EntryOf,
+): boolean {
   return entryOf(v) === 'missing' || output(path.basename(v.path!))
 }
 
@@ -201,7 +222,7 @@ const REFUSED_ANYWAY = /\((?:host is on the deny list|malformed host)\)$/
 /** The task proxy's refusal of a loopback host on a port no entry names. */
 const LOOPBACK_REFUSED = /\(a loopback host is reached only on a port the list names\)$/
 
-function kindOf(v: SandboxViolation): Kind | undefined {
+function kindOf(v: SandboxViolation, entryOf: EntryOf): Kind | undefined {
   const can = v.ignorable ?? []
   if (can.length === 1) return can[0]
   // Linux reports a refused `openat` as either: its flags decide. Judged by
@@ -260,13 +281,14 @@ export function sandboxFix(
   const output = keyedBy(outputs?.files ?? [])
   let markers: string[] | undefined
   let stores: string[] | undefined
+  const entryOf = entriesOnce()
   const keyed =
     inputs === undefined
       ? undefined
       : { files: keyedBy(inputs.files), workspaceFiles: keyedBy(inputs.workspaceFiles ?? []) }
   for (const v of violations) {
     if (v.hint === true || v.target === undefined) continue
-    const kind = kindOf(v)
+    const kind = kindOf(v, entryOf)
     if (kind === undefined) continue
     // A host the deny list holds, or a malformed one, no allow grant admits.
     if (kind === 'network' && REFUSED_ANYWAY.test(v.line)) continue
@@ -289,7 +311,8 @@ export function sandboxFix(
       // The repository is no input: git lists nothing in it, so no glob keys it.
       if (atOrUnder(v.path, path.join(dirs.root, '.git'))) continue
       if (inProject(rel) && !nested.some((d) => atOrUnder(v.path!, toRealPath(d)))) {
-        if (!keyed.files(rel) && !keysContents(keyed.files, rel, v)) fix.inputs.add(taskGlobOf(rel))
+        if (!keyed.files(rel) && !keysContents(keyed.files, rel, v, entryOf))
+          fix.inputs.add(taskGlobOf(rel))
       } else if (atOrUnder(v.path, dirs.root)) {
         const wsRel = relPosix(dirs.root, v.path)
         if (!keyed.workspaceFiles(wsRel)) fix.workspaceFiles.add(taskGlobOf(wsRel))
@@ -314,7 +337,10 @@ export function sandboxFix(
       const isDir = v.line.startsWith('mkdir') || entryOf(v) === 'dir'
       const grant = writeGrant(v.path, dirs, isDir, inputs?.files ?? [], outDirs)
       fix.write.add(
-        !isDir && listsProject && path.dirname(v.path) === dirs.project && placeheld(v, output)
+        !isDir &&
+          listsProject &&
+          path.dirname(v.path) === dirs.project &&
+          placeheld(v, output, entryOf)
           ? '.'
           : grant,
       )
@@ -385,8 +411,14 @@ export function perRunWriteHint(
 ): SandboxViolation | undefined {
   const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
   const globs = new Set<string>()
+  const entryOf = entriesOnce()
   for (const v of violations)
-    if (v.hint !== true && v.path !== undefined && isPerRunTemp(v) && kindOf(v) === 'write') {
+    if (
+      v.hint !== true &&
+      v.path !== undefined &&
+      isPerRunTemp(v) &&
+      kindOf(v, entryOf) === 'write'
+    ) {
       const rel = grantPath(v.path, dirs)
       const dir = path.posix.dirname(rel)
       const glob = perRunGlob(path.posix.basename(rel))
@@ -490,10 +522,11 @@ export function rootFileWriteHint(
   workspaceRoot: string,
 ): SandboxViolation | undefined {
   const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
+  const entryOf = entriesOnce()
   const files = [
     ...new Set(
       violations
-        .filter((v) => v.hint !== true && kindOf(v) === 'write' && rootFile(v, dirs))
+        .filter((v) => v.hint !== true && kindOf(v, entryOf) === 'write' && rootFile(v, dirs))
         .map((v) => path.basename(v.path!)),
     ),
   ]
@@ -523,8 +556,9 @@ export function misrootedWriteHint(
   const dirs = { project: toRealPath(projectDir), root: toRealPath(workspaceRoot) }
   const written: string[] = []
   const held = new Set<string>()
+  const entryOf = entriesOnce()
   for (const v of violations) {
-    if (v.hint === true || v.path === undefined || kindOf(v) !== 'write') continue
+    if (v.hint === true || v.path === undefined || kindOf(v, entryOf) !== 'write') continue
     const at = misrooted(v.path, dirs)
     if (at === undefined) continue
     written.push(relPosix(dirs.project, v.path))
