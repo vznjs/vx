@@ -1,7 +1,8 @@
-// A `!` input under one base with no positive glob under that base: core
-// refuses a list of negations alone ("selects NOTHING"), so the written
-// config failed `vx lock`. Measured on vite-plus 1.8.0: a negation only
-// takes back what a positive glob matched.
+// A `!` input or output under one base with no positive glob under that
+// base: an input was written as a list of negations alone, which core
+// refuses ("selects NOTHING"), and an output's was dropped. Measured on
+// vite-plus 1.8.0: a negation takes back what a positive glob under either
+// base matched.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -27,6 +28,8 @@ it('a negation with no positive glob under its base takes back from the other ba
       outside: { command: 'x', cache: { input: ['src/**', ${ws('!docs/**')}], output: [] } },
       inside: { command: 'x', cache: { input: ['src/**', ${ws('!packages/a/src/gen/**')}], output: [] } },
       shared: { command: 'x', cache: { input: [${ws('packages/**')}, '!**/*.md'], output: [] } },
+      out: { command: 'x', cache: { input: [], output: ['dist/**', ${ws('!packages/a/dist/x/**')}] } },
+      outWs: { command: 'x', cache: { input: [], output: [${ws('out/**')}, '!out/**/*.map'] } },
     } } }`,
   )
   await writeFile(
@@ -41,11 +44,25 @@ it('a negation with no positive glob under its base takes back from the other ba
   ]
   const m = await mapViteTaskWorkspace(root, metas)
   const inputs: Record<string, unknown> = {}
-  for (const p of m.projects) for (const t of p.tasks) inputs[t.name] = t.task!['inputs']
+  const outputs: Record<string, unknown> = {}
+  for (const p of m.projects)
+    for (const t of p.tasks) {
+      inputs[t.name] = t.task!['inputs']
+      outputs[t.name] = t.task!['outputs']
+    }
   expect(inputs).toEqual({
     outside: { files: ['src/**'] },
     inside: { files: ['src/**', '!src/gen/**'] },
     shared: { files: [], workspaceFiles: ['packages/**', '!packages/a/**/*.md'] },
     top: { files: ['**/*', '!**/*.md'] },
+    out: { files: [] },
+    outWs: { files: [] },
+  })
+  // Dropped, `dist/x` was cleaned before each run and saved, which Vite
+  // Task neither archives nor restores.
+  expect(outputs['out']).toEqual({ files: ['dist/**', '!dist/x/**'] })
+  expect(outputs['outWs']).toEqual({
+    files: [],
+    workspaceFiles: ['out/**', '!packages/a/out/**/*.map'],
   })
 })

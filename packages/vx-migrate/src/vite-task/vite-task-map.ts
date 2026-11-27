@@ -613,22 +613,20 @@ function globs(
     }
     ;(workspace ? ws : files).push((neg ? '!' : '') + body)
   }
+  // A negation only takes back what a positive glob matched, under either
+  // base (vite-plus 1.8.0), and core refuses a list of them alone: one with
+  // no positive under its base takes back from the other base.
+  const pkgPrefix = ctx.atRoot ? '' : `${ctx.pkgDir}/`
+  const positive = (l: string[]): boolean => l.some((g) => !g.startsWith('!'))
+  if (!positive(ws))
+    for (const g of ws.splice(0))
+      if (g.startsWith(`!${pkgPrefix}`)) files.push(`!${g.slice(pkgPrefix.length + 1)}`)
+  if (!positive(files) && positive(ws))
+    ws.push(...files.splice(0).map((g) => `!${pkgPrefix}${g.slice(1)}`))
   const lists: Record<string, string[]> = {}
   if (kind === 'input') {
-    // A negation only takes back what a positive glob matched (vite-plus
-    // 1.8.0), and core refuses a list of them alone: one with no positive
-    // under its base takes back from the other base, or nothing.
-    const pkgPrefix = ctx.atRoot ? '' : `${ctx.pkgDir}/`
-    const positive = (l: string[]): boolean => l.some((g) => !g.startsWith('!'))
-    if (!positive(ws)) {
-      for (const g of ws.splice(0))
-        if (g.startsWith(`!${pkgPrefix}`)) files.push(`!${g.slice(pkgPrefix.length + 1)}`)
-    }
-    if (!positive(files) && files.length > 0) {
-      // Exclusions alone narrow every file.
-      if (!positive(ws)) files.unshift('**/*')
-      else ws.push(...files.splice(0).map((g) => `!${pkgPrefix}${g.slice(1)}`))
-    }
+    // Exclusions alone narrow every file.
+    if (files.length > 0 && !positive(files)) files.unshift('**/*')
     lists['files'] = withoutTakenBack(files)
     if (ws.length > 0) lists['workspaceFiles'] = withoutTakenBack(ws)
   } else {
