@@ -407,7 +407,7 @@ Through `^` keys, the edit also re-keys its dependants.
 
 The manifest is `package.json`. Under `pnpm()` it is `package.json5` or `package.yaml` where the package has no `package.json`, as pnpm reads them (one stat per project a run).
 
-A task with no `inputs` stays keyless. One whose inputs already name its manifest is left alone.
+A task with no `inputs` stays keyless. One whose inputs already name its manifest is left alone, and so is one whose own `!` entry takes it back (`!**/*.json`): core refuses a literal a negation takes back.
 
 A task that rewrites its own `package.json` with the same bytes (tsdown) keeps its hits under `inputs.stability: { strategy: 'mutable' }`.
 
