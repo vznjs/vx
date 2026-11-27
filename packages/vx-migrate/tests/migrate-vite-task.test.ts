@@ -197,7 +197,12 @@ describe('vx-migrate (vite-task)', () => {
   it('a root task keys the workspace’s files', async () => {
     const ws = (await loadProjectConfig(path.join(root, 'vx.config.ts'))).tasks!
     expect([ws['check-all']!.inputs, ws['check-all']!.outputs, ws['check-all']!.cache]).toEqual([
-      { files: [], workspaceFiles: ['**/*.ts', '!dist/**'] },
+      // The members' outputs taken back: core refuses a key over another
+      // task's outputs with no edge to it.
+      {
+        files: [],
+        workspaceFiles: ['**/*.ts', '!dist/**', '!packages/app/out/**', '!packages/lib/dist/**'],
+      },
       { files: [] },
       true,
     ])
