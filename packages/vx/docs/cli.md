@@ -3655,6 +3655,8 @@ So a config that reads the environment keeps its lock-time values.
   project directory.
 - A project a sparse checkout left out is refused only when the run
   selects it or depends on it.
+- So is one whose directory the checkout kept for the ignored files in it
+  (an install's `node_modules`).
 - The refusal names every such project, and the one
   `git sparse-checkout add a b c` that brings them all back.
 - The message lists the first five and counts the rest. The command
