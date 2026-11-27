@@ -97,10 +97,15 @@ export async function findWorkspaceRoot(
     }
     const unread = unreadWorkspaceFile(start, top)
     if (unread !== null) {
-      const exts = WORKSPACE_CONFIG_FILENAMES.map((n) => n.slice('.vx/workspace.'.length)).join(', ')
+      const exts = WORKSPACE_CONFIG_FILENAMES.map((n) => n.slice('.vx/workspace.'.length)).join(
+        ', ',
+      )
       const headline = `${unread} is not read: vx reads a .vx/workspace ending in ${exts}`
       const fix = `move its settings into ${path.join(path.dirname(unread), 'workspace.ts')}`
-      throw refusal({ headline, fix }, { code: 'VX_E_NO_WORKSPACE', message: `${headline} — ${fix}` })
+      throw refusal(
+        { headline, fix },
+        { code: 'VX_E_NO_WORKSPACE', message: `${headline} — ${fix}` },
+      )
     }
     const headline = `no .vx/workspace.ts in ${start} or a parent${top === null ? '' : ' up to the git root'}`
     throw refusal(
