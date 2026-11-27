@@ -971,12 +971,14 @@ export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMe
     const meta = metas[i]!
     const rel = relPosix(root, meta.dir) || '.'
     if (meta.name === ROOT_NAME && rel !== '.') {
-      throw new UserError(`${rel}: "//" names the workspace root — set another \`name\``)
+      same.push(new UserError(`${rel}: "//" names the workspace root — set another \`name\``))
     }
     const fault = namedBy.has(meta) ? null : nameFault(meta.name)
     if (fault !== null) {
-      throw new UserError(
-        `${printable(rel)}: a project is named by its path unless named, and ${fault.replace('the name', 'this one')} — set \`name\` in its vx.config`,
+      same.push(
+        new UserError(
+          `${printable(rel)}: a project is named by its path unless named, and ${fault.replace('the name', 'this one')} — set \`name\` in its vx.config`,
+        ),
       )
     }
     const next = metas[i + 1]
@@ -997,7 +999,8 @@ export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMe
       )
     }
   }
-  // Every clash at once: a migrated workspace can hold several.
+  // Every clash and unaddressable name at once: a migrated workspace can
+  // hold several, and naming one a run left the next for the next `vx lock`.
   if (same.length === 1) throw same[0]!
   if (same.length > 1) throw new ConfigsRefused(same)
   return metas
