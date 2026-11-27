@@ -3664,7 +3664,8 @@ So a config that reads the environment keeps its lock-time values.
 - The message lists the first five and counts the rest. The command
   lists all.
 - `vx lock` and `vx lock --check` refuse there too, naming the same
-  command: the lock they wrote would drop those projects.
+  command: the lock they wrote would drop those projects. A plugin's
+  project (`turbo()`'s) the lock holds is named too.
 - A config added since the lock is no project until `vx lock`: a run
   never looks for one.
 - `--all` runs the locked projects; a run from its directory runs the

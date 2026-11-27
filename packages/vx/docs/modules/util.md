@@ -2209,7 +2209,8 @@ export function ignoredInputLine(task: string, rel: string, glob: string): strin
 - `sparseCheckoutSet`: whether the per-worktree git dir holds
   `info/sparse-checkout`, by walking up to `.git`; a stat or two, no spawn.
 - `sparseLeftDirsSync`: one `git ls-files -t` of `dirs`: those whose every
-  listed file is skip-worktree. Asked for config-less projects only where
+  listed file is skip-worktree. Asked for config-less projects (by a run,
+  and by `vx lock` for those it no longer finds) only where
   `sparseCheckoutSet` holds.
 - `uncheckedSubmoduleSync`: one `git ls-files --stage` of a directory's
   ancestors: the outermost submodule among them with no `.git` and nothing

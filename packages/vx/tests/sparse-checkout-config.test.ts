@@ -79,6 +79,19 @@ it('a left-out config-less project whose directory still stands is refused', asy
     false,
     '✗ vx run  packages/svc ("svc") is outside this sparse checkout, but this run needs it — run `git sparse-checkout add packages/svc`',
   ])
+  // Not discovered there, it left the committed lock.
+  const lockFile = path.join(root, '.vx/projects.lock')
+  const before = await Bun.file(lockFile).text()
+  for (const args of [['lock'], ['lock', '--check']]) {
+    const l = await vx(root, args)
+    expect([l.code, l.err]).toEqual([
+      1,
+      expect.stringContaining(
+        'packages/svc is outside this sparse checkout, so vx lock cannot read what the lock holds there — run `git sparse-checkout add packages/svc`',
+      ),
+    ])
+  }
+  expect(await Bun.file(lockFile).text()).toBe(before)
   // Brought back, it runs.
   git('sparse-checkout', 'disable')
   expect((await vx(root, ['run', 'build', '--filter', 'svc'])).code).toBe(0)
