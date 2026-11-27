@@ -362,6 +362,8 @@ export function unmountable(dir: string): { why: string; rest: string } | null
 export function namedPath(grant: string): string | undefined
 // A path with its existing prefix realpath'd and the rest re-appended.
 export function toRealPath(p: string): string
+// toRealPath for one judgement of a finished task's records: each path once.
+export function realPathOnce(): (p: string) => string
 export function absolutize(p: string, cwd?: string): string
 // `p` is `dir` or below it, by path (a name-prefix sibling is not): the
 // one copy of the check the sandbox code makes.
@@ -955,6 +957,12 @@ inside a new root), so a workspace reached through a symlink must not
 express half its policy in link paths and half in real ones. Before this
 was applied to the orchestrator baselines, such a workspace made every
 sandboxed task die with `bwrap: Can't mount tmpfs on /newroot/<link>`.
+
+A finished task's write records are judged on vx's own loop, so
+`refusedWrites` resolves each path once (`realPathOnce`). Resolved per
+record, a test shard's thousands held the loop 2.6 s; on a busy 4-core CI
+worker that passed the DTE relay's 6 s silence, and the run lost a worker
+whose task had passed (CI run 46013136782).
 
 Canonicalizing a WRITE grant is also how a link moved it: `out.txt ->
 ../b/src/x`, committed or planted by the task's own previous run, bound

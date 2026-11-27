@@ -167,6 +167,30 @@ export function toRealPath(p: string): string {
   }
 }
 
+/**
+ * `toRealPath` for one judgement of a finished task's records, each path
+ * resolved once: the files are still while they are read. A 40 s test
+ * shard's trace held thousands of records under few directories, and one
+ * realpath each held vx's loop 2.6 s; on a busy 4-core CI worker that
+ * passed the relay's 6 s silence and lost the worker (CI run 46013136782).
+ */
+export function realPathOnce(): (p: string) => string {
+  const known = new Map<string, string>()
+  const real = (p: string): string => {
+    let r = known.get(p)
+    if (r !== undefined) return r
+    try {
+      r = realpathSync(p)
+    } catch {
+      const parent = path.dirname(p)
+      r = parent === p ? p : path.join(real(parent), path.basename(p))
+    }
+    known.set(p, r)
+    return r
+  }
+  return real
+}
+
 export function absolutize(p: string, cwd?: string): string {
   if (path.isAbsolute(p)) return p
   return path.resolve(cwd ?? process.cwd(), p)

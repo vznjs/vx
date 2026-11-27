@@ -12,6 +12,7 @@ import {
   globOf,
   isUnderAny,
   localBindingOn,
+  realPathOnce,
   toRealPath,
   wildcardAt,
 } from './paths.js'
@@ -1044,8 +1045,9 @@ export function refusedWrites(
     granted: readonly string[]
   },
 ): SandboxViolation[] {
-  const binds = new Set(writable.map((w) => toRealPath(absolutize(w))))
-  const granted = new Set((widened?.granted ?? []).map((w) => toRealPath(absolutize(w))))
+  const real = realPathOnce()
+  const binds = new Set(writable.map((w) => real(absolutize(w))))
+  const granted = new Set((widened?.granted ?? []).map((w) => real(absolutize(w))))
   const globs = scratch.map(globOf)
   // Whether a write `binds` covers lands under a widened directory where
   // no grant covers it, and so is reported (see above).
@@ -1077,7 +1079,7 @@ export function refusedWrites(
   const timed = new Set<string>()
   for (const record of records) {
     const m = /^deny (\S+) (\/.*)$/s.exec(record)
-    if (m !== null && TIMES.test(m[1]!)) timed.add(toRealPath(m[2]!))
+    if (m !== null && TIMES.test(m[1]!)) timed.add(real(m[2]!))
   }
   let source = false
   for (const record of records) {
@@ -1096,8 +1098,8 @@ export function refusedWrites(
     // `ln -s ../src/a.ts dist/a` just made judged the write by `src/a.ts`,
     // and a clean task failed with a fix that granted `write: ['src/']`.
     const abs = NAME_SYSCALL.test(syscall)
-      ? path.join(toRealPath(path.dirname(raw)), path.basename(raw))
-      : toRealPath(raw)
+      ? path.join(real(path.dirname(raw)), path.basename(raw))
+      : real(raw)
     const bound = isUnderAny(abs, binds)
     if (underGlob(abs, globs)) {
       if (bound || OPEN_EITHER.test(syscall)) continue
