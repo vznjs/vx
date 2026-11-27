@@ -77,3 +77,42 @@ it('an output that is the whole workspace is the root project, else dropped with
   expect(todos).toEqual(['output "./" is the whole workspace — vx caches no such output; dropped'])
   expect(mapNxOutputs(['.'], {}, '.', 'a', todos).outFiles).toEqual(['*', '*/**'])
 })
+
+// A target whose name core refuses (`x#y`) is not migrated; an edge to it
+// left in another task's dependsOn made `vx lock` refuse the workspace.
+it('an edge to a target not migrated is dropped with a todo', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'vx-nx-edge-'))
+  try {
+    const metas = []
+    for (const n of ['a', 'b']) {
+      const dir = path.join(root, n)
+      await mkdir(dir)
+      await writeFile(path.join(dir, 'package.json'), `{"name":"${n}"}`)
+      metas.push({ name: n, dir, packageJson: { name: n } as never, configPath: null })
+    }
+    const run = (dependsOn: unknown[]) => ({ command: 'echo hi', dependsOn })
+    const graph = {
+      nodes: {
+        a: { data: { root: 'a', targets: { 'x#y': run([]), t: run(['x#y']) } } },
+        b: {
+          data: {
+            root: 'b',
+            targets: { u: run([{ target: 'x#y', projects: ['a'] }, 't']), t: run([]) },
+          },
+        },
+      },
+      dependencies: {},
+    }
+    const m = await mapNxWorkspace(root, metas, graph as NxGraph, { cacheable: new Set() })
+    const task = (p: string, t: string) =>
+      m.projects.find((x) => x.name === p)!.tasks.find((x) => x.name === t)!
+    expect(task('a', 'x#y').task).toBeNull()
+    expect(task('a', 't').task!['dependsOn']).toBeUndefined()
+    expect(task('b', 'u').task!['dependsOn']).toEqual(['t'])
+    expect(task('b', 'u').todos).toContain(
+      'dependsOn "a#x#y" dropped: that target was not migrated',
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

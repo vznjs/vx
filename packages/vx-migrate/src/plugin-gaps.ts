@@ -71,12 +71,17 @@ export function warnGaps(
 /**
  * A task whose name the schema refuses (`lint#fix`, `^up`) becomes a TODO, as
  * the scripts migrator does: written as a task, core refused the whole config
- * on the next command.
+ * on the next command. So does an edge to one: left in another task's
+ * `dependsOn`, `vx lock` refused the workspace for a task that is not there.
  */
 export function refuseTaskNames(
-  projects: readonly { tasks: { name: string; todos: string[]; task: object | null }[] }[],
+  projects: readonly {
+    name: string
+    tasks: { name: string; todos: string[]; task: Record<string, unknown> | null }[]
+  }[],
   what: string,
 ): void {
+  const gone = new Set<string>()
   for (const p of projects)
     for (const t of p.tasks) {
       const why = t.task === null ? null : taskNameProblem(t.name)
@@ -85,5 +90,20 @@ export function refuseTaskNames(
       t.todos = [
         `${what} ${JSON.stringify(t.name)} not migrated: its name ${why} — rename it, or add it by hand under another name`,
       ]
+      gone.add(`${p.name}#${t.name}`).add(`^${t.name}`)
+    }
+  if (gone.size === 0) return
+  for (const p of projects)
+    for (const t of p.tasks) {
+      const deps = t.task?.['dependsOn']
+      if (!Array.isArray(deps)) continue
+      const dropped = deps.filter(
+        (d) => typeof d === 'string' && (gone.has(d) || gone.has(`${p.name}#${d}`)),
+      )
+      if (dropped.length === 0) continue
+      t.task!['dependsOn'] = deps.filter((d) => !dropped.includes(d))
+      t.todos.push(
+        `dependsOn ${dropped.map((d) => JSON.stringify(d)).join(', ')} dropped: that ${what} was not migrated`,
+      )
     }
 }
