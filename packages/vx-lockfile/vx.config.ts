@@ -33,6 +33,7 @@ const SHARDS: readonly (readonly string[])[] = [
     'dependency-section',
     'lazy-load',
     'lockfile-choice',
+    'manifest-taken-back',
     'outside-dir-dep',
     'overrides-precise',
     'pnpm-exclude-links',
