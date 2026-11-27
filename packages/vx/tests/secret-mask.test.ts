@@ -54,6 +54,28 @@ describe('secretMask', () => {
     expect(s.end()).toBe('')
   })
 
+  // Back-to-back values make one span reaching each chunk's end: cut before
+  // it, the stream held the whole run and scanned it again per chunk
+  // (1.6 MB of zeros with a value of zeros: 17 s).
+  it('streams a long run of back-to-back values in time linear in its length', () => {
+    const m = secretMask([{ DB_PASSWORD: '000000000' }])!
+    const chunk = '0'.repeat(4000)
+    const t = performance.now()
+    const s = m.stream()
+    let out = ''
+    const f = m.spanStream()
+    const found: Array<[number, number]> = []
+    for (let i = 0; i < 400; i++) {
+      out += s.push(chunk)
+      found.push(...f.push(chunk))
+    }
+    out += s.push('\nok') + s.end()
+    found.push(...f.end())
+    expect(performance.now() - t).toBeLessThan(3_000)
+    expect(out).toBe(`${MASKED}\nok`)
+    expect(found).toEqual([[0, 1_600_000]])
+  })
+
   it('maskCut masks the pieces a cut leaves, a whole value across one, and nothing else', () => {
     const m = secretMask([{ API_TOKEN: SECRET }])!
     expect(m.maskCut('a hunter', '-l11-sekret b')).toEqual([`a ${MASKED}`, `${MASKED} b`])
