@@ -872,7 +872,8 @@ before or after it is ready (`persistent-task.ts`), gets one frame line from
 `shell-verdict.ts` (`shellVerdict`), because the shell's own line names
 the word and nothing about why. A 127 whose working directory is now a
 file (a dependency replaced the project's directory: Bun's spawn exits
-127 there unsaid) names the directory, not a program to install. A bare word is a PATH lookup and the
+127 there unsaid; a sandboxed spawn throws ENOTDIR, and `spawnFailureText`
+names it too) names the directory, not a program to install. A bare word is a PATH lookup and the
 PATH is vx's: the line names the word (`execWord`, the predicate
 `execWrap` uses; for a compound command, the word the shell's own "not
 found" line names in the step's stderr, else "a command in this task"), the two

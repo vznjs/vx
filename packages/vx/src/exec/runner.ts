@@ -17,6 +17,7 @@ import {
   helperEnv,
   outputPaced,
   RawUtf8Decoder,
+  statOrAbsent,
   type SecretMask,
 } from '../util/index.js'
 import {
@@ -1263,6 +1264,13 @@ export function spawnFailureText(
   /** The spawn's environment: an `E2BIG` it caused names it, not the command. */
   env?: NodeJS.ProcessEnv,
 ): string {
+  // A file where the directory was (a dependency replaced it): the sandboxed
+  // spawn's ENOTDIR named only `sh`.
+  if (
+    (err as NodeJS.ErrnoException)?.code === 'ENOTDIR' &&
+    statOrAbsent(cwd)?.isDirectory() === false
+  )
+    return `[vx] failed to spawn ${what}: its working directory ${cwd} is not a directory — something replaced it during the run\n`
   if (isExecutableMissing(err)) {
     // Bun names `sh` in the ENOENT a missing directory gives too.
     return existsSync(cwd)
