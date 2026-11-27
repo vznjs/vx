@@ -11,6 +11,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   type Stats,
   rmSync,
   statSync,
@@ -334,8 +335,12 @@ function makeCacheDir(cacheDir: string): void {
     // writable" sent the user to chmod a tree that was writable.
     if (code === 'EEXIST' || code === 'ENOTDIR') {
       const file = inTheWay(cacheDir)
+      // A link to nothing is no file: "move it away" sent the user hunting.
+      const what = lstatOrAbsent(file)?.isSymbolicLink()
+        ? `a link to ${readlinkSync(file)}, ${statOrAbsent(file) === undefined ? 'which is not there' : 'not a directory'}`
+        : 'a file, not a directory'
       throw new UserError(
-        `cannot create cache directory ${cacheDir}: ${file} is a file, not a directory — move it away, ${where}`,
+        `cannot create cache directory ${cacheDir}: ${file} is ${what} — move it away, ${where}`,
         'VX_E_FS',
       )
     }

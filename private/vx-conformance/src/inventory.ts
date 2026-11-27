@@ -1069,6 +1069,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'cache-baseline',
     'cache-close-old-bun',
     'cache-close.unsafe',
+    'cache-dir-dangling',
     'cache-disk-full',
     'cache-get-many',
     'cache-hash-files',
