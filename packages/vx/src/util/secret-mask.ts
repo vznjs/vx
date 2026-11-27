@@ -374,13 +374,13 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
     }
     return longest
   }
-  /** Where `text` may be cut: nothing after it could begin a value, and no span in `found` runs across it. */
-  const cutOf = (text: string, found: ReadonlyArray<[number, number]>): number => {
-    let cut = text.length - partialTail(text)
-    for (const [s, e] of found) if (s < cut && e > cut) cut = s
-    return cut
-  }
-  const safeCut = (text: string): number => cutOf(text, spans(text))
+  /**
+   * Where `text` may be cut: nothing after it could begin a value. A span
+   * may run across it: it is whole in `text`, and its rest is masked from
+   * there. Cutting before it held a run of back-to-back values (a value of
+   * zeros in a run of zeros) whole and scanned it again on every chunk.
+   */
+  const cutOf = (text: string): number => text.length - partialTail(text)
   return {
     mask,
     spans,
@@ -403,7 +403,7 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
       const settle = (found: ReadonlyArray<[number, number]>, upTo: number) => {
         const out: Array<[number, number]> = []
         for (const [s, e] of found) {
-          if (e > upTo) break
+          if (s >= upTo) break
           if (last !== undefined && base + s <= last[1]) last[1] = Math.max(last[1], base + e)
           else {
             if (last !== undefined) out.push(last)
@@ -416,7 +416,7 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
         push(chunk) {
           const text = carry + chunk
           const found = spans(text)
-          const cut = cutOf(text, found)
+          const cut = cutOf(text)
           const out = settle(found, cut)
           carry = text.slice(cut)
           base += cut
@@ -441,9 +441,12 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
       // that mask, as in the whole text. Holding the span back for that held
       // back-to-back values forever and re-scanned them per chunk.
       let joined = false
-      const out = (text: string, shown: number): string => {
+      const out = (
+        text: string,
+        shown: number,
+        found: ReadonlyArray<[number, number]> = spans(text),
+      ): string => {
         if (text.length <= shown) return ''
-        const found = spans(text)
         let masked = ''
         let at = shown
         for (const [s, e] of found) {
@@ -464,11 +467,20 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
           const text = carry + chunk
           // Held back: only a tail that could begin a value, so output that
           // cannot be one is never delayed (a `readyWhen` line, a marker).
-          const cut = safeCut(text)
+          const found = spans(text)
+          const cut = cutOf(text)
           carry = text.slice(cut)
           const shown = Math.min(ghost, cut)
           ghost -= shown
-          return out(text.slice(0, cut), shown)
+          // A span across the cut is masked up to it, and its rest is never
+          // shown: a ghost, which a value it begins joins.
+          const before: Array<[number, number]> = []
+          for (const [s, e] of found) {
+            if (s >= cut) break
+            before.push([s, Math.min(e, cut)])
+            if (e > cut) ghost = Math.max(ghost, e - cut)
+          }
+          return out(text.slice(0, cut), shown, before)
         },
         release() {
           // A piece too short to say much goes out as written; a longer one

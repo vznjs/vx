@@ -1637,8 +1637,11 @@ builds its status-line mask again when `heldSecrets()` grows, and
 Every value is matched at every position (a lookahead alternation), and
 overlapping or adjacent matches merge into one span and one `***`: one
 alternation resumed past a match, so `${A}xyz789`, where `B` is `A`'s
-tail plus `xyz789`, printed `***xyz789`. A stream never cuts through a
-span, nor right after one with a held tail behind it.
+tail plus `xyz789`, printed `***xyz789`. A stream cuts through a span
+only once it is whole: the part before the cut goes as `***` and the rest
+is never shown, joined by any value it begins. Holding such a span back
+held a run of back-to-back values whole and scanned it again on every
+chunk: 1.6 MB of zeros with a password of zeros took 26 s.
 
 `stream()` holds back only a tail that could begin a value, so a value
 split across two chunks is caught and output that cannot be one (a
