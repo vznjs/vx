@@ -2,13 +2,12 @@
 // ran `vx lock` all the same once the plugins resolved, and its failure
 // (a turbo.json Turbo itself refuses) failed the migration it was told
 // to leave unlocked.
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const PACKAGES = path.resolve(import.meta.dir, '..', '..')
 
 let root: string
 afterAll(async () => {
@@ -27,9 +26,11 @@ it('--keep --no-install writes the workspace file and leaves vx lock to the user
     JSON.stringify({ name: 'a', scripts: { build: 'echo b' } }),
   )
   await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { build: {} } }))
-  await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
-  for (const p of ['vx', 'vx-migrate', 'vx-history'])
-    await symlink(path.join(PACKAGES, p), path.join(root, 'node_modules', '@vzn', p))
+  // Installed as far as the report checks; a `vx lock` run would fail on them.
+  for (const p of ['vx', 'vx-migrate', 'vx-history']) {
+    await mkdir(path.join(root, 'node_modules', '@vzn', p), { recursive: true })
+    await writeFile(path.join(root, 'node_modules', '@vzn', p, 'package.json'), '{}')
+  }
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   const p = Bun.spawnSync({
     cmd: [process.execPath, BIN, '--keep', '--no-install'],
