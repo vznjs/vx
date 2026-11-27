@@ -767,6 +767,26 @@ describe('runPersistent', () => {
     30_000,
   )
 
+  // The open line was tested again on every chunk: a server's 48 KB line
+  // written in 120 pieces cost `.*up` the whole growing line 120 times, and
+  // a longer one froze vx (a 600 KB line held it past a SIGTERM for minutes).
+  it('tests a long open line once, when its break arrives', async () => {
+    const spawn = runPersistent({
+      command: `i=0; while [ $i -lt 120 ]; do printf '%0400d' 0; sleep 0.01; i=$((i+1)); done; printf '\\nup\\n'; exec sleep 30`,
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: '.*up',
+    })
+    try {
+      const t = performance.now()
+      await spawn.ready
+      expect(performance.now() - t).toBeLessThan(5_000)
+    } finally {
+      spawn.child!.kill('SIGKILL')
+      await spawn.child!.exited
+    }
+  }, 60_000)
+
   it('readyWhen matches a character split across two writes', async () => {
     // `€` is three bytes; the child writes two, pauses, then the third.
     const spawn = runPersistent({
