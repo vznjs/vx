@@ -3740,6 +3740,8 @@ config edited after `vx lock` adds a `dependsOn` loop:
   `.tsx`) where no config is read: that directory is no project.
 - One beside a config vx reads is left alone. That warning does not fail
   `--check` either.
+- A `.vx/workspace.json` is named even beside `.vx/workspace.ts`: `.vx`
+  is vx's own, so its settings were meant for vx.
 - `--format json` answers `--check` only. Its schema is
   `schemas/lock.json`, and the exit code is unchanged.
 - Under `--format json`, paths are root-relative.

@@ -317,7 +317,7 @@ export interface ProjectConfigs {
   readonly strayReviews: string[]
   /** Absolute: config files a higher-precedence one beside them hides, the root's workspace config among them, by the one read. */
   readonly shadowed: { file: string; read: string }[]
-  /** Absolute, sorted: `vx.config.*` files by a name vx does not read (`.json`, `.tsx`) in a directory holding no config it reads. */
+  /** Absolute, sorted: `vx.config.*` files by a name vx does not read (`.json`, `.tsx`) in a directory holding no config it reads, and the root's `.vx/workspace.*` by such a name. */
   readonly unread: string[]
   /** Absolute, sorted: the outermost directories holding their own `.vx/workspace.*`. */
   readonly nestedWorkspaces: string[]
@@ -422,9 +422,25 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
         .filter((file) => !configured.has(path.dirname(file)))
         .map(async (file) => ((await isFile(file)) ? file : null)),
     )
-  )
-    .filter((f) => f !== null)
-    .sort()
+  ).filter((f) => f !== null)
+  // `.vx` is vx's own: a `workspace.*` there by a name vx does not read is
+  // settings dropped even beside the one read (`vx init` wrote a `.ts`
+  // beside a `.json` without a word).
+  let dotVx: string[] = []
+  try {
+    dotVx = readdirSync(path.join(root, '.vx'))
+  } catch {
+    // no `.vx`: the root is refused before this
+  }
+  const readNames = new Set(WORKSPACE_CONFIG_FILENAMES.map((n) => n.slice('.vx/'.length)))
+  for (const n of dotVx)
+    if (
+      n.startsWith('workspace.') &&
+      !readNames.has(n) &&
+      (await isFile(path.join(root, '.vx', n)))
+    )
+      unread.push(path.join(root, '.vx', n))
+  unread.sort()
   // On disk only: git lists a tracked copy deleted with its project.
   const strayReviews = (
     await Promise.all(
