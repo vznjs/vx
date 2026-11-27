@@ -274,7 +274,8 @@ Rules:
 - An explicit list also keys the package's own `package.json`, as Turbo does whatever the negations.
 - So a negation that matches `package.json` (`!**/*.json`, `!**`) is dropped. That keys more, never a stale hit.
 - `$TURBO_ROOT$/<path>` is `inputs.workspaceFiles`, negation kept. Any other `$TURBO_ROOT$` use is a todo.
-- A `!$TURBO_ROOT$/` input with no positive `$TURBO_ROOT$/` glob takes back from the package's globs, as Turbo does (`!$TURBO_ROOT$/packages/a/src/gen/**` is `!src/gen/**`), or nothing when it lies outside the package.
+- A `!$TURBO_ROOT$/` input with no positive `$TURBO_ROOT$/` glob takes back from the package's globs, as Turbo does, or nothing outside it.
+- So `!$TURBO_ROOT$/packages/a/src/gen/**` is `!src/gen/**`.
 
 <details><summary>Details</summary>
 
@@ -610,7 +611,8 @@ With this file, `vx run build --all` maps every project's `build` target the way
 - The default `production` negation `?(*.)+(spec|test).[jt]s?(x)` becomes brace sets, a narrowing only a negation may take.
 - What has no safe form is a todo.
 - A project fileset of negations alone (nx-recipes' `noMarkdown`) starts from every project file, as Nx reads it.
-- A `{workspaceRoot}` fileset of negations alone starts from every workspace file, as Nx 24 reads it, unless its positive globs all lie in the project.
+- A `{workspaceRoot}` fileset of negations alone starts from every workspace file, as Nx 24 reads it.
+- When its positive globs all lie in the project, its negations are dropped.
 - A `!` acts only inside its own set. Nx hashes the `{projectRoot}` and `{workspaceRoot}` filesets apart, and vx subtracts each `!` from its whole list.
 - So a `!` that may reach another set's files is dropped, which keys more, never a stale hit.
 - Example: production's `!{projectRoot}/jest.config.[jt]s` beside a `{workspaceRoot}/libs/a/jest.config.ts` input keeps the file.
