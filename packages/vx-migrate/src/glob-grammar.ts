@@ -81,7 +81,8 @@ export function gluedGlobstarAsStar(glob: string): string {
  * load, which would stop an unchanged repo's run, so the adapters drop it.
  * A repeat adds nothing in any order: TanStack Query's `test:eslint` named
  * `eslint.config.js` twice (`sharedGlobals` and its own), and the written
- * config listed it twice.
+ * config listed it twice. When every positive is taken back, nothing is
+ * left: `['gen', '!**']` selects no file in any of them.
  */
 export function withoutTakenBack<T>(entries: readonly T[]): T[] {
   const list = [...new Set(entries)]
@@ -93,11 +94,14 @@ export function withoutTakenBack<T>(entries: readonly T[]): T[] {
   const globs = negative
     .flatMap((n) => (wild.test(n) ? [n] : [n, `${n.replace(/\/+$/, '')}/**`]))
     .map((g) => new Bun.Glob(g.replace(/^\.\//, '')))
-  return list.filter((e) => {
+  const kept = list.filter((e) => {
     if (typeof e !== 'string' || e.startsWith('!') || wild.test(e)) return true
     const lit = e.replace(/^\.\//, '').replace(/\/+$/, '')
     return !globs.some((g) => g.match(lit))
   })
+  // Every positive taken back: the list selects nothing, and core refuses
+  // the negations left alone ("selects NOTHING").
+  return kept.length > negative.length || kept.length === list.length ? kept : []
 }
 
 /**

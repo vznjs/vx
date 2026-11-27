@@ -276,6 +276,7 @@ Rules:
 - `$TURBO_ROOT$/<path>` is `inputs.workspaceFiles`, negation kept. Any other `$TURBO_ROOT$` use is a todo.
 - A `!$TURBO_ROOT$/` input with no positive `$TURBO_ROOT$/` glob takes back from the package's globs, as Turbo does, or nothing outside it.
 - So `!$TURBO_ROOT$/packages/a/src/gen/**` is `!src/gen/**`.
+- A list whose every positive a negation takes back (`gen`, `!**`) selects nothing, in Turbo, Nx and Vite Task alike, and is written empty.
 - An input wholly inside the task's own literal output (`lib` in both) is dropped with a todo: vx cleans the outputs before the task runs.
 
 <details><summary>Details</summary>
