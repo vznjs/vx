@@ -742,6 +742,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/glob-grammar',
     'vx-migrate/head-stamp-reftable',
     'vx-migrate/helpers-sweep',
+    'vx-migrate/keep-no-install',
     'vx-migrate/keychain-token',
     'vx-migrate/mapping-cache',
     'vx-migrate/migrate',
