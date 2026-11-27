@@ -67,8 +67,10 @@ interface Job {
   calledAt?: number
   /** The cores its worker booked for it. */
   booked?: number
-  /** The workers that failed it after beginning it, with why: two fail it. */
+  /** The workers that failed it after beginning it, with why: two faults, or `LOST_LIMIT` losses, fail it. */
   faults?: string[]
+  /** How many of `faults` are workers lost under it. */
+  losses?: number
   /** Its worker's `end` came: a report naming it no more is not a loss. */
   ended?: true
   /** When it was sent to its worker. */
@@ -227,6 +229,14 @@ const BATCH_BYTES = 512 * 1024
 const OVERBOOK = 1.5
 /** Failed starts the run replaces before it calls its setup broken. */
 const RESTARTS = 3
+/**
+ * Workers lost under one task before it fails. A loss is the relay's silence
+ * or a worker's job ending, which says nothing of the task: a run whose every
+ * task passed failed on two workers the relay lost at once (M 2026-11-27: "If
+ * all tasks passed but workers failed, this is not a failed DD"). Bounded, so
+ * a task that kills each worker it runs on does not start workers without end.
+ */
+const LOST_LIMIT = 4
 
 /** `orders` in runs of at most `max` bytes of JSON; one bigger goes alone. */
 function parts<T extends { bytes: number }>(orders: readonly T[], max: number): T[][] {
@@ -1506,8 +1516,14 @@ export class Orchestrator extends RunReport<Worker> {
     if (begun) {
       a.faulty = true
       job.faults = [...(job.faults ?? []), `${a.label} ${why}`]
-      if (job.faults.length >= 2) {
-        job.reject(new Error(`${job.req.taskId}: failed on 2 workers: ${job.faults.join(', ')}`))
+      if (why === 'lost') job.losses = (job.losses ?? 0) + 1
+      const losses = job.losses ?? 0
+      if (job.faults.length - losses >= 2 || losses >= LOST_LIMIT) {
+        job.reject(
+          new Error(
+            `${job.req.taskId}: failed on ${job.faults.length} workers: ${job.faults.join(', ')}`,
+          ),
+        )
         this.bound?.drop(job.req.taskId, this.clock())
         return undefined
       }

@@ -1091,6 +1091,8 @@ does not answer, so a warm run starts none.
   busy. So a lull between two wide parts keeps it.
 - A lost worker's tasks run again on another, and the run starts one in its
   place.
+- A lost worker says nothing of its tasks: a task fails only once 4 workers
+  were lost under it, or 2 failed it (a full disk, an unpack that failed).
 
 <details><summary>Details</summary>
 

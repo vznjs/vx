@@ -2921,26 +2921,50 @@ it('lists the workers that left as one line while the run goes', async () => {
   }
 })
 
-// A lost worker's task runs again on another, two workers at most: each
-// task sent runs at once, so each counts.
-it('a task lost with two workers fails naming both', async () => {
+// A lost worker says nothing of its task (M 2026-11-27: "If all tasks passed
+// but workers failed, this is not a failed DD"): main's run failed two
+// passing shards, each on two workers the relay lost at once.
+it('a task lost with two workers runs on a third and passes', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
-    const a = await h.worker(1)
-    await Bun.sleep(50)
-    // Its failure lands while b leaves, before the test awaits it.
+    h.store.saved.set('k-t1', [])
+    const t1 = h.o.execute(h.req('t1')).then(
+      (r) => `exit ${r.exitCode}`,
+      (e: Error) => e.message,
+    )
+    for (const _ of [1, 2]) {
+      const w = await h.worker(1)
+      expect(await w.batches()).toEqual([['t1']])
+      await Bun.sleep(50)
+      await w.leave()
+    }
+    const c = await h.worker(1)
+    expect(await c.batches()).toEqual([['t1']])
+    await c.say({ type: 'end', task: 't1', key: 'k-t1', result: { exitCode: 0, durationMs: 1 } })
+    expect(await t1).toBe('exit 0')
+  } finally {
+    await h.stop()
+  }
+})
+
+// Bounded: a task that kills each worker it runs on starts no workers without end.
+it('a task lost with four workers fails naming them', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    // Its failure lands while the last leaves, before the test awaits it.
     const t1 = h.o.execute(h.req('t1')).then(
       () => '',
       (e: Error) => e.message,
     )
-    expect(await a.batches()).toEqual([['t1']])
-    await Bun.sleep(50)
-    await a.leave()
-    const b = await h.worker(1)
-    expect(await b.batches()).toEqual([['t1']])
-    await Bun.sleep(50)
-    await b.leave()
-    expect(await t1).toBe('t1: failed on 2 workers: worker#1 lost, worker#2 lost')
+    for (const _ of [1, 2, 3, 4]) {
+      const w = await h.worker(1)
+      expect(await w.batches()).toEqual([['t1']])
+      await Bun.sleep(50)
+      await w.leave()
+    }
+    expect(await t1).toBe(
+      't1: failed on 4 workers: worker#1 lost, worker#2 lost, worker#3 lost, worker#4 lost',
+    )
   } finally {
     await h.stop()
   }
