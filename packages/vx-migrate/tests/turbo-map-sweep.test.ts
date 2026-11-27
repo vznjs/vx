@@ -794,7 +794,9 @@ describe('turbo-map: what the sweep found unheld', () => {
       { a: { scripts: { build: 'b' } } },
     )
     const inputs = t.task!['inputs'] as { files: string[]; workspaceFiles?: string[] }
-    expect(inputs).toEqual({ files: ['src/**', 'package.json'], workspaceFiles: ['!secret.json'] })
+    // `!secret.json` alone in workspaceFiles was refused by core; it takes
+    // back nothing from the package's own globs (turbo-root-negation.test.ts).
+    expect(inputs).toEqual({ files: ['src/**', 'package.json'] })
     expect(t.todos).toEqual([
       'input "../../../out.txt": leaves the workspace — map manually',
       'input "a/$TURBO_ROOT$/x": $TURBO_ROOT$ only maps as a \'$TURBO_ROOT$/<path>\' prefix (→ inputs.workspaceFiles) — map manually',

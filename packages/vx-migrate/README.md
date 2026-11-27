@@ -274,6 +274,8 @@ Rules:
 - An explicit list also keys the package's own `package.json`, as Turbo does whatever the negations.
 - So a negation that matches `package.json` (`!**/*.json`, `!**`) is dropped. That keys more, never a stale hit.
 - `$TURBO_ROOT$/<path>` is `inputs.workspaceFiles`, negation kept. Any other `$TURBO_ROOT$` use is a todo.
+- A `!$TURBO_ROOT$/` input with no positive `$TURBO_ROOT$/` glob takes back from the package's globs, as Turbo does, or nothing outside it.
+- So `!$TURBO_ROOT$/packages/a/src/gen/**` is `!src/gen/**`.
 
 <details><summary>Details</summary>
 
@@ -313,6 +315,7 @@ Rules:
 - Those are the same files, cleaned only where git tracks none (see the wildcard rule below).
 - As an input, `""`, `"."` and `"./"` are every package file, `**/*`.
 - `$TURBO_ROOT$/<path>` is `outputs.workspaceFiles`.
+- A `!$TURBO_ROOT$/` output with none beside it takes back from the package's outputs the same way: Turbo leaves `dist/x` out of a `dist/**` restore.
 - Turbo caches whichever outputs a run wrote; vx fails a task that writes none.
 - A `coverage` output is written only with coverage on, so the migration names it as a todo unless the command turns coverage on (`--coverage`).
 
@@ -608,6 +611,8 @@ With this file, `vx run build --all` maps every project's `build` target the way
 - The default `production` negation `?(*.)+(spec|test).[jt]s?(x)` becomes brace sets, a narrowing only a negation may take.
 - What has no safe form is a todo.
 - A project fileset of negations alone (nx-recipes' `noMarkdown`) starts from every project file, as Nx reads it.
+- A `{workspaceRoot}` fileset of negations alone starts from every workspace file, as Nx 24 reads it.
+- When its positive globs all lie in the project, its negations are dropped.
 - A `!` acts only inside its own set. Nx hashes the `{projectRoot}` and `{workspaceRoot}` filesets apart, and vx subtracts each `!` from its whole list.
 - So a `!` that may reach another set's files is dropped, which keys more, never a stale hit.
 - Example: production's `!{projectRoot}/jest.config.[jt]s` beside a `{workspaceRoot}/libs/a/jest.config.ts` input keeps the file.
@@ -1352,6 +1357,7 @@ There is no live plugin, so `--keep` is refused.
 - Any other form stays in the command with a TODO: `--parallel`, `-t`, forwarded arguments, or a `vp run` after another command.
 - So does a command with `||`, `;`, `&`, a subshell or a backtick outside quotes: Vite Task runs it whole in a shell, so what runs after a failure differs.
 - A quoted `&&` (`echo "a&&b"`) is never a cut.
+- A `vp run` behind an env prefix (`MODE=ci vp run x`) stays in the command with a TODO.
 
 | Vite Task                                                  | vx                                                                                                                                                                                                                           |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -308,6 +308,16 @@ export function expandNxInputs(
       )
   }
   for (const entry of entries) expand(entry, new Set())
+  // Nx matches a workspace fileset with no positive glob against every
+  // workspace file, the negations taken out (nx 24.0.7: a root file edit
+  // re-runs `!{workspaceRoot}/docs/**` beside a project glob, a docs edit
+  // hits). One whose positives all lie in the project keeps them in
+  // `files`, where a negation outside it takes nothing back. Written as the
+  // negations alone, core refused the list.
+  if (into.wsFiles.length > 0 && into.wsFiles.every((f) => f.startsWith('!'))) {
+    if (wsOwn.some((f) => !f.startsWith('!'))) into.wsFiles.length = 0
+    else into.wsFiles.unshift('**/*')
+  }
   // Nx hashes the `{projectRoot}` and `{workspaceRoot}` filesets as two
   // sets, a `!` acting only inside its own; core subtracts every `!` in
   // `files` from every entry. Production's `!{projectRoot}/jest.config.[jt]s`

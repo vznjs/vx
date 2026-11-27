@@ -117,7 +117,10 @@ describe('expandNxInputs', () => {
   })
 
   it('a negated {workspaceRoot} glob stays negated', () => {
-    expect(inputs(['!{workspaceRoot}/secret.json']).wsFiles).toEqual(['!secret.json'])
+    expect(inputs(['{workspaceRoot}/*.json', '!{workspaceRoot}/secret.json']).wsFiles).toEqual([
+      '*.json',
+      '!secret.json',
+    ])
   })
 
   it('an unsupported token is reported, not read as a named input', () => {
@@ -135,6 +138,19 @@ describe('expandNxInputs', () => {
       inputs(['{projectRoot}/src/**', 'noMarkdown'], named).files,
       inputs(['!{workspaceRoot}/secret.json']).files,
     ]).toEqual([['**/*', '!**/*.md'], ['src/**', '!**/*.md'], []])
+  })
+
+  // Nx 24.0.7 reads a workspace fileset of negations alone as every
+  // workspace file but those: a root file edit re-ran
+  // `['{projectRoot}/src/**/*', '!{workspaceRoot}/docs/**']`, a docs edit
+  // hit. Written as the negations alone, `vx lock` refused it.
+  it('a workspace fileset of negations alone starts from every workspace file', () => {
+    expect([
+      inputs(['{projectRoot}/src/**', '!{workspaceRoot}/docs/**']).wsFiles,
+      inputs(['!{workspaceRoot}/secret.json']).wsFiles,
+      inputs(['{workspaceRoot}/docs/**', '!{workspaceRoot}/docs/x.md']).wsFiles,
+      inputs(['{workspaceRoot}/packages/a/src/**', '!{workspaceRoot}/docs/**']).wsFiles,
+    ]).toEqual([['**/*', '!docs/**'], ['**/*', '!secret.json'], ['docs/**', '!docs/x.md'], []])
   })
 
   it('a named input that names itself terminates', () => {

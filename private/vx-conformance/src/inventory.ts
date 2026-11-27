@@ -926,6 +926,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-migrate/turbo-persistent-unreached',
     'vx-migrate/turbo-proto-names',
     'vx-migrate/turbo-root-engines',
+    'vx-migrate/turbo-root-negation',
     'vx-migrate/turbo-scriptless-build',
     'vx-migrate/turbo-scriptless-task',
     'vx-migrate/turbo-sibling-output-input',

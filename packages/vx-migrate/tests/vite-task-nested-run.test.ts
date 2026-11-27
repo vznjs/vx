@@ -30,6 +30,7 @@ describe('vx-migrate (vite-task): nested `vp run`', () => {
           quoted: 'vp run lint && echo "a&&b"',
           orelse: 'vp run lint && node a.js || node b.js',
           redirect: 'vp run lint && node a.js 2>&1',
+          prefixed: 'MODE=ci vp run lint',
           lint: 'oxlint',
           check: 'tsc',
         },
@@ -102,6 +103,9 @@ describe('vx-migrate (vite-task): nested `vp run`', () => {
     expect(ws['mix']!.exec!.command).toBe('echo a && vp run lint')
     expect(out).toContain('`vp run -r --parallel dev` runs Vite Task inside the command')
     expect(out).toContain('`vp run lint` runs Vite Task inside the command')
+    // An env prefix hid it: kept with no TODO, Vite Task ran nested under vx.
+    expect(ws['prefixed']!.exec!.command).toBe('MODE=ci vp run lint')
+    expect(out).toContain('`MODE=ci vp run lint` runs Vite Task inside the command')
   })
 
   // Cut at every `&&`, `echo "a&&b"` was written back as `echo "a && b"`;

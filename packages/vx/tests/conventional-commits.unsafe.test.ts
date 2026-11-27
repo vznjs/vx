@@ -138,6 +138,8 @@ const KNOWN = new Set([
   '52a75ee137857c008f951bff6249f59e454f78a5',
   // The third mega branch's, pushed before the row ran on it: 73 chars.
   'a91621c9fa0979287670970e03c194085cff658c',
+  // #5691's Turbo negation fix, pushed before its subject was cut: 74 chars.
+  '067c14acb101a4fe3090e6ae7d55892ebe0e0e26',
   // #4893's, pushed with `style`, a type the row does not take; the branch takes no force push.
   '67926096fc590900362a8b9096ad6b005b33bd60',
   // #4906's, pushed before the row ran on it: 72 chars; the branch takes no force push.
