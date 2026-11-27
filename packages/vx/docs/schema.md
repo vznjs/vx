@@ -770,8 +770,9 @@ interface PersistentConfig {
   `Local` under `FORCE_COLOR`.
 - The trailing partial line is tested too, so a banner with no newline
   (`printf 'Listening on :3000'`) counts.
-- A partial line is tested on each write from 4 KB before what the write
-  added, and whole once its break arrives: `.*up` over a 600 KB line, tested
+- On each write, a partial line is searched for a match starting at most
+  1 KB before what the write added (`^` still means the line's start), and
+  tested whole once its break arrives: `.*up` over a 600 KB line, tested
   whole on every write, held vx for minutes.
 - A server not ready after 10 s is said once, naming the pattern it waits
   for, and whether `exec.timeout` bounds the wait.

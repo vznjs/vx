@@ -847,9 +847,10 @@ const READY_MATCH_WINDOW_CHARS = 64 * 1024
  * against `readyWhen` again: enough for a marker the last write split. The
  * whole growing line was tested on every chunk; `.*up` over a 600 KB line
  * held vx for minutes, past a SIGTERM. The whole line (up to the window) is
- * tested once its break arrives.
+ * tested once its break arrives. Small: `.*up` costs the square of what it
+ * is tested on, and 4 KB a write cost a slow worker 8 s over 64 KB.
  */
-const READY_OPEN_LINE_CHARS = 4096
+const READY_OPEN_LINE_CHARS = 1024
 
 /**
  * Terminal escapes a `readyWhen` pattern is matched without (CSI, OSC, charset
@@ -950,6 +951,9 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // Pattern compiled once; thrown errors surface synchronously so the
   // caller can wrap with a user-facing message.
   const readyRe = opts.readyWhen !== undefined ? new RegExp(opts.readyWhen) : undefined
+  // The same pattern searching from an offset: `^` and a lookbehind still see
+  // the whole line, as a slice of it would not (`^Listening` matched mid-line).
+  const readyFrom = opts.readyWhen !== undefined ? new RegExp(opts.readyWhen, 'g') : undefined
 
   let child: ReturnType<typeof Bun.spawn>
   const pipes = new TaskPipes(opts.terminal, true)
@@ -1046,6 +1050,15 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
   // prompt-style markers.
   const readyLine = (re: RegExp, line: string): boolean =>
     re.test(line.includes('\x1b') ? line.replace(TERMINAL_ESCAPE_RE, '') : line)
+  /** Whether `line` holds a match starting at `from` or later. */
+  const readyLineFrom = (line: string, from: number): boolean => {
+    if (line.includes('\x1b')) {
+      from = line.slice(0, from).replace(TERMINAL_ESCAPE_RE, '').length
+      line = line.replace(TERMINAL_ESCAPE_RE, '')
+    }
+    readyFrom!.lastIndex = from
+    return readyFrom!.test(line)
+  }
   const consumeChunks = async (
     stream: ReadableStream<Uint8Array> | number | undefined,
     isStderr: boolean,
@@ -1078,7 +1091,7 @@ export function runPersistent(opts: PersistentOptions): PersistentSpawn {
       // what this chunk added: each character is tested a bounded number of
       // times, and the whole line once, at its break.
       const from = Math.max(0, base - start - READY_OPEN_LINE_CHARS)
-      if (readyLine(re, from === 0 ? fragment : fragment.slice(from))) {
+      if (from === 0 ? readyLine(re, fragment) : readyLineFrom(fragment, from)) {
         fragment = ''
         return chunk.length
       }
