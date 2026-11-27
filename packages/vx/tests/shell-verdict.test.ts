@@ -330,3 +330,13 @@ describe('shellVerdict', () => {
     expect(verdict(200, 'x')).toBeUndefined()
   })
 })
+
+// A dependency that replaced the project's directory with a file: Bun's
+// spawn exits 127 there with nothing said, and the verdict sent the reader
+// to install `echo`.
+it('a 127 in a working directory that is a file names the directory', async () => {
+  const file = path.join(cwd, 'fine.sh')
+  expect(shellVerdict({ code: 127, command: 'echo hi', cwd: file, bins })).toBe(
+    `[vx] exit 127: the task's working directory ${file} is not a directory — something replaced it during the run`,
+  )
+})
