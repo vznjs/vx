@@ -19,6 +19,7 @@ import {
   existingBracketsLiteral,
   literalGlob,
   minimatchToVx,
+  negationsAcrossBases,
   withoutTakenBack,
 } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
@@ -2198,6 +2199,7 @@ function buildTask(
     ],
     inline ? [] : hidden('inputs'),
   )
+  negationsAcrossBases(files, allWs, atRoot ? '' : pkgDir)
   const inputs: Record<string, unknown> = { files: withoutTakenBack(files) }
   if (allWs.length > 0) inputs['workspaceFiles'] = withoutTakenBack(allWs)
   if (keyEnv.length > 0) inputs['env'] = keyEnv
@@ -2303,6 +2305,10 @@ function buildTask(
   const rewritesManifest = takeBacks.includes('!package.json') || TSHY.test(command)
 
   if (atRoot) wsOutFiles.unshift(...outFiles.splice(0))
+  const ownBefore = new Set([...outFiles, ...wsOutFiles])
+  negationsAcrossBases(outFiles, wsOutFiles, atRoot ? '' : pkgDir)
+  for (const g of [...outFiles, ...wsOutFiles])
+    if (g.startsWith('!') && !ownBefore.has(g)) ownNegated.add(g)
   // Sorted here, before the passes that take them back from other tasks'
   // inputs, so those `!` entries come in this order too (`sortOrderFree`).
   const outputs: Record<string, unknown> = { files: takingBack(outFiles).sort(negationsLast) }

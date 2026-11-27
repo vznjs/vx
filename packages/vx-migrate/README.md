@@ -274,6 +274,7 @@ Rules:
 - An explicit list also keys the package's own `package.json`, as Turbo does whatever the negations.
 - So a negation that matches `package.json` (`!**/*.json`, `!**`) is dropped. That keys more, never a stale hit.
 - `$TURBO_ROOT$/<path>` is `inputs.workspaceFiles`, negation kept. Any other `$TURBO_ROOT$` use is a todo.
+- A `!$TURBO_ROOT$/` input with no positive `$TURBO_ROOT$/` glob takes back from the package's globs, as Turbo does (`!$TURBO_ROOT$/packages/a/src/gen/**` is `!src/gen/**`), or nothing when it lies outside the package.
 
 <details><summary>Details</summary>
 
@@ -313,6 +314,7 @@ Rules:
 - Those are the same files, cleaned only where git tracks none (see the wildcard rule below).
 - As an input, `""`, `"."` and `"./"` are every package file, `**/*`.
 - `$TURBO_ROOT$/<path>` is `outputs.workspaceFiles`.
+- A `!$TURBO_ROOT$/` output with none beside it takes back from the package's outputs the same way: Turbo leaves `dist/x` out of a `dist/**` restore.
 - Turbo caches whichever outputs a run wrote; vx fails a task that writes none.
 - A `coverage` output is written only with coverage on, so the migration names it as a todo unless the command turns coverage on (`--coverage`).
 

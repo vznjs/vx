@@ -117,6 +117,43 @@ function mayOverlap(a: string, b: string): boolean {
 }
 
 /**
+ * A negation takes back what a positive glob under either base matched
+ * (vite-plus 1.8.0, turbo 2.11.13), and core refuses a list of them alone:
+ * one with no positive glob under its base moves to the other, a workspace
+ * one as the part that matches under the package (dropped when none does).
+ * In place; `pkgDir` is `''` for the root.
+ */
+export function negationsAcrossBases(files: unknown[], ws: unknown[], pkgDir: string): void {
+  const positive = (l: unknown[]): boolean =>
+    l.some((g) => typeof g !== 'string' || !g.startsWith('!'))
+  if (!positive(ws))
+    for (const g of ws.splice(0) as string[]) {
+      const own = pkgDir === '' ? g.slice(1) : underPackage(g.slice(1), pkgDir)
+      if (own !== null) files.push(`!${own}`)
+    }
+  if (!positive(files) && positive(ws))
+    ws.push(
+      ...(files.splice(0) as string[]).map(
+        (g) => `!${pkgDir === '' ? '' : `${pkgDir}/`}${g.slice(1)}`,
+      ),
+    )
+}
+
+// The part of workspace glob `glob` that matches under `pkgDir`, package
+// relative (`**/*.md` stays `**/*.md`, `packages/*/dist/**` under
+// `packages/a` is `dist/**`), or null when it matches nothing there.
+function underPackage(glob: string, pkgDir: string): string | null {
+  const segs = glob.split('/')
+  for (const dir of pkgDir.split('/')) {
+    const seg = segs[0]
+    if (seg === '**') return segs.join('/')
+    if (seg === undefined || segs.length === 1 || !new Bun.Glob(seg).match(dir)) return null
+    segs.shift()
+  }
+  return segs.join('/')
+}
+
+/**
  * Two lists core reads as one, each with its own `!` entries: Turbo
  * subtracts a task's exclusions from the task's own inputs only, and a
  * `globalDependencies` exclusion from the global hash only. One list in
