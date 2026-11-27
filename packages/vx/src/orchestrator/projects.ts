@@ -530,6 +530,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       ? []
       : round.filter((m) => m.configPath === null && args.staged?.get(m.name) === undefined)
     const denied = new Map<ProjectMeta, string>()
+    let sparseSet: boolean | undefined
     const refused = (m: ProjectMeta, err: NodeJS.ErrnoException): boolean => {
       if (err.code === 'EACCES' || err.code === 'EPERM') denied.set(m, err.code)
       return false
@@ -549,10 +550,13 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
               : // A sparse checkout leaves a project's ignored files (its
                 // node_modules, its dist) behind: the directory stood, the
                 // run read the project as there and ran it on no sources.
+                // Git is asked only where a sparse checkout was set.
                 dirThere(m).then(
                   (dir) =>
                     dir &&
-                    skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, m.configPath)) === null,
+                    (!(sparseSet ??= sparseCheckoutSet(workspaceRoot)) ||
+                      skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, m.configPath)) ===
+                        null),
                 ),
         ),
       ),
@@ -565,7 +569,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     const standing = bare
       .map((m, i) => [m, withFile.length + i] as const)
       .filter(([m, i]) => there[i] && path.resolve(m.dir) !== path.resolve(workspaceRoot))
-    if (standing.length > 0 && sparseCheckoutSet(workspaceRoot)) {
+    if (standing.length > 0 && (sparseSet ??= sparseCheckoutSet(workspaceRoot))) {
       const rels = standing.map(([m]) => relPosix(workspaceRoot, m.dir))
       const left = sparseLeftDirsSync(workspaceRoot, rels)
       for (const [k, [, i]] of standing.entries())
