@@ -522,7 +522,11 @@ function mapEnv(options: Record<string, unknown>, todos: string[]): Record<strin
   const declared = options['env']
   if (typeof declared === 'object' && declared !== null && !Array.isArray(declared)) {
     for (const [k, v] of Object.entries(declared)) {
-      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+      // sh drops such a name before the command runs, and core refuses it:
+      // the project failed to load, every task with it.
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k))
+        todos.push(`nx:run-commands: \`env.${k}\` is not a shell variable name — not set`)
+      else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
         env[k] = String(v)
       else todos.push(`nx:run-commands: \`env.${k}\` is not a string — not set`)
     }
