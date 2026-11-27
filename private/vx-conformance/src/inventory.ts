@@ -706,6 +706,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'vx-lockfile/lazy-load',
     'vx-lockfile/lockfile-choice',
     'vx-lockfile/lockfile-shapes',
+    'vx-lockfile/manifest-taken-back',
     'vx-lockfile/memo-identity',
     'vx-lockfile/npm',
     'vx-lockfile/pnpm',

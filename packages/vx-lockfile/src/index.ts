@@ -680,6 +680,10 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       for (const [name, task] of Object.entries(tasks)) {
         const inputs = task.inputs
         if (inputs === undefined || inputs.files.includes(file)) continue
+        // Its author took the manifest back (`!**/*.json`), and core refuses a
+        // literal a `!` entry takes back: appended, `vx lock` refused.
+        if (inputs.files.some((g) => g.startsWith('!') && new Bun.Glob(g.slice(1)).match(file)))
+          continue
         // A copy: a loaded config may be shared or frozen.
         tasks[name] = {
           ...task,
