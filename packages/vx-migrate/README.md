@@ -610,6 +610,7 @@ With this file, `vx run build --all` maps every project's `build` target the way
 - The default `production` negation `?(*.)+(spec|test).[jt]s?(x)` becomes brace sets, a narrowing only a negation may take.
 - What has no safe form is a todo.
 - A project fileset of negations alone (nx-recipes' `noMarkdown`) starts from every project file, as Nx reads it.
+- A `{workspaceRoot}` fileset of negations alone starts from every workspace file, as Nx 24 reads it, unless its positive globs all lie in the project.
 - A `!` acts only inside its own set. Nx hashes the `{projectRoot}` and `{workspaceRoot}` filesets apart, and vx subtracts each `!` from its whole list.
 - So a `!` that may reach another set's files is dropped, which keys more, never a stale hit.
 - Example: production's `!{projectRoot}/jest.config.[jt]s` beside a `{workspaceRoot}/libs/a/jest.config.ts` input keeps the file.
