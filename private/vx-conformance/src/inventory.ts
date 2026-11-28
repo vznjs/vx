@@ -506,6 +506,7 @@ export const INVENTORY: Record<Verdict, string[]> = {
     'sandbox-git-discovery.unsafe',
     'sandbox-glob-chars.unsafe',
     'sandbox-grant-ancestors.unsafe',
+    'sandbox-grant-exists-hint',
     'sandbox-grant-remove.unsafe',
     'sandbox-grant-through-link.unsafe',
     'sandbox-grants.unsafe',
