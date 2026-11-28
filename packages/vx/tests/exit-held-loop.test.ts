@@ -136,3 +136,19 @@ it(
   },
   HANG_MS + 5_000,
 )
+
+it(
+  'a config’s late throw fails `vx lock` with one line, as a floating rejection does',
+  async () => {
+    // Uncaught, Bun printed its crash and the process died mid-verb: a
+    // plugin's timer that threw ended a run with no summary and no history.
+    const r = await lock(
+      "setTimeout(() => { throw new Error('late') }, 0)\nexport default { tasks: { build: { exec: { command: 'true' } } } }\n",
+    )
+    expect({ code: r.code, err: r.err }).toEqual({
+      code: 1,
+      err: 'vx: uncaught exception: late\n',
+    })
+  },
+  HANG_MS + 5_000,
+)
