@@ -60,6 +60,7 @@ import {
   exitOnStop,
   writeAllOrNone,
   writeNoFollow,
+  keysSorted,
 } from '../util/index.js'
 import { answerRuntime } from '../cache/index.js'
 import * as ui from '../ui/index.js'
@@ -735,7 +736,8 @@ function reviewsOf(metas: ConfiguredMeta[], resolved: Map<string, ProjectConfig>
         name: m.name,
         file: path.join(path.dirname(m.configPath), REVIEW_FILE),
         config,
-        text: `${JSON.stringify(config, null, 2)}\n`,
+        // Sorted as the lock is: a config reordering its keys changes no copy.
+        text: `${JSON.stringify(keysSorted(config), null, 2)}\n`,
       },
     ]
   })

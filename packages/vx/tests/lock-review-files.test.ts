@@ -8,6 +8,7 @@ import { afterEach, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
 import { readLockfile } from '../src/workspace/lockfile.js'
+import { keysSorted } from '../src/util/hash.js'
 import { BIN, vxSync } from './helpers/vx.js'
 
 const CONFIG = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
@@ -45,6 +46,26 @@ it('writes the lock a line per project, a pretty review copy per config, and .vx
     'projects.lock linguist-generated=true eol=lf\ndependencies.lock linguist-generated=true eol=lf\n',
   )
   expect(vx(r, 'lock', '--check').code).toBe(0)
+})
+
+it('writes the review copy with keys sorted as the lock, arrays as written', async () => {
+  // It kept the config's own key order, so reordering a config's keys
+  // rewrote the copy while the lock stayed byte for byte.
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-sorted-' }))
+  const config = (order: 'zFirst' | 'aFirst') =>
+    order === 'zFirst'
+      ? `export default { tasks: { z: { inputs: { files: ['src/**', '!src/x'] }, exec: { env: { define: { ZZ: '1', AA: '2' } }, command: 'true' } }, a: { exec: { command: 'true' } } } }\n`
+      : `export default { tasks: { a: { exec: { command: 'true' } }, z: { exec: { command: 'true', env: { define: { AA: '2', ZZ: '1' } } }, inputs: { files: ['src/**', '!src/x'] } } } }\n`
+  const dir = await addProject(r, 'a', { config: config('zFirst') })
+  await mkdir(path.join(dir, 'src'), { recursive: true })
+  await Bun.write(path.join(dir, 'src', 'i.ts'), 'x')
+  expect(vx(r, 'lock').code).toBe(0)
+  const first = (await text(path.join(dir, 'vx.lock.json')))!
+  expect(first).toBe(`${JSON.stringify(keysSorted(JSON.parse(first)), null, 2)}\n`)
+  expect(first).toContain('"files": [\n          "src/**",\n          "!src/x"\n        ]')
+  await Bun.write(path.join(dir, 'vx.config.mjs'), config('aFirst'))
+  expect(vx(r, 'lock').code).toBe(0)
+  expect(await text(path.join(dir, 'vx.lock.json'))).toBe(first)
 })
 
 it('vx lock --check fails on a stale or missing review copy', async () => {

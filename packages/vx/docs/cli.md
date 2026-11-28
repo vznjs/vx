@@ -3514,6 +3514,8 @@ For review, it also writes each project's resolved config, pretty, to
 
 - `vx.lock.json` holds the project's resolved config, plugins applied. It
   is no task's input.
+- Its keys are sorted at every level, as in the lock; lists keep their
+  order. Reordering a config's keys changes no copy.
 - `lock.reviewFiles: false` (or `VX_LOCK_REVIEW_FILES`) turns the copies
   off.
 - A copy left with no config beside it is named by `vx lock` and fails
