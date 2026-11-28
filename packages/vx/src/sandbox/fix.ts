@@ -335,12 +335,13 @@ export function sandboxFix(
       fix.write.add(grant === './' ? (timeGlob(path.basename(v.path)) ?? grant) : grant)
     } else if (
       (/^(?:symlink|link|mknod)/.test(v.line) && entryOf(v) === 'missing') ||
+      v.line.includes(' = a link or move ') ||
       v.line.startsWith('rename')
     ) {
       // A link or node the task makes: a literal grant has vx make an empty
       // file there first, and `ln -s src lnk` then failed "File exists". Its
-      // directory is the grant, the project as `.`. So is a move's: a file
-      // bound in place is no name a rename can replace or take.
+      // directory is the grant, the project as `.`. So is where a move or
+      // link lands: a file bound in place is no name a rename can replace.
       const dir = path.dirname(v.path)
       fix.write.add(
         dir === dirs.project ? '.' : writeGrant(dir, dirs, true, inputs?.files ?? [], outDirs),
