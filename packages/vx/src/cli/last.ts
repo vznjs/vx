@@ -1234,9 +1234,11 @@ async function printLog(
             ? `${log.taskId} did not run: --fail-fast stopped the run before it started`
             : log.status === 'failed'
               ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
-              : cached
-                ? `${log.taskId} ended ${log.status}, and the cache does not hold its output: the run did not save it, or it was pruned or saved over since`
-                : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
+              : log.status === 'aborted'
+                ? `${log.taskId} was aborted before it ended, and vx keeps no output for a killed task`
+                : cached
+                  ? `${log.taskId} ended ${log.status}, and the cache does not hold its output: the run did not save it, or it was pruned or saved over since`
+                  : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
     )
   } else if (log.output === '') {
     sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)

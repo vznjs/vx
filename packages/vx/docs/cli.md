@@ -5728,6 +5728,8 @@ apart.
 <div class="vx-deeper-body">
 
 - The previous run on the key failed and saved nothing.
+- The previous run on the key was aborted (a stop or `--fail-fast`) and
+  saved nothing.
 - `--force`, or a `--cache-policy` without read: the run did not read the
   cache.
 - `--no-cache`, or a `--cache-policy` without read or write: the run did
