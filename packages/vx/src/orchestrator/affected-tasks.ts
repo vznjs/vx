@@ -1,7 +1,7 @@
 // `--affected` per task. The diff seeds the tasks it reaches; a requested task
 // runs when its `dependsOn` closure holds one, through the edges its key folds
-// (`inputs.tasks`). So a change reaches another project only along a keyed
-// task edge: `web#test` behind `^build` runs when `ui#build` (or what it
+// (`inputs.tasks`) or to a dependency whose outputs its inputs read. So a
+// change reaches another project only along a keyed task edge: `web#test` behind `^build` runs when `ui#build` (or what it
 // depends on) is reached, and a spec edit `ui#build`'s inputs leave out stops
 // at `ui`'s own tasks.
 
@@ -15,6 +15,7 @@ import {
   foldedDeps,
   isGroupTask,
   isTaskPattern,
+  outputsOverlap,
   parseDependencySpec,
   type TaskNode,
 } from '../graph/index.js'
@@ -207,15 +208,24 @@ export function affectedRoots(
   // Walked forward from each seed to the tasks that fold it, across projects
   // where the edges go; a task is never marked for its project alone.
   const dependants = new Map<string, string[]>()
+  const edge = (up: string, id: string): void => {
+    const list = dependants.get(up)
+    if (list === undefined) dependants.set(up, [id])
+    else list.push(id)
+  }
+  const folded = new Map<string, string[]>()
   const reached = new Set<string>()
   const queue: string[] = []
   for (const n of nodes.values()) {
-    for (const c of foldedDeps(n, (id) => nodes.get(id)!)) {
-      const up = c.node.id
-      const list = dependants.get(up)
-      if (list === undefined) dependants.set(up, [n.id])
-      else list.push(n.id)
-    }
+    const ups = foldedDeps(n, (id) => nodes.get(id)!).map((c) => c.node.id)
+    folded.set(n.id, ups)
+    for (const up of ups) edge(up, n.id)
+  }
+  // An unfolded dependency's outputs its key hashes move it all the same: the
+  // reading the input-is-output refusal advises (`inputs.tasks: []`, files
+  // over the dep's outputs).
+  for (const [up, id] of outputReaders(nodes, folded, workspaceRoot)) edge(up, id)
+  for (const n of nodes.values()) {
     if (asked(n) || (unloaded && passesChanged(n))) {
       reached.add(n.id)
       queue.push(n.id)
@@ -245,6 +255,67 @@ export function affectedRoots(
     }
   }
   return kept
+}
+
+/**
+ * Each `[writer, reader]` where the reader's `inputs` read outputs of a task in
+ * its `dependsOn` closure its key does not fold. Over-reading is safe here: a
+ * pair selects one task more, never one less.
+ */
+function outputReaders(
+  nodes: ReadonlyMap<string, TaskNode>,
+  folded: ReadonlyMap<string, readonly string[]>,
+  workspaceRoot: string,
+): Array<[string, string]> {
+  if (![...nodes.values()].some((n) => n.deps.some((d) => !folded.get(n.id)!.includes(d)))) {
+    return []
+  }
+  const closure = (
+    memo: Map<string, Set<string>>,
+    id: string,
+    next: (id: string) => readonly string[],
+  ) => {
+    let out = memo.get(id)
+    if (out !== undefined) return out
+    out = new Set()
+    const stack = [...next(id)]
+    while (stack.length > 0) {
+      const d = stack.pop()!
+      if (out.has(d) || !nodes.has(d)) continue
+      out.add(d)
+      stack.push(...next(d))
+    }
+    memo.set(id, out)
+    return out
+  }
+  const all = new Map<string, Set<string>>()
+  const keyed = new Map<string, Set<string>>()
+  const rooted = new Map<string, { reads: string[]; writes: string[] }>()
+  const sides = (n: TaskNode) => {
+    let s = rooted.get(n.id)
+    if (s !== undefined) return s
+    const rel = relPosix(workspaceRoot, n.projectDir)
+    const at = (globs: readonly string[] | undefined, base: string) =>
+      (globs ?? []).filter((g) => !g.startsWith('!')).map((g) => path.posix.join(base, g))
+    s = {
+      reads: [...at(n.config.inputs?.files, rel), ...at(n.config.inputs?.workspaceFiles, '')],
+      writes: [...at(n.config.outputs?.files, rel), ...at(n.config.outputs?.workspaceFiles, '')],
+    }
+    rooted.set(n.id, s)
+    return s
+  }
+  const pairs: Array<[string, string]> = []
+  for (const n of nodes.values()) {
+    const reads = sides(n).reads
+    if (reads.length === 0) continue
+    const mine = closure(keyed, n.id, (id) => folded.get(id) ?? [])
+    for (const up of closure(all, n.id, (id) => nodes.get(id)?.deps ?? [])) {
+      if (mine.has(up)) continue
+      const writes = sides(nodes.get(up)!).writes
+      if (reads.some((r) => writes.some((w) => outputsOverlap(r, w)))) pairs.push([up, n.id])
+    }
+  }
+  return pairs
 }
 
 /**
