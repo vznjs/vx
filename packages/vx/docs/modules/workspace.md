@@ -636,6 +636,15 @@ cold 8,002-task run's exit waited ~33 ms for it (2026-11-21).
 export async function startDeferredBuilds(): Promise<void>
 ```
 
+A plugin's bug thrown from the bundle names the file it came from, not the
+bundle's line, which no author wrote: core reads the `// <path>` line Bun
+writes above each bundled file and the recorded input it ends.
+
+```ts
+/** The source file of a stack frame in a bundle (`…/workspace-<hash>.js:<line>:<col>`), or undefined. */
+export function bundledSource(site: string): string | undefined
+```
+
 Awaited inside the load, it was ~30 ms of `workspace config` on the run
 after a cold one, which had no `.vx/cache` while it loaded and built
 nothing (solid, 2026-11-11). It is built only once `.vx/cache` exists,

@@ -87,6 +87,35 @@ describe('workspace config bytecode', () => {
     TIMEOUT,
   )
 
+  // A bug in a plugin's hook named the bundle's file and line, which no
+  // author wrote, from the second run on.
+  it(
+    "a hook's TypeError in the bundle names the plugin's file",
+    async () => {
+      await writeFile(
+        path.join(plugin, 'index.ts'),
+        `import { definePlugin } from '@vzn/vx'\n` +
+          `export default () => definePlugin(import.meta, {\n` +
+          `  config() { if (process.env.VX_PROBE_THROW) (undefined as any).x },\n` +
+          `  commands: { probe: { description: 'probe', run() { console.log(JSON.stringify({ bundled: (new Error().stack ?? '').includes('/compiled/workspace-') })); return 0 } } },\n` +
+          `})\n`,
+      )
+      probe()
+      expect(probe()).toEqual({ bundled: true } as unknown as Probe)
+      const p = Bun.spawnSync([process.execPath, BIN, 'probe'], {
+        cwd: root,
+        env: { ...process.env, VX_PROBE_THROW: '1' },
+        stderr: 'pipe',
+      })
+      expect(p.exitCode).toBe(1)
+      expect(p.stderr.toString()).toContain(
+        "plugin 'vx-probe' failed in config: undefined is not an object",
+      )
+      expect(p.stderr.toString()).toContain('(at node_modules/vx-probe/index.ts)')
+    },
+    TIMEOUT,
+  )
+
   // A power cut between the rename and the data reaching the disk leaves a
   // bundle of no bytes: it loads, exports nothing, and every later run
   // blamed the user's config for it until the cache was removed.
