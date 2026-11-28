@@ -3,7 +3,7 @@
 // plugin `project` stage. `vx lock` runs that stage and records only what it
 // left (`LockedProject.config`); others read the record.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
@@ -531,6 +531,13 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       : round.filter((m) => m.configPath === null && args.staged?.get(m.name) === undefined)
     const denied = new Map<ProjectMeta, string>()
     let sparseSet: boolean | undefined
+    let hasSubmodules: boolean | undefined
+    // A clone that skipped submodules leaves each one's directory standing,
+    // empty: a project there whose config is gone ran on no sources where
+    // the refusal below names `git submodule update --init`.
+    const inUncheckedSubmodule = (m: ProjectMeta): boolean =>
+      (hasSubmodules ??= existsSync(path.join(workspaceRoot, '.gitmodules'))) &&
+      uncheckedSubmoduleSync(workspaceRoot, relPosix(workspaceRoot, m.dir)) !== null
     const refused = (m: ProjectMeta, err: NodeJS.ErrnoException): boolean => {
       if (err.code === 'EACCES' || err.code === 'EPERM') denied.set(m, err.code)
       return false
@@ -556,11 +563,25 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
                     dir &&
                     (!(sparseSet ??= sparseCheckoutSet(workspaceRoot)) ||
                       skipWorktreeSync(workspaceRoot, relPosix(workspaceRoot, m.configPath)) ===
-                        null),
+                        null) &&
+                    !inUncheckedSubmodule(m),
                 ),
         ),
       ),
-      ...bare.map(dirThere),
+      // A clone that skipped submodules leaves each one's directory empty:
+      // a config-less project there read as there and ran on no sources.
+      // Asked only of an empty directory in a workspace with submodules.
+      ...bare.map((m) =>
+        dirThere(m).then(
+          (dir) =>
+            dir &&
+            !(
+              (hasSubmodules ??= existsSync(path.join(workspaceRoot, '.gitmodules'))) &&
+              emptyDir(m.dir) &&
+              inUncheckedSubmodule(m)
+            ),
+        ),
+      ),
     ])
     // A config-less project has no file to miss: the directory a sparse
     // checkout kept for its ignored files (node_modules) read as there, and
@@ -804,4 +825,12 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
         release()
       }
     }))
+}
+
+function emptyDir(dir: string): boolean {
+  try {
+    return readdirSync(dir).length === 0
+  } catch {
+    return false
+  }
 }
