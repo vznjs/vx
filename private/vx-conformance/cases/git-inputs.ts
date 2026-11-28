@@ -37,6 +37,44 @@ function nestRepo(dir: string, how: 'gitlink' | 'untracked'): string {
   ].join(' && ')
 }
 
+/** A project whose own directory is a nested repository committing `dist/logo.txt` under its outputs. */
+function committedOutputInNestedRepo(how: 'gitlink' | 'untracked'): Case {
+  const logo = 'packages/a/dist/logo.txt'
+  return defineCase({
+    id: `outputs/committed-file-in-${how === 'gitlink' ? 'submodule' : 'nested-repo'}-kept`,
+    category: 'outputs',
+    kind: 'correctness',
+    title: `A file a ${how === 'gitlink' ? 'submodule' : 'nested repository'} project commits in its output directory survives its builds`,
+    why: `A project can be ${how === 'gitlink' ? 'a submodule' : 'a repository of its own inside the workspace'}, and that repository can commit a file under the task's outputs. The outer git lists none of its files, so a tool that asks only the outer index sees nothing committed there. Clearing outputs before a run then deletes the committed file, and a later restore deletes the user's edit of it.`,
+    from: ['committed-case'],
+    workspace: one(
+      {
+        command: 'mkdir -p dist && cp src/a.txt dist/a.txt',
+        inputs: ['src/**'],
+        outputs: ['dist/**'],
+      },
+      { 'src/a.txt': 'v1\n', 'dist/logo.txt': 'committed\n' },
+    ),
+    steps: [
+      { sh: nestRepo('packages/a', how) },
+      {
+        run: 'build',
+        expect: { exit: 0, files: { [logo]: 'committed\n', 'packages/a/dist/a.txt': 'v1\n' } },
+      },
+      { write: { [logo]: 'mine\n', 'packages/a/src/a.txt': 'v2\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, files: { [logo]: 'mine\n', 'packages/a/dist/a.txt': 'v2\n' } },
+      },
+      { write: { 'packages/a/src/a.txt': 'v1\n' } },
+      {
+        run: 'build',
+        expect: { exit: 0, files: { [logo]: 'mine\n', 'packages/a/dist/a.txt': 'v1\n' } },
+      },
+    ],
+  })
+}
+
 /** A project `b` in `vendor/nested/b`, inside a repository of its own. */
 function projectInNestedRepo(how: 'gitlink' | 'untracked'): Case {
   const project: ProjectSpec = {
@@ -306,4 +344,6 @@ export default [
       { check: { links: { 'packages/a/public': 'static' } } },
     ],
   }),
+  committedOutputInNestedRepo('gitlink'),
+  committedOutputInNestedRepo('untracked'),
 ]
