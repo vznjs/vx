@@ -3556,7 +3556,9 @@ run-level capabilities (`executor`, `cache`), and runs each plugin's
 `teardown()` at the end of the run, crash-isolated and time-bounded.
 A hook's throw reads `plugin '<p>' failed in <hook>: <message>`; a bug
 (a `TypeError`, `ReferenceError`, `RangeError` or `SyntaxError`) adds
-`(at <file>:<line>:<col>)`, the first frame outside vx. What a hook
+`(at <file>:<line>:<col>)`, the first frame outside vx (a plugin verb's
+throw reads the same, `failed in command '<verb>'`), or the plugin's file
+alone when the frame is in the workspace config's bundle. What a hook
 answered is read and checked the same way (`reading`): a getter or Proxy
 trap in it that threw crashed vx with a raw stack (2026-11-07). A
 `discover` entry, a `key` record, a digest's `projects` and an
@@ -3605,6 +3607,9 @@ nothing runs and caches here.
 
 - `hasHook(plugins, hook)` — the zero-cost gate: does any plugin
   declare the stage.
+- `pluginFailure(plugin, hook, err)` → the `UserError` naming a
+  plugin's throw, as every stage and a plugin verb (`hook` is
+  `command '<verb>'`) word it.
 - `applyConfigHooks` / `applyDiscoverHooks` / `applyProjectHooks` / `applyGraphHooks` /
   `applyKeyHooks` / `applyScheduleHooks` — the pipeline stages, run in
   declaration order only when some plugin declares them.

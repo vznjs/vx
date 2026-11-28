@@ -123,6 +123,7 @@ export {
   claimedDigests,
   fingerprintClaims,
   hasHook,
+  pluginFailure,
   REMOTE_CACHE_METHODS,
   resolveCache,
   type CacheHost,
