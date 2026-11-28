@@ -358,7 +358,7 @@ describe('the caching page quotes what vx why says', () => {
     const notes = [...verdicts.matchAll(/(['`])((?:cache key|this task )(?:(?!\1)[^\\])*)\1/g)].map(
       (m) => m[2]!.replace(/\([^()]*\$\{[^}]*\}[^()]*\)/g, '(…)').replace(/\$\{[^}]*\}/g, '…'),
     )
-    expect(notes.length).toBe(21)
+    expect(notes.length).toBe(22)
     for (const note of notes) {
       expect(guide).toContain(note)
       expect(post).toContain(note)

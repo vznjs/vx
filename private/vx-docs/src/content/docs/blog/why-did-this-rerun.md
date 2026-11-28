@@ -77,6 +77,7 @@ of these exact sentences:
 | never cached: its key includes a task that declares no `inputs`, so each run derives a new key               | declare `inputs` on the task it names                            |
 | cache key unchanged — this run was served from cache, nothing re-ran                                       | it was a cache hit                                               |
 | cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit | a failure saves no entry |
+| cache key unchanged — the previous run on this key was aborted before it ended and saved nothing, so there was nothing to hit | a stop or `--fail-fast` killed it, so no entry was saved |
 | cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read) | the run's policy read no cache |
 | cache key unchanged — re-executed because this run did not use the cache (--no-cache, or a --cache-policy without read or write) | the run used no cache |
 | cache key unchanged — the previous run on this key did not save its result (…), so there was nothing to hit | the previous run withheld its save and said why (an input edited while it ran) |
