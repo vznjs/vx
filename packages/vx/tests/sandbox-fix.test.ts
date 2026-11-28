@@ -505,10 +505,25 @@ describe('sandboxFix', () => {
   // negation that keyed nothing, so an edit replayed the old bytes, and
   // `st\*r` was refused as a Windows separator.
   it('names each awkward file by a key entry the config accepts that matches it alone', () => {
-    const names = ['!x', 'st*r', 'q?', '[b]', '{c}', 'a\\b', '#h', ' lead', 'trail ', 'a/!y']
+    // `Bun.Glob` reads `@(…)`, `+(…)` and `!(…)` as extglobs: `e@()` matched `e`.
+    const names = [
+      '!x',
+      'st*r',
+      'q?',
+      '[b]',
+      '{c}',
+      'a\\b',
+      '#h',
+      ' lead',
+      'trail ',
+      'a/!y',
+      'e@()',
+      'f+(g)',
+      'h!(i)',
+    ]
     mkdirSync(path.join(dir, 'a'))
     for (const n of names) writeFileSync(path.join(dir, n), '')
-    const all = [...names, 'x', 'stXr', 'qa', 'b', 'c', 'lead', 'trail', 'a/y']
+    const all = [...names, 'x', 'stXr', 'qa', 'b', 'c', 'lead', 'trail', 'a/y', 'e', 'fgg', 'hj']
     for (const n of names) {
       const fix = sandboxFix(
         [v(`deny(1) file-read-data ${n}`, ['read'], path.join(dir, n))],

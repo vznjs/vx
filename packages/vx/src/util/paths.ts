@@ -197,12 +197,16 @@ export const GLOB_WILDCARDS = /[*?{}[\]\\]/
  * class, which the whitespace check spares.
  */
 export function taskGlobOf(rel: string): string {
-  return rel
-    .replace(new RegExp(GLOB_WILDCARDS.source, 'g'), (c) =>
-      c === '*' || c === '?' ? `[${c}]` : `\\${c}`,
-    )
-    .replace(/^!/, '\\!')
-    .replace(/^\s+|\s+$/g, (ws) => ws.replace(/\s/g, '[$&]'))
+  return (
+    rel
+      .replace(new RegExp(GLOB_WILDCARDS.source, 'g'), (c) =>
+        c === '*' || c === '?' ? `[${c}]` : `\\${c}`,
+      )
+      // `Bun.Glob` reads `@(…)`, `+(…)` and `!(…)` as extglobs: `a@()` matched `a`.
+      .replace(/([@+!])\(/g, '$1[(]')
+      .replace(/^!/, '\\!')
+      .replace(/^\s+|\s+$/g, (ws) => ws.replace(/\s/g, '[$&]'))
+  )
 }
 
 /**
