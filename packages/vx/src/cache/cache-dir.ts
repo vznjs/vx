@@ -268,6 +268,20 @@ function refuseManifestDir(cacheDir: string, workspaceRoot: string | undefined):
         `in it from git and from the cache keys. ${OWN_DIR_HINT}`,
     )
   }
+  // The workspace's own `.vx` (`cache.dir: '.vx'`): its .gitignore passed
+  // the folder check, and the index landed untracked beside the config and
+  // locks, which `vx cache clean` then refused to touch.
+  if (path.basename(cacheDir) === '.vx') {
+    const config = MANIFESTS.find(
+      (m) => m.startsWith('.vx/') && existsSync(path.join(path.dirname(cacheDir), m)),
+    )
+    if (config !== undefined) {
+      throw new UserError(
+        `cache directory ${cacheDir} holds the workspace config and lock (${config.slice(4)}). ` +
+          OWN_DIR_HINT,
+      )
+    }
+  }
   let held: string | undefined
   if (workspaceRoot !== undefined) {
     const rel = path.relative(cacheDir, workspaceRoot)

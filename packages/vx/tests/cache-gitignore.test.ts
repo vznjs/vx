@@ -109,6 +109,20 @@ describe('the cache directory is git-ignored by construction', () => {
     expect(await Bun.file(path.join(sibling, 'cache.db')).exists()).toBe(true)
   })
 
+  // `cache.dir: '.vx'` passed (vx's own .gitignore is there) and left the
+  // index untracked beside the config and locks, which `vx cache clean` refused.
+  it("a first index in the workspace's own .vx is refused, and nothing is written", async () => {
+    const dotVx = path.join(root, '.vx')
+    await Bun.write(path.join(dotVx, 'workspace.ts'), 'export default {}')
+    await Bun.write(path.join(dotVx, '.gitignore'), '*\n')
+    expect(() => new Cache(dotVx, undefined, root)).toThrow(
+      `cache directory ${dotVx} holds the workspace config and lock (workspace.ts).`,
+    )
+    expect(await Bun.file(path.join(dotVx, 'cache.db')).exists()).toBe(false)
+    // Control: its cache subfolder opens.
+    new Cache(path.join(dotVx, 'cache'), undefined, root).close()
+  })
+
   // `--cache-dir src` over a folder of sources put a `*` .gitignore in it:
   // `src/**` matched nothing and an edit there replayed the old output.
   it('a first index in a workspace folder that holds files is refused', async () => {
