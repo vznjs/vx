@@ -165,6 +165,14 @@ it('vx lock refuses a pipeline task no project declares', async () => {
     })
     // Every project's default build counts, as a run takes it.
     expect((await lock(`['lint', 'a#lint', 'build', 'a#build']`)).code).toBe(0)
+    // excludeDependencies too: the run refused it, in the CI job.
+    expect(await lock(`['lint'], excludeDependencies: ['lnt', 'a#lint']`)).toEqual({
+      code: 1,
+      err: expect.stringContaining(
+        'pipelines.pr.excludeDependencies names lnt, a#lint, which no project declares (it takes task names, not project#task); tasks: lint',
+      ),
+    })
+    expect((await lock(`['lint'], excludeDependencies: ['lint']`)).code).toBe(0)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

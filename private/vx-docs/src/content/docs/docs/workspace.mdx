@@ -346,7 +346,7 @@ export default defineWorkspace({
 vx pipeline pr
 ```
 
-`vx lock` checks every task a pipeline names, so a typo fails before CI does:
+`vx lock` checks every task a pipeline names, in `tasks` and `excludeDependencies`, so a typo fails before CI does:
 
 ```ansi
 [38;2;239;68;68m✗[0m [1mvx lock[0m  [38;2;203;213;225mlock not written[0m
