@@ -1074,7 +1074,8 @@ twice keeps the last value.
 - No value drops every edge: only the requested task runs. A group's
   members run as the group.
 - A comma list drops only those names, each of which some project must
-  declare. A typo is refused with the nearest name.
+  declare. A typo is refused with the nearest name; a `project#task` is
+  refused with its task name, since a name's edges drop everywhere.
 - An edge to a task the run schedules anyway (`--all` requests it)
   stays, so the two still run in order.
 - The order through a dropped task stays: with `gen` dropped from
