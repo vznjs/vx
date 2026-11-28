@@ -14,3 +14,13 @@ it('a cache dir at a link to nothing names the link', () => {
   symlinkSync('nowhere', at)
   expect(() => openCacheDir(at)).toThrow(`${at} is a link to nowhere, which is not there`)
 })
+
+// A loop of links crashed every run with a raw ELOOP stack.
+it('a cache dir at a loop of links names the loop', () => {
+  const a = path.join(dir, 'loop-a')
+  symlinkSync('loop-b', a)
+  symlinkSync('loop-a', path.join(dir, 'loop-b'))
+  expect(() => openCacheDir(a)).toThrow(
+    `${a} is a link to loop-b, which loops back through links and never ends`,
+  )
+})

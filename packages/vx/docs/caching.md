@@ -1766,7 +1766,8 @@ Where the directory cannot be created at all (a read-only checkout with
 no cache yet) a run says `cannot create cache directory <path>
 (EACCES: …)` (`VX_E_FS`), naming the workspace `cache.dir` field and
 `--cache-dir`; a file where the directory or a parent of it goes is
-named as the one to move away. The readers and `vx cache clean` find no
+named as the one to move away, and so is a link there that loops back
+through links. The readers and `vx cache clean` find no
 cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out

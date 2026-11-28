@@ -533,6 +533,13 @@ describe('--profile names a file, checked before the run', () => {
     )
   })
 
+  it('refuses a loop of links', async () => {
+    await fs.symlink('b', path.join(tmp, 'a'))
+    await fs.symlink('a', path.join(tmp, 'b'))
+    expect(await run(['run', 'build', '--profile=a/p.json'])).toBe(1)
+    expect(stderr).toContain('--profile: a/p.json loops back through links and never ends')
+  })
+
   it('a file in an existing directory goes on to the run (control)', async () => {
     // No workspace here: the run's own refusal, thrown, is the next fault.
     const thrown = await run(['run', 'build', '--profile=p.json']).catch((e: Error) => e.message)

@@ -337,7 +337,7 @@ function makeCacheDir(cacheDir: string): void {
       const file = inTheWay(cacheDir)
       // A link to nothing is no file: "move it away" sent the user hunting.
       const what = lstatOrAbsent(file)?.isSymbolicLink()
-        ? `a link to ${readlinkSync(file)}, ${statOrAbsent(file) === undefined ? 'which is not there' : 'not a directory'}`
+        ? `a link to ${readlinkSync(file)}, ${linkEnd(file)}`
         : 'a file, not a directory'
       throw new UserError(
         `cannot create cache directory ${cacheDir}: ${file} is ${what} — move it away, ${where}`,
@@ -351,6 +351,16 @@ function makeCacheDir(cacheDir: string): void {
       `cannot create cache directory ${cacheDir} (${errorText(err)}) — vx keeps its cache there; ${fix}, ${where}`,
       'VX_E_FS',
     )
+  }
+}
+
+/** What a link in the cache dir's way ends at; a loop of links is no crash (ELOOP). */
+function linkEnd(link: string): string {
+  try {
+    return statOrAbsent(link) === undefined ? 'which is not there' : 'not a directory'
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ELOOP') throw err
+    return 'which loops back through links and never ends'
   }
 }
 
