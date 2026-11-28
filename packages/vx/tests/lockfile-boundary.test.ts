@@ -192,6 +192,16 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     )
   })
 
+  it('quotes a version that is not a number, so the current one as a string reads apart', async () => {
+    // `"version":"10"` read "unsupported version 10 (this vx expects 10)".
+    await writeRaw(JSON.stringify({ version: String(LOCKFILE_VERSION), projects: {} }))
+    expect((await rejection(readLockfile(root))).message).toContain(
+      `unsupported version "${LOCKFILE_VERSION}" (this vx expects ${LOCKFILE_VERSION})`,
+    )
+    await writeRaw(JSON.stringify({ projects: {} }))
+    expect((await rejection(readLockfile(root))).message).toContain('unsupported version none')
+  })
+
   it('rejects a lock with no version field', async () => {
     await writeRaw(JSON.stringify({ projects: {} }))
     await expect(readLockfile(root)).rejects.toThrow(/unsupported version/)

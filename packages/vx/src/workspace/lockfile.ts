@@ -208,7 +208,9 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
         'VX_E_LOCK',
       )
     throw new UserError(
-      `${LOCKFILE_NAME} has unsupported version ${String(lock.version)} ` +
+      // Quoted where it is not a number: `"10"` read "unsupported version 10
+      // (this vx expects 10)".
+      `${LOCKFILE_NAME} has unsupported version ${typeof lock.version === 'number' ? lock.version : (JSON.stringify(lock.version) ?? 'none')} ` +
         `(this vx expects ${LOCKFILE_VERSION}) — re-run \`vx lock\``,
       'VX_E_LOCK',
     )
