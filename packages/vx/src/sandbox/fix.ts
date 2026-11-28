@@ -358,7 +358,10 @@ export function sandboxFix(
   // (a test's new snapshot): the directory's grant covers the file.
   for (const k of ['read', 'write'] as const) {
     const dirsNamed = [...fix[k]].filter((g) => g.endsWith('/'))
-    for (const g of fix[k]) if (dirsNamed.some((d) => d !== g && g.startsWith(d))) fix[k].delete(g)
+    // `dist` beside `dist/` (`rm -rf dist; mkdir dist`): a literal is a file
+    // vx makes before the run, where `dist/` then finds no directory.
+    for (const g of fix[k])
+      if (dirsNamed.some((d) => d !== g && (g.startsWith(d) || `${g}/` === d))) fix[k].delete(g)
   }
   // The project named whole (`placeheld`) covers every write grant in it.
   if (fix.write.has('.'))
