@@ -6470,7 +6470,9 @@ milliseconds.
 <div class="vx-deeper-body">
 
 - `WITH … SELECT` works too.
-- `--format json`: `{ rows }`, one object per row keyed by column.
+- `--format json`: `{ rows }`, one object per row keyed by column. An
+  integer keeps every digit, past 2^53 too, and a BLOB is its hex, as
+  SQLite's `hex()` spells it. The table shows a BLOB as `<N bytes>`.
 - The table prints every column, a name repeated by a join's `SELECT *`
   (`run_id`) too.
 - `--format json` refuses a repeated name, since an object holds one
