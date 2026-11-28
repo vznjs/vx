@@ -1913,8 +1913,9 @@ Default: `run.failFast`, else off.
 - The first failure stops the run at once.
 - The tasks still running are killed: they end `aborted`, are never
   saved and start no retry.
-- `vx last` keeps no row for them but counts them on its `tasks` line
-  (`· 2 aborted`), and `--format json` as `invocation.abortedCount`.
+- `vx last` lists them as `aborted`, as any stopped task, and counts them
+  on its `tasks` line (`· 2 aborted`), and `--format json` as
+  `invocation.abortedCount`.
 - One whose command had already exited when the stop landed ends on its
   own exit, failed or passed.
 - Everything not yet started (cache restores included) completes as skipped.

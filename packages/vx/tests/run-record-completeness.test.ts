@@ -1,4 +1,4 @@
-// Every non-group, non-aborted outcome earns a `runs` row — and a row that
+// Every non-group outcome that started earns a `runs` row — and a row that
 // recorded no cache key must not be mistaken for one.
 //
 // `toRecord` in run.ts used to drop any outcome with no hash, which selects
@@ -312,6 +312,28 @@ describe('a skipped row is a task of the run, never an execution', () => {
     expect(h?.runs).toBe(2)
     expect(h?.successRate).toBe(1)
     expect(h?.p50DurationMs).toBe(100)
+  })
+  // A stop or --fail-fast killed it: no pass, no failure, no duration.
+  it('keeps an aborted row out of the rates and durations', async () => {
+    runHistory(cache).recordRunBundle({
+      runs: [
+        mkRun({ project: 'app', task: 'build', hash: 'k1', startedAt: T0, endedAt: T0 + 100 }),
+        mkRun({
+          project: 'app',
+          task: 'build',
+          hash: 'k2',
+          status: 'aborted',
+          exitCode: 1,
+          durationMs: 5,
+          startedAt: T0 + 1,
+          endedAt: T0 + 6,
+        }),
+      ],
+      invocation: mkInvocation('r-1'),
+    })
+    const h = (await new LocalHistoryProvider(db, 2).loadFor(['app#build'])).get('app#build')
+    expect(h?.runs).toBe(1)
+    expect(h?.successRate).toBe(1)
   })
 })
 

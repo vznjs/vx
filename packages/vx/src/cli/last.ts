@@ -859,16 +859,15 @@ function reasonParts(
   } else if (t.status === 'skipped' && t.blockedBy !== null) {
     // A blocker that is itself a skip is a platform skip: a failure's
     // dependants name the failure, never a skip between. One with no row
-    // has no status to name: --fail-fast stopped it (history keeps no
-    // aborted row), or vx watch kept it from a cycle before. "failed" was
-    // wrong for the first.
+    // has no status to name: vx watch kept it from a cycle before, or a
+    // run from before aborted tasks kept rows.
     const blocker = statusHere.get(t.blockedBy)
     parts.push(
       blocker === 'skipped'
         ? `after ${t.blockedBy} skipped: ${OTHER_PLATFORM}`
-        : blocker === undefined
-          ? `after ${t.blockedBy} did not pass`
-          : `after ${t.blockedBy} failed`,
+        : blocker === 'failed' || blocker === 'aborted'
+          ? `after ${t.blockedBy} ${blocker}`
+          : `after ${t.blockedBy} did not pass`,
     )
   } else if (t.status === 'skipped' && t.exitCode === 0) {
     // Exit 0 with no blocker is a platform skip; a fail-fast skip records 1.
@@ -1208,21 +1207,27 @@ async function printLog(
             .get(log.runId, project, task) as { b: string | null; code: number | null } | null)
         : null
     const blocker = skip?.b ?? null
-    // A blocker --fail-fast or a stop killed keeps no row: pointing at its
-    // log answered "no recorded run of" it. A skip with no blocker exits 0
-    // for another platform, 1 for --fail-fast (as the run summary reads it).
-    const blockerKept =
-      blocker !== null &&
-      db
-        .query('SELECT 1 FROM runs WHERE run_id = ? AND project = ? AND task = ?')
-        .get(log.runId, ...splitTaskId(blocker)) !== null
+    // A killed blocker keeps no output, and a run from before aborted
+    // tasks kept rows has none for it: pointing at its log answered nothing.
+    // A skip with no blocker exits 0 for another platform, 1 for --fail-fast
+    // (as the run summary reads it).
+    const blockerStatus =
+      blocker === null
+        ? undefined
+        : (
+            db
+              .query('SELECT status FROM runs WHERE run_id = ? AND project = ? AND task = ?')
+              .get(log.runId, ...splitTaskId(blocker)) as { status: string } | null
+          )?.status
     sayNotice(
       'info',
       'vx last',
       blocker !== null
-        ? blockerKept
-          ? `${log.taskId} did not run: ${blocker} blocked it (vx last --log ${blocker})`
-          : `${log.taskId} did not run: ${blocker} did not pass, and this run kept no row for it`
+        ? blockerStatus === 'aborted'
+          ? `${log.taskId} did not run: ${blocker} was aborted before it ended`
+          : blockerStatus !== undefined
+            ? `${log.taskId} did not run: ${blocker} blocked it (vx last --log ${blocker})`
+            : `${log.taskId} did not run: ${blocker} did not pass, and this run kept no row for it`
         : skip?.code === 0
           ? `${log.taskId} did not run: it ${OTHER_PLATFORM}`
           : skip?.code === 1
