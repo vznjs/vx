@@ -3183,6 +3183,7 @@ interface CacheSettings {
 - So it is not probed, prefetched or restored ahead of the schedule (`caching.md` § Local restore tier).
 - The upstream's key already reaches the reader through `dependsOn`.
 - `'!dist/**'` in the reader's inputs, taking the whole output back, clears it. An output the reader's `!` entries take back no longer holds its key back either.
+- Only the part of an output in the reader's project counts: another task's `workspaceFiles: ['*/gen/**']` is this project's `gen/**`, so `'!gen/**'` clears it.
 - `'**/*'` beside a gitignored `**/dist/**` passes and keys up front: a key reads only what git lists.
 - `'dist/**'` starts in the ignored path: naming it reads it, so the check applies.
 - `inputs: { tasks: ['gen'] }` leaving the producer `build` out: a reader may read the outputs of a task in its `dependsOn` closure that its key does not fold.

@@ -152,6 +152,16 @@ describe('vx lock refuses inputs that read another task’s outputs', () => {
     ).toBeNull()
   })
 
+  // `*/gen/**` was asked whole of app's `!gen/**`, which never covers it, and
+  // the refusal told app to add `!*/gen/**`: its own `app/*/gen/**`.
+  it('a glob workspaceFiles output is taken back by the part in the project, and said so', () => {
+    const gen = wsTask([], ['*/gen/**'])
+    expect(refusal({ g: { gen }, app: { build: task(['**', '!gen/**'], ['dist/**']) } })).toBeNull()
+    expect(refusal({ g: { gen }, app: { build: task(['**'], ['dist/**']) } })).toContain(
+      'add "!gen/**" to app#build\'s inputs.files',
+    )
+  })
+
   it("refuses a workspaceFiles input over another project's files output, said in its terms", () => {
     expect(refusal({ a: { build }, b: { use: wsTask(['a/dist/index.js'], []) } })).toMatch(
       /^b#use reads "a\/dist\/index\.js" in inputs\.workspaceFiles, which matches a#build's output "dist\/\*\*" .* add "!a\/dist\/\*\*" to b#use's inputs\.workspaceFiles/,
