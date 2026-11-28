@@ -245,6 +245,43 @@ describe('secretMask', () => {
     for (const piece of got) expect(piece).not.toMatch(/hunter|sekret/)
   })
 
+  // A piece under six characters went out as written, and so did the rest
+  // after the pause: `printf 'key=hun'; sleep 0.3; printf 'ter2…'` showed
+  // the whole value. The rest now goes out as the mask.
+  it('masks the rest of a value whose short first piece a pause let go', async () => {
+    const got: string[] = []
+    const e = maskedStreams(
+      secretMask([{ API_TOKEN: SECRET }])!,
+      (t) => void got.push(t),
+      () => {},
+      20,
+    )
+    e.out('key=hun')
+    await Bun.sleep(80)
+    expect(got.join('')).toBe('key=hun')
+    e.out('ter2-l')
+    await Bun.sleep(80)
+    e.out('11-sekret done\n')
+    e.end()
+    expect(got.join('')).toBe(`key=hun${MASKED} done\n`)
+    for (const piece of got) expect(piece).not.toMatch(/sekret/)
+    // CONTROL: a short piece that begins no value prints whole, once.
+    const plain: string[] = []
+    const c = maskedStreams(
+      secretMask([{ API_TOKEN: SECRET }])!,
+      (t) => void plain.push(t),
+      () => {},
+      20,
+    )
+    c.out('progress hun')
+    await Bun.sleep(80)
+    c.out('gry hun')
+    await Bun.sleep(80)
+    c.out('t\n')
+    c.end()
+    expect(plain.join('')).toBe('progress hungry hunt\n')
+  })
+
   // Each stream held its own tail: a stdout tail that could begin a value
   // waited out the idle bound while stderr printed, and the run log, live
   // and cached, put the stderr line before text the task wrote first.
