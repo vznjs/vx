@@ -31,8 +31,8 @@ import {
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
-  staticPrefix,
   taskGlob,
+  GLOB_WILDCARDS,
   hasControl,
   parseDependencySpec,
   DependencySpecError,
@@ -2161,8 +2161,10 @@ function assertTaskFiltersNotNegationOnly(filters: readonly string[], where: str
  * A `!` entry subtracts wherever it sits in the list, so a file named
  * outright after it (`['src/**', '!src/gen/**', 'src/gen/keep.ts']`) never
  * entered the key, and an edit to it replayed the old output. Refusing is
- * free: the literal already selected nothing. So does a glob whose fixed
- * directory a `!` tree covers (`src/gen/*.ts` there).
+ * free: the literal already selected nothing. So does a glob every path of
+ * which a `!` entry matches (`src/gen/*.ts` there, or after `!src/gen/*`),
+ * a folder literal whose tree one does (`src/gen/`), and a brace
+ * alternative alone (`{src/gen,lib}/*.ts`), which counts on its own.
  */
 function assertNoLiteralTakenBack(
   globs: readonly string[],
@@ -2173,18 +2175,25 @@ function assertNoLiteralTakenBack(
   const negative = globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
   if (negative.length === 0) return
   const taken = anyTaskGlob(asTrees(negative))
+  const segs = (g: string) => (g === '' ? [] : g.split('/'))
+  const back = negative.map((n) => ({ n, trees: asTrees([n]).map(segs) }))
+  const takenBy = (p: string[]) => back.find((b) => b.trees.some((t) => coversAll(t, p)))?.n
   for (const g of globs) {
     if (g.startsWith('!')) continue
-    const lit = normalizeGlob(g).replace(/\/+$/, '')
+    const whole = isLiteralPattern(normalizeGlob(g).replace(/\/+$/, ''))
     let by: string | undefined
-    if (isLiteralPattern(lit)) {
-      if (taken(lit)) by = negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
-    } else {
-      const dir = staticPrefix(g)
-      if (dir !== '.') by = negative.find((n) => treeCovers(n, dir))
+    for (const alt of g.includes('{') ? braceAlternatives(g) : [g]) {
+      const lit = normalizeGlob(alt).replace(/\/+$/, '')
+      if (lit === '') continue
+      by = isLiteralPattern(lit)
+        ? taken(lit)
+          ? negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
+          : takenBy([...segs(lit), '**'])
+        : takenBy(segs(lit))
+      if (by !== undefined) break
     }
     if (by === undefined) continue
-    const what = isLiteralPattern(lit) ? lost : lost.replace('the file', 'a file it matches')
+    const what = whole ? lost : lost.replace('the file', 'a file it matches')
     throw new UserError(
       `${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
         `the list, so ${what}. Narrow the negation so it leaves "${g}".`,
@@ -2193,19 +2202,24 @@ function assertNoLiteralTakenBack(
 }
 
 /**
- * Whether the negation `n` takes every path under `dir`: one of its trees
- * (`<p>/**`, or a literal) has a `<p>` matching `dir` or a directory above it.
- * `!src/*` takes `src/gen` but not the files in it, so a plain match is not one.
+ * Whether every path the glob `p` matches, the negation `n` matches too, read
+ * segment by segment (both split on `/`). Sound, not complete: `*` covers any
+ * one segment, `**` any run of them (at least one at the end, as `x/**`
+ * leaves `x`), and a segment otherwise only itself or a literal it matches.
+ * `!src/*` takes `src/gen` but not the files in it.
  */
-function treeCovers(n: string, dir: string): boolean {
-  const roots = asTrees([n])
-    .filter((t) => t.endsWith('/**'))
-    .map((t) => taskGlob(t.slice(0, -3)))
-  const segs = dir.split('/')
-  return segs.some((_, i) => {
-    const at = segs.slice(0, i + 1).join('/')
-    return roots.some((r) => r.match(at))
-  })
+function coversAll(n: readonly string[], p: readonly string[]): boolean {
+  if (n.length === 0) return p.length === 0
+  if (n[0] === '**') {
+    if (n.length === 1) return p.length > 0
+    for (let i = 0; i <= p.length; i++) if (coversAll(n.slice(1), p.slice(i))) return true
+    return false
+  }
+  if (p.length === 0 || p[0] === '**') return false
+  const s = n[0]!
+  const q = p[0]!
+  const one = s === q || s === '*' || (!GLOB_WILDCARDS.test(q) && taskGlob(s).match(q))
+  return one && coversAll(n.slice(1), p.slice(1))
 }
 
 /**

@@ -772,7 +772,36 @@ describe('a literal input a negation takes back (X-31)', () => {
     expect(cacheRefusal({ files: ['src/**', '!src/*', 'src/gen/*.ts'] })).toBeNull()
     expect(cacheRefusal({ files: ['src/**', '!src/gen/*', 'src/gen/**'] })).toBeNull()
     expect(cacheRefusal({ files: ['src/**', '!src/gen/**', 'src/g*/*.ts'] })).toBeNull()
-    expect(cacheRefusal({ files: ['**/*.ts', '!**'] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/**', 'src/ge?/*.ts'] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/**', '!src/*/*.ts', 'src/gen/**'] })).toBeNull()
+  })
+  // Each loaded, and an edit under src/gen replayed the old output.
+  it('is refused for a folder literal, a narrower glob and a brace alternative wholly taken back', () => {
+    const lit = (g: string, by: string) =>
+      `${CFG}: tasks.t.inputs.files: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
+      `the list, so the file never enters the key. Narrow the negation so it leaves "${g}".`
+    const glob = (g: string, by: string) =>
+      `${CFG}: tasks.t.inputs.files: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
+      `the list, so a file it matches never enters the key. Narrow the negation so it leaves "${g}".`
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/**', 'src/gen/'] })).toBe(
+      lit('src/gen/', 'src/gen/**'),
+    )
+    expect(cacheRefusal({ files: ['**', '!src/gen/*', 'src/gen/*.ts'] })).toBe(
+      glob('src/gen/*.ts', 'src/gen/*'),
+    )
+    expect(cacheRefusal({ files: ['**', '!src/*/*.ts', 'src/gen/*.ts'] })).toBe(
+      glob('src/gen/*.ts', 'src/*/*.ts'),
+    )
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/**/*', 'src/gen/*.ts'] })).toBe(
+      glob('src/gen/*.ts', 'src/gen/**/*'),
+    )
+    expect(cacheRefusal({ files: ['**/*.ts', '!**'] })).toBe(glob('**/*.ts', '**'))
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/**', '{src/gen,lib}/*.ts'] })).toBe(
+      glob('{src/gen,lib}/*.ts', 'src/gen/**'),
+    )
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/**', '{src/gen/k.ts,lib/x.ts}'] })).toBe(
+      glob('{src/gen/k.ts,lib/x.ts}', 'src/gen/**'),
+    )
   })
   it('CONTROL: a directory literal a negation trims, and a glob, load', () => {
     expect(cacheRefusal({ files: ['src', '!src/gen/**'] })).toBeNull()
