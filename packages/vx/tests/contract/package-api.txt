@@ -350,6 +350,8 @@ export function next(command: Inline): Block
 export function normalizeGlob(glob: string): string
 == function notice (src/ui/components.ts)
 export function notice(p: NoticeParts): Block
+== function outputCovers (src/graph/task-graph.ts)
+export function outputCovers(glob: string, file: string): boolean
 == function outputDirPrefixes (src/util/paths.ts)
 export function outputDirPrefixes(globs: readonly string[]): string[] | null
 == function outputsMissingFacts (src/orchestrator/attempt.ts)

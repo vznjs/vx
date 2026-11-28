@@ -1773,6 +1773,19 @@ export interface OutputContext extends BaseContext {
 }
 ```
 
+## `outputCovers`
+
+function · `src/graph/task-graph.ts`
+
+Does the clean of output `glob` reach `file`, a path known to be a file?
+`outputsOverlap` reads a literal as a directory too (a folder output a glob
+may write in), which a tracked file is not: `**\/*.xml` reaches no
+`package.json`. On the façade for `@vzn/vx-migrate`'s tracked files.
+
+```ts
+export function outputCovers(glob: string, file: string): boolean
+```
+
 ## `outputDirPrefixes`
 
 function · `src/util/paths.ts`
