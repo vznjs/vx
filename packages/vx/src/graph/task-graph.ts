@@ -1710,11 +1710,14 @@ function collide(
         ;(up.outputsAddedToBy ??= []).push(...(downGlobs ?? []))
         return
       }
+      // Two spellings: one task may take the other's back. `dist` beside
+      // `d*/y.js` is the common case since a literal reads as a folder.
+      const back = ga === gb ? '' : `, or add "!${gb}" to ${a.id}'s outputs.${field}`
       throw refusal(
-        { ...parts, fix: 'give each task its own output path' },
+        { ...parts, fix: `give each task its own output path${back}` },
         {
           code: 'VX_E_OUTPUT_OVERLAP',
-          message: `${head} and the run still reports success. Give each task its own output path.`,
+          message: `${head} and the run still reports success. Give each task its own output path${back}.`,
         },
       )
     }

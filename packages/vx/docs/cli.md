@@ -4941,6 +4941,9 @@ Two tasks declare overlapping outputs with no `dependsOn` edge between
 them, so whichever runs second deletes the other's files. Give each task
 its own output path, or make one depend on the other.
 
+When the two are spelled apart (`dist` and `d*/y.js`), the refusal names
+the take-back that clears it: `"!d*/y.js"` in the first task's outputs.
+
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_INPUT_IS_OUTPUT`
