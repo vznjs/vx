@@ -243,12 +243,17 @@ afterAll(async () => {
 })
 
 /** The workspace's plugin: short deadlines, so a stalled fault costs the fuzz little. */
-function writeWorkspace(dir: string, uploadTimeoutMs: number, job = ''): Promise<number> {
+function writeWorkspace(
+  dir: string,
+  uploadTimeoutMs: number,
+  job = '',
+  timeoutMs = 500,
+): Promise<number> {
   const headers = job === '' ? '' : `, headers: { 'vx-test-job': ${JSON.stringify(job)} }`
   return Bun.write(
     path.join(dir, '.vx/workspace.mjs'),
     `import { vxCache } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
-      `export default { plugins: [vxCache({ url: ${JSON.stringify(url)}, issuer: ${JSON.stringify(GITHUB)}, repository: ${JSON.stringify(REPO)}, timeoutMs: 500, uploadTimeoutMs: ${uploadTimeoutMs}, retries: 1${headers} })] }\n`,
+      `export default { plugins: [vxCache({ url: ${JSON.stringify(url)}, issuer: ${JSON.stringify(GITHUB)}, repository: ${JSON.stringify(REPO)}, timeoutMs: ${timeoutMs}, uploadTimeoutMs: ${uploadTimeoutMs}, retries: 1${headers} })] }\n`,
   )
 }
 
@@ -350,7 +355,9 @@ it('jobs that miss the same keys at once all upload; a later job restores one wh
     await writeFile(path.join(root, p, 'src', 'in.txt'), `${p} racing\n`)
   const racers = await jobs(6)
   // A held upload waits on the slowest job's lookups, not on its own deadline.
-  for (const [i, d] of racers.entries()) await writeWorkspace(d, 60_000, String(i))
+  // A lookup's too: one timed out at 500 ms on a loaded runner was asked again
+  // after the upload landed, and hit (two racers, CI 46134222110).
+  for (const [i, d] of racers.entries()) await writeWorkspace(d, 60_000, String(i), 60_000)
   const before = blobs.size
   try {
     race.jobs = racers.length
