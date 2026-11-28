@@ -381,6 +381,13 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       )
     }
     expect(define({ _a1: 'x' })).toBeNull()
+    // vx sets these over every layer: a define was keyed and never seen.
+    for (const n of ['VX_RUN_WORKSPACE', 'VX_RUN_TASK', 'VX_RUN_TREE']) {
+      expect(define({ [n]: 'x' })).toBe(
+        `${CFG}: tasks.t.exec.env.define: vx sets ${n} for every task, over any define, so this value never reaches it`,
+      )
+    }
+    expect(define({ VX_RUN: 'x' })).toBeNull()
     // Controls: a name with no `=` or NUL, and a value holding `=`, pass.
     expect(define({ A_B: 'x=y' })).toBeNull()
     expect(taskRefusal({ exec: { command: 'x', env: { passThrough: ['A_B'] } } })).toBeNull()

@@ -1013,6 +1013,8 @@ interface ExecEnv {
   daemon that left the task's process group (`docs/execution.md`).
 - `VX_RUN_WORKSPACE` (the root of the workspace running the task) and
   `VX_RUN_TASK` (`project#task`) are added too.
+- vx sets these three over every layer, so a `define` of one is refused
+  at load.
 - `vx run` in a task's command, in that same workspace, is refused: a
   loop back to itself forks a run per run without bound. Declare it with
   `dependsOn`.
