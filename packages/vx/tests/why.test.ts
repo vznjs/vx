@@ -1195,6 +1195,40 @@ describe('vx why — an input another task rewrites', () => {
   )
 })
 
+describe('vx why — a dependency output the key hashes', () => {
+  // `inputs.tasks: []` over the dep's outputs, as the input-is-output
+  // refusal advises: the key moves only when build's bytes do. The advice
+  // said the write re-keyed the task every run and to give it its own task,
+  // which it already had.
+  it(
+    'names no writer for a file its dependency wrote as an output',
+    async () => {
+      const root = await makeWorkspace()
+      const appDir = path.join(root, 'packages', 'app')
+      try {
+        await writeFile(path.join(appDir, 'src.txt'), '1\n')
+        await writeFile(
+          path.join(appDir, 'vx.config.mjs'),
+          `export default { tasks: {
+            build: { exec: { command: 'mkdir -p out && cat src.txt > out/x' }, inputs: { files: ['src.txt'] }, outputs: { files: ['out/'] }, cache: true },
+            test: { dependsOn: ['build'], exec: { command: 'cat out/x > res.txt' }, inputs: { files: ['out/**'], tasks: [] }, outputs: { files: ['res.txt'] }, cache: true },
+          } }`,
+        )
+        await vx(root, ['run', 'app#test'])
+        await writeFile(path.join(appDir, 'src.txt'), '2\n')
+        await vx(root, ['run', 'app#test'])
+        const r = await vx(root, ['why', 'app#test'])
+        expect(r.out).toContain('cache key changed: file packages/app/out/x')
+        expect(r.out).not.toContain('Changed during a run')
+        expect(r.out).not.toContain('re-keys it every run')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('vx why — a committed output its own task rewrites', () => {
   // A hand edit to a committed output keys by its bytes; a command that
   // writes it differently each run then re-keyed itself forever, and the

@@ -33,6 +33,7 @@ export {
   getRun,
   GROUP_VIA,
   inputWriters,
+  savedOutputs,
   latestRunId,
   listInvocations,
   listRuns,

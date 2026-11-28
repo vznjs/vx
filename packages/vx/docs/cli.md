@@ -5823,7 +5823,9 @@ tasks whose own inputs moved, and prints each chain under `Root cause`:
 
 **Changed during a run.** An input file last changed while a recorded
 task ran names that task. A build that rewrites a file another key reads
-re-keys that key every run:
+re-keys that key every run. A file another task of the run saved as its
+declared output is left out, since a key that reads a dependency's outputs
+moves only when their bytes do. A stray write:
 
 ```ansi
 [4m[58;2;110;118;129m  [1m[38;2;167;139;250mChanged during a run[0m[4m[58;2;110;118;129m                                                                                                  [0m
