@@ -4,7 +4,7 @@
 // `initInstalls` is the plan a release runs.
 
 import { existsSync, realpathSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -279,6 +279,22 @@ describe('vx init with no package.json', () => {
     expect([p.code, p.err]).toEqual([
       1,
       '✗ vx init  cannot write plugins/package.json: plugins is a file, not a directory; move it and re-run\n',
+    ])
+  })
+
+  // A dangling or looping .vx link was called "a file", and `ls` showed none.
+  it('a link where .vx goes says what it leads to', async () => {
+    const root = await tmp('vx-init-bare-dotvx-link-')
+    await symlink(path.join(root, 'gone'), path.join(root, '.vx'))
+    const r = await vx(root, ['init'])
+    await rm(path.join(root, '.vx'))
+    await symlink('.vx', path.join(root, '.vx'))
+    const loop = await vx(root, ['init'])
+    expect([r.code, r.err, loop.code, loop.err]).toEqual([
+      1,
+      '✗ vx init  cannot write .vx/workspace.ts: .vx is a link to nothing, not a directory; move it and re-run\n',
+      1,
+      '✗ vx init  cannot write .vx/workspace.ts: .vx is a link that loops back through links, not a directory; move it and re-run\n',
     ])
   })
 

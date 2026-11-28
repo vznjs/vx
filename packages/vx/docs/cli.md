@@ -4352,6 +4352,8 @@ In a Turborepo or Nx workspace, it maps their config instead.
   `.vx -> ../x`).
 - The message:
   `refusing to write <file>: <dir> resolves to <real>, outside the workspace; remove the link and run again`.
+- A `.vx` or `plugins` that is no directory says what it is: a file, a
+  link to a file, a link to nothing, or a link that loops.
 - A root `package.json` that does not parse is refused, by file, line
   and column, before anything is written.
 - A `note` row names each `tsconfig*.json` beside a written

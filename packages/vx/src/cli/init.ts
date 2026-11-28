@@ -399,6 +399,22 @@ function ownerNamed(dir: string): boolean {
 }
 
 /**
+ * What stands where a directory was wanted. A dangling or looping `.vx` link
+ * was called "a file", and `ls` showed none.
+ */
+function notDirectory(dir: string): string {
+  try {
+    if (!lstatSync(dir).isSymbolicLink()) return 'is a file'
+    statSync(dir)
+    return 'is a link to a file'
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ELOOP'
+      ? 'is a link that loops back through links'
+      : 'is a link to nothing'
+  }
+}
+
+/**
  * Whether anything stands at `file`, a dangling symlink included: writing
  * through one created its target outside the workspace.
  */
@@ -441,7 +457,7 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
       (err: NodeJS.ErrnoException) => {
         if (err.code !== 'EEXIST' && err.code !== 'ENOTDIR') throw err
         throw new UserError(
-          `vx init: cannot write ${files[0][0]}: plugins is a file, not a directory; move it and re-run`,
+          `vx init: cannot write ${files[0][0]}: plugins ${notDirectory(path.join(root, 'plugins'))}, not a directory; move it and re-run`,
         )
       },
     )
@@ -680,7 +696,7 @@ async function starter(
         // writeNoFollow's mkdir of a parent that is a file says EEXIST.
         if (err.code !== 'ENOTDIR' && err.code !== 'EEXIST') throw err
         throw new UserError(
-          `vx init: cannot write ${f.path}: ${path.dirname(f.path)} is a file, not a directory; move it and re-run`,
+          `vx init: cannot write ${f.path}: ${path.dirname(f.path)} ${notDirectory(path.join(root, path.dirname(f.path)))}, not a directory; move it and re-run`,
         )
       },
     )
