@@ -1149,6 +1149,8 @@ interface ExecEnv {
 - Masked too: the readiness notice's pattern, a sandbox violation line,
   the error a verb ends on (a plugin's failure, a config's own throw) and
   `vx watch`'s `cycle failed` line.
+- A value vx shortens is masked before the cut: the `vx lock --check`
+  drift line and a plugin's thrown object never show a secret's head.
 - A multi-line value (a PEM key) is also masked line by line, each line
   of six characters or more.
 - A value with blanks around it (a pasted trailing newline) is also
