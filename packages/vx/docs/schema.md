@@ -3052,6 +3052,7 @@ interface CacheSettings {
 - That is: a first index is refused in a directory holding a `package.json`, `pnpm-workspace.yaml`, `vx.config.*` or `.vx/workspace.*`.
 - It is refused, too, where a subdirectory holds one, and in a directory that holds the workspace.
 - `--cache-dir src` over a workspace folder that holds files, and no `.gitignore` of its own, is refused too.
+- `cache.dir: '.vx'`, the folder of the workspace config and locks, is refused on a first index; `.vx/cache` is the one to name.
 - `.vx/cache` linked to `~` or `..` is refused on every open, index or not: a cache that resolves to the home directory, `/`, or a directory holding the workspace or a `.git`.
 - `--cache-dir pkg/dist/cache` with an output `dist/**` is refused before any task, naming the task: the clean would delete the cache.
 - That rule covers `outputs.files` and `outputs.workspaceFiles`. With `clean: false`, each save would pack the cache into its own entry.
