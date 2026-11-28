@@ -161,12 +161,12 @@ export function addHints(
         )
         if (unix !== undefined) violations.push(unix)
       }
-      // Last, and only when nothing else was said but, under a sandbox
-      // declaring no read in the cwd, reads refused inside it: a grant inside the cwd lists it (bwrap builds the path to a
-      // bind), but only that grant, so `bun test` and Vitest scan it, find
-      // no test file, and fail with no read to report. Vitest under
-      // `sandbox: {}` reported one read (package.json), and only the run
-      // after its grant said the cwd lists empty.
+      // Last, and only when nothing else was said (or, below, beside reads
+      // refused in the cwd): a grant inside the cwd lists it (bwrap builds
+      // the path to a bind), but only that grant, so `bun test` and Vitest
+      // scan it, find no test file, and fail with no read to report. Vitest
+      // under `sandbox: {}` reported one read (package.json), and only the
+      // run after its grant said the cwd lists empty.
       const cwd = toRealPath(args.cwd)
       // A grant cut around the walls (a root's `read: ['.']`) covers the cwd.
       const granted = [...grantedRead, ...(args.config.walled?.reads ?? [])].map(toRealPath)
@@ -177,13 +177,19 @@ export function addHints(
         atOrUnder(toRealPath(path.resolve(args.cwd, g)), cwd),
       )
       const readInCwd = (v: SandboxViolation): boolean =>
-        declaresNone &&
         v.hint !== true &&
-        // An `openat` says which it asked for; other calls only which list silences them.
-        (v.opened === undefined ? v.ignorable?.join() === 'read' : v.opened === 'read') &&
+        // An `openat` says which it asked for; another call (Vitest's
+        // `access`) only which lists may silence it.
+        (v.opened === undefined ? v.ignorable?.includes('read') === true : v.opened === 'read') &&
         v.path !== undefined &&
         atOrUnder(toRealPath(v.path), cwd)
-      if (violations.every(readInCwd) && !granted.some((g) => atOrUnder(cwd, g))) {
+      // Other notes may stand beside them: Vitest's walk up for a
+      // package.json drew the one on paths hidden outside the project.
+      const besideReads =
+        declaresNone &&
+        violations.some(readInCwd) &&
+        violations.every((v) => v.hint === true || readInCwd(v))
+      if ((violations.length === 0 || besideReads) && !granted.some((g) => atOrUnder(cwd, g))) {
         const inside = [
           ...new Set(
             granted
