@@ -35,6 +35,21 @@ it('thrownMessage says each thrown value, never throwing itself', () => {
   expect(THROWN.map(([, make]) => thrownMessage(make()))).toEqual(SAID)
 })
 
+// A thrown object's JSON was cut at 200 characters before the failure line
+// masked it, so a secret the cut split showed its head.
+it('thrownMessage masks a secret before it cuts a long thrown object', () => {
+  const was = process.env['API_TOKEN']
+  process.env['API_TOKEN'] = 'sup3rsecretB'
+  try {
+    const said = thrownMessage({ a: 'x'.repeat(180), t: 'sup3rsecretB' })
+    expect(said).not.toContain('sup3r')
+    expect(said).toBe(`threw {"a":"${'x'.repeat(180)}","t":"***"}`)
+  } finally {
+    if (was === undefined) delete process.env['API_TOKEN']
+    else process.env['API_TOKEN'] = was
+  }
+})
+
 it('a stage names the plugin, the hook and what it threw', async () => {
   const said: string[] = []
   for (const [, make] of THROWN) {

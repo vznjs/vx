@@ -5,6 +5,7 @@
 
 import { realpathSync } from 'node:fs'
 import os from 'node:os'
+import { maskedLine } from './secret-mask.js'
 
 export class UserError extends Error {
   /**
@@ -142,7 +143,10 @@ export function thrownMessage(err: unknown): string {
       const message = (err as { message?: unknown }).message
       if (typeof message === 'string' && message !== '') return message
       if (err instanceof Error) return `threw ${err.name} with no message`
-      const json = JSON.stringify(err)
+      // Masked before the cut: a secret the cut splits no longer matches
+      // whole, and its head showed in the plugin's failure line.
+      const raw = JSON.stringify(err)
+      const json = raw === undefined ? undefined : maskedLine(raw)
       if (json !== undefined) return `threw ${json.length > 200 ? `${json.slice(0, 200)}…` : json}`
       return 'threw an object'
     }

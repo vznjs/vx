@@ -363,4 +363,30 @@ describe('vx lock (e2e)', () => {
     },
     TIMEOUT,
   )
+
+  // The drift line cut a long value at 60 characters before masking it, so
+  // the whole-value match missed and `"A_KEY":"sup3rsecre…` showed the
+  // secret's head.
+  it(
+    'a drift line cut short still masks a secret value',
+    async () => {
+      const cfg = (more: string) =>
+        `export default { tasks: { build: { exec: { command: 'echo hi' } }${more} } }\n`
+      await addProject(root, 'app', cfg(''))
+      expect((await vx(root, ['lock'], {})).code).toBe(0)
+      await writeFile(
+        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        cfg(
+          `, deploy: { exec: { command: 'x', env: { define: { A_KEY: process.env.API_TOKEN } } } }`,
+        ),
+      )
+      const check = await vx(root, ['lock', '--check'], { API_TOKEN: 'sup3rsecretB' })
+      expect(check.code).toBe(1)
+      expect(check.err).toContain(
+        'tasks.deploy: (none) → {"exec":{"command":"x","env":{"define":{"A_KEY":"***"}}}}',
+      )
+      expect(check.err).not.toContain('sup3r')
+    },
+    TIMEOUT,
+  )
 })

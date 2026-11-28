@@ -1068,7 +1068,9 @@ function configDiff(locked: unknown, now: unknown, at = '', out: string[] = []):
 
 function diffValue(v: unknown): string {
   if (v === undefined) return '(none)'
-  const s = JSON.stringify(v)
+  // Masked before the cut: a value cut short no longer matches whole, and
+  // its head showed (`"A_KEY":"sup3rsecre…`).
+  const s = maskedLine(JSON.stringify(v))
   return s.length > 60 ? `${s.slice(0, 59)}…` : s
 }
 
