@@ -626,6 +626,18 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * lstat is fresh per clean (a task may replace the link) and only for
    * a tracked ancestor.
    */
+  private nestedListed = new Set<string>()
+
+  /** Whether `dir` lies in a nested repository (a `.git` at or above it, below a scope) not yet listed. */
+  private inNestedRepo(dir: string): boolean {
+    if (this.nestedListed.has(dir)) return false
+    const scope = this.trackedScopes.find((s) => dir === s || dir.startsWith(s + path.sep))
+    if (scope === undefined) return false
+    for (let d = dir; d.length > scope.length; d = path.dirname(d))
+      if (existsSync(path.join(d, '.git'))) return true
+    return false
+  }
+
   committedIn(dir: string): (abs: string) => boolean {
     let listed = false
     const linkAncestors = new Map<string, boolean>()
@@ -634,6 +646,14 @@ export class GitFilesCache extends Map<string, readonly string[]> {
         listed = true
         const covered = this.trackedScopes.some((s) => dir === s || dir.startsWith(s + path.sep))
         if (!covered) this.noteTracked([dir], listTracked(dir))
+        else if (this.inNestedRepo(dir)) {
+          // A project at or in a checked-out submodule: the outer index holds
+          // its gitlink alone, at or above `dir`, so no file under `dir` read
+          // as committed and the clean deleted the submodule's committed
+          // outputs. Its own git lists them.
+          this.nestedListed.add(dir)
+          this.noteTracked([], listTracked(dir))
+        }
       }
       for (let p = abs; p.length > dir.length; p = path.dirname(p)) {
         if (!this.isTracked(p)) continue

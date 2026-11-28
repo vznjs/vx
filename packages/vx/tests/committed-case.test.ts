@@ -62,3 +62,34 @@ describe('a git that cannot list the tracked files', () => {
     }
   })
 })
+
+// A project at a checked-out submodule's root: the workspace's enumeration
+// holds the submodule as one gitlink, at the project's own directory, so no
+// file under it read as committed and the output clean deleted the
+// submodule's committed `dist/logo.txt` on the first run. Its own git
+// answers.
+describe('a project in a checked-out submodule', () => {
+  it('keeps the files the submodule commits as committed, and no other', async () => {
+    const { mkdtemp, mkdir, rm, writeFile } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-committed-sub-'))
+    try {
+      const sub = path.join(root, 'packages', 'sub')
+      await mkdir(path.join(sub, 'dist'), { recursive: true })
+      await writeFile(path.join(sub, 'dist', 'logo.txt'), 'x')
+      Bun.spawnSync(['git', 'init', '-q'], {
+        cwd: sub,
+        env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+      })
+      Bun.spawnSync(['git', 'add', '.'], { cwd: sub })
+      await writeFile(path.join(sub, 'dist', 'out.txt'), 'y')
+      const cache = new GitFilesCache()
+      cache.noteTracked([root], [path.join(root, '.gitmodules'), sub])
+      const committed = cache.committedIn(sub)
+      expect(committed(path.join(sub, 'dist', 'logo.txt'))).toBe(true)
+      expect(committed(path.join(sub, 'dist', 'out.txt'))).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
