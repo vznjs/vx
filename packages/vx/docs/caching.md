@@ -480,7 +480,8 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     `lib -> ../shared`) takes the link as an input: git lists a linked
     directory as the link alone, so the glob matched nothing and an
     edit behind it was a hit (2026-10-25); each brace alternative counts
-    alone (`{lib,src}/**`). A link to a directory below
+    alone (`{lib,src}/**`). A plain file there (`lib` beside `lib/**`)
+    is no input: only a link to a directory is. A link to a directory below
     a glob's fixed prefix (`src/**/*.ts` over `src/v -> ../shared`,
     `**/*.ts` over `lib -> ../shared`) is an input the same way whenever
     the glob could match a path under it: its name alone matched no
