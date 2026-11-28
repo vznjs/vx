@@ -2176,7 +2176,7 @@ function assertNoLiteralTakenBack(
   if (negative.length === 0) return
   const taken = anyTaskGlob(asTrees(negative))
   const segs = (g: string) => (g === '' ? [] : g.split('/'))
-  const back = negative.map((n) => ({ n, trees: asTrees([n]).map(segs) }))
+  const back = negative.map((n) => ({ n, trees: asTrees([n]).map((t) => tailAsTree(segs(t))) }))
   const takenBy = (p: string[]) => back.find((b) => b.trees.some((t) => coversAll(t, p)))?.n
   for (const g of globs) {
     if (g.startsWith('!')) continue
@@ -2199,6 +2199,16 @@ function assertNoLiteralTakenBack(
         `the list, so ${what}. Narrow the negation so it leaves "${g}".`,
     )
   }
+}
+
+/**
+ * A trailing `**` then `*` as the trailing `**` it equals, one segment or
+ * more: read as two, `!**\/*` took nothing back from `**`, and a task over
+ * `['**', '!**\/*']` loaded keying no file.
+ */
+function tailAsTree(t: string[]): string[] {
+  while (t.length >= 2 && t.at(-1) === '*' && t.at(-2) === '**') t.pop()
+  return t
 }
 
 /**
