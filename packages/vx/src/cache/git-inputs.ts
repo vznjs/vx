@@ -619,7 +619,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * delete committed file"). A directory no enumeration covered (a
    * nested repository, a cache no enumeration filled) is listed once.
    * git lists a submodule as its gitlink path alone, so a file under a
-   * tracked directory is committed too. Not under a tracked symlink
+   * tracked directory holding its own `.git` is committed too; not under
+   * a tracked file a directory replaced. Not under a tracked symlink
    * (`dist -> real`): git tracks no file through one, and as an ancestor
    * it kept every file past it, so each miss saved the earlier runs'
    * files. Its target's own name is asked (`committedPastLinks`). The
@@ -640,7 +641,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   committedIn(dir: string): (abs: string) => boolean {
     let listed = false
-    const linkAncestors = new Map<string, boolean>()
+    const gitlinks = new Map<string, boolean>()
     return (abs) => {
       if (!listed) {
         listed = true
@@ -658,12 +659,16 @@ export class GitFilesCache extends Map<string, readonly string[]> {
       for (let p = abs; p.length > dir.length; p = path.dirname(p)) {
         if (!this.isTracked(p)) continue
         if (p === abs) return true
-        let link = linkAncestors.get(p)
-        if (link === undefined) {
-          link = lstatOrAbsent(p)?.isSymbolicLink() === true
-          linkAncestors.set(p, link)
+        // Only a gitlink holds committed files: a checked-out submodule or
+        // embedded repository, a directory with its own `.git`. A tracked
+        // file a directory replaced (`dist` committed, now `dist/`) kept
+        // every untracked file under it from the clean and in the key.
+        let gitlink = gitlinks.get(p)
+        if (gitlink === undefined) {
+          gitlink = lstatOrAbsent(p)?.isDirectory() === true && existsSync(path.join(p, '.git'))
+          gitlinks.set(p, gitlink)
         }
-        if (!link) return true
+        if (gitlink) return true
       }
       return false
     }
