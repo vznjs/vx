@@ -1871,6 +1871,8 @@ and `rootFileWriteHint` says to have the tool write it in a directory.
 A link or node the task makes (`ln -s`, `ln`, `mkfifo`) is granted its
 directory, the project as `'.'`: a literal grant has vx make an empty file
 there before the run, and `ln -s src lnk` then failed "File exists".
+So is where a move lands, and never as a read: `mv a.tmp a.txt` named
+`a.txt`, a file bound in place that no rename can replace.
 For the same reason a literal beside its own directory grant is dropped:
 `rm -rf dist; mkdir dist` named `['dist', 'dist/']`, which `vx lock`
 refuses; `dist/` alone then meets the in-place mount's hint (empty it,

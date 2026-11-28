@@ -10,6 +10,7 @@ import {
   sandboxFix,
 } from '../src/sandbox/fix.js'
 import { CREDENTIAL_STORES } from '../src/sandbox/request.js'
+import { refusedWrites } from '../src/sandbox/violations.js'
 import { anyTaskGlob } from '../src/util/index.js'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
@@ -438,6 +439,28 @@ describe('sandboxFix', () => {
     const r = (p: string) =>
       v(`openat(${at(p)}/) read under a write grant's directory, granted no read`, ['read'], at(p))
     expect(sandboxFix([r(''), r('src')], dir, path.dirname(dir))).toEqual({ read: ['.'] })
+  })
+
+  // `echo 1 > a.tmp; mv a.tmp a.txt` was told to grant `read: ['a.txt']`
+  // (the move had landed through a widened grant), or `write: ['a.txt']`, a
+  // file bound in place that no rename can replace: neither converged.
+  it('grants where a move lands as its directory, and never as a read', () => {
+    const at = (p: string) => path.join(dir, p)
+    const moves = (from: string, to: string) => [
+      `deny renameat2 ${at(from)}`,
+      `deny renameat2 ${at(to)}`,
+    ]
+    // Landed through the directory a file grant widened.
+    writeFileSync(at('a.txt'), '1')
+    const widened = { entries: new Map([[dir, new Set<string>()]]), granted: [at('a.tmp')] }
+    const landed = refusedWrites(moves('a.tmp', 'a.txt'), [dir], [], [], widened)
+    expect(landed.map((f) => f.ignorable)).toEqual([['write']])
+    expect(sandboxFix(landed, dir, path.dirname(dir))).toEqual({ write: ['.'] })
+    // Refused outright.
+    rmSync(at('a.txt'))
+    mkdirSync(at('gen'))
+    const refused = refusedWrites(moves('gen/a.tmp', 'gen/a'), [])
+    expect(sandboxFix(refused.slice(1), dir, path.dirname(dir))).toEqual({ write: ['gen/'] })
   })
 
   it('escapes a path the grant would read as a pattern, and names the directory of one no grant spells', () => {
