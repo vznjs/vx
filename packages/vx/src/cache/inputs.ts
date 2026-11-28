@@ -554,8 +554,14 @@ function resolveWorkspaceFiles(args: {
     dir: args.workspaceRoot,
     cache: args.gitFilesCache,
   })
+  const heads = headsUnder(passOnlyHeads(positive), args.workspaceRoot)
   const files = base.then((all) => {
-    const kept = ownsAny ? all.filter((abs) => !own(relPosix(args.workspaceRoot, abs))) : all
+    const oids = heads === undefined ? undefined : args.gitFilesCache?.oidsFor(args.workspaceRoot)
+    const linked = (abs: string): boolean => heads?.has(abs) !== true || dirLinkInput(abs, oids)
+    const kept =
+      ownsAny || heads !== undefined
+        ? all.filter((abs) => !own(relPosix(args.workspaceRoot, abs)) && linked(abs))
+        : all
     refuseUndecodable(kept, undecodable, args.workspaceRoot, 'workspaceFiles')
     if (reach.length === 0) return kept
     // Outside the memo: an ignored file written mid-run leaves the snapshot as
@@ -2409,6 +2415,8 @@ interface FilesPlan {
   ownOutput: (rel: string) => boolean
   positiveGlobs: Bun.Glob[]
   isPositive: (rel: string) => boolean
+  /** The static heads `isPositive` lets in that no entry matches (`passOnlyHeads`). */
+  passOnly: string[]
   /** Whether a positive glob may match a path under `rel` (`mayHoldMatch`). */
   mayHold: (rel: string) => boolean
   /** The literal entries, each naming one path (see `unanswered`). */
@@ -2468,6 +2476,7 @@ function filesPlan(
           ownOutput: outputMatcher(ownOutputs),
           positiveGlobs: asTrees(positive).map(globFor),
           isPositive: throughLinks(positive, anyTaskGlob(asTrees(positive))),
+          passOnly: passOnlyHeads(positive),
           mayHold: mayHoldMatch(positive),
           ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
@@ -2488,6 +2497,11 @@ function throughLinks(
   positive: readonly string[],
   isPositive: (rel: string) => boolean,
 ): (rel: string) => boolean {
+  const through = throughHeads(positive)
+  return through.size === 0 ? isPositive : (rel) => isPositive(rel) || through.has(rel)
+}
+
+function throughHeads(positive: readonly string[]): Set<string> {
   const through = new Set<string>()
   // Each brace alternative by its own prefix: whole, `{lib,src}/**` has none.
   for (const g of positive.flatMap(braceAlternatives)) {
@@ -2496,7 +2510,24 @@ function throughLinks(
     const parts = prefix.split('/')
     for (let i = 1; i <= parts.length; i++) through.add(parts.slice(0, i).join('/'))
   }
-  return through.size === 0 ? isPositive : (rel) => isPositive(rel) || through.has(rel)
+  return through
+}
+
+/**
+ * The heads `throughLinks` lets in that no entry matches: each is an input
+ * only as a link to a directory. A file there (`i/b` beside `i/b/*.js`)
+ * keyed the task and re-ran it on every edit.
+ */
+function passOnlyHeads(positive: readonly string[]): string[] {
+  const through = throughHeads(positive)
+  if (through.size === 0) return []
+  const matches = anyTaskGlob(asTrees(positive))
+  return [...through].filter((t) => !matches(t))
+}
+
+/** `heads` under `dir`, absolute; undefined for none. */
+function headsUnder(heads: readonly string[], dir: string): Set<string> | undefined {
+  return heads.length === 0 ? undefined : new Set(heads.map((h) => path.join(dir, h)))
 }
 
 /**
@@ -2855,8 +2886,10 @@ async function resolveFiles(
   // Existence check only for paths without a trusted OID: a clean tracked file
   // exists. `git ls-files -s` can list a staged entry whose file is gone.
   // A trusted OID that is no link's needs no other look (`linkTakenBack`).
+  const heads = headsUnder(plan.passOnly, args.projectDir)
   const resolved = candidates.filter((abs) => {
     const oid = oids?.get(abs)
+    if (heads?.has(abs) === true && !dirLinkInput(abs, oids)) return false
     if (oid !== undefined && !oid.startsWith('120000:')) return true
     if (oid === undefined && !inputOnDisk(abs, args.gitFilesCache)) return false
     const rel = relPosix(args.projectDir, abs)

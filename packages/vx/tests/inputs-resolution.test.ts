@@ -501,6 +501,49 @@ describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
 // A committed fixture under `tests/fixtures/node_modules/` was dropped by
 // path, and an edit to it replayed the old output.
 // ─────────────────────────────────────────────────────────────────────────
+// A glob's fixed head is let in as a path so a linked directory there keys
+// its files (git lists the link alone). A plain file there passed too:
+// `i/b` beside `i/b/*.js` keyed the task, so each edit of it re-ran.
+describe('a file at a glob head no entry matches', () => {
+  let root: string
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-head-file-'))
+    gitInit(root)
+    await Bun.write(path.join(root, 'p', 'i', 'b'), 'a file, not a folder')
+    await Bun.write(path.join(root, 'shared', 'x.js'), 'x')
+  })
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+  const resolve = async (files: string[], workspaceFiles?: string[]) =>
+    (
+      await resolveInputs({
+        projectDir: path.join(root, 'p'),
+        workspaceRoot: root,
+        envSource: {},
+        inputs: { files, ...(workspaceFiles ? { workspaceFiles } : {}) },
+        ownOutputs: [],
+        nestedProjectDirs: [],
+      })
+    ).files.map((f) => relPosix(root, f))
+
+  it('is no input, tracked or not, in files and workspaceFiles', async () => {
+    for (const glob of ['i/b/*.js', 'i/b/**', 'i/{a,b}/*']) {
+      expect([glob, await resolve([glob])]).toEqual([glob, []])
+      expect([glob, await resolve([], [`p/${glob}`])]).toEqual([glob, []])
+    }
+    Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
+    expect(await resolve(['i/b/*.js'])).toEqual([])
+    expect(await resolve([], ['p/i/b/*.js'])).toEqual([])
+  })
+
+  it('CONTROL: a linked directory there still keys what it holds', async () => {
+    await rm(path.join(root, 'p', 'i', 'b'))
+    await symlink('../../shared', path.join(root, 'p', 'i', 'b'))
+    expect(await resolve(['i/b/*.js'])).toEqual(['p/i/b'])
+  })
+})
+
 describe('node_modules: untracked is an install, tracked is a source', () => {
   let root: string
   let projectDir: string
