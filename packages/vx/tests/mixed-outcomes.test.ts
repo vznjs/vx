@@ -92,11 +92,15 @@ it('names the bytes a failed task wrote whether or not a task depends on it', ()
 
 // A --fail-fast run kills what still runs: the footer counts it aborted, and
 // `vx last` read the same run with those tasks gone and nothing saying so.
-it('counts the tasks --fail-fast killed in vx last as the footer does', () => {
+// A killed task keeps its row, aborted, as any stopped task's.
+it('records the tasks --fail-fast killed in vx last as aborted', () => {
   const r = vx('run', 'm#lone', 'm#long', '--fail-fast')
   expect(r.code).toBe(1)
   expect(r.out).toContain('tasks     1 failed · 1 aborted · 2 total')
-  const { invocation } = last()
+  const { invocation, tasks } = last()
   expect(invocation).toMatchObject({ taskCount: 1, failedCount: 1, abortedCount: 1 })
-  expect(vx('last').out).toContain('1 task · 0 hits · 1 failed · 1 aborted')
+  expect(tasks.find((t) => t.task === 'long')?.status).toBe('aborted')
+  const shown = vx('last').out
+  expect(shown).toContain('1 task · 0 hits · 1 failed · 1 aborted')
+  expect(shown).toMatch(/aborted .*m#long/)
 })

@@ -2293,7 +2293,7 @@ CREATE TABLE runs (
   hash                TEXT NOT NULL,   -- '' when the outcome derived no key (see below)
   project             TEXT NOT NULL,
   task                TEXT NOT NULL,
-  status              TEXT NOT NULL,   -- success | failed | cache-hit | cache-hit-remote | skipped
+  status              TEXT NOT NULL,   -- success | failed | cache-hit | cache-hit-remote | skipped | aborted
   exit_code           INTEGER NOT NULL,
   duration_ms         INTEGER NOT NULL,
   forward_args        TEXT,             -- salted xxh3 of the JSON-encoded `--` args; null when none
@@ -2379,9 +2379,10 @@ CREATE TEMP VIEW runs AS
     r.forward_args, r.started_at, r.ended_at, k.run_id, r.cpu_ms, /* … every column */
   FROM main.runs r LEFT JOIN main.run_ids k ON k.id = r.run;
 
--- Every non-group, non-aborted outcome of a run gets a row, so
--- `invocations.task_count` always equals `COUNT(*)` here for that run_id
--- and the terminal summary's "N total". Two of those outcomes never derive
+-- Every non-group outcome of a run that started gets a row, so
+-- `invocations.task_count` plus its `aborted_count` equals `COUNT(*)` here
+-- for that run_id: an `aborted` row (a stop or --fail-fast killed it) is
+-- in no rate or duration. Two of those outcomes never derive
 -- a cache key — a `skipped` task (its upstream failed, so it never probed)
 -- and a `persistent` one (a dev server is not cacheable) — and they store
 -- `hash = ''`. `''` is impossible for a real key (16 hex chars), so it reads

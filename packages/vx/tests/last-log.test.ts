@@ -290,10 +290,7 @@ it("a skip's log and why say why it never ran when no blocker's log can tell", a
   )
   expect(vx('run', 'f#killed', '--fail-fast', '--concurrency', '2').code).toBe(1)
   expect(vx('last', '--log', 'f#later').err).toBe(
-    noticed(
-      'vx last: f#later did not run: f#slow did not pass, and this run kept no row for it\n',
-      'info',
-    ),
+    noticed('vx last: f#later did not run: f#slow was aborted before it ended\n', 'info'),
   )
   expect(vx('run', 'f#unstarted', '--fail-fast', '--concurrency', '1').code).toBe(1)
   expect(vx('last', '--log', 'f#z').err).toBe(

@@ -1918,7 +1918,7 @@ export interface RunRecord {
   hash?: string
   project: string
   task: string
-  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped'
+  status: 'success' | 'failed' | 'cache-hit' | 'cache-hit-remote' | 'skipped' | 'aborted'
   exitCode: number
   durationMs: number
   forwardArgs?: readonly string[]

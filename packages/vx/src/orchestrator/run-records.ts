@@ -119,7 +119,7 @@ function remoteErrorOf(
 }
 
 /**
- * Every non-group, non-aborted outcome gets a row, one with no hash too (a
+ * Every non-group outcome that started gets a row, one with no hash too (a
  * skip, a server): `bindRun` stores `''` for it, so the counts match the
  * terminal's; the key-diff readers guard it.
  */
@@ -137,14 +137,14 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
   let abortedCount = 0
   for (const o of outcomes) {
     if (isGroupTask(o.node)) continue
-    // aborted (killed by a shutdown signal) isn't a real run. One that
-    // started is still in the summary's task list, as the terminal lists it;
-    // one the stop reached first is only `notRunCount`.
+    // Aborted (a stop or --fail-fast killed it) is no pass or failure, but
+    // one that started keeps its row, as the terminal lists it; one the
+    // stop reached first is only `notRunCount`.
     if (o.status === 'aborted') {
-      // As the footer counts it: one the stop reached first is `not run`.
       if (neverStarted(o)) continue
       abortedCount++
       if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
+      if (input.landed?.has(o) !== true) runs.push(runRecordOf(o as RecordedOutcome, input))
       continue
     }
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))

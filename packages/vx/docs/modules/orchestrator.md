@@ -228,7 +228,7 @@ export interface RunSummary {
     Errors logged, exit code unchanged.
 13. **`assembleRunRecords` → `runHistory(cache).recordRunBundle`**
     (`run-records.ts`). One pass over the outcomes builds the `runs`
-    rows (one per real task; group + `aborted` skipped), the
+    rows (one per real task that started; groups skipped), the
     `invocations` header row (command, policy, git/CI/host context,
     counts) and, only when a sink is active, the per-task
     telemetry mirror — so all three carry the same task count by

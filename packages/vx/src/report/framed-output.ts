@@ -823,6 +823,8 @@ export function formatRecordedRow(
       ...(r.peakRssBytes !== null ? { peakRssBytes: r.peakRssBytes } : {}),
     },
     ...(r.placement !== null ? { placement: { where: r.placement } } : {}),
+    // History keeps a row only for an aborted task that started.
+    ...(r.status === 'aborted' ? { timing: { startNs: 0n } } : {}),
   } as TaskOutcome
   if (r.keyNotDerived === true) markKeyFailed(o)
   const blocks = r.blocks ?? undefined

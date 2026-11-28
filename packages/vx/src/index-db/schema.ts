@@ -571,10 +571,11 @@ export const SCHEMA_VERSION = 'v59'
 /**
  * SQL predicate selecting `runs` rows that record an EXECUTION.
  *
- * Every non-group, non-aborted outcome of a run gets a row, so the header's
- * `task_count` matches `COUNT(*)` and the run-detail timeline is complete.
- * But a `skipped` row is a task the run never executed — its upstream failed,
- * so it has no exit of its own, no duration, and made no cache decision.
+ * Every non-group outcome that started gets a row, so the run-detail
+ * timeline is complete. But a `skipped` row is a task the run never
+ * executed — its upstream failed, so it has no exit of its own, no
+ * duration, and made no cache decision — and an `aborted` one was killed
+ * before its own end, neither a pass nor a failure.
  * Counting it in a RATE or a MEAN dilutes that figure with a non-event: a
  * task skipped as often as it succeeds reads 50% success, and a zero-duration
  * row drags every average toward zero.
@@ -583,7 +584,7 @@ export const SCHEMA_VERSION = 'v59'
  * than one place (`Cache.stats` and the run-history queries both answer
  * "runs in the last 24h") and two copies of a rule are how they drift apart.
  */
-export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
+export const EXECUTED_RUNS_SQL = "status NOT IN ('skipped', 'aborted')"
 
 /**
  * SQL predicate selecting `runs` rows that recorded a cache key. `hash` is

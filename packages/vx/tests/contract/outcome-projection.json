@@ -125,6 +125,23 @@
     },
     {
       "project": "c",
+      "task": "e2e",
+      "status": "aborted",
+      "exitCode": 130,
+      "durationMs": 40,
+      "startedAt": 1000004,
+      "endedAt": 1000044,
+      "runId": "run-1",
+      "cached": true,
+      "cacheHit": false,
+      "hash": "h-e2e",
+      "wallclockStartNs": "4000000n",
+      "wallclockEndNs": "44000000n",
+      "blockedBy": "b#test",
+      "def": "b6637ae5b3081bec"
+    },
+    {
+      "project": "c",
       "task": "docs",
       "status": "skipped",
       "exitCode": 1,
