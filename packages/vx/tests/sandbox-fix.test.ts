@@ -520,10 +520,27 @@ describe('sandboxFix', () => {
       'e@()',
       'f+(g)',
       'h!(i)',
+      // A folder named `{`: its escaped brace was refused as an absolute path.
+      'k{/l',
     ]
     mkdirSync(path.join(dir, 'a'))
+    mkdirSync(path.join(dir, 'k{'))
     for (const n of names) writeFileSync(path.join(dir, n), '')
-    const all = [...names, 'x', 'stXr', 'qa', 'b', 'c', 'lead', 'trail', 'a/y', 'e', 'fgg', 'hj']
+    const all = [
+      ...names,
+      'x',
+      'stXr',
+      'qa',
+      'b',
+      'c',
+      'lead',
+      'trail',
+      'a/y',
+      'e',
+      'fgg',
+      'hj',
+      'k/l',
+    ]
     for (const n of names) {
       const fix = sandboxFix(
         [v(`deny(1) file-read-data ${n}`, ['read'], path.join(dir, n))],

@@ -1364,6 +1364,7 @@ Paths start at the project folder. vx always leaves out what git ignores, its ow
 - With `files: []` and a lockfile plugin (`@vzn/vx-lockfile`), a lockfile change still misses.
 - `/etc/**` and `../shared/**` are refused, in every input and output glob: use `inputs.workspaceFiles` for paths outside the project.
 - `{../shared,src}/**` and `{/etc,src}/*` are refused too: a brace alternative counts.
+- An escaped brace opens none: `'\\{/notes.md'`, a file under a folder named `{`, is relative.
 - `src\**`, `src\*.ts`, `C:\src\**` and `C:/src/**` are refused, naming the forward-slash glob to write.
 - `' src/**'` (spaces around it) and `'src/\n'` (a control character) are refused: either is read as part of a name and matches nothing.
 

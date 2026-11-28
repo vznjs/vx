@@ -1785,7 +1785,10 @@ function hasParentSegment(glob: string): boolean {
  */
 function isAbsoluteGlob(glob: string): boolean {
   const g = glob.startsWith('!') ? glob.slice(1) : glob
-  return g.startsWith('/') || (g.includes('{') && /[{,]\//.test(g))
+  // An escaped brace or comma opens no alternative: `\{/x`, the fix line's
+  // key for a file under a folder named `{`, was refused as absolute.
+  const bare = g.replace(/\\[^]/g, '__')
+  return g.startsWith('/') || (bare.includes('{') && /[{,]\//.test(bare))
 }
 
 const DRIVE = /(^|[{,])[A-Za-z]:[\\/]+/g
