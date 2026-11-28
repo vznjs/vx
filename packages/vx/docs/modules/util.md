@@ -1657,9 +1657,11 @@ stream, so stdout and stderr keep the order the task wrote them in.
 `release()` lets a piece shorter than six characters go as written and a
 longer one go as `***`, kept so the rest of its value joins that mask:
 `printf 'key=hunter2-l'; sleep 0.3; printf '11-sekret'` showed both pieces
-plain, the whole value on a single task's terminal. Only a value whose
-first piece before the pause is shorter is not caught live; a longer
-piece the rest does not complete stays masked. What vx stores of the output
+plain, the whole value on a single task's terminal. A short piece is kept
+too, as written (`plain`): the rest of a value it begins goes out as
+`***` (`printf 'key=hun'; sleep 0.3; printf 'ter2…'` showed the whole
+value), so only that short head shows live; a longer piece the rest does
+not complete stays masked. What vx stores of the output
 (`encodeOutputLog`, `failedOutputLog`), a replayed hit and a buffered
 frame (`report/logger.ts`, the CI default) mask each stream's whole
 text again through `spans` (`maskStreams`), a write to the other stream

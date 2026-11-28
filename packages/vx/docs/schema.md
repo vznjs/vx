@@ -1124,8 +1124,9 @@ interface ExecEnv {
 - Masked in output: the task's output, the line vx adds under a shell's
   127 or 126 (the command's first word), and the stdout the cache keeps
   and a hit replays.
-- A value printed in two pieces with a pause between is masked live too,
-  once the first piece has six characters. Every stored copy masks it whole.
+- A value printed in two pieces with a pause between is masked live too.
+  A first piece under six characters shows, and the rest goes out as `***`.
+  Every stored copy masks it whole.
 - Masked in commands: the command a cache entry stores (what `vx why`
   prints and a remote cache receives) and the `$ command` line.
 - Masked in commands too: the run's own invocation line that `vx last`
@@ -1168,8 +1169,8 @@ interface ExecEnv {
   `***`: values that overlap or touch are masked as one.
 - A value split across two output chunks is still caught: the output
   holds back that many characters until the next chunk.
-- Streamed live, the hold lasts 25 ms, so a value written in two pieces
-  with a longer pause between them shows.
+- Streamed live, the hold lasts 25 ms, so of a value written in two pieces
+  with a longer pause between them, a first piece under six characters shows.
 - A buffered frame (the CI default) and every stored copy are masked
   again whole and never show it.
 - The stored copies: the entry a hit replays and a remote cache

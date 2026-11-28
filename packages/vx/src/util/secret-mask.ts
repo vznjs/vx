@@ -441,16 +441,28 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
       // that mask, as in the whole text. Holding the span back for that held
       // back-to-back values forever and re-scanned them per chunk.
       let joined = false
+      // How many characters at `carry`'s start already went out as written:
+      // a piece `release` let go too short to mask. A value they begin is
+      // masked from where they end, so its rest never shows: `printf
+      // 'key=hun'; sleep 0.3; printf 'ter2…'` showed the whole value.
+      let plain = 0
       const out = (
         text: string,
         shown: number,
         found: ReadonlyArray<[number, number]> = spans(text),
+        written = 0,
       ): string => {
-        if (text.length <= shown) return ''
+        const from = Math.max(shown, written)
+        if (text.length <= from) return ''
         let masked = ''
-        let at = shown
+        let at = from
         for (const [s, e] of found) {
           if (e <= at) continue
+          if (s < written && s >= shown) {
+            masked += MASKED
+            at = e
+            continue
+          }
           if (s < shown || (s <= at && joined && at === shown)) {
             at = e
             continue
@@ -472,6 +484,8 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
           carry = text.slice(cut)
           const shown = Math.min(ghost, cut)
           ghost -= shown
+          const written = plain
+          plain = Math.max(0, plain - cut)
           // A span across the cut is masked up to it, and its rest is never
           // shown: a ghost, which a value it begins joins.
           const before: Array<[number, number]> = []
@@ -480,31 +494,40 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
             before.push([s, Math.min(e, cut)])
             if (e > cut) ghost = Math.max(ghost, e - cut)
           }
-          return out(text.slice(0, cut), shown, before)
+          return out(text.slice(0, cut), shown, before, written)
         },
         release() {
-          // A piece too short to say much goes out as written; a longer one
+          // A piece too short to say much goes out as written, kept so the
+          // rest of a value it begins goes out as the mask; a longer one
           // goes out as the mask, kept to join the rest of its value.
           const piece = partialTail(carry)
           if (piece < MIN_SECRET_CHARS) {
-            const rest = out(carry, ghost)
-            carry = ''
+            const rest = out(carry, ghost, spans(carry), plain)
+            carry = carry.slice(carry.length - piece)
+            plain = piece
             ghost = 0
             return rest
           }
           const cut = carry.length - piece
-          const head = out(carry.slice(0, cut), Math.min(ghost, cut))
+          const head = out(
+            carry.slice(0, cut),
+            Math.min(ghost, cut),
+            undefined,
+            Math.min(plain, cut),
+          )
           const fresh = ghost <= cut
           carry = carry.slice(cut)
           ghost = carry.length
+          plain = 0
           const result = head + (fresh && !joined ? MASKED : '')
           joined = true
           return result
         },
         end() {
-          const rest = out(carry, ghost)
+          const rest = out(carry, ghost, undefined, plain)
           carry = ''
           ghost = 0
+          plain = 0
           return rest
         },
       }
