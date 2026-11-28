@@ -1999,6 +1999,10 @@ would delete the first's files.
   `dist/app.js`: the check compares paths, not spellings.
 - `dist` collides with `dist/app.js`: a literal is the file or its whole
   tree.
+- `dist` collides with `d*/y.js` and `*/types/**` too: the glob may write
+  inside the folder `dist` names.
+- So any literal, `tsconfig.tsbuildinfo` too, collides with another task's
+  `**/*.js`, until one side takes the other back with `!`.
 - `dist/**` collides with `dist/extra/**` and `dist/*.js`: a whole tree
   holds every glob whose literal head lies in it.
 - `**/*` collides with `**/dist/**`: both match `x/dist/x`.

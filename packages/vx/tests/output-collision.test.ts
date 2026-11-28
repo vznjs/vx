@@ -28,13 +28,7 @@ import {
 import type { ProjectEntry } from '../src/workspace/index.js'
 import type { PackageGraph } from '../src/workspace/index.js'
 import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../src/config.js'
-import {
-  asTrees,
-  braceAlternatives,
-  literalPath,
-  normalizeGlob,
-  taskGlob,
-} from '../src/util/index.js'
+import { asTrees, braceAlternatives, taskGlob } from '../src/util/index.js'
 import { cpuClock } from './helpers/cpu-clock.js'
 
 function task(outputs: string[], wsOutputs?: string[]): TaskConfig {
@@ -877,16 +871,28 @@ describe('the path index finds every pair the rule refuses', () => {
       expect([outputsOverlap(a!, b!), outputsOverlap(b!, a!)]).toEqual([false, false])
   })
 
-  it('CONTROL: a literal with no trailing slash is not read as a directory for a glob to meet in', () => {
-    expect([outputsOverlap('index.js', '*/**'), outputsOverlap('*/**', 'index.js')]).toEqual([
-      false,
-      false,
-    ])
-  })
+  // `dist` beside `d*/y.js` passed, read as a file, while the clean takes
+  // `dist` whole: x's clean deleted y's dist/y.js under a green run. A task
+  // whose outputs land in another's is refused (M, 2026-11-28).
+  for (const [a, b] of [
+    ['dist', 'd*/y.js'],
+    ['dist', '*/types/**'],
+    ['index.js', '*/**'],
+  ]) {
+    it(`a literal with no trailing slash is a directory a glob may write in: ${a} against ${b}`, () => {
+      expect([outputsOverlap(a!, b!), outputsOverlap(b!, a!)]).toEqual([true, true])
+      expect(() => graph({ app: { x: task([a!]), y: task([b!]) } })).toThrow(
+        /both declare the output/,
+      )
+      expect(() => graph({ p: { x: task([], [a!]) }, q: { y: task([], [b!]) } })).toThrow(
+        /outputs\.workspaceFiles/,
+      )
+    })
+  }
 
   // Every pair of seeded random globs against the paths they can name: a path
-  // both take is an overlap. A literal counts as a tree only with a trailing
-  // slash, as the refusal reads it.
+  // both take is an overlap. A literal counts as a tree, as the clean reads a
+  // directory there.
   it('refuses every random pair that takes a common path (oracle: every path to depth 3)', () => {
     const names = ['dist', 'd', 'a', 'ab', 'b.js', 'a.js', 'x.map', 'lib', '.cache', 'a.d.ts']
     const atoms = [...names, '*', '**', '?', '*.js', 'a*', '*b*', '?.js', '[ab]*', '[!a]*']
@@ -899,9 +905,7 @@ describe('the path index finds every pair the rule refuses', () => {
     walk([])
     const takes = (glob: string): ((p: string) => boolean) => {
       const alts = braceAlternatives(glob).flatMap((alt) =>
-        literalPath(alt) !== null && !alt.endsWith('/')
-          ? [(p: string) => p === normalizeGlob(alt)]
-          : asTrees([alt]).map((t) => (p: string) => taskGlob(t).match(p)),
+        asTrees([alt]).map((t) => (p: string) => taskGlob(t).match(p)),
       )
       return (p) => alts.some((m) => m(p))
     }

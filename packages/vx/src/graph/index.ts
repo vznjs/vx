@@ -63,6 +63,7 @@ export {
   type GraphRules,
   markOutsideAdditions,
   markSurfacedDeps,
+  outputCovers,
   outputsOverlap,
   outputTakenBack,
   type TaskNode,

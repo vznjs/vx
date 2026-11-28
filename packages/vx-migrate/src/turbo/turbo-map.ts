@@ -11,7 +11,7 @@
 // The consumer decides what a global becomes through `splice`.
 
 import path from 'node:path'
-import { isLiteralPattern, outputsOverlap, pruneOrphanPersistentNotes, UserError } from '@vzn/vx'
+import { isLiteralPattern, outputCovers, pruneOrphanPersistentNotes, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
 import { refuseTaskNames } from '../plugin-gaps.js'
 import {
@@ -2375,7 +2375,7 @@ function buildTask(
       (g) =>
         ownNegated.has(g) &&
         !list?.includes(g) &&
-        !tracked.some((f) => outputsOverlap(g.slice(1), f)),
+        !tracked.some((f) => outputCovers(g.slice(1), f)),
     )
     if (list !== undefined && negs.length > 0) inputs[field] = withoutTakenBack([...list, ...negs])
   }

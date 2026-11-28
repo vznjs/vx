@@ -1207,11 +1207,22 @@ export function outputsOverlap(rawA: string, rawB: string): boolean {
   return as.some((a) => bs.some((b) => overlapOne(a, b)))
 }
 
+/**
+ * Does the clean of output `glob` reach `file`, a path known to be a file?
+ * `outputsOverlap` reads a literal as a directory too (a folder output a glob
+ * may write in), which a tracked file is not: `**\/*.xml` reaches no
+ * `package.json`. On the façade for `@vzn/vx-migrate`'s tracked files.
+ */
+export function outputCovers(glob: string, file: string): boolean {
+  return braceAlternatives(glob).some((g) =>
+    asTrees([g]).some((t) => {
+      const literal = literalPath(t)
+      return literal !== null ? literal === file : taskGlob(t).match(file)
+    }),
+  )
+}
+
 function overlapOne(rawA: string, rawB: string): boolean {
-  // A literal's `/**` twin reads it as a directory, which only a trailing
-  // slash says it is: `index.js` beside `*/**` is no overlap.
-  const tree = (raw: string): boolean => literalPath(raw) === null || raw.endsWith('/')
-  const meetCounts = tree(rawA) && tree(rawB)
   for (const a of asTrees([rawA])) {
     for (const b of asTrees([rawB])) {
       const la = literalPath(a)
@@ -1222,8 +1233,7 @@ function overlapOne(rawA: string, rawB: string): boolean {
         if (taskGlob(b).match(la)) return true
       } else if (lb !== null) {
         if (taskGlob(a).match(lb)) return true
-      } else if (a === b || covers(a, b) || covers(b, a) || (meetCounts && globsMeet(a, b)))
-        return true
+      } else if (a === b || covers(a, b) || covers(b, a) || globsMeet(a, b)) return true
     }
   }
   return false

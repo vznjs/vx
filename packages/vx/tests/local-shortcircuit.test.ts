@@ -932,8 +932,9 @@ describe('local cache short-circuit', () => {
     async () => {
       // `**/g.txt` can land anywhere, so every task stays out, the writer
       // included — exactly the rule 584 replaced, kept for the spelling
-      // that earns it. `solo` reads only what that output cannot match.
-      await soloAndWriter(`{ files: [], workspaceFiles: ['**/g.txt'] }`)
+      // that earns it. `solo` reads only what that output cannot match. The
+      // writer takes back solo's `out.txt`, a folder `**/g.txt` may write in.
+      await soloAndWriter(`{ files: [], workspaceFiles: ['**/g.txt', '!packages/solo/out.txt'] }`)
       await addProject(fixture.root, 'solo', {
         files: { 'src/a.md': 'a' },
         config: `export default { tasks: { build: {

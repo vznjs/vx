@@ -174,6 +174,9 @@ describe('nx(): a wildcard-first output', () => {
       graph.graph.nodes['lib']!.data.targets['test'] = target(['{projectRoot}/*.xml'])
       graph.graph.nodes['lib']!.data.targets['gen'] = target(['{projectRoot}/*.mjs'])
       graph.graph.nodes['app']!.data.targets['test'] = target(['{projectRoot}/**/*.xml'])
+      // `dist` is a folder `**/*.xml` may write in: build and test would overlap.
+      delete graph.graph.nodes['app']!.data.targets['build']
+      delete graph.graph.nodes['app']!.data.targets['all']
       await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
       const app = path.join(root, 'packages', 'app')
       await writeFile(path.join(app, 'pom.xml'), '<project/>\n')
