@@ -49,6 +49,15 @@ const cases: [string, (r: string) => Promise<unknown>, string, string][] = [
     'the lock holds packages/a, which has no vx.config now',
   ],
   [
+    // The package stays, so the edges plugin maps it config-less: the
+    // audit said 'the lock names it "a", the plugins here "a"'.
+    'a vx.config deleted, its package kept',
+    (r) =>
+      Promise.all(['vx.config.mjs', 'vx.lock.json'].map((f) => rm(path.join(r, 'packages/a', f)))),
+    '',
+    "the lock holds packages/a, which has no vx.config now ('vx-test-packages' adds it without one)",
+  ],
+  [
     'a package.json name changed',
     (r) =>
       writeFile(

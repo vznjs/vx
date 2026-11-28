@@ -1026,7 +1026,13 @@ function pluginDrift(lock: Lockfile, fresh: Lockfile, drifted: ReadonlySet<strin
       if (now.file === undefined) out.push(`${what(dir)} is not in the lock — run 'vx lock'`)
       continue
     }
-    if (held.name !== now.name || held.by !== now.by)
+    // A config deleted where a plugin still adds the package: the names
+    // match, and the line read 'names it "a", the plugins here "a"'.
+    if (held.name === now.name && held.file !== undefined && now.file === undefined)
+      out.push(
+        `the lock holds ${what(dir)}, which has no vx.config now ('${now.by}' adds it without one) — run 'vx lock'`,
+      )
+    else if (held.name !== now.name || held.by !== now.by)
       out.push(
         `${what(dir)}: the lock names it ${JSON.stringify(held.name ?? null)}${held.by === undefined ? '' : ` (added by '${held.by}')`}, the plugins here ${JSON.stringify(now.name ?? null)}${now.by === undefined ? '' : ` (added by '${now.by}')`} — run 'vx lock'`,
       )
