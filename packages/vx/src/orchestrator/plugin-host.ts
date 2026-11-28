@@ -45,7 +45,7 @@ import type {
   ConfigContext,
 } from './plugin.js'
 import { describeValue } from './plugin.js'
-import type { ProjectMeta } from '../workspace/index.js'
+import { bundledSource, type ProjectMeta } from '../workspace/index.js'
 import { extraHashesOf, hashExtra } from './lockfile-claim.js'
 import { readOnly, readOnlyNodes } from './read-only.js'
 
@@ -133,14 +133,18 @@ const isBug = (err: unknown): err is Error =>
   err instanceof RangeError ||
   err instanceof SyntaxError
 
-/** The first stack frame outside vx's own source, relative to the cwd when under it. */
+/**
+ * The first stack frame outside vx's own source, relative to the cwd when
+ * under it; in the config's bundle, the file it came from.
+ */
 function pluginThrowSite(err: Error): string | undefined {
   const site = [...String(err.stack ?? '').matchAll(/^\s+at (?:.*\()?(\/[^()\n]+:\d+:\d+)\)?$/gm)]
     .map((m) => m[1]!)
     .find((s) => !s.startsWith(VX_SRC))
   if (site === undefined) return undefined
-  const rel = path.relative(process.cwd(), site)
-  return rel.startsWith('..') ? site : rel
+  const file = bundledSource(site) ?? site
+  const rel = path.relative(process.cwd(), file)
+  return rel.startsWith('..') ? file : rel
 }
 
 // --- Pipeline stages ---------------------------------------------------------

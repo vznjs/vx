@@ -156,6 +156,33 @@ export function loadedModules(root: string): Set<string> {
   return new Set(Object.keys(createRequire(path.join(root, 'index.js')).cache))
 }
 
+/**
+ * The source file a stack frame inside a bundle (`…/workspace-<hash>.js:<line>:<col>`)
+ * came from, or undefined: a plugin's throw named the bundle, a file its
+ * author never wrote. Read off the `// <path>` line Bun writes above each
+ * file, matched to the one recorded input it ends; the line is the bundle's,
+ * so only the file is named.
+ */
+export function bundledSource(site: string): string | undefined {
+  const at = /^(.+\/workspace-[0-9a-f]+)\.js:(\d+):\d+$/.exec(site)
+  if (at === null) return undefined
+  try {
+    const manifest = JSON.parse(readFileSync(`${at[1]}.json`, 'utf8')) as Manifest
+    const files = Object.keys(manifest.inputs)
+    const lines = readFileSync(`${at[1]}.js`, 'utf8').split('\n', Number(at[2]))
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const rel = /^\/\/ (?:\.\.?\/)*(\S.*)$/.exec(lines[i]!)?.[1]
+      if (rel === undefined || rel.startsWith('@bun')) continue
+      // The nearest file line is the one: an earlier file would be the wrong one.
+      const hits = files.filter((f) => f.endsWith(`/${rel}`))
+      return hits.length === 1 ? hits[0] : undefined
+    }
+  } catch {
+    // gone or rewritten since: the bundle's own site stands
+  }
+  return undefined
+}
+
 /** The loader Bun reads `file` with, or null for a file the bundle must not hold. */
 function loaderOf(file: string): 'ts' | 'tsx' | 'js' | 'jsx' | null {
   const ext = path.extname(file)
