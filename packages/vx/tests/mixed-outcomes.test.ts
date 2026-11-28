@@ -101,6 +101,6 @@ it('records the tasks --fail-fast killed in vx last as aborted', () => {
   expect(invocation).toMatchObject({ taskCount: 1, failedCount: 1, abortedCount: 1 })
   expect(tasks.find((t) => t.task === 'long')?.status).toBe('aborted')
   const shown = vx('last').out
-  expect(shown).toContain('1 task · 0 hits · 1 failed · 1 aborted')
+  expect(shown).toContain('2 tasks · 0 hits · 1 failed · 1 aborted')
   expect(shown).toMatch(/aborted .*m#long/)
 })
