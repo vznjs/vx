@@ -239,6 +239,18 @@ it('a task named with a colon saves, restores and reads back its log', async () 
   expect(vx('last', '--log', 'c#build:prod')).toEqual({ code: 0, out: 'prod-ok\n', err: '' })
 })
 
+// A byte that is not UTF-8 printed as U+FFFD, where a hit replays the byte.
+it("a cached task's log keeps the bytes it printed that are not UTF-8", async () => {
+  await addProject(
+    root,
+    'raw',
+    `export default { tasks: { t: { exec: { command: "printf '\\\\377ok\\\\n'" }, inputs: { files: ['package.json'] }, outputs: { files: [] }, cache: true } } }\n`,
+  )
+  expect(vx('run', 'raw#t').code).toBe(0)
+  const p = Bun.spawnSync({ cmd: [process.execPath, BIN, 'last', '--log', 'raw#t'], cwd: root })
+  expect([...p.stdout]).toEqual([0xff, ...Buffer.from('ok\n')])
+})
+
 // "ended skipped. vx keeps output only for failed and cached tasks" was a
 // dead end: the output to read is its blocker's.
 it("a skipped task's log points at what blocked it", () => {

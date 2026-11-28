@@ -5,7 +5,7 @@
 
 import { inline, render, tagged, wrap, type Block, type Inline } from './components.js'
 import { detectColors, INDENT, type Tone } from './theme.js'
-import { REAL_STDOUT_WRITE } from '../util/index.js'
+import { rawBytes, REAL_STDOUT_WRITE } from '../util/index.js'
 
 export type StreamName = 'out' | 'err'
 
@@ -36,7 +36,9 @@ export function data(stream: StreamName, bytes: string): void {
 function dataWrite(stream: StreamName, bytes: string): boolean {
   const s = streamOf(stream)
   const write = s.write as typeof s.write & { [REAL_STDOUT_WRITE]?: typeof s.write }
-  return (write[REAL_STDOUT_WRITE] ?? write).call(s, bytes)
+  // A task's byte that is not UTF-8 is held as its escape (`decodeRaw`):
+  // written as a string, `vx last --log` printed U+FFFD where a hit replays it.
+  return (write[REAL_STDOUT_WRITE] ?? write).call(s, rawBytes(bytes))
 }
 
 /**

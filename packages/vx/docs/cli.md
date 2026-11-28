@@ -6228,6 +6228,8 @@ log in its cache entry, so a passing task's log reads too.
 <div class="vx-deeper-body">
 
 - The cache entry's log is the one a hit replays, masked as it was.
+- Its bytes are the replay's: one that is not UTF-8 prints as written, not
+  as `�`. A failed task's kept output is text, so there it is `�`.
 - It is masked again with this process's secret values, as a hit's
   replay is. A task's `env.define` / `env.secret` values only the run
   knows.
