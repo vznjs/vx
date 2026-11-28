@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { gitIgnored } from '../src/cli/watch-filter.js'
+import { gitFiles, gitIgnored } from '../src/cli/watch-filter.js'
 import { gitIn, gitInit } from './helpers/workspace.js'
 
 let dir: string | undefined
@@ -46,6 +46,47 @@ it('a submodule path last refuses nothing before it', async () => {
   const at = (rel: string) => path.join(dir!, rel)
   const asked = ['proj/x.pid', 'proj/a.txt', 'proj/keep.pid', 'proj/y.pid', 'proj/nested/f'].map(at)
   expect([...gitIgnored(dir, asked)].sort()).toEqual([at('proj/x.pid'), at('proj/y.pid')])
+})
+
+// A submodule that is checked out answers by its own `.gitignore`, the one
+// its files' keys read: refused and skipped, its pid file read as an edit
+// and an uncached task in it re-ran forever. The outer `*.pid` does not
+// reach inside, by git's own rule.
+async function checkedOutSubmodule(root: string): Promise<void> {
+  const sub = path.join(root, 'proj', 'sub')
+  await mkdir(sub)
+  gitInit(sub)
+  await writeFile(path.join(sub, '.gitignore'), 'run.pid\n')
+  for (const f of ['run.pid', 'other.pid', 'a.txt']) await writeFile(path.join(sub, f), '')
+  gitIn(sub)('add', '-A')
+  gitIn(sub)('commit', '-q', '-m', 's')
+  const head = gitIn(sub)('rev-parse', 'HEAD').trim()
+  gitIn(root)('update-index', '--add', '--cacheinfo', `160000,${head},proj/sub`)
+}
+
+it('a path inside a checked-out submodule is answered by its own ignore rules', async () => {
+  dir = await repoWithSubmodule()
+  await checkedOutSubmodule(dir)
+  const at = (rel: string) => path.join(dir!, rel)
+  const asked = ['proj/sub/run.pid', 'proj/sub/other.pid', 'proj/sub/a.txt', 'proj/x.pid'].map(at)
+  expect([...gitIgnored(dir, asked)].sort()).toEqual([at('proj/sub/run.pid'), at('proj/x.pid')])
+})
+
+// The submodule's own files, not its gitlink, are what watch counts as
+// tracked: every path under the gitlink read as tracked, so a declared
+// output there was an edit and each write started a cycle.
+it('a checked-out submodule is listed by its own git', async () => {
+  dir = await repoWithSubmodule()
+  await checkedOutSubmodule(dir)
+  await mkdir(path.join(dir, 'proj', 'sub', 'dist'))
+  await writeFile(path.join(dir, 'proj', 'sub', 'dist', 'out.txt'), '')
+  const at = (rel: string) => path.join(dir!, rel)
+  const files = gitFiles(dir)!
+  expect(files.tracked.has(at('proj/sub/a.txt'))).toBe(true)
+  expect(files.tracked.has(at('proj/sub'))).toBe(false)
+  expect(files.tracked.has(at('proj/sub/dist/out.txt'))).toBe(false)
+  expect(files.listed.has(at('proj/sub/dist/out.txt'))).toBe(true)
+  expect(files.listed.has(at('proj/sub/run.pid'))).toBe(false)
 })
 
 // Controls: the batch without the submodule path (a negation is not

@@ -318,6 +318,28 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
   // as an edit and an uncached task re-ran forever. Asked at its real
   // place, answered as given.
   const real = paths.map(gitSpeller(workspaceRoot))
+  // A path git refuses as inside a submodule is asked of the submodule's own
+  // git: its `.gitignore` is the one a key reads (git-inputs lists a nested
+  // repository by its own rules), and skipping it left an uncached task's
+  // pid file there re-running the task forever.
+  const nested = new Map<string, number[]>()
+  const refused = (i: number): void => {
+    const repo = nestedRepoOf(workspaceRoot, real[i]!)
+    if (repo === undefined) return
+    const list = nested.get(repo) ?? []
+    list.push(i)
+    nested.set(repo, list)
+  }
+  const answerNested = (): Set<string> => {
+    for (const [repo, list] of nested) {
+      const answer = gitIgnored(
+        repo,
+        list.map((i) => real[i]!),
+      )
+      for (const i of list) if (answer.has(real[i]!)) ignored.add(paths[i]!)
+    }
+    return ignored
+  }
   let from = 0
   let inWorkTree: boolean | undefined
   while (from < paths.length) {
@@ -346,7 +368,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
       if (source !== '' && !pattern!.startsWith('!')) ignored.add(paths[from + i]!)
     }
     // 0: some ignored; 1: none. Anything else is git refusing.
-    if (proc.exitCode === 0 || proc.exitCode === 1) return ignored
+    if (proc.exitCode === 0 || proc.exitCode === 1) return answerNested()
     if (records === 0) {
       inWorkTree ??=
         Bun.spawnSync({
@@ -358,9 +380,17 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
         }).exitCode === 0
       if (!inWorkTree) return ignored
     }
+    refused(from + records)
     from += records + 1
   }
-  return ignored
+  return answerNested()
+}
+
+/** The checked-out nested repository holding `abs` below `root` (a `.git` file or dir), if any. */
+function nestedRepoOf(root: string, abs: string): string | undefined {
+  for (let d = path.dirname(abs); d.startsWith(root + path.sep); d = path.dirname(d))
+    if (fs.existsSync(path.join(d, '.git'))) return d
+  return undefined
 }
 
 /**
@@ -567,7 +597,19 @@ export function gitFiles(
     if (entry[0] === 'C' || (dirty && untracked && !p.endsWith('/'))) modified.add(abs)
     if (entry[0] === 'C') continue
     files.add(abs)
-    if (!untracked) tracked.add(abs)
+    // A checked-out submodule is listed by its own git: as one tracked
+    // gitlink, every file under it read as tracked, so a declared output
+    // there started a cycle on each write.
+    const inner =
+      !untracked && entry.startsWith('160000 ', 2) && fs.existsSync(path.join(abs, '.git'))
+        ? gitFiles(abs, dirty)
+        : undefined
+    if (inner !== undefined) {
+      for (const f of inner.listed) files.add(f)
+      for (const f of inner.tracked) tracked.add(f)
+      for (const f of inner.links) links.add(f)
+      for (const f of inner.dirty) modified.add(f)
+    } else if (!untracked) tracked.add(abs)
     if (untracked ? isLink(abs) : entry.startsWith('120000 ', 2)) links.add(abs)
     for (abs = path.dirname(abs); abs !== workspaceRoot && !files.has(abs); abs = path.dirname(abs))
       files.add(abs)
