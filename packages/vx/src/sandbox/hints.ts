@@ -161,14 +161,35 @@ export function addHints(
         )
         if (unix !== undefined) violations.push(unix)
       }
-      // Last, and only when nothing else was said: a grant inside the cwd
-      // lists it (bwrap builds the path to a bind), but only that grant, so
-      // `bun test` and Vitest scan it, find no test file, and fail with no
-      // read to report.
+      // Last, and only when nothing else was said (or, below, beside reads
+      // refused in the cwd): a grant inside the cwd lists it (bwrap builds
+      // the path to a bind), but only that grant, so `bun test` and Vitest
+      // scan it, find no test file, and fail with no read to report. Vitest
+      // under `sandbox: {}` reported one read (package.json), and only the
+      // run after its grant said the cwd lists empty.
       const cwd = toRealPath(args.cwd)
       // A grant cut around the walls (a root's `read: ['.']`) covers the cwd.
       const granted = [...grantedRead, ...(args.config.walled?.reads ?? [])].map(toRealPath)
-      if (violations.length === 0 && !granted.some((g) => atOrUnder(cwd, g))) {
+      // Only where the sandbox declares no read in the cwd (`sandbox: {}`):
+      // one with a grant there reads by name (`cat < banner.txt`), and its
+      // one line says all.
+      const declaresNone = !args.config.allowRead.some((g) =>
+        atOrUnder(toRealPath(path.resolve(args.cwd, g)), cwd),
+      )
+      const readInCwd = (v: SandboxViolation): boolean =>
+        v.hint !== true &&
+        // An `openat` says which it asked for; another call (Vitest's
+        // `access`) only which lists may silence it.
+        (v.opened === undefined ? v.ignorable?.includes('read') === true : v.opened === 'read') &&
+        v.path !== undefined &&
+        atOrUnder(toRealPath(v.path), cwd)
+      // Other notes may stand beside them: Vitest's walk up for a
+      // package.json drew the one on paths hidden outside the project.
+      const besideReads =
+        declaresNone &&
+        violations.some(readInCwd) &&
+        violations.every((v) => v.hint === true || readInCwd(v))
+      if ((violations.length === 0 || besideReads) && !granted.some((g) => atOrUnder(cwd, g))) {
         const inside = [
           ...new Set(
             granted
