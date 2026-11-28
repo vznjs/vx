@@ -43,6 +43,42 @@ const editLib = (file = 'src/a.txt') => [
 
 export default [
   defineCase({
+    id: 'affected/reader-of-unkeyed-dependency-outputs',
+    category: 'affected',
+    kind: 'correctness',
+    title:
+      'A task that reads its dependency’s outputs, with no key link to it, is selected when they change',
+    why: 'The test keys on the build’s output files instead of on the build itself, so a change to the build’s sources changes the bytes it reads. An affected run must select it with the build. Leaving it out passes CI on a change it was never run against.',
+    from: ['affected-key-deps'],
+    needs: ['affected'],
+    workspace: {
+      projects: {
+        lib: {
+          tasks: {
+            build: {
+              command: 'mkdir -p dist && cat src/a.txt > dist/out.txt',
+              inputs: ['src/**'],
+              outputs: ['dist/'],
+            },
+            test: {
+              command: 'cat dist/out.txt',
+              dependsOn: ['build'],
+              dependencyInputs: false,
+              inputs: ['dist/**'],
+              outputs: [],
+            },
+          },
+          files: { 'src/a.txt': 'lib\n' },
+        },
+      },
+    },
+    steps: [
+      ...editLib(),
+      { affected: 'test', base: 'HEAD~1', expect: { exit: 0, ran: ['lib#build', 'lib#test'] } },
+    ],
+  }),
+
+  defineCase({
     id: 'affected/undeclared-file-marks-no-task',
     category: 'affected',
     kind: 'efficiency',

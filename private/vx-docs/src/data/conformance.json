@@ -1216,14 +1216,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1952,
-        "can": 1952,
-        "of": 2021
+        "pass": 1953,
+        "can": 1953,
+        "of": 2022
       },
       "correctness": {
-        "pass": 1625,
-        "can": 1625,
-        "of": 1686
+        "pass": 1626,
+        "can": 1626,
+        "of": 1687
       },
       "efficiency": {
         "pass": 327,
@@ -1241,9 +1241,9 @@
         "of": 153
       },
       "affected": {
-        "pass": 191,
-        "can": 191,
-        "of": 191
+        "pass": 192,
+        "can": 192,
+        "of": 192
       },
       "cache": {
         "pass": 106,
@@ -1283,14 +1283,14 @@
     },
     "turbo": {
       "all": {
-        "pass": 1320,
-        "can": 1719,
-        "of": 2021
+        "pass": 1321,
+        "can": 1720,
+        "of": 2022
       },
       "correctness": {
-        "pass": 1074,
-        "can": 1400,
-        "of": 1686
+        "pass": 1075,
+        "can": 1401,
+        "of": 1687
       },
       "efficiency": {
         "pass": 246,
@@ -1308,9 +1308,9 @@
         "of": 153
       },
       "affected": {
-        "pass": 148,
-        "can": 190,
-        "of": 191
+        "pass": 149,
+        "can": 191,
+        "of": 192
       },
       "cache": {
         "pass": 88,
@@ -1351,13 +1351,13 @@
     "nx": {
       "all": {
         "pass": 1343,
-        "can": 1757,
-        "of": 2021
+        "can": 1758,
+        "of": 2022
       },
       "correctness": {
         "pass": 1057,
-        "can": 1428,
-        "of": 1686
+        "can": 1429,
+        "of": 1687
       },
       "efficiency": {
         "pass": 286,
@@ -1376,8 +1376,8 @@
       },
       "affected": {
         "pass": 129,
-        "can": 191,
-        "of": 191
+        "can": 192,
+        "of": 192
       },
       "cache": {
         "pass": 81,
@@ -1419,12 +1419,12 @@
       "all": {
         "pass": 974,
         "can": 1325,
-        "of": 2021
+        "of": 2022
       },
       "correctness": {
         "pass": 818,
         "can": 1113,
-        "of": 1686
+        "of": 1687
       },
       "efficiency": {
         "pass": 156,
@@ -1444,7 +1444,7 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 191
+        "of": 192
       },
       "cache": {
         "pass": 72,
@@ -1486,12 +1486,12 @@
       "all": {
         "pass": 1053,
         "can": 1329,
-        "of": 2021
+        "of": 2022
       },
       "correctness": {
         "pass": 906,
         "can": 1143,
-        "of": 1686
+        "of": 1687
       },
       "efficiency": {
         "pass": 147,
@@ -1511,7 +1511,7 @@
       "affected": {
         "pass": 0,
         "can": 0,
-        "of": 191
+        "of": 192
       },
       "cache": {
         "pass": 86,
@@ -1551,14 +1551,14 @@
     },
     "moon": {
       "all": {
-        "pass": 1202,
-        "can": 1633,
-        "of": 2021
+        "pass": 1203,
+        "can": 1634,
+        "of": 2022
       },
       "correctness": {
-        "pass": 963,
-        "can": 1347,
-        "of": 1686
+        "pass": 964,
+        "can": 1348,
+        "of": 1687
       },
       "efficiency": {
         "pass": 239,
@@ -1576,9 +1576,9 @@
         "of": 153
       },
       "affected": {
-        "pass": 150,
-        "can": 191,
-        "of": 191
+        "pass": 151,
+        "can": 192,
+        "of": 192
       },
       "cache": {
         "pass": 85,
@@ -32058,6 +32058,41 @@
           "status": "fail",
           "step": 1,
           "detail": "exited 1, expected success"
+        }
+      }
+    },
+    {
+      "id": "affected/reader-of-unkeyed-dependency-outputs",
+      "ref": "wxd06u",
+      "category": "affected",
+      "kind": "correctness",
+      "title": "A task that reads its dependency’s outputs, with no key link to it, is selected when they change",
+      "why": "The test keys on the build’s output files instead of on the build itself, so a change to the build’s sources changes the bytes it reads. An affected run must select it with the build. Leaving it out passes CI on a change it was never run against.",
+      "from": [
+        "affected-key-deps"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "pass"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "did not run lib#build, lib#test"
+        },
+        "vite-task": {
+          "status": "n/a",
+          "detail": "Vite Task does not select tasks by what git says changed."
+        },
+        "nix": {
+          "status": "n/a",
+          "detail": "nix-build builds the attributes it is named: no git change selects them."
+        },
+        "moon": {
+          "status": "pass"
         }
       }
     },
