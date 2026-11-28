@@ -1159,15 +1159,23 @@ async function printLog(
   noRuns: () => boolean,
   noRunsYet: () => UserError,
 ): Promise<number> {
-  const runId =
-    parsed.runId === undefined
-      ? undefined
-      : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
-  const log = taskLog(db, await bareTaskId(db, await rootSpelled(at, parsed.log), at), runId)
+  const known = parsed.runId === undefined ? null : resolveRunId(db, parsed.runId, 'vx last')
+  const runId = parsed.runId === undefined ? undefined : (known ?? parsed.runId)
+  const taskId = await bareTaskId(db, await rootSpelled(at, parsed.log), at)
+  const log = taskLog(db, taskId, runId)
   if (log === null) {
     // Asked only after the lookup: a stopped run keeps its task rows but
     // no invocations header (item 854), so its log must still be found.
     if (noRuns() && new LocalHistoryProvider(db).recentTaskIds().length === 0) throw noRunsYet()
+    // A task that ran, but not in the run named: listed back as a pick,
+    // it read as recorded there. Said as `vx why --run` says it.
+    if (known !== null && new LocalHistoryProvider(db).recentTaskIds().includes(taskId))
+      throw new UserError(
+        getInvocation(db, known) === null
+          ? `vx last: run ${known} was stopped before ${taskId} ended, so vx kept no row for it`
+          : `vx last: run ${known} has no row for ${taskId}; \`vx last ${known}\` shows what it ran`,
+        'VX_E_NO_HISTORY',
+      )
     // The id's form is hinted only when it lacks one: a task that
     // never ran was told how to spell a task id. A typo of one that
     // ran is named, as `vx why` names it: by its matcher, which offers

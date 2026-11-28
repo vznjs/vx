@@ -158,7 +158,18 @@ it('a task no run recorded, or one outside the run named, is refused', () => {
       "vx last: no recorded run of a#nope; a's recorded tasks: bad, build, mute, plain, quiet\n",
     ),
   })
-  expect(vx('last', runIds['bad']!, '--log', 'a#build').code).toBe(1)
+  // A task that ran, but not in the run named: no list naming it back.
+  expect(vx('last', runIds['bad']!, '--log', 'a#build')).toEqual({
+    code: 1,
+    out: '',
+    err: noticed(
+      `vx last: run ${runIds['bad']} has no row for a#build; \`vx last ${runIds['bad']}\` shows what it ran\n`,
+    ),
+  })
+  // A run id no run has is not a stopped run.
+  expect(vx('last', 'deadbeef-0000', '--log', 'a#build').err).toContain(
+    'no recorded run of a#build in run deadbeef-0000',
+  )
   // A typo of a task that ran is named, as `vx why` names it.
   expect(vx('last', '--log', 'a#biuld').err).toBe(
     noticed('vx last: no recorded run of a#biuld — did you mean a#build?\n'),

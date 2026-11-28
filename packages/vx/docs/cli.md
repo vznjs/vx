@@ -5958,7 +5958,8 @@ vx last --failed         # the latest run that failed
 - `vx last RUNID --log <task>` prints a task's output; `vx why <task>
 --run RUNID` explains it. With no id, `--log` reads it when it is the
   latest run that recorded the task.
-- `vx last RUNID` says the run was stopped.
+- `vx last RUNID` says the run was stopped. So do `--log` and `vx why`
+  for a task the stop cut off: it keeps no row.
 - A run stopped before any task ended keeps nothing. Its footer names no
   id.
 
