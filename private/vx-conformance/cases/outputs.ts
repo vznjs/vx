@@ -76,6 +76,34 @@ export default [
   }),
 
   defineCase({
+    id: 'outputs/stale-output-removed-where-a-committed-file-was',
+    category: 'outputs',
+    kind: 'correctness',
+    title: 'A rebuild clears a stale output in a folder that replaced a committed file',
+    why: 'Here `lib` was committed as a file, and the task now writes a folder of that name. Git still records the old file, but nothing under the folder is committed, so a renamed source must take its old output with it. A tool that reads the folder as committed keeps the leftover, and it ships beside the new file.',
+    from: ['outputs-clean', 'output-flow'],
+    workspace: one(
+      {
+        command: 'if [ -f lib ]; then rm lib; fi; mkdir -p lib && cp src/*.txt lib/',
+        inputs: ['src/**'],
+        outputs: ['lib/**'],
+      },
+      { 'src/old.txt': 'x\n', lib: 'committed\n' },
+    ),
+    steps: [
+      { run: 'build', expect: { exit: 0, files: { 'packages/a/lib/old.txt': 'x\n' } } },
+      { write: { 'packages/a/src/old.txt': null, 'packages/a/src/new.txt': 'x\n' } },
+      {
+        run: 'build',
+        expect: {
+          exit: 0,
+          files: { 'packages/a/lib/new.txt': 'x\n', 'packages/a/lib/old.txt': null },
+        },
+      },
+    ],
+  }),
+
+  defineCase({
     id: 'outputs/stale-output-removed-on-restore',
     category: 'outputs',
     kind: 'correctness',

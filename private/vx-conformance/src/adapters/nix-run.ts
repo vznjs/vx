@@ -206,7 +206,10 @@ function restore(from: string, to: string): void {
     [
       'sh',
       '-c',
-      'cp -RP --remove-destination "$1/." "$2/" && cd "$1" && find . ! -type l -print0 | (cd "$2" && xargs -0 chmod u+w)',
+      // A file where the tree has a folder goes first: `--remove-destination`
+      // replaces files only, and cp refuses to lay a folder over one.
+      'cd "$1" && find . -mindepth 1 -type d -print0 | (cd "$2" && xargs -0 -r sh -c \'for p; do if [ -e "$p" ] && [ ! -d "$p" ]; then rm -f "$p"; fi; done\' sh) && ' +
+        'cp -RP --remove-destination "$1/." "$2/" && cd "$1" && find . ! -type l -print0 | (cd "$2" && xargs -0 chmod u+w)',
       'sh',
       from,
       to,

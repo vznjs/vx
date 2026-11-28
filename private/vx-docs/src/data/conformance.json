@@ -244,6 +244,7 @@
         "sandbox-dns-hint.unsafe",
         "sandbox-fd-records",
         "sandbox-git-discovery.unsafe",
+        "sandbox-grant-exists-hint",
         "sandbox-hint",
         "sandbox-host-helpers.unsafe",
         "sandbox-host-services.unsafe",
@@ -1215,14 +1216,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1951,
-        "can": 1951,
-        "of": 2020
+        "pass": 1952,
+        "can": 1952,
+        "of": 2021
       },
       "correctness": {
-        "pass": 1624,
-        "can": 1624,
-        "of": 1685
+        "pass": 1625,
+        "can": 1625,
+        "of": 1686
       },
       "efficiency": {
         "pass": 327,
@@ -1255,9 +1256,9 @@
         "of": 495
       },
       "outputs": {
-        "pass": 312,
-        "can": 312,
-        "of": 323
+        "pass": 313,
+        "can": 313,
+        "of": 324
       },
       "config": {
         "pass": 31,
@@ -1283,13 +1284,13 @@
     "turbo": {
       "all": {
         "pass": 1320,
-        "can": 1718,
-        "of": 2020
+        "can": 1719,
+        "of": 2021
       },
       "correctness": {
         "pass": 1074,
-        "can": 1399,
-        "of": 1685
+        "can": 1400,
+        "of": 1686
       },
       "efficiency": {
         "pass": 246,
@@ -1323,8 +1324,8 @@
       },
       "outputs": {
         "pass": 238,
-        "can": 310,
-        "of": 323
+        "can": 311,
+        "of": 324
       },
       "config": {
         "pass": 26,
@@ -1350,13 +1351,13 @@
     "nx": {
       "all": {
         "pass": 1343,
-        "can": 1756,
-        "of": 2020
+        "can": 1757,
+        "of": 2021
       },
       "correctness": {
         "pass": 1057,
-        "can": 1427,
-        "of": 1685
+        "can": 1428,
+        "of": 1686
       },
       "efficiency": {
         "pass": 286,
@@ -1390,8 +1391,8 @@
       },
       "outputs": {
         "pass": 227,
-        "can": 310,
-        "of": 323
+        "can": 311,
+        "of": 324
       },
       "config": {
         "pass": 18,
@@ -1417,13 +1418,13 @@
     "vite-task": {
       "all": {
         "pass": 974,
-        "can": 1324,
-        "of": 2020
+        "can": 1325,
+        "of": 2021
       },
       "correctness": {
         "pass": 818,
-        "can": 1112,
-        "of": 1685
+        "can": 1113,
+        "of": 1686
       },
       "efficiency": {
         "pass": 156,
@@ -1457,8 +1458,8 @@
       },
       "outputs": {
         "pass": 211,
-        "can": 310,
-        "of": 323
+        "can": 311,
+        "of": 324
       },
       "config": {
         "pass": 20,
@@ -1483,14 +1484,14 @@
     },
     "nix": {
       "all": {
-        "pass": 1052,
-        "can": 1328,
-        "of": 2020
+        "pass": 1053,
+        "can": 1329,
+        "of": 2021
       },
       "correctness": {
-        "pass": 905,
-        "can": 1142,
-        "of": 1685
+        "pass": 906,
+        "can": 1143,
+        "of": 1686
       },
       "efficiency": {
         "pass": 147,
@@ -1523,9 +1524,9 @@
         "of": 495
       },
       "outputs": {
-        "pass": 235,
-        "can": 317,
-        "of": 323
+        "pass": 236,
+        "can": 318,
+        "of": 324
       },
       "config": {
         "pass": 16,
@@ -1551,13 +1552,13 @@
     "moon": {
       "all": {
         "pass": 1202,
-        "can": 1632,
-        "of": 2020
+        "can": 1633,
+        "of": 2021
       },
       "correctness": {
         "pass": 963,
-        "can": 1346,
-        "of": 1685
+        "can": 1347,
+        "of": 1686
       },
       "efficiency": {
         "pass": 239,
@@ -1591,8 +1592,8 @@
       },
       "outputs": {
         "pass": 195,
-        "can": 313,
-        "of": 323
+        "can": 314,
+        "of": 324
       },
       "config": {
         "pass": 24,
@@ -13646,6 +13647,46 @@
           "status": "fail",
           "step": 3,
           "detail": "packages/a/dist/old.txt exists, expected none"
+        }
+      }
+    },
+    {
+      "id": "outputs/stale-output-removed-where-a-committed-file-was",
+      "ref": "jj4o14",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A rebuild clears a stale output in a folder that replaced a committed file",
+      "why": "Here `lib` was committed as a file, and the task now writes a folder of that name. Git still records the old file, but nothing under the folder is committed, so a renamed source must take its old output with it. A tool that reads the folder as committed keeps the leftover, and it ships beside the new file.",
+      "from": [
+        "outputs-clean",
+        "output-flow"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/lib/old.txt exists, expected none"
+        },
+        "nx": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/lib/old.txt exists, expected none"
+        },
+        "vite-task": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/lib/old.txt exists, expected none"
+        },
+        "nix": {
+          "status": "pass"
+        },
+        "moon": {
+          "status": "fail",
+          "step": 3,
+          "detail": "packages/a/lib/old.txt exists, expected none"
         }
       }
     },
