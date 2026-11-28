@@ -1273,6 +1273,7 @@ describe('withForwardArgs', () => {
     // `;}` and `&}` read as a brace group's closer: the args went inside.
     ['control: an expansion ending in ;', 'x=args:; echo ${x%;}', 'args: --fix a b\n'],
     ['control: an expansion ending in &', 'x=1; echo ${x:+args:&}', 'args:& --fix a b\n'],
+    ['a brace group echoing a quoted ${', "{ echo '${' args:; }", '${ args: --fix a b\n'],
     ['control: a quoted paren', "echo '(a)'", '(a) --fix a b\n'],
     ['control: an escaped paren', 'echo \\(a\\)', '(a) --fix a b\n'],
     // A case pattern's `)` closed the subshell's paren in the scan, and an

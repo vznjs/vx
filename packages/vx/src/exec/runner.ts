@@ -359,10 +359,22 @@ const COMPOUND_CLOSER = /(?:^|[^\\])(?:\\\\)*[;&\n][ \t]*(fi|done|esac|\})$/
  */
 function closesExpansion(command: string): boolean {
   if (!command.endsWith('}')) return false
-  let depth = 0
-  for (let i = command.length - 1; i >= 0; i--) {
-    if (command[i] === '}') depth++
-    else if (command[i] === '{' && --depth === 0) return command[i - 1] === '$'
+  // Read forward, as the shell does: a quoted or escaped brace is a word's.
+  const open: boolean[] = []
+  let quote = ''
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!
+    if (c === '\\' && quote !== "'") i++
+    else if (quote === '' && (c === "'" || c === '"')) quote = c
+    else if (c === quote) quote = ''
+    else if (c === '$' && command[i + 1] === '{' && quote !== "'") {
+      open.push(true)
+      i++
+    } else if (c === '{' && quote === '') open.push(false)
+    else if (c === '}' && (quote === '' || (quote === '"' && open.at(-1) === true))) {
+      const expansion = open.pop()
+      if (i === command.length - 1) return expansion === true
+    }
   }
   return false
 }
