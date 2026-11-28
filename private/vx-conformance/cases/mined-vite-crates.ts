@@ -567,7 +567,7 @@ export default [
     workspace: one(
       {
         command: 'mkdir -p dist && cat src/a.txt > dist/out.txt',
-        inputs: ['src/**', 'snap/**', '!**/snap/**'],
+        inputs: ['s*/**', '!**/snap/**'],
         outputs: ['dist/**'],
       },
       { 'src/a.txt': 'a\n', 'snap/x.txt': 'x\n', 'src/deep/snap/y.txt': 'y\n' },
