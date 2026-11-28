@@ -2610,6 +2610,7 @@ Every other flag is `vx run`'s ([Flags](#flags)).
 - A file it rewrites with different bytes every run (a pid file, a timestamped log) must be git-ignored or declared an output.
 - Otherwise the loop re-runs on it. After three such cycles in a row, watch names the path and the remedy, once, and keeps going.
 - A git-ignored path never starts a cycle, since no cache key can see it. The exceptions follow.
+- In a submodule, the submodule's own `.gitignore` decides, as its keys read it.
 - Your edit to an ignored file still starts one in a project with a task that has a command and no cache: that task reads what it likes.
 - That holds outside any project nested in it, and for an ignored file a task names outright.
 - A write the last cycle made is not an edit, read off the later of its mtime and ctime. So an output a cache hit restores is the run's.
