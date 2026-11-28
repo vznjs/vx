@@ -318,7 +318,8 @@ terminal and a task succeeding or failing. Read it alongside
     4. recordRunBundle — one transaction writing a `runs` row per real
        task plus the `invocations` header row (command, git/CI/host
        context, counts); green misses' rows went in 256 at a time while
-       the run went. Group + aborted tasks skipped; a run
+       the run went. Group tasks skipped, an aborted one kept
+       once started; a run
        a signal stopped records only the tasks that finished, with no
        header row, so `vx last` does not list it. A stop in the
        keep-alive wait (step 8), the usual end of `vx run dev`, is no

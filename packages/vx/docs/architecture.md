@@ -447,7 +447,8 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       task's row plus one invocation header row, in one transaction; the
       green misses' rows already written while the run went (256 at a
       time) are not written again.
-      Group and `aborted` tasks are skipped; a run a signal stopped
+      Group tasks are skipped, and an `aborted` one (`--fail-fast`)
+      keeps its row only once started; a run a signal stopped
       records only the tasks that finished (`recordRuns`, no
       invocation row; their timings under the branch it ran on), so
       `vx last` does not list it.
@@ -699,8 +700,8 @@ commit/branch/dirty, CI provider, host/os/arch and vx version. A third table, `e
 cache-key component per entry (file OIDs, env values, runtime
 outputs, upstream hashes, …) — written only on a cache miss inside
 the entry-save transaction; it powers the per-component "why did this
-re-run?" diff. Group tasks (no `exec`) and `aborted` tasks are not
-recorded.
+re-run?" diff. Group tasks (no `exec`) are not recorded, nor an
+`aborted` task the stop reached before it started.
 
 The same per-task wallclock has two surface forms today:
 
