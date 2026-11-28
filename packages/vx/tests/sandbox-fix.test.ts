@@ -461,6 +461,19 @@ describe('sandboxFix', () => {
     mkdirSync(at('gen'))
     const refused = refusedWrites(moves('gen/a.tmp', 'gen/a'), [])
     expect(sandboxFix(refused.slice(1), dir, path.dirname(dir))).toEqual({ write: ['gen/'] })
+    // `echo 1 > n; ln n n2`: a hard link lands the same way.
+    writeFileSync(at('n2'), '1')
+    const linked = refusedWrites(
+      [`deny linkat ${at('n')}`, `deny linkat ${at('n2')}`],
+      [dir],
+      [],
+      [],
+      {
+        entries: new Map([[dir, new Set<string>()]]),
+        granted: [at('n')],
+      },
+    )
+    expect(sandboxFix(linked, dir, path.dirname(dir))).toEqual({ write: ['.'] })
   })
 
   it('escapes a path the grant would read as a pattern, and names the directory of one no grant spells', () => {

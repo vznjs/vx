@@ -1157,12 +1157,9 @@ export function refusedWrites(
       ...(moved
         ? {
             line: `${syscall}(${raw}) = a link or move no grant covers  [${abs}]`,
-            // Where a move lands is written, never read: judged by the host,
-            // `mv a.tmp a.txt` over a file there was named a read.
-            ignorable:
-              moveSource || !syscall.startsWith('rename')
-                ? (['read', 'write'] as const)
-                : (['write'] as const),
+            // Where a move or link lands is written, never read: judged by
+            // the host, `mv a.tmp a.txt` over a file there was named a read.
+            ignorable: moveSource ? (['read', 'write'] as const) : (['write'] as const),
           }
         : {}),
       // Named for a read, the cheaper grant: a write grant reads too.
