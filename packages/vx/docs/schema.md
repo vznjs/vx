@@ -1851,6 +1851,9 @@ each path.
   installed file a wildcard reaches, so that task fails the same way.
 - `dist/**` over an empty `dist/`: an empty directory is no match. To
   require one, name it as itself: `public/uploads`.
+- `dist/*` over `dist/a/f` alone: a folder a wildcard reaches is saved
+  only while empty, so `dist/a` is no match and the task fails. Write
+  `dist/**`.
 - `['dist/**', '!dist/a.js']`: a path a `!` entry takes back is no match.
 - `report.json` written only sometimes: match it with a glob
   (`reports/*.json`), not a literal path.

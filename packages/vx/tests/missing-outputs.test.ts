@@ -76,6 +76,8 @@ describe('a declared literal output that matches no files', () => {
           inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
         emptyroot: { exec: { command: 'mkdir -p void' },
           inputs: { files: ['src/**'] }, outputs: { files: ['void/**'] }, cache: true },
+        shallow: { exec: { command: 'mkdir -p deep/a && echo x > deep/a/f' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['deep/*'] }, cache: true },
         dirsonly: { exec: { command: 'mkdir -p gen/a/b' },
           inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] }, cache: true },
         slashfile: { exec: { command: 'echo x > out2' },
@@ -160,6 +162,9 @@ describe('a declared literal output that matches no files', () => {
       ['wild', 'lost1/**, lost2/**'],
       ['takenback', 'out/**'],
       ['emptyroot', 'void/**'],
+      // A folder the glob names holds files it does not reach: the save
+      // takes a folder only when empty, so it saved nothing and passed.
+      ['shallow', 'deep/*'],
     ]) {
       const r = await runTask(t!)
       expect([t, r.status, r.lines]).toEqual([
