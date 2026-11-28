@@ -392,6 +392,30 @@ describe('sandboxFix', () => {
     expect(() => validateProjectConfig(refused, 'vx.config.ts')).toThrow(/control character/)
   })
 
+  // `ln -s src lnk` was granted `write: ['lnk']`, a literal vx makes as an
+  // empty file before the run, so the next run failed "File exists".
+  it('grants a link or node the task makes as its directory, never the path', () => {
+    // A member project: a file in the workspace root takes no grant.
+    const at = (p: string) => path.join(dir, p)
+    const made = (call: string, p: string) =>
+      v(`${call}(${at(p)}) = a write no grant covers`, ['write'], at(p))
+    expect(
+      sandboxFix([made('symlinkat', 'lnk'), made('mknodat', 'ff')], dir, path.dirname(dir)),
+    ).toEqual({
+      write: ['.'],
+    })
+    mkdirSync(at('gen'))
+    expect(
+      sandboxFix([made('symlink', 'gen/lnk'), made('linkat', 'gen/hard')], dir, path.dirname(dir)),
+    ).toEqual({
+      write: ['gen/'],
+    })
+    // CONTROL: a file the task opens keeps its own grant.
+    expect(sandboxFix([made('openat', 'new.txt')], dir, path.dirname(dir))).toEqual({
+      write: ['new.txt'],
+    })
+  })
+
   it('escapes a path the grant would read as a pattern, and names the directory of one no grant spells', () => {
     // Raw, `pages/[id].tsx` granted the class `pages/i.tsx` and keyed it:
     // applying the fix failed the run again on the same read, forever.
