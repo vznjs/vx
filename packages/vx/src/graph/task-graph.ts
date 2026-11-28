@@ -2094,12 +2094,15 @@ function readsOutputs(
       writer.anchor === undefined || writer.anchor === '' ? go : `${writer.anchor}/${go}`
     let list = found.get(rooted)
     if (list?.some((o) => o.reader === reader.node) === true) continue
-    if (takenBack(memo, reader, field, go)) continue
+    // The part of the output in the reader's folder: `*/src/gen` is the reader's
+    // `src/gen`, which its `!src/gen` takes back.
+    const mine = at === '' ? go : outputWithin(go, reader.rel!)
+    if (mine === undefined || takenBack(memo, reader, field, mine)) continue
     for (const gi of reader.globs) {
       if (!outputsOverlap(gi, go)) continue
       const shown =
         writer.rel === undefined || writer.rel === '' ? go : go.slice(writer.rel.length + 1)
-      const out = at !== '' && go.startsWith(at) ? go.slice(at.length) : go
+      const out = at !== '' && mine.startsWith(at) ? mine.slice(at.length) : mine
       const prefix = staticPrefix(readerAt + gi)
       if (list === undefined) found.set(rooted, (list = []))
       list.push({
@@ -2126,6 +2129,23 @@ function readsOutputs(
       break
     }
   }
+}
+
+/**
+ * `output`, a root-relative glob, cut to the files it names in `rel`: `rel/…`,
+ * `rel/**` when it names `rel` or a folder above, undefined when it names none
+ * there. Unchanged when a brace could span the segments compared.
+ */
+function outputWithin(output: string, rel: string): string | undefined {
+  const segs = output.split('/')
+  const dirs = rel.split('/')
+  if (segs.slice(0, dirs.length).some((g) => g.includes('{') || g.includes('}'))) return output
+  for (let i = 0; i < dirs.length; i++) {
+    if (i === segs.length) return `${rel}/**`
+    if (segs[i] === '**') return `${rel}/${segs.slice(i).join('/')}`
+    if (!taskGlob(segs[i]!).match(dirs[i]!)) return undefined
+  }
+  return segs.length === dirs.length ? `${rel}/**` : `${rel}/${segs.slice(dirs.length).join('/')}`
 }
 
 function detectCycle(nodes: Map<string, TaskNode>): void {
