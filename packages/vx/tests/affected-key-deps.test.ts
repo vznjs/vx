@@ -66,3 +66,36 @@ it('CONTROL: a key that folds the dependency is reached through it', async () =>
   await setUp('')
   expect(appTestAffected()).toBe(true)
 }, 30_000)
+
+// The unfolded dep whose outputs the key hashes: `inputs.tasks: []` with
+// `inputs.files` over the dep's outputs, as the input-is-output refusal
+// advises. A change to build moves test's key through those bytes, yet
+// --affected left test out.
+it('a task whose key hashes an unfolded dependency’s outputs is reached through it', async () => {
+  root = await makeWorkspace({ prefix: 'vx-affected-key-deps-', git: false })
+  const reads = (files: string) => `export default { tasks: {
+  build: { exec: { command: 'mkdir -p out && cat src.txt > out/x' }, inputs: { files: ['src.txt'] }, outputs: { files: ['out/'] }, cache: true },
+  test: { dependsOn: ['build'], exec: { command: 'cat out/x > res.txt' }, inputs: { files: [${files}], tasks: [] }, outputs: { files: ['res.txt'] }, cache: true },
+} }
+`
+  await addProject(root, 'a', { config: reads("'out/**'"), files: { 'src.txt': '1\n' } })
+  await addProject(root, 'b', {
+    config: reads("'t.txt'"),
+    files: { 'src.txt': '1\n', 't.txt': '1\n' },
+  })
+  vx('lock')
+  gitInitCommit(root)
+  await writeFile(path.join(root, 'packages/a/src.txt'), '2\n')
+  await writeFile(path.join(root, 'packages/b/src.txt'), '2\n')
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-qm', 'src')
+  const ids = (
+    JSON.parse(vx('run', 'test', '--all', '--affected=HEAD~1', '--dry', '--format', 'json')) as {
+      tasks: Array<{ id: string }>
+    }
+  ).tasks.map((t) => t.id)
+  expect(ids).toContain('a#test')
+  // CONTROL: b#test reads no output of b#build, so it stays out.
+  expect(ids).not.toContain('b#test')
+}, 30_000)

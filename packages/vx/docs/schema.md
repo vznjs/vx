@@ -1649,7 +1649,7 @@ Use `[]` when a task waits for another only for order: tests that run after `bui
 - `['*', '^*', '!^noisy']` is every dependency but the dependencies' `noisy`: entries apply in order, last one wins.
 - A `!` drops only what it names: when two dependencies have equal keys (two groups over the same members), excluding one keeps the other.
 - `['!gen']` is refused: a list of only negations starts empty, so it would count nothing. Write `['*', '^*', '!gen']`, or `[]`.
-- `[]` cuts every key link. `--affected` follows: a change upstream does not select the task.
+- `[]` cuts every key link. `--affected` follows: a change upstream does not select the task, unless its `inputs.files` read that upstream's outputs, whose bytes its key hashes.
 
 **An exact entry must match `dependsOn`**
 
