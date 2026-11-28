@@ -111,35 +111,7 @@ export function secretMask(
   const min = limitSetting('VX_RUN_SECRETS_MIN_LENGTH', MIN_SECRET_CHARS)
   const add = (value: string | undefined): void => {
     if (value === undefined || value.length < min) return
-    values.add(value)
-    // A secret pasted with a trailing blank or newline prints without it
-    // (`echo $T` splits it off, a tool trims it), and the whole value
-    // never matched.
-    const bare = value.trim()
-    if (bare !== value) add(bare)
-    // A value with a `'` reaches a printed command spelled as shellQuote spells
-    // it (`'\''`), which the plain value does not match.
-    if (value.includes("'")) values.add(value.replaceAll("'", `'\\''`))
-    // As a tool encodes it: a token's `/+=` in a query string, a quote,
-    // backslash or newline inside a JSON string. Either printed it whole.
-    for (const url of urlSpellings(value)) if (url !== value) values.add(url)
-    for (const b64 of base64Spellings(value)) if (b64.length >= min) values.add(b64)
-    const json = JSON.stringify(value).slice(1, -1)
-    if (json !== value) values.add(json)
-    // Python's json.dumps (`ensure_ascii`): every non-ASCII code unit as `\uXXXX`.
-    const ascii = json.replace(
-      /[\u007f-\uffff]/g,
-      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
-    )
-    if (ascii !== json) values.add(ascii)
-    // A multi-line value (a PEM key) is also masked line by line, as GitHub
-    // Actions does: a tool that indents or reflows it prints no copy of the
-    // whole value, and every line leaked.
-    if (!value.includes('\n')) return
-    for (const line of value.split(/\r?\n/)) {
-      const trimmed = line.trim()
-      if (trimmed.length >= min) values.add(trimmed)
-    }
+    for (const v of spellingsOf(value, min)) values.add(v)
   }
   for (const source of sources) {
     if (source === undefined) continue
@@ -160,6 +132,62 @@ export function secretMask(
   const mask = maskOf(values)
   masks.push({ values: found, mask })
   return mask
+}
+
+/**
+ * Each value's spellings at a minimum length, worked out once: every task
+ * asks for the same env's, and the encodings were most of a mask's 31 us a
+ * task (207 variables; 0.25 s of a cold 9,603-task run's main thread).
+ */
+const spellings = new Map<string, readonly string[]>()
+const SPELLINGS_KEPT = 1024
+
+function spellingsOf(value: string, min: number): readonly string[] {
+  const key = `${min}\0${value}`
+  let found = spellings.get(key)
+  if (found === undefined) {
+    const out = new Set<string>()
+    spell(value, min, out)
+    found = [...out]
+    // Bounded: a process that masks ever new values (a test file) keeps no
+    // more than this many.
+    if (spellings.size >= SPELLINGS_KEPT) spellings.clear()
+    spellings.set(key, found)
+  }
+  return found
+}
+
+/** `value` and every way a tool prints it, into `out`; `value` is at least `min` long. */
+function spell(value: string, min: number, out: Set<string>): void {
+  out.add(value)
+  // A secret pasted with a trailing blank or newline prints without it
+  // (`echo $T` splits it off, a tool trims it), and the whole value
+  // never matched.
+  const bare = value.trim()
+  if (bare !== value && bare.length >= min) spell(bare, min, out)
+  // A value with a `'` reaches a printed command spelled as shellQuote spells
+  // it (`'\''`), which the plain value does not match.
+  if (value.includes("'")) out.add(value.replaceAll("'", `'\\''`))
+  // As a tool encodes it: a token's `/+=` in a query string, a quote,
+  // backslash or newline inside a JSON string. Either printed it whole.
+  for (const url of urlSpellings(value)) if (url !== value) out.add(url)
+  for (const b64 of base64Spellings(value)) if (b64.length >= min) out.add(b64)
+  const json = JSON.stringify(value).slice(1, -1)
+  if (json !== value) out.add(json)
+  // Python's json.dumps (`ensure_ascii`): every non-ASCII code unit as `\uXXXX`.
+  const ascii = json.replace(
+    /[\u007f-\uffff]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  )
+  if (ascii !== json) out.add(ascii)
+  // A multi-line value (a PEM key) is also masked line by line, as GitHub
+  // Actions does: a tool that indents or reflows it prints no copy of the
+  // whole value, and every line leaked.
+  if (!value.includes('\n')) return
+  for (const line of value.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed.length >= min) out.add(trimmed)
+  }
 }
 
 /**
