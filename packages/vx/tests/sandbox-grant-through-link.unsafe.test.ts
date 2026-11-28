@@ -104,12 +104,13 @@ describe.skipIf(!available || process.platform !== 'linux')(
 
     it('the fix grants the directory holding the link, not the target alone', async () => {
       // The fix named `conf/real.json`, already granted: applied, the run
-      // failed the same way and the fix named it again.
+      // failed the same way and the fix named it again. `.` covers the
+      // target too (the CONTROL below), so it is named alone.
       for (const read of [['out'], ['conf/real.json']]) {
         await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
         await outcome(read, 'config.json')
         const r = await run({ cwd: root, tasks: ['t'], log })
-        expect(r.outcomes[0]!.sandbox?.fix?.read, said).toEqual(['.', 'conf/real.json'])
+        expect(r.outcomes[0]!.sandbox?.fix?.read, said).toEqual(['.'])
       }
     })
 
