@@ -649,6 +649,7 @@ async function printLive(
     )
   }
   let buffered = ''
+  const utf8 = new TextDecoder()
   let snapshot: LiveSnapshot | undefined
   /** The run answered a snapshot this vx cannot read: another vx version's. */
   let unreadable = false
@@ -696,7 +697,8 @@ async function printLive(
           sock.write(follow ? 'follow\n' : 'snapshot\n')
         },
         data(_sock, chunk) {
-          buffered += chunk.toString()
+          // A character the socket split across reads arrives in two chunks.
+          buffered += utf8.decode(chunk, { stream: true })
           for (let at = buffered.indexOf('\n'); at !== -1; at = buffered.indexOf('\n')) {
             line(buffered.slice(0, at))
             buffered = buffered.slice(at + 1)
