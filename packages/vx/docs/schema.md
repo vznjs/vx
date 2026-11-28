@@ -3276,6 +3276,7 @@ Default: no pipelines. `tasks` is the one required key.
 
 - `tasks: ['lint']` runs `lint` in every project that declares it, under the flags the pipeline saves.
 - `tasks: ['lnit']` is refused by `vx lock`: a task no project declares fails there, not in the CI job. A project's default `build` counts as declared.
+- So is `excludeDependencies: ['lnit']`, or a `pkg#task` there: it takes task names.
 - `nightly` below sets every key but `format`, each at a value its flag takes.
 - `plan` below shows `format`, which needs `dry: true`: a dry pipeline can print its plan as JSON.
 

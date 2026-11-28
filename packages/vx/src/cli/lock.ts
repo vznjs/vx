@@ -462,7 +462,17 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
 
 /** Each pipeline's task a node of the locked graph, or the lock refused naming it. */
 function refuseUnknownPipelineTasks(
-  pipelines: Readonly<Record<string, { readonly tasks: readonly string[] }>> | undefined,
+  pipelines:
+    | Readonly<
+        Record<
+          string,
+          {
+            readonly tasks: readonly string[]
+            readonly excludeDependencies?: true | readonly string[]
+          }
+        >
+      >
+    | undefined,
   ids: Iterable<string>,
   names: Iterable<string>,
 ): void {
@@ -482,6 +492,15 @@ function refuseUnknownPipelineTasks(
     if (unknown.length > 0)
       throw new UserError(
         `pipelines.${name}.tasks names ${unknown.join(', ')}, which no project declares; tasks: ${[...bare].sort().join(', ')}`,
+        'VX_E_CONFIG',
+      )
+    // A name, never `pkg#task`, as the run's `--exclude-dependencies` takes it.
+    // `true` drops every dependency edge: no names to check.
+    const names = Array.isArray(p.excludeDependencies) ? p.excludeDependencies : []
+    const ghosts = names.filter((t) => t.includes('#') || (t !== 'build' && !bare.has(t)))
+    if (ghosts.length > 0)
+      throw new UserError(
+        `pipelines.${name}.excludeDependencies names ${ghosts.join(', ')}, which no project declares (it takes task names, not project#task); tasks: ${[...bare].sort().join(', ')}`,
         'VX_E_CONFIG',
       )
   }
