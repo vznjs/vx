@@ -1270,6 +1270,9 @@ describe('withForwardArgs', () => {
     ['control: an arithmetic expansion', 'echo $((1+1))', '2 --fix a b\n'],
     ['control: a closer word as an argument', 'echo done', 'done --fix a b\n'],
     ['control: a parameter expansion', 'x=args:; echo ${x}', 'args: --fix a b\n'],
+    // `;}` and `&}` read as a brace group's closer: the args went inside.
+    ['control: an expansion ending in ;', 'x=args:; echo ${x%;}', 'args: --fix a b\n'],
+    ['control: an expansion ending in &', 'x=1; echo ${x:+args:&}', 'args:& --fix a b\n'],
     ['control: a quoted paren', "echo '(a)'", '(a) --fix a b\n'],
     ['control: an escaped paren', 'echo \\(a\\)', '(a) --fix a b\n'],
     // A case pattern's `)` closed the subshell's paren in the scan, and an

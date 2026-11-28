@@ -353,6 +353,21 @@ function redirectsAfterCloser(command: string): number {
 const COMPOUND_CLOSER = /(?:^|[^\\])(?:\\\\)*[;&\n][ \t]*(fi|done|esac|\})$/
 
 /**
+ * Whether the `}` ending `command` closes a `${…}` expansion, not a brace
+ * group: `echo ${x%;}` ends in `;}` too, and the args went inside it
+ * (`${x% --fix;}`), where they vanished.
+ */
+function closesExpansion(command: string): boolean {
+  if (!command.endsWith('}')) return false
+  let depth = 0
+  for (let i = command.length - 1; i >= 0; i--) {
+    if (command[i] === '}') depth++
+    else if (command[i] === '{' && --depth === 0) return command[i - 1] === '$'
+  }
+  return false
+}
+
+/**
  * The task's command with the args after `--` appended, shell-quoted, before
  * any trailing comment (after it they vanished silently). Trailing blanks go
  * first.
@@ -383,7 +398,11 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
     // After a compound command's closer the args were a syntax error (`fi
     // --fix`): they go to the last command inside. A closer counts only where a
     // command starts.
-    const closer = shape.subshell ? ')' : COMPOUND_CLOSER.exec(trimmed)?.[1]
+    const closer = shape.subshell
+      ? ')'
+      : closesExpansion(trimmed)
+        ? undefined
+        : COMPOUND_CLOSER.exec(trimmed)?.[1]
     const end = sep ?? closer
     // Redirections after the closer (`(cmd) 2>&1`, `done < f`) hid it: the
     // args go inside it and the redirections stay after.
