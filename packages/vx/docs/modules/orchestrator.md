@@ -3607,6 +3607,9 @@ nothing runs and caches here.
 
 - `hasHook(plugins, hook)` — the zero-cost gate: does any plugin
   declare the stage.
+- `pluginFailure(plugin, hook, err)` → the `UserError` naming a
+  plugin's throw, as every stage and a plugin verb (`hook` is
+  `command '<verb>'`) word it.
 - `applyConfigHooks` / `applyDiscoverHooks` / `applyProjectHooks` / `applyGraphHooks` /
   `applyKeyHooks` / `applyScheduleHooks` — the pipeline stages, run in
   declaration order only when some plugin declares them.
