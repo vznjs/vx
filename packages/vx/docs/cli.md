@@ -3790,6 +3790,8 @@ config edited after `vx lock` adds a `dependsOn` loop:
 - On drift, every mismatched project is listed on stderr.
 - A promise a config rejected that nothing awaited exits 1:
   `vx: unhandled rejection: …`. The lock is still written.
+- So does a throw nothing caught (a config's or plugin's timer):
+  `vx: uncaught exception: …`. A run it lands in finishes its tasks first.
 - A Ctrl-C (or SIGTERM, SIGHUP) ends it by that signal, also while a
   config is still loading. It leaves no temp file and writes no lock.
 - A SIGINT or SIGHUP it was started with ignored (`nohup`) stays ignored.

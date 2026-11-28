@@ -7,7 +7,7 @@ import { takeSignalRelay } from './util/signal-relay.js'
 const ISSUES_URL = 'https://github.com/vznjs/vx/issues'
 
 let settled = false
-/** A rejection nothing awaited was reported: the run fails whatever code its verb returns. */
+/** A rejection nothing awaited, or a throw nothing caught, was reported: the run fails whatever code its verb returns. */
 let rejected = false
 
 async function main(): Promise<void> {
@@ -22,18 +22,21 @@ async function main(): Promise<void> {
   // and the run said nothing and exited 0. Its line is written here, not
   // after an import: one reported in the turn the exit ends the streams
   // landed after stderr had ended and was dropped (exit 1, no word of why).
-  process.on('unhandledRejection', (reason) => {
+  // A throw nothing caught (a plugin's or a config's timer) is the same
+  // failure: unhandled, Bun printed its own crash and ended the run mid-task,
+  // with no summary and no history row.
+  const lost = (what: string) => (reason: unknown) => {
     rejected = true
     process.exitCode = 1
     const ui = require('./ui/index.js') as typeof import('./ui/index.js')
     const { maskedLine } = require('./util/index.js') as typeof import('./util/index.js')
     ui.say(
       'error',
-      maskedLine(
-        `vx: unhandled rejection: ${reason instanceof Error ? reason.message : String(reason)}\n`,
-      ),
+      maskedLine(`vx: ${what}: ${reason instanceof Error ? reason.message : String(reason)}\n`),
     )
-  })
+  }
+  process.on('unhandledRejection', lost('unhandled rejection'))
+  process.on('uncaughtException', lost('uncaught exception'))
   try {
     // Inside the try: `process.cwd()` throws EMFILE when out of descriptors,
     // and that is a one-line UserError below, not a stack.
