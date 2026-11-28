@@ -579,12 +579,12 @@ function firstMatch(
 }
 
 /**
- * Whether the save holds what a wildcard reached: a file or link, or a folder
- * only while empty. `deep/*` over `deep/a/f` passed and saved nothing.
+ * Whether the save holds what a wildcard reached: a folder only while empty.
+ * `deep/*` over `deep/a/f` passed and saved nothing. A path no lstat reaches
+ * (a name that is not UTF-8) counts, so the save refuses it by name.
  */
 function held(abs: string): boolean {
-  const st = lstatOrAbsent(abs)
-  if (st?.isDirectory() !== true) return st !== undefined
+  if (lstatOrAbsent(abs)?.isDirectory() !== true) return true
   try {
     return readdirSync(abs).length === 0
   } catch {
