@@ -5831,6 +5831,9 @@ re-keys that key every run:
   [1mpackages/ui/src/gen.txt[0m  [38;2;203;213;225m@demo/web#build[0m
 ```
 
+A file another task of the run saved as its declared output is left out:
+a key that reads a dependency's outputs moves only when their bytes do.
+
 <details class="vx-deeper" data-level="3">
 <summary><span class="vx-deeper-badge vx-deeper-details">Details</span> <span class="vx-deeper-title">Every rule</span></summary>
 <div class="vx-deeper-body">

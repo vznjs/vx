@@ -1133,6 +1133,31 @@ export interface InputWriter {
 const WRITE_SLACK_MS = 5
 
 /**
+ * The moved files a task of `runId` saved or restored as its output, each with
+ * the project-relative path it saved: a dependency's output the key hashes
+ * (`inputs.tasks` leaving it out) moves the key only when its bytes do, not as
+ * a stray write. Matched by path tail; the caller holds each to its project.
+ */
+export function savedOutputs(
+  db: Database,
+  runId: string,
+  files: readonly string[],
+): Array<{ file: string; project: string; task: string; path: string }> {
+  if (files.length === 0) return []
+  const rows = db
+    .query(
+      `SELECT DISTINCT r.project, r.task, o.path FROM main.runs r
+         JOIN main.run_ids k ON k.id = r.run
+         JOIN output_files o ON o.entry_hash = r.hash
+        WHERE k.run_id = ?1 AND r.hash != ''`,
+    )
+    .all(runId) as { project: string; task: string; path: string }[]
+  return files.flatMap((file) =>
+    rows.flatMap((r) => (file === r.path || file.endsWith(`/${r.path}`) ? [{ file, ...r }] : [])),
+  )
+}
+
+/**
  * For each moved input file of `taskId` and each root cause, the recorded tasks running when the
  * file last changed: a task writing a file another key reads re-keys it every run. The file's mtime
  * against the recorded windows, so an edit outside a run, or after `runId`, names none.
@@ -1144,6 +1169,7 @@ export function inputWriters(
   taskId: string,
   entries: CacheKeyDiff['entries'],
   roots: readonly RootCause[],
+  savers: ReadonlyMap<string, readonly string[]> = new Map(),
 ): InputWriter[] {
   expandHits(db)
   // Bounded on both sides by the longest recorded window, so the query
@@ -1193,6 +1219,8 @@ export function inputWriters(
   for (const owner of owners) {
     for (const e of owner.entries) {
       if (e.kind !== 'file' || e.change === 'removed') continue
+      // Another task's output: its own rewrite is still the task's to fix.
+      if (savers.get(e.name)?.some((t) => t !== owner.taskId) === true) continue
       const writers = writersOf(e.name)
       if (writers !== null) out.push({ taskId: owner.taskId, file: e.name, writers })
     }

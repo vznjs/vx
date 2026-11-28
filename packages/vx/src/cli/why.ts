@@ -16,6 +16,7 @@ import {
   explainCacheKey,
   getInvocation,
   inputWriters,
+  savedOutputs,
   latestRunId,
   LocalHistoryProvider,
   recordedTasks,
@@ -24,7 +25,15 @@ import {
   resolveRunId,
   whyDidThisRerun,
 } from '../history/index.js'
-import { MASKED, nearMatches, printable, refusal, splitTaskId, UserError } from '../util/index.js'
+import {
+  MASKED,
+  nearMatches,
+  printable,
+  refusal,
+  relPosix,
+  splitTaskId,
+  UserError,
+} from '../util/index.js'
 import * as ui from '../ui/index.js'
 import type {
   CacheKeyDiff,
@@ -374,7 +383,15 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         ? await groupMembers(at, taskId)
         : { groups: new Map<string, string[]>(), noops: new Set<string>() }
     const roots = rootCauses(db, runId, taskId, diff.entries, groups)
-    const writers = inputWriters(db, runId, root, taskId, diff.entries, roots)
+    const writers = inputWriters(
+      db,
+      runId,
+      root,
+      taskId,
+      diff.entries,
+      roots,
+      await outputSavers(at, db, runId, [...diff.entries, ...roots.flatMap((r) => r.entries)]),
+    )
 
     if (parsed.format === 'json') {
       // The note is the verdict the text prints: "(inputs differ)" is for a
@@ -844,6 +861,34 @@ async function groupMembers(
   } catch {
     return { groups: new Map(), noops: new Set() }
   }
+}
+
+/**
+ * Each moved file another task of the run saved as its output, with those
+ * tasks. The workspace is read only when a saved path's tail matches.
+ */
+async function outputSavers(
+  at: VerbWorkspace,
+  db: Database,
+  runId: string,
+  entries: CacheKeyDiff['entries'],
+): Promise<Map<string, string[]>> {
+  const files = entries.filter((e) => e.kind === 'file').map((e) => e.name)
+  const tails = savedOutputs(db, runId, [...new Set(files)])
+  const out = new Map<string, string[]>()
+  if (tails.length === 0) return out
+  const dirs = await at.projects().then(
+    (metas) => new Map(metas.map((m) => [m.name, relPosix(at.root, m.dir)])),
+    () => new Map<string, string>(),
+  )
+  for (const t of tails) {
+    const dir = dirs.get(t.project)
+    if (dir === undefined || (dir === '' ? t.path : `${dir}/${t.path}`) !== t.file) continue
+    const list = out.get(t.file)
+    if (list === undefined) out.set(t.file, [`${t.project}#${t.task}`])
+    else list.push(`${t.project}#${t.task}`)
+  }
+  return out
 }
 
 const WRITTEN_TODO =

@@ -325,7 +325,8 @@ diffsOlderRun(diff): boolean                         // the diff is against the 
 rootCauses(db, runId, taskId, entries, groups?): RootCause[] // under moved upstreams (through groups), the tasks whose own inputs moved between the keys the dependant folded; on its own stack, each visit linked to the one that reached it, so no chain is copied per level
 recordedTasks(db, runId): Set<string>               // the run's rows as project#task, read once
 upstreamTask(name): string                           // the task an upstream row names, past a group (GROUP_VIA)
-inputWriters(db, runId, root, taskId, entries, roots): InputWriter[] // tasks running when a moved input file last changed, if not after run runId ended (stats and asks once per file)
+inputWriters(db, runId, root, taskId, entries, roots, savers?): InputWriter[] // tasks running when a moved input file last changed, if not after run runId ended (stats and asks once per file); a file another task saved as its output (savers) names none
+savedOutputs(db, runId, files): { file, project, task, path }[] // the moved files a task of the run saved or restored as its output, matched by path tail
 createMissExplainer(db): MissExplainer               // what a miss's key changed since the task's last saved entry (below)
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
 
@@ -473,7 +474,7 @@ writers over a 10,000-task chain, by memory and statement count);
 
 ### Replacing this module
 
-A reader over another store implements the same twelve signatures (the
+A reader over another store implements the same thirteen signatures (the
 join, `diffKeyComponents`, needs no store and is reused as it is, and
 `diffsOlderRun` answers only for this module's own `cacheKeyDiff`
 results, so such a reader supplies its own); the CLI verbs format, they
