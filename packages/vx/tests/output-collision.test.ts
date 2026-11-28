@@ -192,7 +192,8 @@ describe('rules.exclusiveOutputs refuses an overlap WITH an edge (X-53)', () => 
         msg = (e as Error).message
       }
       expect(msg).toEndWith(
-        'and the run still reports success. Give each task its own output path.',
+        'and the run still reports success. Give each task its own output path, or add ' +
+          '"!dist/individual" to app#build\'s outputs.files.',
       )
     }
   })
@@ -861,6 +862,21 @@ describe('the path index finds every pair the rule refuses', () => {
       )
     })
   }
+
+  // The fix line named only "its own output path"; one task taking the
+  // other's back is the other way out, and what the refusal now says.
+  it('names the take-back that clears two different spellings', () => {
+    expect(() => graph({ app: { x: task(['dist']), y: task(['d*/y.js']) } })).toThrow(
+      'Give each task its own output path, or add "!d*/y.js" to app#x\'s outputs.files.',
+    )
+    expect(() =>
+      graph({ app: { x: task(['dist', '!d*/y.js']), y: task(['d*/y.js']) } }),
+    ).not.toThrow()
+    // CONTROL: one spelling twice has no take-back to name.
+    expect(() => graph({ app: { x: task(['dist/**']), y: task(['dist/**']) } })).toThrow(
+      /Give each task its own output path\.$/,
+    )
+  })
 
   it('CONTROL: globs that share no path stay apart', () => {
     for (const [a, b] of [
