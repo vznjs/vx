@@ -267,3 +267,17 @@ it('a query with a parameter is refused', () => {
   const ok = vx('last', '--sql', "SELECT '?' AS a", '--format', 'json')
   expect([ok.code, ok.out]).toEqual([0, '{"rows":[{"a":"?"}]}\n'])
 })
+
+// As doubles, `9007199254740993` printed `…992` in both formats, and a
+// BLOB went out as `{"0":10,"1":255}`.
+it('keeps an integer past 2^53 whole, and prints a BLOB as its hex', () => {
+  const q = "SELECT 9007199254740993 AS big, -9007199254740993 AS neg, 7 AS small, x'0aff' AS b"
+  const json = vx('last', '--sql', q, '--format', 'json')
+  expect(json.code).toBe(0)
+  expect(json.out).toBe(
+    '{"rows":[{"big":9007199254740993,"neg":-9007199254740993,"small":7,"b":"0AFF"}]}\n',
+  )
+  const table = vx('last', '--sql', q)
+  expect(table.code).toBe(0)
+  expect(table.out).toContain('9007199254740993  -9007199254740993')
+})

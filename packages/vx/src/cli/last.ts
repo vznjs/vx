@@ -475,6 +475,21 @@ export function formatStats(stats: readonly TaskStats[]): ui.Block {
 /** The most rows `--sql`'s table holds; JSON streams, with no bound. */
 const MAX_TABLE_ROWS = 100_000
 
+/**
+ * A value JSON cannot hold as SQLite gave it: an integer past 2^53 keeps
+ * every digit (as a double, `9007199254740993` printed `…992`), and a BLOB
+ * is its hex, as SQLite's `hex()` spells it, where it was `{"0":1,…}`.
+ */
+/** ES2025's, in Bun; not yet in TypeScript's lib. */
+type RawJSON = JSON & { rawJSON(text: string): unknown }
+
+function sqlValue(_key: string, v: unknown): unknown {
+  if (typeof v === 'bigint')
+    return Number.isSafeInteger(Number(v)) ? Number(v) : (JSON as RawJSON).rawJSON(String(v))
+  if (v instanceof Uint8Array) return Buffer.from(v).toString('hex').toUpperCase()
+  return v
+}
+
 /** `{ rows }` a piece at a time, each piece many rows: one write per row cost the stream its speed. */
 function* jsonRows(
   first: IteratorResult<unknown>,
@@ -485,7 +500,7 @@ function* jsonRows(
   let sent = false
   let row = first
   for (let n = 0; row.done !== true; n++) {
-    piece += `${n === 0 ? '' : ','}${JSON.stringify(row.value)}`
+    piece += `${n === 0 ? '' : ','}${JSON.stringify(row.value, sqlValue)}`
     if (piece.length >= 65_536) {
       yield piece
       piece = ''
@@ -552,6 +567,8 @@ async function printQuery(db: Database, sql: string, format: 'pretty' | 'json'):
       'VX_E_USAGE',
     )
   }
+  // Integers as bigints: a double cuts one past 2^53 (`run_hits.nums`).
+  stmt.safeIntegers(true)
   const columns = stmt.columnNames
   if (format === 'json') {
     const twice = columns.find((c, i) => columns.indexOf(c) !== i)
