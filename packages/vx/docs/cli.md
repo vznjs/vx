@@ -2280,6 +2280,7 @@ vx run build lint --affected=main --dry
 - An error writing the file prints `vx: failed to write …`, and the exit code stays the run's.
 - `--profile dist/` (a path that is a folder) is refused before the run, `VX_E_USAGE`.
 - So is a path through a loop of links.
+- `--profile=.vx/workspace.ts`, or a lock or `.gitignore` in `.vx`, is refused before the run, `VX_E_USAGE`: a run never writes them.
 - `--profile traces/run.json` makes a missing `traces/` folder.
 
 </div>
