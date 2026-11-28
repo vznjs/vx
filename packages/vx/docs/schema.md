@@ -1358,7 +1358,9 @@ Paths start at the project folder. vx always leaves out what git ignores, its ow
 - `src/.` reads as `src/`: a trailing `/.` is a trailing `/`.
 - `.` or `./` alone is refused: write `**`.
 - `!src` takes the whole `src` tree back out.
-- `['src/**', '!src/gen/**', 'src/gen/keep.ts']` is refused: a `!` entry subtracts wherever it sits, so `keep.ts` would never be an input. So is `src/gen/*.ts` there, or after `!src/gen/*`: every file it matches is taken back. So are `src/gen/` there, whose whole tree is, and `{src/gen,lib}/*.ts`, whose `src/gen` alternative is.
+- `['src/**', '!src/gen/**', 'src/gen/keep.ts']` is refused: a `!` entry subtracts wherever it sits, so `keep.ts` would never be an input.
+- So is `src/gen/*.ts` there, or after `!src/gen/*`: every file it matches is taken back.
+- So are `src/gen/` there, whose whole tree is, and `{src/gen,lib}/*.ts`, whose `src/gen` alternative is.
 - `default`, a bare name, may be a folder: it is taken as one and only warns when it matches nothing.
 - `files: []` is valid: the key still holds the command, env, dependencies' keys and any plugin's key material.
 - With `files: []` and a lockfile plugin (`@vzn/vx-lockfile`), a lockfile change still misses.
