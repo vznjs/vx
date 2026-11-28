@@ -162,6 +162,14 @@ describe('vx lock refuses inputs that read another task’s outputs', () => {
     )
   })
 
+  // A `**` above the project may name its folder itself: `**/gen` is all of
+  // the project at gen, which its `!**/gen` (gen/**/gen) does not take back.
+  it('a ** output above the project is not cut to it', () => {
+    expect(
+      refusal({ g: { make: wsTask([], ['**/gen']) }, gen: { build: task(['**', '!**/gen'], []) } }),
+    ).toStartWith('gen#build reads "**" in inputs.files, which matches g#make\'s output "**/gen"')
+  })
+
   it("refuses a workspaceFiles input over another project's files output, said in its terms", () => {
     expect(refusal({ a: { build }, b: { use: wsTask(['a/dist/index.js'], []) } })).toMatch(
       /^b#use reads "a\/dist\/index\.js" in inputs\.workspaceFiles, which matches a#build's output "dist\/\*\*" .* add "!a\/dist\/\*\*" to b#use's inputs\.workspaceFiles/,
