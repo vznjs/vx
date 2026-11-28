@@ -281,9 +281,7 @@
           "exitCode": 1
         }
       ],
-      "sandboxViolationLines": [
-        "deny file-read /etc"
-      ],
+      "sandboxViolationLines": ["deny file-read /etc"],
       "wallclockStartNs": "3000000",
       "wallclockEndNs": "303000000"
     },
@@ -317,9 +315,7 @@
       "exitCode": 1,
       "durationMs": 8,
       "hash": "h-pack",
-      "outputsMissing": [
-        "dist/**"
-      ]
+      "outputsMissing": ["dist/**"]
     },
     {
       "taskId": "c#e2e",
@@ -352,9 +348,7 @@
       "exitCode": 0,
       "durationMs": 0,
       "otherPlatform": {
-        "needs": [
-          "darwin"
-        ],
+        "needs": ["darwin"],
         "host": "linux"
       }
     },
@@ -445,9 +439,7 @@
       "timedOut": true,
       "inputMoved": "b/x.ts",
       "sandboxViolations": 1,
-      "sandboxViolationLines": [
-        "deny file-read /etc"
-      ],
+      "sandboxViolationLines": ["deny file-read /etc"],
       "wallclockStartNs": "3000000",
       "wallclockEndNs": "303000000",
       "startedAt": 0,
@@ -478,9 +470,7 @@
       "exitCode": 1,
       "durationMs": 8,
       "hash": "h-pack",
-      "outputsMissing": [
-        "dist/**"
-      ],
+      "outputsMissing": ["dist/**"],
       "startedAt": 0,
       "endedAt": 0
     },
@@ -519,9 +509,7 @@
       "exitCode": 0,
       "durationMs": 0,
       "otherPlatform": {
-        "needs": [
-          "darwin"
-        ],
+        "needs": ["darwin"],
         "host": "linux"
       },
       "startedAt": 0,
