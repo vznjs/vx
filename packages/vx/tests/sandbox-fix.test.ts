@@ -431,6 +431,15 @@ describe('sandboxFix', () => {
     ).toEqual({ write: ['dist/'] })
   })
 
+  // `git status` under a write grant read the project and each directory in
+  // it: the fix named `.` and every one of them, which `.` already covers.
+  it('names only the project when it reads the project whole', () => {
+    const at = (p: string) => path.join(dir, p)
+    const r = (p: string) =>
+      v(`openat(${at(p)}/) read under a write grant's directory, granted no read`, ['read'], at(p))
+    expect(sandboxFix([r(''), r('src')], dir, path.dirname(dir))).toEqual({ read: ['.'] })
+  })
+
   it('escapes a path the grant would read as a pattern, and names the directory of one no grant spells', () => {
     // Raw, `pages/[id].tsx` granted the class `pages/i.tsx` and keyed it:
     // applying the fix failed the run again on the same read, forever.

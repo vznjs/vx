@@ -1875,6 +1875,9 @@ For the same reason a literal beside its own directory grant is dropped:
 `rm -rf dist; mkdir dist` named `['dist', 'dist/']`, which `vx lock`
 refuses; `dist/` alone then meets the in-place mount's hint (empty it,
 `rm -rf dist/*`).
+A read of the project itself (`git status` lists it) names `.`, which
+covers every other read grant in the project, so the fix names `.` alone,
+as it does for a write.
 
 ### Tests
 
