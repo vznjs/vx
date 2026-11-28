@@ -663,3 +663,60 @@ it.skipIf(process.platform === 'win32')(
   },
   TIMEOUT,
 )
+
+// A failed task's outputs are measured for its row only. A looping link
+// there threw ELOOP from that stat, and the row said `internal error`,
+// `failed (exit 1)` in 0ms, hiding the command's own exit 9.
+it.skipIf(process.platform === 'win32')(
+  "a failed task's looping output link keeps its own exit and says no internal error",
+  async () => {
+    const { root } = await workspace('mkdir -p dist && ln -s loop dist/loop; exit 9')
+    const r = await build(root)
+    expect([r.code, (r.out + r.err).includes('internal error'), r.out + r.err]).toEqual([
+      1,
+      false,
+      expect.stringContaining('failed (exit 9)'),
+    ])
+  },
+  TIMEOUT,
+)
+
+// The same for a refusal the walk of its outputs meets: a tree past
+// PATH_MAX said ENAMETOOLONG and `failed (exit 1)` in 0ms.
+it.skipIf(process.platform !== 'linux')(
+  "a failed task's output tree past PATH_MAX keeps its own exit",
+  async () => {
+    const long = 'a'.repeat(200)
+    const { root } = await workspace(
+      `mkdir -p dist && cd dist && for i in $(seq 1 25); do mkdir ${long} && cd ${long} || break; done; exit 9`,
+    )
+    const r = await build(root)
+    expect([r.code, (r.out + r.err).includes('failed (exit 9)')]).toEqual([1, true])
+    rmSync(path.join(root, 'packages/app/dist'), { recursive: true, force: true })
+  },
+  TIMEOUT,
+)
+
+// With a dependant its outputs are marked for later readers, not only
+// measured: the same loop failed the same way there.
+it.skipIf(process.platform === 'win32')(
+  'a failed task with a dependant keeps its own exit past a looping output link',
+  async () => {
+    const root = await makeWorkspace({ prefix: 'vx-links-' })
+    made.push(root)
+    await addProject(root, 'app', {
+      config: `export default { tasks: {
+        build: { exec: { command: 'mkdir -p dist && ln -s loop dist/loop; exit 9' },
+          inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] }, cache: true },
+        post: { dependsOn: ['build'], exec: { command: 'true' } },
+      } }`,
+      files: { 'src/in.txt': 'v1\n', '.gitignore': 'dist/\n' },
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const r = await vx(root, ['run', 'post', '--all', '--cache-dir', path.join(root, '.cache')])
+    expect([r.code, (r.out + r.err).includes('failed (exit 9)')]).toEqual([1, true])
+  },
+  TIMEOUT,
+)
