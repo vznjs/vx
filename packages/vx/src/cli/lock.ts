@@ -3,7 +3,7 @@
 // `vx lock --check` — audit the lock against a fresh evaluation in the
 // current environment. Design: docs/design/config-lock-2026-06.md.
 
-import { readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
@@ -361,6 +361,27 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       if (dirs.length > 0)
         throw new UserError(
           `${listed(dirs, 5)} ${dirs.length === 1 ? 'is' : 'are'} outside this sparse checkout, so vx lock cannot read what the lock holds there — run \`git sparse-checkout add ${dirs.join(' ')}\``,
+          'VX_E_LOCK',
+        )
+    }
+    // So is one in a submodule a clone skipped: it would leave the lock too.
+    if (held !== null && existsSync(path.join(root, '.gitmodules'))) {
+      const unchecked = [
+        ...new Set(
+          Object.entries(held.projects)
+            .filter(
+              ([dir, p]) =>
+                p.file === undefined && dir !== '.' && !Object.hasOwn(out.fresh.projects, dir),
+            )
+            .flatMap(([dir]) => {
+              const at = uncheckedSubmoduleSync(root, dir)
+              return at === null ? [] : [at]
+            }),
+        ),
+      ].sort()
+      if (unchecked.length > 0)
+        throw new UserError(
+          `${listed(unchecked, 5)} ${unchecked.length === 1 ? 'is a submodule' : 'are submodules'} not checked out, so vx lock cannot read what the lock holds there — run \`git submodule update --init ${unchecked.join(' ')}\``,
           'VX_E_LOCK',
         )
     }
