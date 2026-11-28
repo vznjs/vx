@@ -115,3 +115,18 @@ it('`vx why --run` of a task the stop cut off says the stop ended it', async () 
     err: `✗ vx why  run ${id} was stopped before a#wait ended, so vx kept no row for it\n`,
   })
 }, 30_000)
+
+// `--log` said "no recorded run of a#wait in run <id>", then listed a#wait
+// among a's recorded tasks: the stop, as `vx why` names it, went unsaid.
+it('`vx last <id> --log` of a task the stop cut off says the stop ended it', async () => {
+  await Bun.write(path.join(dir, 'quick'), '')
+  expect(vx('run', 'a#wait').code).toBe(0)
+  await rm(path.join(dir, 'quick'))
+  const out = await stopAfterSlowStarts('a#build', 'a#wait')
+  const id = / · run (\S+)\n/.exec(out)?.[1]
+  const log = vx('last', id!, '--log', 'a#wait')
+  expect({ code: log.code, err: log.err }).toEqual({
+    code: 1,
+    err: `✗ vx last  run ${id} was stopped before a#wait ended, so vx kept no row for it\n`,
+  })
+}, 30_000)
