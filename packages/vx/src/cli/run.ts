@@ -857,5 +857,16 @@ function profileProblem(cwd: string, target: string): string | undefined {
   }
   if (st?.isDirectory() === true)
     return `--profile: ${target} is a directory — name a file, e.g. --profile=${path.join(target, 'profile.json')}`
+  // `--profile=.vx/workspace.ts` wrote the trace over the workspace file,
+  // and every verb after failed to parse it; a run never writes the locks.
+  const at = path.resolve(cwd, target)
+  if (
+    st !== undefined &&
+    path.basename(path.dirname(at)) === '.vx' &&
+    VX_OWN_FILE.test(path.basename(at))
+  )
+    return `--profile: ${target} is the workspace's own file, which a run never writes — name another file`
   return undefined
 }
+
+const VX_OWN_FILE = /^(?:workspace\.[cm]?[jt]s|[^/]+\.lock|\.gitignore)$/

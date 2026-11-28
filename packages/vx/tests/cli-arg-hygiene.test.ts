@@ -540,6 +540,19 @@ describe('--profile names a file, checked before the run', () => {
     expect(stderr).toContain('--profile: a/p.json loops back through links and never ends')
   })
 
+  // `--profile=.vx/workspace.ts` wrote the trace over the workspace file.
+  it("refuses the workspace's own files in .vx", async () => {
+    await fs.mkdir(path.join(tmp, '.vx'))
+    for (const f of ['projects.lock', '.gitignore', 'workspace.ts']) {
+      await fs.writeFile(path.join(tmp, '.vx', f), 'kept')
+      expect(await run(['run', 'build', `--profile=.vx/${f}`])).toBe(1)
+      expect(stderr).toContain(
+        `--profile: .vx/${f} is the workspace's own file, which a run never writes — name another file`,
+      )
+      expect(await fs.readFile(path.join(tmp, '.vx', f), 'utf8')).toBe('kept')
+    }
+  })
+
   it('a file in an existing directory goes on to the run (control)', async () => {
     // No workspace here: the run's own refusal, thrown, is the next fault.
     const thrown = await run(['run', 'build', '--profile=p.json']).catch((e: Error) => e.message)

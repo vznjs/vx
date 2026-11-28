@@ -399,6 +399,39 @@ function ownerNamed(dir: string): boolean {
 }
 
 /**
+ * What stands where a directory was wanted. A dangling or looping `.vx` link
+ * was called "a file", and `ls` showed none.
+ */
+function notDirectory(root: string, rel: string): string {
+  // The first folder on the way that is not one: `.vx/plugins/x.ts` under a
+  // `.vx` file is blocked at `.vx`, not at `.vx/plugins`.
+  const parts = path.dirname(rel).split(path.sep)
+  for (let i = 1; i <= parts.length; i++) {
+    const at = parts.slice(0, i).join(path.sep)
+    const dir = path.join(root, at)
+    let link: boolean
+    try {
+      link = lstatSync(dir).isSymbolicLink()
+    } catch {
+      break
+    }
+    if (!link) {
+      if (statSync(dir).isDirectory()) continue
+      return `${at} is a file`
+    }
+    try {
+      if (statSync(dir).isDirectory()) continue
+      return `${at} is a link to a file`
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code === 'ELOOP'
+        ? `${at} is a link that loops back through links`
+        : `${at} is a link to nothing`
+    }
+  }
+  return `${path.dirname(rel)} is a file`
+}
+
+/**
  * Whether anything stands at `file`, a dangling symlink included: writing
  * through one created its target outside the workspace.
  */
@@ -441,7 +474,7 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
       (err: NodeJS.ErrnoException) => {
         if (err.code !== 'EEXIST' && err.code !== 'ENOTDIR') throw err
         throw new UserError(
-          `vx init: cannot write ${files[0][0]}: plugins is a file, not a directory; move it and re-run`,
+          `vx init: cannot write ${files[0][0]}: ${notDirectory(root, files[0][0])}, not a directory; move it and re-run`,
         )
       },
     )
@@ -680,7 +713,7 @@ async function starter(
         // writeNoFollow's mkdir of a parent that is a file says EEXIST.
         if (err.code !== 'ENOTDIR' && err.code !== 'EEXIST') throw err
         throw new UserError(
-          `vx init: cannot write ${f.path}: ${path.dirname(f.path)} is a file, not a directory; move it and re-run`,
+          `vx init: cannot write ${f.path}: ${notDirectory(root, f.path)}, not a directory; move it and re-run`,
         )
       },
     )
