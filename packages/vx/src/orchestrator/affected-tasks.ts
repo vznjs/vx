@@ -270,49 +270,55 @@ function outputReaders(
   if (![...nodes.values()].some((n) => n.deps.some((d) => !folded.get(n.id)!.includes(d)))) {
     return []
   }
-  const closure = (
-    memo: Map<string, Set<string>>,
-    id: string,
-    next: (id: string) => readonly string[],
-  ) => {
-    let out = memo.get(id)
-    if (out !== undefined) return out
-    out = new Set()
-    const stack = [...next(id)]
+  // Whether `to` is reached from `from` along `next`, walked until found.
+  const reaches = (from: string, to: string, next: (id: string) => readonly string[]) => {
+    const seen = new Set<string>()
+    const stack = [...next(from)]
     while (stack.length > 0) {
       const d = stack.pop()!
-      if (out.has(d) || !nodes.has(d)) continue
-      out.add(d)
+      if (d === to) return true
+      if (seen.has(d) || !nodes.has(d)) continue
+      seen.add(d)
       stack.push(...next(d))
     }
-    memo.set(id, out)
-    return out
+    return false
   }
-  const all = new Map<string, Set<string>>()
-  const keyed = new Map<string, Set<string>>()
-  const rooted = new Map<string, { reads: string[]; writes: string[] }>()
-  const sides = (n: TaskNode) => {
-    let s = rooted.get(n.id)
-    if (s !== undefined) return s
+  const at = (globs: readonly string[] | undefined, base: string) =>
+    (globs ?? []).filter((g) => !g.startsWith('!')).map((g) => path.posix.join(base, g))
+  // Writers by project folder: a `files` read meets only its own project's
+  // `files` outputs, the root project's, and `workspaceFiles` outputs.
+  const byRel = new Map<string, Array<{ id: string; writes: string[] }>>()
+  const anywhere: Array<{ id: string; writes: string[] }> = []
+  const all: Array<{ id: string; writes: string[] }> = []
+  const rels = new Map<string, string>()
+  for (const n of nodes.values()) {
     const rel = relPosix(workspaceRoot, n.projectDir)
-    const at = (globs: readonly string[] | undefined, base: string) =>
-      (globs ?? []).filter((g) => !g.startsWith('!')).map((g) => path.posix.join(base, g))
-    s = {
-      reads: [...at(n.config.inputs?.files, rel), ...at(n.config.inputs?.workspaceFiles, '')],
-      writes: [...at(n.config.outputs?.files, rel), ...at(n.config.outputs?.workspaceFiles, '')],
+    rels.set(n.id, rel)
+    const own = at(n.config.outputs?.files, rel)
+    const ws = at(n.config.outputs?.workspaceFiles, '')
+    if (own.length + ws.length === 0) continue
+    const w = { id: n.id, writes: [...own, ...ws] }
+    all.push(w)
+    if (ws.length > 0) anywhere.push(w)
+    else if (rel !== '') {
+      const list = byRel.get(rel)
+      if (list === undefined) byRel.set(rel, [w])
+      else list.push(w)
     }
-    rooted.set(n.id, s)
-    return s
   }
+  const rootWriters = all.filter((w) => rels.get(w.id) === '' && !anywhere.includes(w))
   const pairs: Array<[string, string]> = []
   for (const n of nodes.values()) {
-    const reads = sides(n).reads
+    const rel = rels.get(n.id)!
+    const wide = (n.config.inputs?.workspaceFiles?.length ?? 0) > 0 || rel === ''
+    const reads = [...at(n.config.inputs?.files, rel), ...at(n.config.inputs?.workspaceFiles, '')]
     if (reads.length === 0) continue
-    const mine = closure(keyed, n.id, (id) => folded.get(id) ?? [])
-    for (const up of closure(all, n.id, (id) => nodes.get(id)?.deps ?? [])) {
-      if (mine.has(up)) continue
-      const writes = sides(nodes.get(up)!).writes
-      if (reads.some((r) => writes.some((w) => outputsOverlap(r, w)))) pairs.push([up, n.id])
+    const candidates = wide ? all : [...(byRel.get(rel) ?? []), ...anywhere, ...rootWriters]
+    for (const w of candidates) {
+      if (w.id === n.id || !reads.some((r) => w.writes.some((o) => outputsOverlap(r, o)))) continue
+      const direct = n.deps.includes(w.id)
+      if (!direct && !reaches(n.id, w.id, (id) => nodes.get(id)?.deps ?? [])) continue
+      if (!reaches(n.id, w.id, (id) => folded.get(id) ?? [])) pairs.push([w.id, n.id])
     }
   }
   return pairs

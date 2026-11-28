@@ -99,3 +99,32 @@ it('a task whose key hashes an unfolded dependency’s outputs is reached throug
   // CONTROL: b#test reads no output of b#build, so it stays out.
   expect(ids).not.toContain('b#test')
 }, 30_000)
+
+it('a task reading another project’s outputs through workspaceFiles is reached through it', async () => {
+  root = await makeWorkspace({ prefix: 'vx-affected-key-deps-', git: false })
+  await addProject(root, 'a', {
+    config: `export default { tasks: {
+  build: { exec: { command: 'mkdir -p out && cat src.txt > out/x' }, inputs: { files: ['src.txt'] }, outputs: { files: ['out/'] }, cache: true },
+} }
+`,
+    files: { 'src.txt': '1\n' },
+  })
+  await addProject(root, 'b', {
+    config: `export default { tasks: {
+  test: { dependsOn: ['a#build'], exec: { command: 'cat ../a/out/x > r.txt' }, inputs: { files: [], workspaceFiles: ['packages/a/out/**'], tasks: [] }, outputs: { files: ['r.txt'] }, cache: true },
+} }
+`,
+  })
+  vx('lock')
+  gitInitCommit(root)
+  await writeFile(path.join(root, 'packages/a/src.txt'), '2\n')
+  const git = gitIn(root)
+  git('add', '-A')
+  git('commit', '-qm', 'src')
+  const ids = (
+    JSON.parse(vx('run', 'test', '--all', '--affected=HEAD~1', '--dry', '--format', 'json')) as {
+      tasks: Array<{ id: string }>
+    }
+  ).tasks.map((t) => t.id)
+  expect(ids).toContain('b#test')
+}, 30_000)
