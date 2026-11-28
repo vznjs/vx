@@ -1855,6 +1855,7 @@ each path.
   only while empty, so `dist/a` is no match and the task fails. Write
   `dist/**`.
 - `['dist/**', '!dist/a.js']`: a path a `!` entry takes back is no match.
+  `!dist/a` takes back the tree there, as the save does.
 - `report.json` written only sometimes: match it with a glob
   (`reports/*.json`), not a literal path.
 

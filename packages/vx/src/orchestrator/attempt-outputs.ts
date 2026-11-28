@@ -477,7 +477,8 @@ function outputMatches(
   const required: string[] = []
   const optional: string[] = []
   if (positive.length === 0) return { required, optional, declared: 0 }
-  const takenBack = anyTaskGlob(negative)
+  // Read as the save reads it: `!dist/a` takes back the whole tree there.
+  const takenBack = anyTaskGlob(asTrees(negative))
   // What the save never takes (an installed file a wildcard reaches, vx's
   // own) is no match: counted, the task passed and saved an empty entry.
   const excluded = outputExcluded(globs, scope)
@@ -505,7 +506,7 @@ export function nestedOutputMatches(
   nestedDirs: readonly string[],
 ): string[] {
   const { positive, negative } = splitNegations(globs)
-  const takenBack = anyTaskGlob(negative)
+  const takenBack = anyTaskGlob(asTrees(negative))
   const nested = nestedDirs
     .map((d) => path.relative(base, d))
     .filter((r) => r !== '' && !r.startsWith('..'))
@@ -528,7 +529,7 @@ export function unsavedOutputMatches(
   scope: 'project' | 'workspace',
 ): string[] {
   const { positive, negative } = splitNegations(globs)
-  const takenBack = anyTaskGlob(negative)
+  const takenBack = anyTaskGlob(asTrees(negative))
   const excluded = outputExcluded(globs, scope)
   const unsaved = (rel: string): boolean => !takenBack(rel) && excluded(rel)
   return positive.flatMap((g) => {
