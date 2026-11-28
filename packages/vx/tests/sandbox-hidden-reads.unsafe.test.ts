@@ -360,7 +360,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
   // named and granted, and only the next failed run said the cwd lists
   // empty, so the test runner still found no test file.
   it('says the cwd lists empty beside a traced read inside it', async () => {
-    const [status, lines] = await outcome('cat tsconfig.json > /dev/null; exit 1', '{}')
+    const [status, lines] = await outcome('{ read x < tsconfig.json; } 2>/dev/null; exit 1', '{}')
     expect([status, (lines as string[]).at(-1)]).toEqual([
       'failed',
       `vx: this sandbox grants no read of the task's own working directory (${root}/packages/app) ` +
