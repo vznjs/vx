@@ -314,6 +314,13 @@ function treeWatcher(
   // The birth time too: a freed inode number goes to the next directory.
   const held = new Map<string, string>()
   const idOf = (st: fs.Stats): string => `${st.dev}:${st.ino}:${st.birthtimeMs}`
+  const holds = (rel: string, abs: string): boolean => {
+    try {
+      return held.get(rel) === idOf(fs.statSync(abs))
+    } catch {
+      return false
+    }
+  }
   let closed = false
   let armed = false
   let warned = false
@@ -360,6 +367,13 @@ function treeWatcher(
     try {
       w = fs.watch(abs, { persistent: true }, (_event, name) => {
         if (name == null || typeof name !== 'string' || name === '' || name === '.') return
+        // A watched directory's removal comes from its own watch under its
+        // own name: `dist` gone read as `dist/dist`, a path that never was.
+        // The parent's watch reports the directory.
+        if (rel !== '' && name === path.basename(rel) && !holds(rel, abs)) {
+          drop(rel)
+          return
+        }
         const child = rel === '' ? name : `${rel}/${name}`
         listener(child)
         if (skips(child)) return
