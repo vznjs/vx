@@ -416,6 +416,21 @@ describe('sandboxFix', () => {
     })
   })
 
+  // `rm -rf dist; mkdir dist` was granted `['dist', 'dist/']`: the literal
+  // is a file vx makes before the run, so vx lock refused the pair.
+  it('drops a literal beside its own directory grant', () => {
+    const at = (p: string) => path.join(dir, p)
+    const w = (call: string, p: string) =>
+      v(`${call}(${at(p)}) = a write no grant covers`, ['write'], at(p))
+    expect(
+      sandboxFix(
+        [w('unlinkat', 'dist'), w('mkdir', 'dist'), w('openat', 'dist/a')],
+        dir,
+        path.dirname(dir),
+      ),
+    ).toEqual({ write: ['dist/'] })
+  })
+
   it('escapes a path the grant would read as a pattern, and names the directory of one no grant spells', () => {
     // Raw, `pages/[id].tsx` granted the class `pages/i.tsx` and keyed it:
     // applying the fix failed the run again on the same read, forever.
