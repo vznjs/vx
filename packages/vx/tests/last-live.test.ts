@@ -111,6 +111,45 @@ it('a run whose snapshot this vx cannot read says so, exit 1', async () => {
   }
 }, 30_000)
 
+// The socket's reads split a character: each half decoded alone read as two
+// U+FFFD in a followed task's line.
+it('a character the socket splits across reads arrives whole', async () => {
+  const other = await makeWorkspace({ prefix: 'vx-last-live-split-' })
+  const snapshot = new TextEncoder().encode(
+    `${JSON.stringify({ live: { runId: 'r', command: 'vx run', pid: 1, startedAt: 0, elapsedMs: 0 }, tasks: [], warnings: ['café'] })}\n`,
+  )
+  const cut = snapshot.indexOf(0xc3) + 1
+  try {
+    const srv = Bun.listen({
+      unix: liveSocketPath(other),
+      socket: {
+        async data(s) {
+          s.write(snapshot.subarray(0, cut))
+          s.flush()
+          await Bun.sleep(100)
+          s.write(snapshot.subarray(cut))
+          s.end()
+        },
+      },
+    })
+    try {
+      const p = Bun.spawn({
+        cmd: [process.execPath, BIN, 'last', '--live', '--format', 'json'],
+        cwd: other,
+        env,
+      })
+      expect([await p.exited, await new Response(p.stdout).text()]).toEqual([
+        0,
+        expect.stringContaining('"warnings":["café"]'),
+      ])
+    } finally {
+      srv.stop(true)
+    }
+  } finally {
+    await rm(other, { recursive: true, force: true })
+  }
+}, 30_000)
+
 it('a run in progress: what runs, what ended, what waits, and its warnings', async () => {
   const run = Bun.spawn({
     cmd: [process.execPath, BIN, 'run', 'a#all'],

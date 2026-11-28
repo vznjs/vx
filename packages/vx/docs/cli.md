@@ -6371,6 +6371,8 @@ success  @demo/web#test  1.20s
   as `success  @demo/web#test  1.20s`, each warning as `warn  …`.
 - `--follow --format json`: the snapshot line, then one event per line,
   each with a `kind` (`schemas/last.json`'s `event`).
+- A character the socket splits across two reads prints whole, not as
+  two `�`.
 - The kinds: `run:start`, `task:start`, `task:stdout`, `task:stderr`,
   `task:complete`, `task:measure`, `run:status`.
 - Then `step:start`, `step:end`, `run:end`, `run:stop`, and last
