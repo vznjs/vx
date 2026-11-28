@@ -1116,5 +1116,5 @@ export function describeValue(v: unknown): string {
   return article((v as object).constructor?.name || 'class instance')
 }
 
-// `a Object` and `a Int8Array` read wrong.
-const article = (noun: string): string => `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`
+// `a Object` and `a Int8Array` read wrong, as `an Uint8Array` would.
+const article = (noun: string): string => `${/^([aeio]|u[nm])/i.test(noun) ? 'an' : 'a'} ${noun}`
