@@ -466,7 +466,10 @@ function refuseUnknownPipelineTasks(
     | Readonly<
         Record<
           string,
-          { readonly tasks: readonly string[]; readonly excludeDependencies?: readonly string[] }
+          {
+            readonly tasks: readonly string[]
+            readonly excludeDependencies?: true | readonly string[]
+          }
         >
       >
     | undefined,
@@ -492,9 +495,9 @@ function refuseUnknownPipelineTasks(
         'VX_E_CONFIG',
       )
     // A name, never `pkg#task`, as the run's `--exclude-dependencies` takes it.
-    const ghosts = (p.excludeDependencies ?? []).filter(
-      (t) => t.includes('#') || (t !== 'build' && !bare.has(t)),
-    )
+    // `true` drops every dependency edge: no names to check.
+    const names = Array.isArray(p.excludeDependencies) ? p.excludeDependencies : []
+    const ghosts = names.filter((t) => t.includes('#') || (t !== 'build' && !bare.has(t)))
     if (ghosts.length > 0)
       throw new UserError(
         `pipelines.${name}.excludeDependencies names ${ghosts.join(', ')}, which no project declares (it takes task names, not project#task); tasks: ${[...bare].sort().join(', ')}`,

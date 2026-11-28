@@ -173,6 +173,7 @@ it('vx lock refuses a pipeline task no project declares', async () => {
       ),
     })
     expect((await lock(`['lint'], excludeDependencies: ['lint']`)).code).toBe(0)
+    expect((await lock(`['lint'], excludeDependencies: true`)).code).toBe(0)
   } finally {
     await rm(root, { recursive: true, force: true })
   }
