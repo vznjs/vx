@@ -265,11 +265,11 @@ describe('an output glob whose only match the save never takes', () => {
       path.join(app, 'vx.config.mjs'),
       `export default { tasks: {
         installed: { exec: { command: 'mkdir -p node_modules/p && echo x > node_modules/p/i.js' },
-          inputs: { files: [] }, outputs: { files: ['**/*.js'] }, cache: true },
+          inputs: { files: [] }, outputs: { files: ['**/*.js', '!d/**'] }, cache: true },
         fifo: { exec: { command: 'mkdir -p d && rm -f d/p && mkfifo d/p' },
           inputs: { files: [] }, outputs: { files: ['d/p'] }, cache: true },
         takenback: { exec: { command: 'mkdir -p node_modules/q && echo x > node_modules/q/i.cjs' },
-          inputs: { files: [] }, outputs: { files: ['**/*.cjs', '!node_modules/q/**'] }, cache: true },
+          inputs: { files: [] }, outputs: { files: ['**/*.cjs', '!node_modules/q/**', '!d/**'] }, cache: true },
       } }\n`,
     )
     await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited

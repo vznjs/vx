@@ -151,6 +151,11 @@ export function addStandIn(node: TaskNode, id: string, past: readonly string[]):
 // `@vzn/vx-migrate` asks the same question at migration time and used to
 // ask it with a copy that drifted (item 445).
 export function outputsOverlap(a: string, b: string): boolean
+
+// Does the clean of output `glob` reach `file`, a path known to be a file?
+// For `@vzn/vx-migrate`'s tracked files: `outputsOverlap` reads a literal
+// as a folder too, which a tracked file is not.
+export function outputCovers(glob: string, file: string): boolean
 ```
 
 ### Construction rules
@@ -267,8 +272,9 @@ overlap (`outputsOverlap`) with no edge between them. Two globs overlap
 when some path takes both, decided exactly (`glob-meet.ts`: the two
 patterns walked together, segment by segment and character by
 character), so `*.js` beside `*b*` meets at `b.js`. A literal reads as a
-directory for that only with a trailing slash: `index.js` beside `*/**`
-is no overlap, `dist/` beside `**/out` is. A pair with one is
+directory for that too, as the clean reads one: `dist` beside `d*/y.js`
+is an overlap, and so is `index.js` beside `*/**` (M, 2026-11-28: a task
+whose outputs land in another's is refused). A pair with one is
 refused too while `rules.exclusiveOutputs` is on (the default, X-53), its
 message naming the rule; off, the pair is marked as the addition shape.
 It never compares all pairs:

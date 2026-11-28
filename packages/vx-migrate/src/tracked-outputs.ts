@@ -10,7 +10,7 @@
 import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { outputsOverlap } from '@vzn/vx'
+import { outputCovers } from '@vzn/vx'
 import { relPosix } from './paths.js'
 import type * as SharedOutputs from './shared-outputs.js'
 
@@ -216,7 +216,7 @@ function coveredTracked(globs: readonly string[], files: readonly string[]): str
     const prefix = literalPrefix(g)
     for (const f of files) {
       if (prefix !== '' && f !== prefix && !f.startsWith(`${prefix}/`)) continue
-      if (outputsOverlap(g, f)) hit.add(f)
+      if (outputCovers(g, f)) hit.add(f)
     }
   }
   return [...hit].sort()
@@ -230,7 +230,7 @@ function hidden(globs: unknown, files: readonly string[]): string | undefined {
   if (negative.length === 0) return undefined
   const positive = strings.filter((g) => !g.startsWith('!'))
   return files.find(
-    (f) => negative.some((n) => outputsOverlap(n, f)) && positive.some((g) => outputsOverlap(g, f)),
+    (f) => negative.some((n) => outputCovers(n, f)) && positive.some((g) => outputCovers(g, f)),
   )
 }
 
@@ -246,7 +246,7 @@ function unhidden(
         typeof g === 'string' &&
         g.startsWith('!') &&
         backs.has(g.slice(1)) &&
-        files.some((f) => outputsOverlap(g.slice(1), f))
+        files.some((f) => outputCovers(g.slice(1), f))
       ),
   )
 }
