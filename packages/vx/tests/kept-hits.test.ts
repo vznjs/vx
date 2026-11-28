@@ -189,7 +189,10 @@ it("writes a failed key's entry into the flaky record as its pass, before the fa
 // Worktrees share the flaky record: a pass one keeps packed can reach it
 // after another worktree's later failure of the key, and still precedes it.
 it('reads a key that failed after a pass written out late as flaky', () => {
-  const store = path.join(dir, 'store')
+  // Three levels under the test's own directory, as `~/.vx/<id>/cache`: the
+  // store refuses a home it does not own alone, and one level up from
+  // `<tmp>/<dir>` is a shared `/tmp` (1777), so both fell back to their own.
+  const store = path.join(dir, 'vx', 'id', 'store')
   const open = (name: string): Cache =>
     new Cache(path.join(dir, name), undefined, undefined, undefined, undefined, store)
   const a = open('a')
