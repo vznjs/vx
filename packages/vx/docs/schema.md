@@ -2638,6 +2638,8 @@ pack: {
 - `read: ['.', '../../.git']` from a project two levels down: git reads
   the repository only when granted. `.git` is a wall, so `read: ['.']` in
   a root project leaves it out too.
+- A project in a submodule grants the repository its `.git` file names:
+  `read: ['.', '../../.git/modules/packages/sub']`.
 - On Linux a task whose grants name a `.git` gets
   `GIT_DISCOVERY_ACROSS_FILESYSTEM=1` (a value the task sets wins), as
   each sandbox mount stops git's discovery.

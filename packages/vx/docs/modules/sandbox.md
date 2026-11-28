@@ -1186,7 +1186,8 @@ git's own `not a git repository` and no record. A failed task whose
 stderr said those words (watched as the stream goes, as strace's own
 errors are, so a passing task pays one regex per stderr line) gets a
 hint naming the nearest `.git` above its cwd and its grant
-(`'../../.git'`), or, when that `.git` lies outside the workspace or is
+(`'../../.git'`; a submodule's `.git` file, the repository it names,
+`'../../.git/modules/packages/sub'`), or, when that `.git` lies outside the workspace or is
 a worktree's file pointing outside (granted or not: its data stays
 walled), saying it is walled on purpose (`hiddenGitHint`; `sandbox-git-discovery.unsafe.test.ts`,
 `sandbox-outside-git.unsafe.test.ts`).

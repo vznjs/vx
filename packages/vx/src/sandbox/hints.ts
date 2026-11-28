@@ -400,18 +400,44 @@ function hiddenGitHint(
   // A worktree's `.git` file granted is still no repository: the data it
   // names is walled.
   if (st === undefined || (st.isDirectory() && readableUnder(git, granted))) return undefined
+  // A submodule's `.git` file names its data under the outer repository's
+  // `.git/modules/`, inside the workspace: grantable, where it was told
+  // "outside the workspace" and given no grant.
+  const data = st.isDirectory() ? git : submoduleGitDir(dir, git)
+  if (data !== undefined && data !== git && readableUnder(data, granted)) return undefined
   const said = `vx: git found no repository: the sandbox hides ${git}, and its probe is not reported.`
-  const grantable = st.isDirectory() && walled.some((w) => toRealPath(w) === dir)
+  const grantable =
+    data !== undefined &&
+    walled.some((w) =>
+      data === git ? toRealPath(w) === dir : atOrUnder(data, path.join(toRealPath(w), '.git')),
+    )
   return {
     dir: git,
     hint: {
       timestamp: new Date(),
       hint: true,
       line: grantable
-        ? `${said} Grant it: \`allow: { read: [${jsString(path.relative(toRealPath(within), git))}] }\`.`
+        ? `${said} Grant it: \`allow: { read: [${jsString(path.relative(toRealPath(within), data))}] }\`.`
         : `${said} Its data lies outside the workspace, walled on purpose, so vx suggests no grant.`,
     },
   }
+}
+
+/**
+ * The repository a `.git` file names, real, when it is a whole one (a
+ * submodule's); undefined for a worktree's, whose objects lie in the common
+ * dir it names, or a file that names nothing readable.
+ */
+function submoduleGitDir(dir: string, gitFile: string): string | undefined {
+  let named: string
+  try {
+    const m = /^gitdir: (.+)$/m.exec(readFileSync(gitFile, 'utf8'))
+    if (m === null) return undefined
+    named = realpathSync(path.resolve(dir, m[1]!.trim()))
+  } catch {
+    return undefined
+  }
+  return lstatOrAbsent(path.join(named, 'commondir')) === undefined ? named : undefined
 }
 
 /**
