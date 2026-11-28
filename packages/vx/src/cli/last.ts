@@ -996,6 +996,15 @@ export function formatTaskRows(
 }
 
 /**
+ * The tasks a run started, as its footer's total counts them: an aborted
+ * one is in no `taskCount` but keeps its row, so "1 task · 1 failed · 1
+ * aborted" sat over a table of two.
+ */
+function tasksLine(n: number): string {
+  return `${n} task${n === 1 ? '' : 's'}`
+}
+
+/**
  * A run's hits by what they did to the disk, as its summary counted them:
  * `5 hits (3 up-to-date, 2 restored: 1 local, 1 remote)`; the layers only
  * when something was restored.
@@ -1052,7 +1061,7 @@ export function formatRunList(
       fmtWhen(inv.startedAt),
       ui.strong(id),
       [
-        ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
+        ui.dim(`${tasksLine(inv.taskCount + (inv.abortedCount ?? 0))} · ${hitsLine(inv)}`),
         ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
         ...((inv.abortedCount ?? 0) > 0 ? [ui.tone('warn', ` · ${inv.abortedCount} aborted`)] : []),
       ],
@@ -1386,7 +1395,7 @@ function printRun(
         [
           'tasks',
           [
-            ui.dim(`${inv.taskCount} task${inv.taskCount === 1 ? '' : 's'} · ${hitsLine(inv)}`),
+            ui.dim(`${tasksLine(inv.taskCount + inv.abortedCount)} · ${hitsLine(inv)}`),
             ...(inv.failedCount > 0 ? [ui.tone('error', ` · ${inv.failedCount} failed`)] : []),
             ...(inv.abortedCount > 0 ? [ui.tone('warn', ` · ${inv.abortedCount} aborted`)] : []),
           ],
