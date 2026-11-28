@@ -1173,6 +1173,8 @@ interface ExecEnv {
   holds back that many characters until the next chunk.
 - Streamed live, the hold lasts 25 ms, so of a value written in two pieces
   with a longer pause between them, a first piece under six characters shows.
+- The rest of that value then prints as `***`, even when only its last
+  character is left.
 - A buffered frame (the CI default) and every stored copy are masked
   again whole and never show it.
 - The stored copies: the entry a hit replays and a remote cache

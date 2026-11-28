@@ -489,12 +489,22 @@ function maskOf(values: ReadonlySet<string>): SecretMask {
           // A span across the cut is masked up to it, and its rest is never
           // shown: a ghost, which a value it begins joins.
           const before: Array<[number, number]> = []
+          // A value begun in what went out as written whose shown part ends
+          // at the cut: `out` has no character of it left to mask, so it
+          // says nothing, and its rest is a ghost. Its mask goes out here.
+          let unsaid = false
           for (const [s, e] of found) {
             if (s >= cut) break
             before.push([s, Math.min(e, cut)])
-            if (e > cut) ghost = Math.max(ghost, e - cut)
+            if (e > cut) {
+              ghost = Math.max(ghost, e - cut)
+              unsaid = s >= shown && s < written && cut <= written
+            }
           }
-          return out(text.slice(0, cut), shown, before, written)
+          const shownText = out(text.slice(0, cut), shown, before, written)
+          if (!unsaid) return shownText
+          joined = true
+          return shownText + MASKED
         },
         release() {
           // A piece too short to say much goes out as written, kept so the
