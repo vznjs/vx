@@ -959,6 +959,11 @@ function validateExecEnv(env: unknown, where: string): void {
         )
       }
       assertShellName(k, `${where}.exec.env.define`)
+      if (VX_SETS.has(k)) {
+        throw new UserError(
+          `${where}.exec.env.define: vx sets ${k} for every task, over any define, so this value never reaches it`,
+        )
+      }
       if (typeof val !== 'string' || val.includes('\0')) {
         throw new UserError(`${where}.exec.env.define.${k} must be a string with no NUL`)
       }
@@ -1999,6 +2004,13 @@ function assertEnvPattern(name: string, field: string): boolean {
   if (why !== null) throw new UserError(`${field}: ${JSON.stringify(name)} ${why}`)
   return true
 }
+
+/**
+ * What vx sets in every task's environment after the config's layers
+ * (`taskEnv`, the runner's tree token): a define of one was keyed and
+ * never seen.
+ */
+const VX_SETS = new Set(['VX_RUN_WORKSPACE', 'VX_RUN_TASK', 'VX_RUN_TREE'])
 
 /**
  * A name an environment can hold. An `=` splits at the first one (`'A=B':
