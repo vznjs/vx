@@ -161,14 +161,29 @@ export function addHints(
         )
         if (unix !== undefined) violations.push(unix)
       }
-      // Last, and only when nothing else was said: a grant inside the cwd
-      // lists it (bwrap builds the path to a bind), but only that grant, so
-      // `bun test` and Vitest scan it, find no test file, and fail with no
-      // read to report.
+      // Last, and only when nothing else was said but, under a sandbox
+      // declaring no read in the cwd, reads refused inside it: a grant inside the cwd lists it (bwrap builds the path to a
+      // bind), but only that grant, so `bun test` and Vitest scan it, find
+      // no test file, and fail with no read to report. Vitest under
+      // `sandbox: {}` reported one read (package.json), and only the run
+      // after its grant said the cwd lists empty.
       const cwd = toRealPath(args.cwd)
       // A grant cut around the walls (a root's `read: ['.']`) covers the cwd.
       const granted = [...grantedRead, ...(args.config.walled?.reads ?? [])].map(toRealPath)
-      if (violations.length === 0 && !granted.some((g) => atOrUnder(cwd, g))) {
+      // Only where the sandbox declares no read in the cwd (`sandbox: {}`):
+      // one with a grant there reads by name (`cat < banner.txt`), and its
+      // one line says all.
+      const declaresNone = !args.config.allowRead.some((g) =>
+        atOrUnder(toRealPath(path.resolve(args.cwd, g)), cwd),
+      )
+      const readInCwd = (v: SandboxViolation): boolean =>
+        declaresNone &&
+        v.hint !== true &&
+        // An `openat` says which it asked for; other calls only which list silences them.
+        (v.opened === undefined ? v.ignorable?.join() === 'read' : v.opened === 'read') &&
+        v.path !== undefined &&
+        atOrUnder(toRealPath(v.path), cwd)
+      if (violations.every(readInCwd) && !granted.some((g) => atOrUnder(cwd, g))) {
         const inside = [
           ...new Set(
             granted

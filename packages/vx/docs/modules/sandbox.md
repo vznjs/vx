@@ -693,7 +693,10 @@ root's `read: ['.']`, bound as its children around the walls, drew the
 note on every failure (B-20). A grant only inside it (the project's
 `node_modules`, a file) gets the Linux note instead, naming what the cwd
 lists: `bun test` and Vitest scan it, find no test file and fail with no
-read to report.
+read to report. It is said beside reads refused in the cwd too when the
+sandbox declares no read there (`sandbox: {}`): Vitest's one traced read
+(`package.json`) was named alone, and only the run after its grant said
+the cwd lists empty.
 
 A failed task's note also names the paths outside the project the wall
 hid that exist on the host (`hiddenReadsOutside`), with a grant to add,

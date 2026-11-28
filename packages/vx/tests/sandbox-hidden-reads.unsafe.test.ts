@@ -356,6 +356,19 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
     ])
   })
 
+  // Vitest under `sandbox: {}`: its one traced read (package.json) was
+  // named and granted, and only the next failed run said the cwd lists
+  // empty, so the test runner still found no test file.
+  it('says the cwd lists empty beside a traced read inside it', async () => {
+    const [status, lines] = await outcome('cat tsconfig.json > /dev/null; exit 1', '{}')
+    expect([status, (lines as string[]).at(-1)]).toEqual([
+      'failed',
+      `vx: this sandbox grants no read of the task's own working directory (${root}/packages/app) ` +
+        'or of anything inside it, so the command sees it empty, and no violation names that. ' +
+        "Grant what it reads, or the directory: `sandbox: { allow: { read: ['.'] } }`.",
+    ])
+  })
+
   // cargo and make say neither "not found" nor "no such file": their
   // failures named no hidden path.
   it.each([

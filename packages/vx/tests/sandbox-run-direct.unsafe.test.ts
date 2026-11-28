@@ -456,10 +456,10 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const pwd = await run('pwd')
     expect([pwd.exitCode, pwd.stdout.trim()]).toEqual([0, proj])
     const cat = await run('cat < x.txt')
-    expect([cat.exitCode === 0, cat.violations.map((v) => v.line.includes('x.txt'))]).toEqual([
-      false,
-      [true],
-    ])
+    expect([
+      cat.exitCode === 0,
+      cat.violations.filter((v) => v.hint !== true).map((v) => v.line.includes('x.txt')),
+    ]).toEqual([false, [true]])
   })
 
   // SRT reads any Linux read path holding `[` as a glob, where a bracket
@@ -908,7 +908,9 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
           baseDenyRead: [dir],
         }),
       )
-      expect([r.exitCode, notes(r)]).toEqual([3, [false]])
+      // Linux's own note beside a traced read (hints.ts) is not this one.
+      const denials = r.violations.filter((v) => v.hint !== true || v.line.startsWith(NOTE))
+      expect([r.exitCode, notes({ violations: denials })]).toEqual([3, [false]])
     })
   })
 
