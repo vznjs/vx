@@ -150,15 +150,22 @@ export async function applySave(
     case 'count':
       // Nothing reads after it, so nothing to mark: only its row's `outputs`,
       // failed or not, as a failed task with a dependant marks them.
-      return {
-        saved: false,
-        unsavedBytes: await unsavedOutputBytes({
-          node,
-          workspaceRoot: args.run.workspaceRoot,
-          nestedProjectDirs,
-          outputs,
-          wsOutputs,
-        }),
+      try {
+        return {
+          saved: false,
+          unsavedBytes: await unsavedOutputBytes({
+            node,
+            workspaceRoot: args.run.workspaceRoot,
+            nestedProjectDirs,
+            outputs,
+            wsOutputs,
+          }),
+        }
+      } catch (err) {
+        if (!isErrno(err)) throw err
+        // Only a measure: a tree past PATH_MAX left by a failed command threw
+        // here, and its row said `failed (exit 1)` in 0ms, not its own exit.
+        return { saved: false }
       }
     case 'mark': {
       // It may have rewritten an input the re-check before a save catches. A
@@ -176,22 +183,38 @@ export async function applySave(
         )
         return { saved: false }
       }
-      return {
-        saved: false,
-        unsavedBytes: await markUnsaved({
-          node,
-          workspaceRoot: args.run.workspaceRoot,
-          nestedProjectDirs,
-          gitFilesCache: args.run.gitFilesCache,
-          outputs,
-          wsOutputs,
-        }),
+      try {
+        return {
+          saved: false,
+          unsavedBytes: await markUnsaved({
+            node,
+            workspaceRoot: args.run.workspaceRoot,
+            nestedProjectDirs,
+            gitFilesCache: args.run.gitFilesCache,
+            outputs,
+            wsOutputs,
+          }),
+        }
+      } catch (err) {
+        if (!isErrno(err)) throw err
+        // Outputs it cannot list are none it can mark: a reader after it
+        // learns the project again, and the row keeps the command's exit.
+        forgetUndeclaredWrites(
+          args.node,
+          args.run.gitFilesCache,
+          wsOutputs.length > 0 ? 'workspace' : 'project',
+        )
+        return { saved: false }
       }
     }
     case 'none':
       return { saved: false }
   }
 }
+
+/** A refusal the file system answered (`ENAMETOOLONG`, `ELOOP`, `EACCES`), not a bug of vx's. */
+const isErrno = (err: unknown): boolean =>
+  err instanceof Error && typeof (err as NodeJS.ErrnoException).code === 'string'
 
 /**
  * A process the shell left behind still held its output when the drain
