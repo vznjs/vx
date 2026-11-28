@@ -93,3 +93,41 @@ describe('a project in a checked-out submodule', () => {
     }
   })
 })
+
+// `dist` committed as a file, then replaced by a `dist/` directory: the
+// tracked path read as a gitlink, so every untracked file under it was
+// "committed", kept from the output clean and folded into the key (each run
+// after a save or restore restored again).
+describe('a tracked file a directory replaced', () => {
+  it('holds no committed file; a gitlink still does', async () => {
+    const { mkdtemp, mkdir, rm, writeFile } = await import('node:fs/promises')
+    const os = await import('node:os')
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-committed-typechange-'))
+    const git = (cwd: string, ...args: string[]) =>
+      Bun.spawnSync(['git', '-c', 'user.email=a@b', '-c', 'user.name=a', ...args], {
+        cwd,
+        env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+      })
+    try {
+      git(root, 'init', '-q')
+      await writeFile(path.join(root, 'dist'), 'a file once')
+      git(root, 'add', '.')
+      git(root, 'commit', '-qm', 'dist as a file')
+      await rm(path.join(root, 'dist'))
+      await mkdir(path.join(root, 'dist'))
+      await writeFile(path.join(root, 'dist', 'out.js'), 'built')
+      expect(new GitFilesCache().committedIn(root)(path.join(root, 'dist', 'out.js'))).toBe(false)
+      // CONTROL: an embedded repository's gitlink still covers its files.
+      const sub = path.join(root, 'vendor')
+      await mkdir(sub)
+      git(sub, 'init', '-q')
+      await writeFile(path.join(sub, 'lib.js'), 'x')
+      git(sub, 'add', '.')
+      git(sub, 'commit', '-qm', 'sub')
+      git(root, 'add', 'vendor')
+      expect(new GitFilesCache().committedIn(root)(path.join(sub, 'lib.js'))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
