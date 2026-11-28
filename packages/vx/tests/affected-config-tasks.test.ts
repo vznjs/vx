@@ -166,3 +166,40 @@ it('an imported file edited with no locked task moved selects none', async () =>
   await shared('true', '// a comment\n')
   expect(kept()).toEqual({})
 })
+
+// The project line held its config's keys as written, so `{ tasks, name }`
+// over `{ name, tasks }` moved the line and selected the whole project,
+// whose keys had not moved.
+const described = (order: 'first' | 'last') => {
+  const body = config('true').replace('export default {', '').trimEnd().slice(0, -1)
+  return order === 'first'
+    ? `export default { tags: ['t'], name: 'app',${body}}\n`
+    : `export default {${body}  name: 'app',\n  tags: ['t'],\n}\n`
+}
+
+it('a config whose keys were only reordered selects none', async () => {
+  const git = gitIn(root)
+  await edit(described('first'))
+  git('add', '-A')
+  git('commit', '-qm', 'described')
+  await edit(described('last'))
+  expect(kept()).toEqual({})
+})
+
+it('a lock written with unsorted config keys, sorted by the next vx lock, selects none', async () => {
+  const git = gitIn(root)
+  await edit(described('first'))
+  const lock = path.join(root, '.vx/projects.lock')
+  const text = await Bun.file(lock).text()
+  const unsorted = text.replace(
+    '"config":{"name":"app","tags":["t"]}',
+    '"config":{"tags":["t"],"name":"app"}',
+  )
+  expect(unsorted).not.toBe(text)
+  await writeFile(lock, unsorted)
+  git('add', '-A')
+  git('commit', '-qm', 'an older lock')
+  vx('lock')
+  expect(await Bun.file(lock).text()).toBe(text)
+  expect(kept()).toEqual({})
+})

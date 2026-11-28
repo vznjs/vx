@@ -478,8 +478,10 @@ export function lockfileWrite(root: string, lock: Lockfile): PendingWrite {
   const jsons = new Set<string>()
   const rows: { name: string; line: string; tasks: [name: string, json: string][] }[] = []
   for (const [dir, p] of Object.entries(lock.projects)) {
+    // Sorted as each task is: `{ tasks, name }` and `{ name, tasks }` are one
+    // config, and a reorder moved the line, so --affected took the project.
     const config =
-      p.config === undefined ? undefined : (JSON.parse(JSON.stringify(p.config)) as Obj)
+      p.config === undefined ? undefined : keysSorted(JSON.parse(JSON.stringify(p.config)) as Obj)
     const own = config !== undefined && isObj(config['tasks']) ? config['tasks'] : undefined
     const names = own === undefined ? [] : Object.keys(own).sort(cmp)
     if (names.length > 0) delete config!['tasks']

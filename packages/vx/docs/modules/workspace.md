@@ -2020,7 +2020,9 @@ then merges (2026-11-23): a header line, `{"version":10}` (with
 `nestedWorkspaces` when there is one), then each project in xxh3-of-name
 order, `<name>⇥{"path", "file" | "by", "config"}` (`file` left out for
 `vx.config.ts`, `null` for a project with neither file nor plugin;
-`config` without its tasks, left out when it held only tasks), and per
+`config` without its tasks, keys sorted, left out when it held only
+tasks; `--affected` compares it with its keys sorted, so a lock written
+before they were moves nothing), and per
 task, in name order, its pointer line (`#` and 7 base-36 characters), its
 JSON (keys sorted) when no task above holds that pointer, then a
 `⇥<task>` line. A pointer is

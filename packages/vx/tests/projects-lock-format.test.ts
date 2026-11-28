@@ -170,6 +170,16 @@ it('writes the same text for the same projects from no lock, and again over itse
   expect(write(base())).toBe(once)
 })
 
+// A project line held its config's keys as written, so a reorder moved
+// the line, a diff to review, and --affected took the project.
+it('writes one text for a project config however its keys are ordered', () => {
+  const at = (config: object) =>
+    write(lock({ app: { name: 'app', file: 'vx.config.ts', config: config as ProjectConfig } }))
+  expect(at({ tags: ['t'], name: 'app', tasks: { build } })).toBe(
+    at({ tasks: { build }, name: 'app', tags: ['t'] }),
+  )
+})
+
 const merge = (ours: string, baseText: string, theirs: string) => {
   const f = (n: string, t: string) => {
     const p = path.join(root, n)

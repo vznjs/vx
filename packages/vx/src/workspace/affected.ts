@@ -15,6 +15,7 @@ import {
   isExecutableMissing,
   isInstalledPath,
   isUserError,
+  keysSorted,
   lstatOrAbsent,
   notAWorkTree,
   parseCheckAttrOutput,
@@ -794,7 +795,7 @@ async function pathOwners(
       before === null ||
       after === null ||
       (Object.hasOwn(before, dir) === Object.hasOwn(after, dir) &&
-        JSON.stringify(before[dir]) === JSON.stringify(after[dir]))
+        JSON.stringify(keysSorted(before[dir])) === JSON.stringify(keysSorted(after[dir])))
     for (const p of projects) {
       const key = lockKey(rootDir, p.dir)
       if (same(key)) continue
