@@ -2,7 +2,7 @@
 // matches real paths), the task-relative absolutizer the strace pass uses,
 // and the prefix test.
 
-import { realpathSync } from 'node:fs'
+import { readlinkSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { braceAlternatives } from '../util/index.js'
 
@@ -176,19 +176,42 @@ export function toRealPath(p: string): string {
  */
 export function realPathOnce(): (p: string) => string {
   const known = new Map<string, string>()
-  const real = (p: string): string => {
+  // Paths that are not there: nothing below one is a link.
+  const absent = new Set<string>()
+  const real = (p: string, hops = 0): string => {
     let r = known.get(p)
     if (r !== undefined) return r
     try {
       r = realpathSync(p)
     } catch {
       const parent = path.dirname(p)
-      r = parent === p ? p : path.join(real(parent), path.basename(p))
+      if (parent === p) r = p
+      else {
+        const above = real(parent, hops)
+        // A dangling link: a write through it creates its target, where it
+        // is judged. Kept as the link, `esc -> /tmp/x` was a write in the
+        // project, and the fix granted `esc`, which a lock refuses.
+        const link = absent.has(parent) || hops >= 40 ? null : readlinkOrNull(p)
+        if (link !== null) r = real(path.resolve(parent, link), hops + 1)
+        else {
+          absent.add(p)
+          r = path.join(above, path.basename(p))
+        }
+      }
     }
     known.set(p, r)
     return r
   }
-  return real
+  return (p) => real(p)
+}
+
+function readlinkOrNull(p: string): string | null {
+  try {
+    return readlinkSync(p)
+  } catch {
+    // quiet: not a link (absent, or a plain file under a missing directory).
+    return null
+  }
 }
 
 export function absolutize(p: string, cwd?: string): string {
