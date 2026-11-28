@@ -2107,6 +2107,8 @@ Default: off. A run without `--dry` executes.
 - Against a remote cache it only checks that the entry exists. A plan never downloads or unpacks an artifact.
 - With no remote it writes nothing: no `.vx/cache`, no index, not even the folder a mistyped `--cache-dir` names.
 - With a remote it keeps the remote hits it found in the local index, so the `vx run` after it fetches them at once.
+- A task whose `inputs.files` read another task's outputs is keyed on those files as they are on disk now.
+- A run restores or runs that other task first, then keys the reader. So with those outputs deleted, or holding another entry's bytes, the plan can say `run` `miss` where the run hits.
 - A remote that can batch is asked once for every key. One that cannot, or whose batch failed, is asked for each key at once.
 - So an unreachable remote costs a plan its timeout about twice, not once per task.
 - The colour of the status word carries the outcome. Group tasks are left out of the panel; the JSON lists them.
