@@ -4,6 +4,8 @@
 // history and cannot be edited. tests/site-upgrading.unsafe.test.ts holds every
 // paragraph of the release list to the site's readability rules.
 export const SAY: Readonly<Record<string, string>> = {
+  'fix(history)!: keep a row for a task a stop or --fail-fast killed':
+    "Nothing to do. `vx last` lists a task that a stop or `--fail-fast` killed, with the same `aborted` status the run shows. A plugin that reads history rows can see `status: 'aborted'` there.",
   'feat(orchestrator)!: runs read the lock only, never a config':
     "A run reads only the lock. A vx.config, or a package.json name, added since `vx lock` is not refused: the run ignores it until you run `vx lock`.\n\n`turbo()` and `nx()` read no turbo.json or nx.json on a run. turbo.json `concurrency` and nx.json `parallel` and `defaultBase` reach a run only through the `.vx/workspace.ts` that `bunx @vzn/vx-migrate` writes.\n\nTurbo's `futureFlags.githubActionsRemoteBaseRefFallback` is not read.\n\n`PreparedRun.unlockedConfig` is gone.",
   'fix(plugins)!: refuse a plugin option value of the wrong kind':
@@ -130,6 +132,8 @@ export const SAY: Readonly<Record<string, string>> = {
 
 /** A heading for a commit whose subject uses a word readers do not know. */
 export const TITLE: Readonly<Record<string, string>> = {
+  'fix(history)!: keep a row for a task a stop or --fail-fast killed':
+    'vx last lists aborted tasks',
   'feat!: affected per task, three task kinds, env patterns, hardening':
     'A task with empty inputs needs exec',
   'feat!: land 2026-11-25 alpha hardening, locks and docs':

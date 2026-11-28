@@ -9,9 +9,10 @@ export type TaskStatus =
   | 'cache-hit-remote'
   | 'failed'
   | 'skipped'
-  // A child killed by SIGINT/SIGTERM never finished on its own terms: it
-  // reverts to aborted, outside the tally and history. It still propagates like
-  // a failure (`willSkip`): its outputs are partial.
+  // A child a stop or --fail-fast killed never finished on its own terms: it
+  // is aborted, outside the tally and every rate; history keeps its row as
+  // aborted. It still propagates like a failure (`willSkip`): its outputs
+  // are partial.
   | 'aborted'
 
 /**

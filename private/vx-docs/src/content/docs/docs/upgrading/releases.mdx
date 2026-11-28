@@ -18,9 +18,9 @@ Pick the vx you run, from `vx --version`. The list keeps only the releases after
 
 <Deeper level="details" title="In the next release">
 
-### Record an aborted task's runs row in the contract
+### vx last lists aborted tasks
 
-A runs row and RunRecord.status may be 'aborted'.
+Nothing to do. `vx last` lists a task that a stop or `--fail-fast` killed, with the same `aborted` status the run shows. A plugin that reads history rows can see `status: 'aborted'` there.
 
 ### `WorkerRuntime.probe` takes the task's own PATH
 
