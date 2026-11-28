@@ -3648,8 +3648,10 @@ So a config that reads the environment keeps its lock-time values.
 <div class="vx-deeper-body">
 
 - A missing lock is a hard error.
-- So is a locked directory whose config file is gone, or that this user
-  may not search (named as `EACCES`).
+- So is a locked directory that is gone, or that this user may not
+  search (named as `EACCES`).
+- A locked config file deleted from a directory that stays is still run
+  from the lock until `vx lock` drops its project.
 - A config-less project (a `project` plugin's, such as `turbo()`'s)
   whose directory is gone fails its task with the same `vx lock` hint.
 - vx asks that only once the task's spawn failed, so a run stats no
