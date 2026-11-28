@@ -6,6 +6,7 @@
 // the pass never wrote, if a literal path, fails it (`missingOutputs`).
 
 import path from 'node:path'
+import { readdirSync } from 'node:fs'
 import {
   cleanOutputPaths,
   cleanOutputs,
@@ -567,7 +568,7 @@ function firstMatch(
     // a build on the bench's cold run, against 0.05 ms).
     try {
       for (const rel of taskGlob(tree).scanSync({ ...SCAN, cwd: base })) {
-        if (rel !== '' && kept(rel)) return rel
+        if (rel !== '' && kept(rel) && held(path.join(base, rel))) return rel
       }
     } catch {
       // A directory it cannot list holds something: the save names it.
@@ -575,6 +576,20 @@ function firstMatch(
     }
   }
   return null
+}
+
+/**
+ * Whether the save holds what a wildcard reached: a folder only while empty.
+ * `deep/*` over `deep/a/f` passed and saved nothing. A path no lstat reaches
+ * (a name that is not UTF-8) counts, so the save refuses it by name.
+ */
+function held(abs: string): boolean {
+  if (lstatOrAbsent(abs)?.isDirectory() !== true) return true
+  try {
+    return readdirSync(abs).length === 0
+  } catch {
+    return true
+  }
 }
 
 function staticPrefix(glob: string): string {
