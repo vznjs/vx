@@ -3497,7 +3497,8 @@ For review, it also writes each project's resolved config, pretty, to
 - Then each project, in name-hash order:
   `<name>⇥{"path","file"|"by","config"}`.
 - `file` is left out for `vx.config.ts`, and the tasks are left out of
-  `config`.
+  `config`, whose keys are sorted, as each task's are: reordering a
+  config's keys leaves the lock as it was.
 - Then, per task in name order, its pointer line (`#k2x0a1b`), its JSON
   line if no task above holds that pointer, and its `⇥<task>` line.
 - A pointer is a hash of its task's JSON, so the same configs always lock
