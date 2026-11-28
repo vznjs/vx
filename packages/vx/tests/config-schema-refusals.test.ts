@@ -744,6 +744,36 @@ describe('a literal input a negation takes back (X-31)', () => {
     )
     expect(cacheRefusal({ files: [] }, { files: ['dist/', '!dist/cache/**'] })).toBeNull()
   })
+  // `src/gen/*.ts` after `!src/gen/**` took nothing back in, as the literal
+  // did not: an edit under it replayed the old output.
+  it('is refused for a glob whose fixed directory a negation tree covers', () => {
+    const glob = (
+      g: string,
+      by: string,
+      lost = 'never enters the key',
+      where = 'tasks.t.inputs.files',
+    ) =>
+      `${CFG}: ${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
+      `the list, so a file it matches ${lost}. Narrow the negation so it leaves "${g}".`
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/**', 'src/gen/*.ts'] })).toBe(
+      glob('src/gen/*.ts', 'src/gen/**'),
+    )
+    expect(cacheRefusal({ files: ['lib/**', '!src', './src/gen/**/*.ts'] })).toBe(
+      glob('./src/gen/**/*.ts', 'src'),
+    )
+    expect(cacheRefusal({ files: ['src/**', '!**/gen/**', 'src/gen/sub/*.ts'] })).toBe(
+      glob('src/gen/sub/*.ts', '**/gen/**'),
+    )
+    expect(cacheRefusal({ files: [] }, { files: ['out/*.js', '!{out,tmp}'] })).toBe(
+      glob('out/*.js', '{out,tmp}', 'is never saved or restored', 'tasks.t.outputs.files'),
+    )
+  })
+  it('CONTROL: a negation that leaves some of a glob loads', () => {
+    expect(cacheRefusal({ files: ['src/**', '!src/*', 'src/gen/*.ts'] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/*', 'src/gen/**'] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/**', '!src/gen/**', 'src/g*/*.ts'] })).toBeNull()
+    expect(cacheRefusal({ files: ['**/*.ts', '!**'] })).toBeNull()
+  })
   it('CONTROL: a directory literal a negation trims, and a glob, load', () => {
     expect(cacheRefusal({ files: ['src', '!src/gen/**'] })).toBeNull()
     expect(cacheRefusal({ files: ['src/**/*.ts', '!src/gen/**'] })).toBeNull()
