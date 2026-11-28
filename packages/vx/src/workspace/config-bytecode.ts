@@ -156,7 +156,6 @@ export function loadedModules(root: string): Set<string> {
   return new Set(Object.keys(createRequire(path.join(root, 'index.js')).cache))
 }
 
-/** The loader Bun reads `file` with, or null for a file the bundle must not hold. */
 /**
  * The source file a stack frame inside a bundle (`…/workspace-<hash>.js:<line>:<col>`)
  * came from, or undefined: a plugin's throw named the bundle, a file its
@@ -173,9 +172,10 @@ export function bundledSource(site: string): string | undefined {
     const lines = readFileSync(`${at[1]}.js`, 'utf8').split('\n', Number(at[2]))
     for (let i = lines.length - 1; i >= 0; i--) {
       const rel = /^\/\/ (?:\.\.?\/)*(\S.*)$/.exec(lines[i]!)?.[1]
-      if (rel === undefined) continue
+      if (rel === undefined || rel.startsWith('@bun')) continue
+      // The nearest file line is the one: an earlier file would be the wrong one.
       const hits = files.filter((f) => f.endsWith(`/${rel}`))
-      if (hits.length > 0) return hits.length === 1 ? hits[0] : undefined
+      return hits.length === 1 ? hits[0] : undefined
     }
   } catch {
     // gone or rewritten since: the bundle's own site stands
@@ -183,6 +183,7 @@ export function bundledSource(site: string): string | undefined {
   return undefined
 }
 
+/** The loader Bun reads `file` with, or null for a file the bundle must not hold. */
 function loaderOf(file: string): 'ts' | 'tsx' | 'js' | 'jsx' | null {
   const ext = path.extname(file)
   if (ext === '.ts' || ext === '.mts') return 'ts'
