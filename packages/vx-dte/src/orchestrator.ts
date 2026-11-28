@@ -400,6 +400,13 @@ export class Orchestrator extends RunReport<Worker> {
         throw new UserError(
           `${req.taskId} runs in ${dir}, where git tracks no file, so no worker has it: git add its project (and commit it for workers on CI)`,
         )
+      // Nor a project in a submodule: the tree holds its gitlink alone, and a
+      // worker ran the task in an empty directory, green on no sources.
+      const link = tree?.links.find((l) => dir === l || dir.startsWith(`${l}/`))
+      if (link !== undefined)
+        throw new UserError(
+          `${req.taskId} runs in ${dir}, in submodule ${link}, whose files workers do not check out, so no worker has it`,
+        )
     }
     // A worker runs the run's tree: a file its key includes that the tree
     // lacks (untracked) is not there, and the output it saved under that

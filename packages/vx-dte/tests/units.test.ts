@@ -6154,6 +6154,47 @@ it('fails a task whose project the run’s tree lacks, naming it', async () => {
   }
 })
 
+// A project in a submodule: the run's tree holds its gitlink alone, so a
+// worker's checkout has the directory empty, and the task ran green there
+// on no sources.
+it('fails a task whose project is in a submodule, naming it', async () => {
+  const root = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', ...a], { cwd: root })
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  await mkdir(path.join(root, 'a/src'), { recursive: true })
+  await mkdir(path.join(root, 'vendor/s/pkg'), { recursive: true })
+  await writeFile(path.join(root, 'a/src/x'), 'x\n')
+  git('add', '-A')
+  git('update-index', '--add', '--cacheinfo', `160000,${'f'.repeat(40)},vendor/s`)
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
+  const served = servedRelay()
+  try {
+    const o = new Orchestrator({
+      me: await join(served.url, R, 'orchestrator', null, undefined),
+      root,
+      tree: git('rev-parse', 'HEAD^{tree}'),
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+    })
+    for (const dir of ['vendor/s', 'vendor/s/pkg'])
+      await expect(
+        o.execute({ taskId: 's#hi', cwd: path.join(root, dir) } as unknown as ExecuteRequest),
+      ).rejects.toThrow(
+        `s#hi runs in ${dir}, in submodule vendor/s, whose files workers do not check out, so no worker has it`,
+      )
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})
+
 // One `end` holds what the task left: a formatter's 24 000 changed files
 // (or a sandbox's 9000 violations) made it over the relay's 1 MiB frame,
 // and the run waited for an `end` that never came (2026-10-25).

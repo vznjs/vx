@@ -919,6 +919,8 @@ is refused. The orchestrator says so as it happens:
   first, or, uncached, ran it there.
 - A task whose project the commit lacks (no file under it tracked) fails,
   naming the project.
+- A task whose project lies in a submodule fails, naming the submodule:
+  workers check out no submodule, so its directory is empty there.
 - A run whose `.vx/workspace.*` is untracked is refused before a worker
   starts.
 
