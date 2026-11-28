@@ -31,6 +31,8 @@ import {
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
+  staticPrefix,
+  taskGlob,
   hasControl,
   parseDependencySpec,
   DependencySpecError,
@@ -2156,7 +2158,8 @@ function assertTaskFiltersNotNegationOnly(filters: readonly string[], where: str
  * A `!` entry subtracts wherever it sits in the list, so a file named
  * outright after it (`['src/**', '!src/gen/**', 'src/gen/keep.ts']`) never
  * entered the key, and an edit to it replayed the old output. Refusing is
- * free: the literal already selected nothing.
+ * free: the literal already selected nothing. So does a glob whose fixed
+ * directory a `!` tree covers (`src/gen/*.ts` there).
  */
 function assertNoLiteralTakenBack(
   globs: readonly string[],
@@ -2170,13 +2173,36 @@ function assertNoLiteralTakenBack(
   for (const g of globs) {
     if (g.startsWith('!')) continue
     const lit = normalizeGlob(g).replace(/\/+$/, '')
-    if (!isLiteralPattern(lit) || !taken(lit)) continue
-    const by = negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
+    let by: string | undefined
+    if (isLiteralPattern(lit)) {
+      if (taken(lit)) by = negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
+    } else {
+      const dir = staticPrefix(g)
+      if (dir !== '.') by = negative.find((n) => treeCovers(n, dir))
+    }
+    if (by === undefined) continue
+    const what = isLiteralPattern(lit) ? lost : lost.replace('the file', 'a file it matches')
     throw new UserError(
       `${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
-        `the list, so ${lost}. Narrow the negation so it leaves "${g}".`,
+        `the list, so ${what}. Narrow the negation so it leaves "${g}".`,
     )
   }
+}
+
+/**
+ * Whether the negation `n` takes every path under `dir`: one of its trees
+ * (`<p>/**`, or a literal) has a `<p>` matching `dir` or a directory above it.
+ * `!src/*` takes `src/gen` but not the files in it, so a plain match is not one.
+ */
+function treeCovers(n: string, dir: string): boolean {
+  const roots = asTrees([n])
+    .filter((t) => t.endsWith('/**'))
+    .map((t) => taskGlob(t.slice(0, -3)))
+  const segs = dir.split('/')
+  return segs.some((_, i) => {
+    const at = segs.slice(0, i + 1).join('/')
+    return roots.some((r) => r.match(at))
+  })
 }
 
 /**
