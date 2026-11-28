@@ -2401,6 +2401,7 @@ Default: no sandbox. The full reference is [`modules/sandbox.md`](./modules/sand
 - Each path is a JS string literal spelled as the glob it must be. A bracket is escaped: `read: ['pages/\\[id\\].tsx']`.
 - In `inputs.files` too, where `*` or `?` is a class, the line writes `'a[*]b.txt'`.
 - A leading `!` is escaped, `'\\!notes'`: raw, it is a negation that keys nothing.
+- A `(` after `@`, `+` or `!` is a class, `'e@[(])'`: raw, it opens an extglob, and `'e@()'` keys `e`.
 - A path no grant can name alone is granted as the folder above it: one with `*`, `?` or a backslash, and on Linux a write with a bracket (see `schema.md`).
 - On Linux a refused open is a read or a write by the flags it asked with.
 - A missing file opened to read is a read grant, never a file vx would create.
