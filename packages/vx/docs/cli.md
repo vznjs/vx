@@ -989,6 +989,8 @@ Where on the command line they go:
 - That covers `(cd web && vite)`, `{ …; }`, `if …; fi`, `for …; done`
   and `case … esac`.
 - Redirections after its closer stay there: `(cmd) 2>&1`, `done < f`.
+- A `}` that closes a `${…}` expansion is no closer: `echo ${x%;}` gets
+  them after it.
 - They go before a `#` comment still open there: `echo args: # show` gets them.
 - With comment-only lines below a commented line, they go before the earliest.
 - A heredoc's body and terminator are not command lines: `cat <<X … X`

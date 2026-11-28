@@ -353,6 +353,33 @@ function redirectsAfterCloser(command: string): number {
 const COMPOUND_CLOSER = /(?:^|[^\\])(?:\\\\)*[;&\n][ \t]*(fi|done|esac|\})$/
 
 /**
+ * Whether the `}` ending `command` closes a `${…}` expansion, not a brace
+ * group: `echo ${x%;}` ends in `;}` too, and the args went inside it
+ * (`${x% --fix;}`), where they vanished.
+ */
+function closesExpansion(command: string): boolean {
+  if (!command.endsWith('}')) return false
+  // Read forward, as the shell does: a quoted or escaped brace is a word's.
+  const open: boolean[] = []
+  let quote = ''
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]!
+    if (c === '\\' && quote !== "'") i++
+    else if (quote === '' && (c === "'" || c === '"')) quote = c
+    else if (c === quote) quote = ''
+    else if (c === '$' && command[i + 1] === '{' && quote !== "'") {
+      open.push(true)
+      i++
+    } else if (c === '{' && quote === '') open.push(false)
+    else if (c === '}' && (quote === '' || (quote === '"' && open.at(-1) === true))) {
+      const expansion = open.pop()
+      if (i === command.length - 1) return expansion === true
+    }
+  }
+  return false
+}
+
+/**
  * The task's command with the args after `--` appended, shell-quoted, before
  * any trailing comment (after it they vanished silently). Trailing blanks go
  * first.
@@ -383,7 +410,11 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
     // After a compound command's closer the args were a syntax error (`fi
     // --fix`): they go to the last command inside. A closer counts only where a
     // command starts.
-    const closer = shape.subshell ? ')' : COMPOUND_CLOSER.exec(trimmed)?.[1]
+    const closer = shape.subshell
+      ? ')'
+      : closesExpansion(trimmed)
+        ? undefined
+        : COMPOUND_CLOSER.exec(trimmed)?.[1]
     const end = sep ?? closer
     // Redirections after the closer (`(cmd) 2>&1`, `done < f`) hid it: the
     // args go inside it and the redirections stay after.
