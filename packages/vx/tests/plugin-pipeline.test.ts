@@ -965,10 +965,14 @@ describe('key stage', () => {
         await refusal(`return new Map([['node-major', '22']])`),
         await refusal(`class K { get v() { return '22' } }; return new K()`),
         await refusal(`return Object.assign(Object.create(null), { v: '22' })`),
+        await refusal(`return Object.create({ v: '22' })`),
+        await refusal(`return new Int8Array(2)`),
       ]).toEqual([
         "plugin 'org/tool' failed in key: returned a Map, not a record of string values",
         "plugin 'org/tool' failed in key: returned a K, not a record of string values",
         null,
+        "plugin 'org/tool' failed in key: returned an Object, not a record of string values",
+        "plugin 'org/tool' failed in key: returned an Int8Array, not a record of string values",
       ])
     },
     TIMEOUT,

@@ -1107,11 +1107,14 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
 
 /** `a string`, `an array`, `null`, `a number` — for a refusal that names what came back. */
 export function describeValue(v: unknown): string {
-  if (v === null) return 'null'
+  if (v === null || v === undefined) return String(v)
   if (Array.isArray(v)) return 'an array'
   const t = typeof v
-  if (t !== 'object') return `a ${t}`
+  if (t !== 'object') return article(t)
   const proto: unknown = Object.getPrototypeOf(v)
   if (proto === Object.prototype || proto === null) return 'an object'
-  return `a ${(v as object).constructor?.name || 'class instance'}`
+  return article((v as object).constructor?.name || 'class instance')
 }
+
+// `a Object` and `a Int8Array` read wrong.
+const article = (noun: string): string => `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`
