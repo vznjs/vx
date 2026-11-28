@@ -122,6 +122,17 @@ describe('secretMask', () => {
     expect(out).toBe(`${MASKED} done`)
   })
 
+  // A short piece let go, then a chunk whose held tail could begin the value
+  // again: the value's last character fell in that tail, out had nothing of
+  // it left to mask, and it went unsaid. `bb-aa` + `b` printed no mask, and
+  // the next `b` read as the value whole.
+  it('says the mask of a value let go short when only its held tail is left', () => {
+    const m = secretMask([{ API_TOKEN: 'bb-aab' }])!
+    const s = m.stream()
+    const out = s.push('bb-') + s.push('aa') + s.release() + s.push('bb') + s.end()
+    expect(out).toBe(`bb-aa${MASKED}b`)
+  })
+
   it("a URL's password is masked whatever the variable is named", () => {
     const m = secretMask([
       {
