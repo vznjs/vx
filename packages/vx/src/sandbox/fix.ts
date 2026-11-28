@@ -363,9 +363,10 @@ export function sandboxFix(
     for (const g of fix[k])
       if (dirsNamed.some((d) => d !== g && (g.startsWith(d) || `${g}/` === d))) fix[k].delete(g)
   }
-  // The project named whole (`placeheld`) covers every write grant in it.
-  if (fix.write.has('.'))
-    for (const g of fix.write) if (g !== '.' && inProject(g)) fix.write.delete(g)
+  // The project named whole (`placeheld`, a listing of its directory) covers
+  // every grant of that kind in it.
+  for (const k of ['read', 'write'] as const)
+    if (fix[k].has('.')) for (const g of fix[k]) if (g !== '.' && inProject(g)) fix[k].delete(g)
   const out: SandboxFix = {}
   for (const k of Object.keys(fix) as (keyof SandboxFix)[])
     if (fix[k].size > 0) out[k] = [...new Set([...fix[k]].map(mask))].sort()
