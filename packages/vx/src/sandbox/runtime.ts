@@ -278,6 +278,8 @@ export async function wrapSandboxedCommand(
   /** What SRT wrapped, and so what its store keys a record by (the group wrapper included on Linux). */
   srtCommand: string
   baselines: CanonicalBaselines
+  /** The hermetic wall's denies (`/`'s entries), none for a task that is not hermetic. */
+  hermetic: readonly string[]
   /** The pending write globs a write may still land under (`scratchWrites`). */
   scratch: string[]
   /**
@@ -358,8 +360,12 @@ async function wrapIn(
   }
   const scratch = pendingWriteGrants(args.config, filesystem, baselines.denyRead, baselines.cwd)
   filesystem.denyRead.push(toRealPath(taskTmpRoot()))
+  // The hermetic wall, apart from the baselines': a host file it hides is
+  // the task's to grant, not walled on purpose.
+  let hermetic: readonly string[] = []
   if (args.config.hermetic === true) {
     const reads = await hermeticReads()
+    hermetic = reads.deny
     filesystem.denyRead.push(...reads.deny)
     allowRead.push(...reads.allow, ...runtimeOwn)
   }
@@ -547,6 +553,7 @@ async function wrapIn(
     taggedCommand,
     srtCommand: inner,
     baselines,
+    hermetic,
     scratch,
     held: globsHeld,
     ...(staged === undefined ? {} : { unstage: staged.restore }),
@@ -1161,7 +1168,7 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
   const ready = await prepareAttempt(args, SandboxManager, start)
   if ('result' in ready) return ready.result
   const { prepared } = ready
-  const { wrapped, tag, srtCommand, baselines } = prepared.wrap
+  const { wrapped, tag, srtCommand, baselines, hermetic } = prepared.wrap
   let takeRecords: ReturnType<typeof collectRecords>
   let ended!: Ended
   let started: ReturnType<typeof spawnAttempt>
@@ -1208,7 +1215,7 @@ async function runSandboxedOnce(args: SandboxedRunArgs): Promise<AttemptResult> 
   // Linux: the write observer's records arrive over a socket, not with the
   // exit; `takeRecords(true)` waits until all it sent are read.
   const denials = await attemptDenials(args, prepared, await takeRecords(true), straceLog)
-  addHints(args, ended, denials, baselines)
+  addHints(args, ended, denials, baselines, hermetic)
   afterCommand(SandboxManager)
   const { exitCode, timeout, looked, signs } = ended
   const { observed } = prepared.wrap

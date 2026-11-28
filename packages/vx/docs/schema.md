@@ -2275,6 +2275,9 @@ The credential stores:
   vx names its host path and the grant.
 - `#!/usr/bin/env node`: so does a command whose runtime is hidden, or a
   library that runtime links.
+- `cat: /etc/hostname: No such file or directory`: on Linux a failed task
+  whose output names a host file the wall hides is told the file and the
+  grant, `allow: { read: ['/etc/hostname'] }`.
 - `ldd: not found`: on Linux `ldd` must be on vx's PATH.
 - `runtime: ['/opt/node-22/bin/node -v']`: a grant says what a task may
   read, `inputs.runtime` what moves its key. Declare both for a tool:
