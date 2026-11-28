@@ -2634,9 +2634,12 @@ export function declaresInput(
   if (projectRel !== null) {
     // Under the task's own outputs the key folds only what git tracks.
     const plan = filesPlan(inputs.files, task.outputs?.files ?? [])
+    // A glob head no entry matches is an input only as a link to a directory.
+    const head = plan !== null && !dirLink && plan.passOnly.includes(projectRel)
     if (
       plan !== null &&
-      (inPlan(plan, projectRel, '', dirLink) || (!untracked && ownOnly(plan, projectRel)))
+      ((!head && inPlan(plan, projectRel, '', dirLink)) ||
+        (!untracked && ownOnly(plan, projectRel)))
     ) {
       return true
     }
@@ -2779,12 +2782,16 @@ function workspaceMatcher(decl: readonly string[]): (rel: string, dirLink: boole
   if (m !== undefined) return m
   const { positive, negative } = splitNegations(decl)
   const isPositive = throughLinks(positive, anyTaskGlob(asTrees(positive)))
+  const head = new Set(passOnlyHeads(positive))
   const mayHold = mayHoldMatch(positive)
   const isExcluded = anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)])
   const takesBack = (rel: string): boolean =>
     negative.length > 0 && excludedBeneath(isExcluded, rel)
   m = (rel, dirLink) =>
-    (isPositive(rel) && !isExcluded(rel) && !(dirLink && takesBack(rel))) ||
+    (isPositive(rel) &&
+      (dirLink || !head.has(rel)) &&
+      !isExcluded(rel) &&
+      !(dirLink && takesBack(rel))) ||
     (dirLink && mayHold(rel) && !excludedBeneath(isExcluded, rel))
   workspaceMatchers.set(key, m)
   return m

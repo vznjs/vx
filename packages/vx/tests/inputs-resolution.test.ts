@@ -42,6 +42,7 @@ import {
   cleanOutputPaths,
   cleanOutputs,
   cleanWorkspaceOutputs,
+  declaresInput,
   type ProjectFilesCache,
   resolveInputs,
   resolveOutputs,
@@ -535,6 +536,16 @@ describe('a file at a glob head no entry matches', () => {
     Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
     expect(await resolve(['i/b/*.js'])).toEqual([])
     expect(await resolve([], ['p/i/b/*.js'])).toEqual([])
+  })
+
+  // --affected asks the same question of a changed path.
+  it('selects no task by it under --affected; a linked directory there does', () => {
+    const task = { inputs: { files: ['i/b/*.js'] } } as never
+    const ws = { inputs: { files: [], workspaceFiles: ['p/i/b/*.js'] } } as never
+    expect(declaresInput(task, 'i/b', null)).toBe(false)
+    expect(declaresInput(ws, null, 'p/i/b')).toBe(false)
+    expect(declaresInput(task, 'i/b', null, true)).toBe(true)
+    expect(declaresInput(ws, null, 'p/i/b', true)).toBe(true)
   })
 
   it('CONTROL: a linked directory there still keys what it holds', async () => {
