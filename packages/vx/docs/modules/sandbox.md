@@ -1175,6 +1175,13 @@ allowed) on a line holding `Read-only file system`, `EROFS`, `EBUSY` or
 `sandbox-grant-remove.unsafe.test.ts`). The lines are kept as stderr
 streams, as `GIT_NO_REPO`'s are: a run captures no output.
 
+On every platform a directory grant is there when the task starts: vx
+makes one that names nothing so the sandbox can mount it. A plain
+`mkdir w` under `write: ['w/']` then fails "File exists" with no denial,
+so a failed task whose stderr names a directory grant on a `File exists`
+line gets `mkdir -p w` (`grantExistsHint`,
+`sandbox-grant-exists-hint.test.ts`).
+
 ### A credential store inside a write grant (Linux)
 
 A grant above a credential store does not name it, so the store stays

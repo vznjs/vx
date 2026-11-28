@@ -56,6 +56,13 @@ export function addHints(
       )
       violations.push(outsideWritesHint(outside, made, baselines.denyRead, args.reportWithin))
     }
+    const exists = grantExistsHint(
+      errTail.text().split('\n').slice(-64),
+      args.config.allowWrite,
+      args.cwd,
+      args.reportWithin,
+    )
+    if (exists !== undefined) violations.push(exists)
     if (process.platform === 'linux') {
       const removed = grantRemovalHint(
         // Playwright says it on stdout, removing its own outputDir: its
@@ -329,15 +336,7 @@ function grantRemovalHint(
   cwd: string,
   within: string,
 ): SandboxViolation | undefined {
-  if (lines.length === 0) return undefined
-  const named = roots.filter((root) => {
-    const rel = path.relative(cwd, root)
-    const spellings = rel === '' ? [root] : [root, rel]
-    return spellings.some((s) => {
-      const re = new RegExp(`(^|[\\s'"\`(])(\\./)?${RegExp.escape(s)}/?($|[\\s'"\`:,)])`)
-      return lines.some((l) => re.test(l))
-    })
-  })
+  const named = grantsNamed(lines, roots, cwd)
   if (named.length === 0) return undefined
   const grants = named.map((r) => `'${path.relative(within, r) || '.'}/'`).join(', ')
   const contents = path.relative(cwd, named[0]!) || '.'
@@ -349,6 +348,50 @@ function grantRemovalHint(
       `but not remove or rename it ("Read-only file system"). Remove its contents ` +
       `instead, e.g. \`rm -rf ${contents}/*\`, and give a tool that removes its own ` +
       `output directory one inside it (Playwright: \`--output ${contents}/run\`).`,
+  }
+}
+
+/** The grants among `roots` an error line names, by path or as `cwd` spells it. */
+function grantsNamed(lines: readonly string[], roots: readonly string[], cwd: string): string[] {
+  if (lines.length === 0) return []
+  return roots.filter((root) => {
+    const rel = path.relative(cwd, root)
+    const spellings = rel === '' ? [root] : [root, rel]
+    return spellings.some((s) => {
+      const re = new RegExp(`(^|[\\s'"\`(])(\\./)?${RegExp.escape(s)}/?($|[\\s'"\`:,)])`)
+      return lines.some((l) => re.test(l))
+    })
+  })
+}
+
+/**
+ * A directory write grant is there when the task starts (vx makes one that
+ * names nothing, so the sandbox can mount it), so a plain `mkdir w` under
+ * `write: ['w/']`, the grant the fix line names for it, failed "File
+ * exists" with no denial to report. A failure whose stderr names a
+ * directory grant on such a line gets `mkdir -p`.
+ */
+export function grantExistsHint(
+  lines: readonly string[],
+  grants: readonly string[],
+  cwd: string,
+  within: string,
+): SandboxViolation | undefined {
+  const dirs = grants.filter((g) => statOrAbsent(g)?.isDirectory() === true)
+  const named = grantsNamed(
+    lines.filter((l) => /File exists/.test(l)),
+    dirs,
+    cwd,
+  )
+  if (named.length === 0) return undefined
+  const grant = named.map((r) => `'${path.relative(within, r) || '.'}/'`).join(', ')
+  return {
+    timestamp: new Date(),
+    hint: true,
+    line:
+      `vx: the write grant ${grant} is a directory when the task starts (vx makes it, so the ` +
+      `sandbox can mount it), so a plain \`mkdir\` of it meets "File exists". Use ` +
+      `\`mkdir -p ${path.relative(cwd, named[0]!) || '.'}\`.`,
   }
 }
 
