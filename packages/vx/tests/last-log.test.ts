@@ -292,6 +292,15 @@ it("a skip's log and why say why it never ran when no blocker's log can tell", a
   expect(vx('last', '--log', 'f#later').err).toBe(
     noticed('vx last: f#later did not run: f#slow was aborted before it ended\n', 'info'),
   )
+  // Its own log read "the cache does not hold its output: the run did not
+  // save it, or it was pruned or saved over since": a killed task's output
+  // is never kept.
+  expect(vx('last', '--log', 'f#slow').err).toBe(
+    noticed(
+      'vx last: f#slow was aborted before it ended, and vx keeps no output for a killed task\n',
+      'info',
+    ),
+  )
   expect(vx('run', 'f#unstarted', '--fail-fast', '--concurrency', '1').code).toBe(1)
   expect(vx('last', '--log', 'f#z').err).toBe(
     noticed('vx last: f#z did not run: --fail-fast stopped the run before it started\n', 'info'),

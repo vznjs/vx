@@ -1248,6 +1248,16 @@ describe('whyDidThisRerunQuery', () => {
     expect(verdict({ prevStatus: 'failed', failed: [2, 0], entryAt: 2500 })).toBe(
       'cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit',
     )
+    // A stop or --fail-fast killed the previous run's task: "vx cannot name
+    // the cause", though the kill is the cause.
+    expect([
+      verdict({ prevStatus: 'aborted' }),
+      verdict({ prevStatus: 'aborted', entryAt: 2500 }),
+    ]).toEqual(
+      Array(2).fill(
+        'cache key unchanged — the previous run on this key was aborted before it ended and saved nothing, so there was nothing to hit',
+      ),
+    )
   })
 
   it('returns found=false for an unknown runId', () => {

@@ -438,6 +438,9 @@ function unchangedKeyNote(
   if (prev.status === 'failed') {
     return 'cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit'
   }
+  if (prev.status === 'aborted') {
+    return 'cache key unchanged — the previous run on this key was aborted before it ended and saved nothing, so there was nothing to hit'
+  }
   const policy = (
     db.query('SELECT cache_policy AS p FROM invocations WHERE run_id = ?').get(runId) as {
       p: string
