@@ -888,10 +888,23 @@ async function buildGraph(
     }
     if (unknown.length > 0) {
       cache.close()
-      const hints = new Set(unknown.flatMap((n) => nearest(n, declared) ?? []))
+      // A `pkg#task` is not a name: the flag drops a name's edges everywhere.
+      const hints = new Set<string>()
+      for (const n of unknown) {
+        const bare = n.slice(n.lastIndexOf('#') + 1)
+        const named =
+          bare !== n &&
+          (declared.has(bare) ||
+            (partialLoad && (await declaredNowhere([bare], everyProject)).length === 0))
+        const hint = named ? bare : nearest(bare, declared)
+        if (hint !== undefined) hints.add(hint)
+      }
       const hint = hints.size === 0 ? '' : ` Did you mean ${[...hints].join(', ')}?`
+      const ids = unknown.some((n) => n.includes('#'))
+        ? ' It takes task names, not project#task.'
+        : ''
       throw new UserError(
-        `--exclude-dependencies names a task no project declares: ${unknown.join(', ')}.${hint}`,
+        `--exclude-dependencies names a task no project declares: ${unknown.join(', ')}.${ids}${hint}`,
       )
     }
   }

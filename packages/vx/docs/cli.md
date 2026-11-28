@@ -1075,6 +1075,8 @@ twice keeps the last value.
   members run as the group.
 - A comma list drops only those names, each of which some project must
   declare. A typo is refused with the nearest name.
+- A `project#task` is refused with its task name: a name's edges drop
+  in every project.
 - An edge to a task the run schedules anyway (`--all` requests it)
   stays, so the two still run in order.
 - The order through a dropped task stays: with `gen` dropped from

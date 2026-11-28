@@ -522,10 +522,15 @@ describe('a config-less project in the closure does not hide a declarer outside 
         exclude: await outcome({ tasks: ['app#lint'], excludeDependencies: ['pack'] }),
         // Control: a name nobody declares is still refused.
         depTypo: await outcome({ tasks: ['app#lint'], excludeDependencies: ['pakc'] }),
+        // A project#task is no name; the hint names the task.
+        depId: await outcome({ tasks: ['app#lint'], excludeDependencies: ['web#pack'] }),
       }).toEqual({
         dep: ['app#test'],
         exclude: ['app#lint'],
         depTypo: '--exclude-dependencies names a task no project declares: pakc.',
+        depId:
+          '--exclude-dependencies names a task no project declares: web#pack. ' +
+          'It takes task names, not project#task. Did you mean pack?',
       })
     },
     TIMEOUT,
