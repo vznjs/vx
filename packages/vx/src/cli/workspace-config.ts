@@ -172,7 +172,16 @@ export function parseCacheDirFlag(
  */
 export function namedCacheDir(override: string): string {
   const dir = path.resolve(process.cwd(), override)
-  const st = statOrAbsent(dir)
+  let st
+  try {
+    st = statOrAbsent(dir)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ELOOP') throw err
+    throw new UserError(
+      `--cache-dir ${override}: ${dir} loops back through links and never ends — check the path, or drop --cache-dir to read the workspace's own cache`,
+      'VX_E_USAGE',
+    )
+  }
   if (st === undefined) {
     throw new UserError(
       `--cache-dir ${override}: no such directory (${dir}) — check the path, or drop --cache-dir to read the workspace's own cache`,

@@ -1,6 +1,8 @@
 // `cli/workspace-config.ts`: the `--cache-dir` flag every reading verb
 // parses and where its value resolves.
 
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { cliCacheDir, parseCacheDirFlag, verbWorkspace } from '../src/cli/workspace-config.js'
@@ -47,5 +49,25 @@ describe('cliCacheDir', () => {
       message: `--cache-dir package.json: ${path.resolve(process.cwd(), 'package.json')} is a file, not a directory — check the path, or drop --cache-dir to read the workspace's own cache`,
       code: 'VX_E_USAGE',
     })
+  })
+
+  // A loop of links crashed vx last, why, info and cache clean with a raw ELOOP stack.
+  it('refuses a --cache-dir that is a loop of links, by name', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cache-loop-'))
+    try {
+      const a = path.join(dir, 'a')
+      symlinkSync('b', a)
+      symlinkSync('a', path.join(dir, 'b'))
+      let threw = {}
+      await cliCacheDir(verbWorkspace('/nowhere'), a).catch((err: UserError) => {
+        threw = { message: err.message, code: err.code }
+      })
+      expect(threw).toEqual({
+        message: `--cache-dir ${a}: ${a} loops back through links and never ends — check the path, or drop --cache-dir to read the workspace's own cache`,
+        code: 'VX_E_USAGE',
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

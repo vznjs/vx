@@ -6559,7 +6559,7 @@ Without the flag they open the workspace's cache:
 - A run that wrote its history elsewhere is shown, explained, reported
   on and pruned there.
 - `--cache-dir .vx/cahce: no such directory` (`VX_E_USAGE`): a path that
-  is not there, or is a file, is refused by name.
+  is not there, is a file, or loops back through links is refused by name.
 - A workspace that never ran: `vx why`, `vx last`, `vx info`, `vx show`
   and `vx cache clean` (dry or not) read it as empty and create nothing.
 
