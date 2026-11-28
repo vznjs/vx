@@ -111,7 +111,7 @@ function reading<T>(plugin: VxPlugin, hook: string, read: () => T): T {
   }
 }
 
-function pluginFailure(plugin: VxPlugin, hook: string, err: unknown): UserError {
+export function pluginFailure(plugin: VxPlugin, hook: string, err: unknown): UserError {
   // Masked here: an embedder and a plugin's verb print it as they get it, and
   // the throw may quote a remote's reply or a header. A plugin's own error code
   // survives (cli.md § Error codes). A plugin's bug (a TypeError) names where

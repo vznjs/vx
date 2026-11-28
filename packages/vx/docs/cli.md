@@ -6827,6 +6827,9 @@ this way.
 - A thrown `UserError` prints as cleanly as core's own.
 - Anything else thrown fails in one line, no stack:
   `plugin '<p>' failed in command '<verb>': <msg>`.
+- A bug (a `TypeError`, say) adds where it threw, as a hook's does:
+  `(at <file>:<line>:<col>)`, or the plugin's file alone from the
+  workspace config's bundle.
 - When `.vx/workspace.ts` fails to load, `vx help` lists no plugin verb
   and says why on stderr.
 

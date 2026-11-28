@@ -16,7 +16,6 @@ import {
   isUserError,
   maskedLine,
   nearest,
-  thrownMessage,
   UserError,
   wantsJson,
 } from '../util/index.js'
@@ -296,10 +295,8 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
           // A verb's own refusal is its one line; anything else is the
           // plugin's crash, named as every other stage names one.
           if (isUserError(err)) throw err
-          const message = thrownMessage(err)
-          throw new UserError(
-            `plugin '${resolved.plugin.name}' failed in command '${command}': ${message}`,
-          )
+          const { pluginFailure } = await import('../orchestrator/index.js')
+          throw pluginFailure(resolved.plugin, `command '${command}'`, err)
         }
         // A plugin is a boundary: a JS-authored verb that resolves nothing
         // would reach `process.exit(undefined)` and read as SUCCESS. A verb

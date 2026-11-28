@@ -722,6 +722,7 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
         throw new ForeignUserError('bad flag --x')
       } },
       crash: { description: 'throws a plain Error', run() { throw new Error('kaboom') } },
+      bug: { description: 'reads a field of undefined', run() { const o = undefined; return o.x } },
       floats: { description: 'leaves a rejection unawaited', run() { Promise.reject(new Error('floating')); return 0 } },
       late: { description: 'leaves a rejection as it resolves', run() {
         return new Promise((resolve) => setImmediate(() => { Promise.reject(new Error('floating')); resolve(0) }))
@@ -771,5 +772,16 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
     const r = spawn('crash')
     expect(r.code).toBe(1)
     expect(r.err).toBe("✗ vx crash  plugin 'org/foreign' failed in command 'crash': kaboom\n")
+  })
+
+  // A hook's bug names where it threw; a verb's said its message alone, so
+  // its author had no file to look in.
+  it("a verb's TypeError names where it threw, as a hook's does", async () => {
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    const r = spawn('bug')
+    expect(r.code).toBe(1)
+    expect(r.err).toMatch(
+      /^✗ vx bug {2}plugin 'org\/foreign' failed in command 'bug': undefined is not an object \(.+\) \(at \.vx\/workspace\.mjs:\d+:\d+\)\n$/,
+    )
   })
 })
