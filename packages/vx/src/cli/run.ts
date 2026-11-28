@@ -847,7 +847,15 @@ export async function spacedHint(parsed: RunArgs, cwd: string): Promise<string> 
  * with EISDIR only after). A missing parent is made by the write.
  */
 function profileProblem(cwd: string, target: string): string | undefined {
-  if (statOrAbsent(path.resolve(cwd, target))?.isDirectory() === true)
+  let st
+  try {
+    st = statOrAbsent(path.resolve(cwd, target))
+  } catch (err) {
+    // A loop of links crashed the run with a raw stack.
+    if ((err as NodeJS.ErrnoException).code !== 'ELOOP') throw err
+    return `--profile: ${target} loops back through links and never ends — name a file`
+  }
+  if (st?.isDirectory() === true)
     return `--profile: ${target} is a directory — name a file, e.g. --profile=${path.join(target, 'profile.json')}`
   return undefined
 }
