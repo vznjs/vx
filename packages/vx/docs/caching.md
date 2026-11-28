@@ -1332,7 +1332,8 @@ to its producer failed naming only the file (vueuse's
 before. Paths compare as
 git compares them: case-folded under `core.ignorecase` where the disk
 folds case too (macOS), and a
-file inside a submodule counts as committed. A file past a committed
+file inside a submodule counts as committed (for a project in one, a
+file the submodule's own git tracks). A file past a committed
 symbolic link (`dist -> real`) does not: git tracks none through one, so
 it is asked by its target's name (`real/x`), by the clean before a run
 and by a hit's restore alike. A result holding such a file is not
