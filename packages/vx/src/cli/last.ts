@@ -475,14 +475,14 @@ export function formatStats(stats: readonly TaskStats[]): ui.Block {
 /** The most rows `--sql`'s table holds; JSON streams, with no bound. */
 const MAX_TABLE_ROWS = 100_000
 
+/** ES2025's, in Bun; not yet in TypeScript's lib. */
+type RawJSON = JSON & { rawJSON(text: string): unknown }
+
 /**
  * A value JSON cannot hold as SQLite gave it: an integer past 2^53 keeps
  * every digit (as a double, `9007199254740993` printed `…992`), and a BLOB
  * is its hex, as SQLite's `hex()` spells it, where it was `{"0":1,…}`.
  */
-/** ES2025's, in Bun; not yet in TypeScript's lib. */
-type RawJSON = JSON & { rawJSON(text: string): unknown }
-
 function sqlValue(_key: string, v: unknown): unknown {
   if (typeof v === 'bigint')
     return Number.isSafeInteger(Number(v)) ? Number(v) : (JSON as RawJSON).rawJSON(String(v))
