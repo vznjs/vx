@@ -966,6 +966,10 @@ A finished task's write records are judged on vx's own loop, so
 record, a test shard's thousands held the loop 2.6 s; on a busy 4-core CI
 worker that passed the DTE relay's 6 s silence, and the run lost a worker
 whose task had passed (CI run 46013136782).
+A dangling link is followed to its target, where a write through it
+lands: kept as the link, `esc -> /tmp/x` read as a write in the project,
+and the fix granted `esc`, which `vx lock` refuses as resolving out of it.
+Below a path that is not there nothing is a link, so it costs no `readlink`.
 The fix built from the same violations (`sandboxFix` and its hints)
 stats each path once too: a task's violations repeat a path per syscall,
 and each was stat'd up to three times.

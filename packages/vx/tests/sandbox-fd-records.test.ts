@@ -2,7 +2,15 @@
 // /dev/fd/5`, and `refusedWrites` resolved that path in vx's process: a
 // vx started with `5>out.log` in a single-package workspace reported a
 // write to `out.log` and failed a clean sandboxed task (2026-10-02).
-import { closeSync, mkdtempSync, openSync, realpathSync, rmSync } from 'node:fs'
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -44,5 +52,26 @@ describe.skipIf(process.platform !== 'linux')('a write record whose path holds a
     const records = observedWrites(`W mkdir "${dir}/new\\nl"\nW mkdir "${dir}/ta\\tb"\n`)
     expect(records).toEqual([`deny mkdir ${dir}/new\nl`, `deny mkdir ${dir}/ta\tb`])
     expect(refusedWrites(records, []).map((v) => v.path)).toEqual([`${dir}/new\nl`, `${dir}/ta\tb`])
+  })
+})
+
+// A write through a dangling link creates the link's target, and the
+// record names the link: judged there, `esc -> /tmp/x` read as a write
+// in the project, and the fix granted `esc`, which the lock then refused
+// as resolving out of the project (2026-11-28).
+describe.skipIf(process.platform !== 'linux')('a write record through a dangling link', () => {
+  const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-dangle-rec-')))
+  symlinkSync(path.join(dir, 'away', 'target'), path.join(dir, 'esc'))
+  mkdirSync(path.join(dir, 'away'))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  it("is judged at the link's target", () => {
+    expect(refusedWrites([`deny openat ${dir}/esc`], []).map((v) => v.path)).toEqual([
+      `${dir}/away/target`,
+    ])
+  })
+
+  it('CONTROL: an unlink of the link itself is judged at the link', () => {
+    expect(refusedWrites([`deny unlink ${dir}/esc`], []).map((v) => v.path)).toEqual([`${dir}/esc`])
   })
 })
