@@ -76,20 +76,24 @@ const staged = (): boolean => {
 
 it('a directory a sibling made while the tree was staged is filled, not replaced', async () => {
   expect((await build()).ok).toBe(true)
-  await rm(path.join(app, 'dist'), { recursive: true })
   const dist = path.join(app, 'dist')
   let made: number | undefined
-  const poll = setInterval(() => {
-    if (made !== undefined || !staged()) return
-    try {
-      mkdirSync(dist)
-      made = statSync(dist).ino
-    } catch {
-      // landed already: `made` stays unset and the test fails below
-    }
-  }, 0)
-  const second = await build().finally(() => clearInterval(poll))
-  expect(second.outcomes[0]?.cache?.restored).toBe(true)
+  // The poll shares the run's event loop: on a Mac runner the whole staging
+  // ran between two of its turns (job 140909863462), so a miss asks again.
+  for (let attempt = 0; attempt < 5 && made === undefined; attempt++) {
+    await rm(dist, { recursive: true, force: true })
+    const poll = setInterval(() => {
+      if (made !== undefined || !staged()) return
+      try {
+        mkdirSync(dist)
+        made = statSync(dist).ino
+      } catch {
+        // landed already: `made` stays unset and this attempt proves nothing
+      }
+    }, 0)
+    const second = await build().finally(() => clearInterval(poll))
+    expect(second.outcomes[0]?.cache?.restored).toBe(true)
+  }
   // The staging was seen: otherwise the test proved nothing.
   expect(made).toBeNumber()
   expect([statSync(dist).ino, readdirSync(dist).length]).toEqual([made ?? -1, FILES])
