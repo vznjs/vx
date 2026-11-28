@@ -796,6 +796,12 @@ describe('a literal input a negation takes back (X-31)', () => {
       glob('src/gen/*.ts', 'src/gen/**/*'),
     )
     expect(cacheRefusal({ files: ['**/*.ts', '!**'] })).toBe(glob('**/*.ts', '**'))
+    // A trailing `**/*` is a trailing `**`: one segment or more. Each loaded
+    // and keyed no file, so every edit hit.
+    expect(cacheRefusal({ files: ['**', '!**/*'] })).toBe(glob('**', '**/*'))
+    expect(cacheRefusal({ files: ['src/**', '!src/**/*'] })).toBe(glob('src/**', 'src/**/*'))
+    expect(cacheRefusal({ files: ['src/**', '!**/*'] })).toBe(glob('src/**', '**/*'))
+    expect(cacheRefusal({ files: ['**/a/**', '!**/a/**/*'] })).toBe(glob('**/a/**', '**/a/**/*'))
     expect(cacheRefusal({ files: ['src/**', '!src/gen/**', '{src/gen,lib}/*.ts'] })).toBe(
       glob('{src/gen,lib}/*.ts', 'src/gen/**'),
     )
@@ -807,6 +813,9 @@ describe('a literal input a negation takes back (X-31)', () => {
     expect(cacheRefusal({ files: ['src', '!src/gen/**'] })).toBeNull()
     expect(cacheRefusal({ files: ['src/**/*.ts', '!src/gen/**'] })).toBeNull()
     expect(cacheRefusal({ files: ['src/gen/keep.ts', '!src/gen/other.ts'] })).toBeNull()
+    // Mid-path `**/*` needs a segment there that `**` does not.
+    expect(cacheRefusal({ files: ['src/**/x', '!src/**/*/x'] })).toBeNull()
+    expect(cacheRefusal({ files: ['src/**', '!src/*/**'] })).toBeNull()
   })
 })
 
