@@ -330,6 +330,21 @@ describe.skipIf(!available || process.platform !== 'linux')('a stat refused by t
     ])
   })
 
+  // A hermetic task walls `/`, so a host file it reads is hidden like one
+  // outside the workspace: `cat: /etc/passwd: No such file` named nothing.
+  it('names a host file a hermetic task is denied, with the grant', async () => {
+    const [status, lines] = await outcome(
+      '[ -e /etc/passwd ] || { echo "cat: /etc/passwd: No such file or directory" >&2; exit 1; }',
+      "{ hermetic: true, allow: { read: ['src/'] } }",
+    )
+    expect(status).toBe('failed')
+    expect(lines).toContain(
+      'vx: the task failed naming paths the sandbox hides that exist on this machine: ' +
+        '/etc/passwd. A stat is not traced on Linux, so no violation names them. If the task ' +
+        "reads one, grant it, e.g. `allow: { read: ['/etc/passwd'] }`.",
+    )
+  })
+
   it('CONTROL: a path the host lacks too is not named', async () => {
     // Only the note on what the cwd lists, which names no path of the task's.
     expect(await outcome(tsc('tsconfig.other.json'))).toEqual([

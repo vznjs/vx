@@ -24,6 +24,7 @@ export function addHints(
   ended: Ended,
   denials: Denials,
   baselines: Wrap['baselines'],
+  hermetic: Wrap['hermetic'] = [],
 ): void {
   const { exitCode, signs, outTail, errTail } = ended
   const { recorded, violations, grantedRead } = denials
@@ -149,6 +150,7 @@ export function addHints(
           ...(git === undefined ? [] : [git.dir]),
         ],
         keyOf(args),
+        hermetic,
       )
       if (named !== undefined) violations.push(named)
       const refused = refusedLoopbackHint(
@@ -683,8 +685,10 @@ function statedHiddenHint(
   within: string,
   named: readonly (string | undefined)[],
   key: KeyScope | undefined,
+  hermetic: readonly string[],
 ): SandboxViolation | undefined {
   const deny = walled.map(toRealPath)
+  const hides = [...deny, ...hermetic.map(toRealPath)]
   const grants = granted.map(toRealPath)
   const seen = new Set<string>()
   const found: string[] = []
@@ -702,13 +706,13 @@ function statedHiddenHint(
       const target = toRealPath(abs)
       // A granted target behind a link the sandbox does not hold is hidden
       // all the same: the grant is the directory holding the link.
-      const via = target === abs ? undefined : hiddenLink(abs, target, new Set(grants), deny)
+      const via = target === abs ? undefined : hiddenLink(abs, target, new Set(grants), hides)
       const real = via ?? target
       // A directory holding a grant is listable (bwrap builds the path to
       // the bind): cargo names its cwd in "could not find `Cargo.toml`".
       if (
         via === undefined &&
-        (!deny.some((d) => atOrUnder(real, d)) || readableUnder(real, grants))
+        (!hides.some((d) => atOrUnder(real, d)) || readableUnder(real, grants))
       )
         continue
       if (named.some((n) => n !== undefined && atOrUnder(real, n))) continue
