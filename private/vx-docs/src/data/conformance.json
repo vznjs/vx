@@ -174,6 +174,7 @@
         "lock-config-cwd",
         "lock-config-edited",
         "lock-config-sigint",
+        "lock-config-spin",
         "lock-discover-stage",
         "lock-during-run",
         "lock-graph-rules",
@@ -344,6 +345,7 @@
         "vx-dte-server/worker-sockets",
         "vx-dte/cpu-account",
         "vx-dte/docker",
+        "vx-dte/entry-at",
         "vx-dte/fixture",
         "vx-dte/forecast",
         "vx-dte/github",
@@ -400,6 +402,7 @@
         "vx-lockfile/lazy-load",
         "vx-lockfile/lockfile-choice",
         "vx-lockfile/lockfile-shapes",
+        "vx-lockfile/manifest-taken-back",
         "vx-lockfile/memo-identity",
         "vx-lockfile/pnpm",
         "vx-lockfile/pnpm-exclude-links",
@@ -433,6 +436,7 @@
         "vx-migrate/glob-grammar",
         "vx-migrate/head-stamp-reftable",
         "vx-migrate/helpers-sweep",
+        "vx-migrate/keep-no-install",
         "vx-migrate/keychain-token",
         "vx-migrate/mapping-cache",
         "vx-migrate/migrate",
@@ -503,6 +507,7 @@
         "vx-migrate/nx-legacy-executors",
         "vx-migrate/nx-lerna-order",
         "vx-migrate/nx-map-sweep",
+        "vx-migrate/nx-mapped-config-loads",
         "vx-migrate/nx-migrate-nx-exec",
         "vx-migrate/nx-negated-implicit",
         "vx-migrate/nx-no-package-json",
@@ -614,10 +619,13 @@
         "vx-migrate/turbo-noop-uncached",
         "vx-migrate/turbo-oidc",
         "vx-migrate/turbo-output-mode",
+        "vx-migrate/turbo-own-output-input",
         "vx-migrate/turbo-package-tags",
         "vx-migrate/turbo-persistent-unreached",
         "vx-migrate/turbo-proto-names",
         "vx-migrate/turbo-root-engines",
+        "vx-migrate/turbo-root-negation",
+        "vx-migrate/turbo-root-relative-inputs",
         "vx-migrate/turbo-scriptless-build",
         "vx-migrate/turbo-scriptless-task",
         "vx-migrate/turbo-sibling-output-input",
@@ -628,6 +636,9 @@
         "vx-migrate/vite-task-backslash",
         "vx-migrate/vite-task-env-wildcard",
         "vx-migrate/vite-task-glued-globstar",
+        "vx-migrate/vite-task-mapped-config-loads",
+        "vx-migrate/vite-task-negated-inputs",
+        "vx-migrate/vite-task-shared-outputs",
         "vx-migrate/vite-task-nested-run",
         "vx-migrate/workspace-imports-sorted",
         "vx-migrate/workspace-keys",
@@ -746,6 +757,7 @@
         "cache-baseline",
         "cache-close-old-bun",
         "cache-close.unsafe",
+        "cache-dir-dangling",
         "cache-disk-full",
         "cache-get-many",
         "cache-holds-nothing",
@@ -860,6 +872,7 @@
         "out-pace",
         "paced-writer",
         "output-dirs-snapshot",
+        "output-flood-fairness.unsafe",
         "output-log",
         "output-memory.unsafe",
         "output-stamps-link",
@@ -939,6 +952,7 @@
         "sqlite-query-only.unsafe",
         "staged-once",
         "stale-hit-memo",
+        "stat-or-absent",
         "stall-watch",
         "status-line",
         "status-vocabulary",
@@ -1201,14 +1215,14 @@
   "scores": {
     "vx": {
       "all": {
-        "pass": 1949,
-        "can": 1949,
-        "of": 2018
+        "pass": 1951,
+        "can": 1951,
+        "of": 2020
       },
       "correctness": {
-        "pass": 1622,
-        "can": 1622,
-        "of": 1683
+        "pass": 1624,
+        "can": 1624,
+        "of": 1685
       },
       "efficiency": {
         "pass": 327,
@@ -1241,9 +1255,9 @@
         "of": 495
       },
       "outputs": {
-        "pass": 310,
-        "can": 310,
-        "of": 321
+        "pass": 312,
+        "can": 312,
+        "of": 323
       },
       "config": {
         "pass": 31,
@@ -1269,13 +1283,13 @@
     "turbo": {
       "all": {
         "pass": 1320,
-        "can": 1716,
-        "of": 2018
+        "can": 1718,
+        "of": 2020
       },
       "correctness": {
         "pass": 1074,
-        "can": 1397,
-        "of": 1683
+        "can": 1399,
+        "of": 1685
       },
       "efficiency": {
         "pass": 246,
@@ -1309,8 +1323,8 @@
       },
       "outputs": {
         "pass": 238,
-        "can": 308,
-        "of": 321
+        "can": 310,
+        "of": 323
       },
       "config": {
         "pass": 26,
@@ -1336,13 +1350,13 @@
     "nx": {
       "all": {
         "pass": 1343,
-        "can": 1754,
-        "of": 2018
+        "can": 1756,
+        "of": 2020
       },
       "correctness": {
         "pass": 1057,
-        "can": 1425,
-        "of": 1683
+        "can": 1427,
+        "of": 1685
       },
       "efficiency": {
         "pass": 286,
@@ -1376,8 +1390,8 @@
       },
       "outputs": {
         "pass": 227,
-        "can": 308,
-        "of": 321
+        "can": 310,
+        "of": 323
       },
       "config": {
         "pass": 18,
@@ -1402,14 +1416,14 @@
     },
     "vite-task": {
       "all": {
-        "pass": 972,
-        "can": 1322,
-        "of": 2018
+        "pass": 974,
+        "can": 1324,
+        "of": 2020
       },
       "correctness": {
-        "pass": 816,
-        "can": 1110,
-        "of": 1683
+        "pass": 818,
+        "can": 1112,
+        "of": 1685
       },
       "efficiency": {
         "pass": 156,
@@ -1442,9 +1456,9 @@
         "of": 495
       },
       "outputs": {
-        "pass": 209,
-        "can": 308,
-        "of": 321
+        "pass": 211,
+        "can": 310,
+        "of": 323
       },
       "config": {
         "pass": 20,
@@ -1470,13 +1484,13 @@
     "nix": {
       "all": {
         "pass": 1052,
-        "can": 1326,
-        "of": 2018
+        "can": 1328,
+        "of": 2020
       },
       "correctness": {
         "pass": 905,
-        "can": 1140,
-        "of": 1683
+        "can": 1142,
+        "of": 1685
       },
       "efficiency": {
         "pass": 147,
@@ -1510,8 +1524,8 @@
       },
       "outputs": {
         "pass": 235,
-        "can": 315,
-        "of": 321
+        "can": 317,
+        "of": 323
       },
       "config": {
         "pass": 16,
@@ -1537,13 +1551,13 @@
     "moon": {
       "all": {
         "pass": 1202,
-        "can": 1630,
-        "of": 2018
+        "can": 1632,
+        "of": 2020
       },
       "correctness": {
         "pass": 963,
-        "can": 1344,
-        "of": 1683
+        "can": 1346,
+        "of": 1685
       },
       "efficiency": {
         "pass": 239,
@@ -1577,8 +1591,8 @@
       },
       "outputs": {
         "pass": 195,
-        "can": 311,
-        "of": 321
+        "can": 313,
+        "of": 323
       },
       "config": {
         "pass": 24,
@@ -11660,6 +11674,84 @@
           "status": "fail",
           "step": 4,
           "detail": "packages/a/public/a.txt is missing, expected \"v1\\n\""
+        }
+      }
+    },
+    {
+      "id": "outputs/committed-file-in-submodule-kept",
+      "ref": "q6k7da",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A file a submodule project commits in its output directory survives its builds",
+      "why": "A project can be a submodule, and that repository can commit a file under the task's outputs. The outer git lists none of its files, so a tool that asks only the outer index sees nothing committed there. Clearing outputs before a run then deletes the committed file, and a later restore deletes the user's edit of it.",
+      "from": [
+        "committed-case"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/logo.txt is \"committed\\n\", expected \"mine\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/logo.txt is \"committed\\n\", expected \"mine\\n\""
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 2,
+          "detail": "packages/a/dist/logo.txt is missing, expected \"committed\\n\""
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/a.txt is \"v1\\n\", expected \"v2\\n\""
+        }
+      }
+    },
+    {
+      "id": "outputs/committed-file-in-nested-repo-kept",
+      "ref": "58u49s",
+      "category": "outputs",
+      "kind": "correctness",
+      "title": "A file a nested repository project commits in its output directory survives its builds",
+      "why": "A project can be a repository of its own inside the workspace, and that repository can commit a file under the task's outputs. The outer git lists none of its files, so a tool that asks only the outer index sees nothing committed there. Clearing outputs before a run then deletes the committed file, and a later restore deletes the user's edit of it.",
+      "from": [
+        "committed-case"
+      ],
+      "outcomes": {
+        "vx": {
+          "status": "pass"
+        },
+        "turbo": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/logo.txt is \"committed\\n\", expected \"mine\\n\""
+        },
+        "nx": {
+          "status": "fail",
+          "step": 6,
+          "detail": "packages/a/dist/logo.txt is \"committed\\n\", expected \"mine\\n\""
+        },
+        "vite-task": {
+          "status": "pass"
+        },
+        "nix": {
+          "status": "fail",
+          "step": 2,
+          "detail": "packages/a/dist/logo.txt is missing, expected \"committed\\n\""
+        },
+        "moon": {
+          "status": "fail",
+          "step": 4,
+          "detail": "packages/a/dist/a.txt is \"v1\\n\", expected \"v2\\n\""
         }
       }
     },
