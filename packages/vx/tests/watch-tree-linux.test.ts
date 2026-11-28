@@ -109,6 +109,37 @@ describe.skipIf(process.platform !== 'linux')('the recursive arm on Linux', () =
     }
   })
 
+  // A watched directory's own watch reports its removal under the
+  // directory's name: `rm -rf dist` read as `dist/dist` gone, a path that
+  // never was, and `vx watch` ran a cycle on its own output clear.
+  it('a removed directory is reported by its own name, never under itself', async () => {
+    const t = await armed(async (dir) => {
+      await mkdir(path.join(dir, 'dist'))
+      await writeFile(path.join(dir, 'dist/all'), 'x')
+    })
+    try {
+      fs.rmSync(path.join(t.dir, 'dist'), { recursive: true })
+      await until(() => t.seen.includes('dist'), 'the removal')
+      await Bun.sleep(100)
+      expect(t.seen).not.toContain('dist/dist')
+    } finally {
+      await t.end()
+    }
+  })
+
+  it('CONTROL: a file named like its directory is reported when removed', async () => {
+    const t = await armed(async (dir) => {
+      await mkdir(path.join(dir, 'src'))
+      await writeFile(path.join(dir, 'src/src'), 'x')
+    })
+    try {
+      fs.rmSync(path.join(t.dir, 'src/src'))
+      await until(() => t.seen.includes('src/src'), 'the removal of src/src')
+    } finally {
+      await t.end()
+    }
+  })
+
   // Bun delivers one event for a name and drops the next for it inside
   // the same moment: a directory removed, that event handled, then made
   // again (`git stash -u` then `pop`, a rebase over a commit that adds
