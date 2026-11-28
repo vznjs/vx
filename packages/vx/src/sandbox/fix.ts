@@ -333,6 +333,14 @@ export function sandboxFix(
     else if (isTimeNamed(v.path)) {
       const grant = writeGrant(path.dirname(v.path), dirs, true, inputs?.files ?? [], outDirs)
       fix.write.add(grant === './' ? (timeGlob(path.basename(v.path)) ?? grant) : grant)
+    } else if (/^(?:symlink|link|mknod)/.test(v.line) && entryOf(v) === 'missing') {
+      // A link or node the task makes: a literal grant has vx make an empty
+      // file there first, and `ln -s src lnk` then failed "File exists". Its
+      // directory is the grant, the project as `.`.
+      const dir = path.dirname(v.path)
+      fix.write.add(
+        dir === dirs.project ? '.' : writeGrant(dir, dirs, true, inputs?.files ?? [], outDirs),
+      )
     } else {
       const isDir = v.line.startsWith('mkdir') || entryOf(v) === 'dir'
       const grant = writeGrant(v.path, dirs, isDir, inputs?.files ?? [], outDirs)

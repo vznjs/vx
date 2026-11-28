@@ -1868,6 +1868,10 @@ directory, and vx refuses a bind that holds `.git`. `sandboxFix` named
 `'.'` or the file, which the next run turned down, so it names neither
 and `rootFileWriteHint` says to have the tool write it in a directory.
 
+A link or node the task makes (`ln -s`, `ln`, `mkfifo`) is granted its
+directory, the project as `'.'`: a literal grant has vx make an empty file
+there before the run, and `ln -s src lnk` then failed "File exists".
+
 ### Tests
 
 `tests/sandbox-fix.test.ts`, `tests/sandbox-outside-writes-hint.test.ts`.
